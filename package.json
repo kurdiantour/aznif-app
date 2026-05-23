@@ -20,7 +20,7 @@
     "@supabase/postgrest-js": "^2.106.1",
     "@supabase/realtime-js": "^2.106.1",
     "@supabase/storage-js": "^2.106.1",
-    "@supabase/supabase-js": "^2.106.0",
+    "@supabase/supabase-js": "^2.106.1",
     "expo": "~54.0.34",
     "expo-constants": "~18.0.13",
     "expo-font": "~14.0.11",
