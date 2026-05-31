@@ -146,33 +146,6 @@ export async function awardGoldReward(
   return data;
 }
 
-export async function awardMatchReward(
-  goldAmount: number,
-  points: number,
-  metadata: Record<string, unknown> = {}
-) {
-  const uid = await getUid();
-
-  if (!Number.isFinite(goldAmount) || goldAmount <= 0) {
-    throw new Error('Gold amount must be greater than zero');
-  }
-
-  if (!Number.isInteger(points) || points < 0) {
-    throw new Error('Points must be a non-negative integer');
-  }
-
-  const { data, error } = await supabase.rpc('award_match_reward', {
-    p_user_id: uid,
-    p_amount: goldAmount,
-    p_points: points,
-    p_metadata: metadata,
-  });
-
-  if (error) throw error;
-
-  return data;
-}
-
 export async function spendGoldInShop(
   amount: number,
   metadata: Record<string, unknown> = {}

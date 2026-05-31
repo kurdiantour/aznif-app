@@ -1,0 +1,312 @@
+import {
+  getFriendRequests,
+  getFriends,
+  respondFriendRequest,
+  type FriendRequest,
+} from '@/lib/friends';
+import { supabase } from '@/lib/supabase';
+import { getCurrentUser } from '@/lib/supabaseAuth';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import { PlayerAvatar } from '@/components/player/PlayerAvatar';
+
+type RequestsPanelProps = {
+  onRequestsChanged?: (count: number) => void;
+};
+
+function RequestCard({
+  request,
+  onRespond,
+  busy,
+}: {
+  request: FriendRequest;
+  onRespond: (request: FriendRequest, accept: boolean) => void;
+  busy: boolean;
+}) {
+  return (
+    <View style={styles.requestCard}>
+      <PlayerAvatar avatarId={request.avatarId} size={42} style={styles.requestAvatar} />
+
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={1}>
+          {request.name} sent you a friend request
+        </Text>
+        <Text style={styles.playerId} numberOfLines={1}>
+          {request.playerId}
+        </Text>
+      </View>
+
+      <View style={styles.requestButtons}>
+        <Pressable
+          style={[styles.smallButton, styles.acceptButton]}
+          disabled={busy}
+          onPress={() => onRespond(request, true)}
+        >
+          <Text style={styles.buttonText}>ACCEPT</Text>
+        </Pressable>
+        <Pressable
+          style={styles.smallButton}
+          disabled={busy}
+          onPress={() => onRespond(request, false)}
+        >
+          <Text style={styles.buttonText}>REJECT</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const nextRequests = await getFriendRequests();
+    setRequests(nextRequests);
+    onRequestsChanged?.(nextRequests.length);
+  }, [onRequestsChanged]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoading(true);
+    refresh()
+      .catch((err) => {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Unable to load friend requests.');
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [refresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setError(null);
+      void refresh();
+    }, [refresh])
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    getCurrentUser().then((user) => {
+      if (!mounted || !user) return;
+
+      channel = supabase
+        .channel(`friend-requests-panel:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'friendships',
+            filter: `addressee_id=eq.${user.id}`,
+          },
+          () => {
+            void refresh();
+          }
+        )
+        .subscribe();
+    });
+
+    return () => {
+      mounted = false;
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [refresh]);
+
+  async function handleRespond(request: FriendRequest, accept: boolean) {
+    setBusyId(request.friendshipId);
+    setError(null);
+
+    try {
+      await respondFriendRequest(request.friendshipId, accept);
+      await Promise.all([refresh(), getFriends()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update friend request.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.fullWidthSection}>
+        <Text style={styles.sectionTitle}>Friend Requests</Text>
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        {loading ? (
+          <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
+        ) : requests.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>No requests</Text>
+            <Text style={styles.emptyText}>Incoming friend requests will appear here.</Text>
+          </View>
+        ) : (
+          requests.map((request) => (
+            <RequestCard
+              key={request.friendshipId}
+              request={request}
+              busy={busyId === request.friendshipId}
+              onRespond={handleRespond}
+            />
+          ))
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingBottom: 18,
+  },
+
+  fullWidthSection: {
+    width: '100%',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+
+  sectionTitle: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+
+  requestCard: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(170, 105, 255, 0.28)',
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: 'transparent',
+  },
+
+  requestAvatar: {
+    borderRadius: 21,
+  },
+
+  info: {
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+
+  name: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  playerId: {
+    marginTop: 5,
+    color: '#aaa7bc',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  requestButtons: {
+    width: 150,
+    flexDirection: 'row',
+    gap: 6,
+  },
+
+  smallButton: {
+    minWidth: 68,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 8,
+  },
+
+  acceptButton: {
+    borderColor: 'rgba(34,197,94,0.55)',
+    backgroundColor: 'rgba(34,197,94,0.16)',
+  },
+
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  loader: {
+    width: '100%',
+    marginTop: 40,
+  },
+
+  emptyBox: {
+    width: '100%',
+    marginTop: 24,
+    borderRadius: 12,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.28)',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+  },
+
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+
+  emptyText: {
+    color: '#9ca3af',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+
+  errorText: {
+    width: '100%',
+    color: '#ff8a8a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+});

@@ -82,10 +82,10 @@ export default function LobbyScreen() {
     setIsSearching(true);
 
     try {
-      // Call the new find_match_opponent RPC
-      const { data: result, error } = await supabase.rpc('find_match_opponent', {
-        p_mode: mode,
-      });
+      const { data: result, error } =
+        mode === '1v1'
+          ? await supabase.rpc('find_one_vs_one_opponent')
+          : await supabase.rpc('find_two_vs_two_match');
 
       if (error) {
         throw error;

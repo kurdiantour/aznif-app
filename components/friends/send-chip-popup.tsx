@@ -1,4 +1,5 @@
 import { getBalance, transferFunds } from '@/lib/wallet';
+import type { Friend } from '@/lib/friends';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,8 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-import type { Friend } from './friends-panel';
 
 type SendChipPopupProps = {
   visible: boolean;
@@ -60,12 +59,19 @@ export function SendChipPopup({ visible, friend, onClose }: SendChipPopupProps) 
   if (!friend) return null;
 
   const handleSend = async () => {
+    if (submitting) return;
+
     setError(null);
 
     const parsedAmount = Number(amount.replace(/[^0-9.]/g, ''));
 
     if (!parsedAmount || parsedAmount <= 0) {
       setError('Please enter a valid MC amount.');
+      return;
+    }
+
+    if (parsedAmount > mcBalance) {
+      setError('Insufficient MC balance.');
       return;
     }
 
@@ -114,7 +120,11 @@ export function SendChipPopup({ visible, friend, onClose }: SendChipPopupProps) 
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
 
-            <Pressable style={styles.sendButton} onPress={handleSend} disabled={submitting}>
+            <Pressable
+              style={[styles.sendButton, submitting && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={submitting}
+            >
               {submitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
@@ -226,6 +236,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#7c3aed',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  sendButtonDisabled: {
+    opacity: 0.65,
   },
 
   sendText: {

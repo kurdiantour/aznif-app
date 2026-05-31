@@ -205,9 +205,9 @@ export default function MatchmakingScreen() {
 
     const checkStatus = async () => {
       try {
-        const { data: status, error: statusError } = await supabase.rpc(
-          'get_matchmaking_status',
-        );
+        const { data: status, error: statusError } = isOneVsOne
+          ? await supabase.rpc('get_one_vs_one_matchmaking_status')
+          : await supabase.rpc('get_two_vs_two_matchmaking_status');
 
         if (statusError) {
           console.warn('Failed to check matchmaking status', statusError);
@@ -232,7 +232,7 @@ export default function MatchmakingScreen() {
         statusCheckIntervalRef.current = null;
       }
     };
-  }, [matchmakingStatus]);
+  }, [matchmakingStatus, isOneVsOne]);
 
   useEffect(() => {
     let mounted = true;
@@ -244,9 +244,9 @@ export default function MatchmakingScreen() {
       }
 
       const { data: playerRows, error: playersError } = await supabase
-        .from('game_players')
+        .from(isOneVsOne ? 'one_vs_one_players' : 'two_vs_two_players')
         .select('id, user_id, player_index, seat, team_id, kind, connected')
-        .eq('game_id', currentRoomId)
+        .eq('room_id', currentRoomId)
         .order('player_index', { ascending: true });
 
       if (playersError) {
@@ -310,8 +310,8 @@ export default function MatchmakingScreen() {
         {
           event: '*',
           schema: 'public',
-          table: 'game_players',
-          filter: `game_id=eq.${currentRoomId}`,
+          table: isOneVsOne ? 'one_vs_one_players' : 'two_vs_two_players',
+          filter: `room_id=eq.${currentRoomId}`,
         },
         () => {
           void loadPlayers();
@@ -323,7 +323,7 @@ export default function MatchmakingScreen() {
       mounted = false;
       void supabase.removeChannel(channel);
     };
-  }, [currentRoomId]);
+  }, [currentRoomId, isOneVsOne]);
 
 
   useEffect(() => {
@@ -396,9 +396,15 @@ export default function MatchmakingScreen() {
 
   const handleCancel = async () => {
     try {
-      await supabase.rpc('cancel_matchmaking', {
-        p_game_id: currentRoomId || null,
-      });
+      if (isOneVsOne) {
+        await supabase.rpc('cancel_one_vs_one_matchmaking', {
+          p_room_id: currentRoomId || null,
+        });
+      } else {
+        await supabase.rpc('cancel_two_vs_two_matchmaking', {
+          p_room_id: currentRoomId || null,
+        });
+      }
     } catch (err) {
       console.warn('Failed to cancel matchmaking', err);
     }
@@ -418,19 +424,25 @@ export default function MatchmakingScreen() {
     return () => {
       if (navigationStartedRef.current) return;
 
-      if (matchmakingStatus === 'searching' || (!isMatched && currentRoomId)) {
+      if (matchmakingStatus === 'searching') {
         void (async () => {
           try {
-            await supabase.rpc('cancel_matchmaking', {
-              p_game_id: currentRoomId || null,
-            });
+            if (isOneVsOne) {
+              await supabase.rpc('cancel_one_vs_one_matchmaking', {
+                p_room_id: null,
+              });
+            } else {
+              await supabase.rpc('cancel_two_vs_two_matchmaking', {
+                p_room_id: null,
+              });
+            }
           } catch {
             // Ignore cleanup errors.
           }
         })();
       }
     };
-  }, [matchmakingStatus, isMatched, currentRoomId]);
+  }, [matchmakingStatus, isMatched, currentRoomId, isOneVsOne]);
 
   const spin = rotate.interpolate({
     inputRange: [0, 1],

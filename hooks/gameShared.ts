@@ -2,12 +2,8 @@ import type { AvatarId } from '@/constants/avatars';
 import { FULL_DOMINO_SET } from '@/constants/domino-set';
 import { dealDominoHands } from '@/lib/domino/deal';
 import { shuffleArray } from '@/lib/domino/shuffle';
-import { findBestBotMove } from '@/lib/game/bot-ai';
 import {
-    applyMove,
     getHandPipTotal,
-    getPlayableBranches,
-    isValidMove,
     roundToNearestFive,
 } from '@/lib/game/kozel-engine';
 import {
@@ -54,36 +50,6 @@ export type SeatDefinition = {
   kind: Player['kind'];
   teamId: TeamId;
 };
-
-export type BotMoveDecision = {
-  tile: DominoTileData;
-  branch: KozelBranch;
-  score: number;
-};
-
-const BOT_BRANCH_PRIORITY_1V1: KozelBranch[] = ['right', 'left', 'up', 'down'];
-const BOT_BRANCH_PRIORITY_2V2: KozelBranch[] = ['up', 'down', 'left', 'right'];
-
-export function createOneVsOneSeats(): SeatDefinition[] {
-  return [
-    {
-      id: 'p1',
-      name: 'You',
-      avatarId: 'avatar-2',
-      seat: 'bottom',
-      kind: 'human',
-      teamId: 'teamA',
-    },
-    {
-      id: 'p3',
-      name: 'AI Bot',
-      avatarId: 'bot-avatar',
-      seat: 'top',
-      kind: 'bot',
-      teamId: 'teamB',
-    },
-  ];
-}
 
 export function createTwoVsTwoSeats(): SeatDefinition[] {
   return [
@@ -141,72 +107,6 @@ export function pickPreferredBranch(
   priority: KozelBranch[],
 ): KozelBranch {
   return priority.find((branch) => branches.includes(branch)) ?? branches[0];
-}
-
-export function findTwoVsTwoBotMove(
-  hand: DominoTileData[],
-  board: KozelBoardState,
-  spinnerValue: number | null,
-  isOpeningRound: boolean,
-) {
-  const moves: BotMoveDecision[] = [];
-
-  for (const tile of hand) {
-    const playableBranches = getPlayableBranches(
-      tile,
-      board,
-      spinnerValue,
-      isOpeningRound,
-    );
-
-    for (const branch of playableBranches) {
-      if (!isValidMove(tile, board, branch, spinnerValue, isOpeningRound)) {
-        continue;
-      }
-
-      const { moveScore } = applyMove(
-        board,
-        tile,
-        branch,
-        spinnerValue,
-        isOpeningRound,
-      );
-
-      moves.push({ tile, branch, score: moveScore });
-    }
-  }
-
-  if (!moves.length) {
-    return null;
-  }
-
-  const bestScore = Math.max(...moves.map((move) => move.score));
-  const candidateMoves = moves.filter((move) => move.score === bestScore);
-
-  const preferredBranch = pickPreferredBranch(
-    candidateMoves.map((move) => move.branch),
-    BOT_BRANCH_PRIORITY_2V2,
-  );
-
-  return candidateMoves.find((move) => move.branch === preferredBranch) ?? candidateMoves[0];
-}
-
-export function getBotMoveFor1v1(
-  hand: DominoTileData[],
-  board: KozelBoardState,
-  spinnerValue: number | null,
-  isOpeningRound: boolean,
-) {
-  return findBestBotMove(hand, board, spinnerValue, isOpeningRound);
-}
-
-export function getBotMoveFor2v2(
-  hand: DominoTileData[],
-  board: KozelBoardState,
-  spinnerValue: number | null,
-  isOpeningRound: boolean,
-) {
-  return findTwoVsTwoBotMove(hand, board, spinnerValue, isOpeningRound);
 }
 
 export function canDrawTileFor1v1(

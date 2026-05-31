@@ -49,27 +49,30 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 export type LeaderboardProfile = Pick<
   Profile,
   'id' | 'displayName' | 'avatarId' | 'level' | 'points'
->;
+> & {
+  rank: number;
+  gold: number;
+};
 
 export async function getLeaderboardProfiles(
   limit = 50,
 ): Promise<LeaderboardProfile[]> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, avatar_id, level, points')
-    .order('points', { ascending: false })
-    .limit(limit);
+  const { data, error } = await supabase.rpc('get_leaderboard', {
+    p_limit: limit,
+  });
 
   if (error) {
     throw error;
   }
 
   return (data ?? []).map((profile: any) => ({
-    id: profile.id,
-    displayName: profile.username,
+    id: profile.user_id,
+    displayName: profile.display_name,
     avatarId: profile.avatar_id as Profile['avatarId'],
     level: profile.level ?? 1,
     points: Number(profile.points ?? 0),
+    rank: Number(profile.rank ?? 0),
+    gold: Number(profile.gold ?? 0),
   }));
 }
 

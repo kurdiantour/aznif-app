@@ -7,10 +7,10 @@ import ScorePopup from '@/components/game/ScorePopup';
 import TableBackground from '@/components/game/TableBackground';
 import WinnerPopup from '@/components/game/WinnerPopup';
 import { useGame } from '@/hooks/useGame';
-import useMultiplayerGame from '@/hooks/useMultiplayerGame';
+import { useOneVsOneGame } from '@/hooks/useOneVsOneGame';
+import { useTwoVsTwoGame } from '@/hooks/useTwoVsTwoGame';
 import { useProfile } from '@/lib/profile';
 import { supabase } from '@/lib/supabase';
-import { awardMatchReward } from '@/lib/wallet';
 import { DominoTileData, KozelBranch } from '@/types/game';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -36,13 +36,34 @@ export default function GameScreen() {
   const router = useRouter();
 
   const roomId = String(room_id ?? '');
-  const gameMode = mode === '1v1' ? '1v1' : '2v2';
+
+  const rawMode = Array.isArray(mode) ? mode[0] : mode;
+
+  const gameMode: '1v1' | '2v2' =
+    rawMode === '2v2' ? '2v2' : '1v1';
+
   const isPracticeMode = practice === 'true';
 
-  const game = isPracticeMode
-    ? useGame(gameMode, true)
-    : useMultiplayerGame(roomId);
+const practiceGame = useGame(gameMode, true);
 
+const oneVsOneGame = useOneVsOneGame(
+  !isPracticeMode && gameMode === '1v1'
+    ? roomId
+    : undefined,
+);
+
+const twoVsTwoGame = useTwoVsTwoGame(
+  !isPracticeMode && gameMode === '2v2'
+    ? roomId
+    : undefined,
+);
+
+const game = isPracticeMode
+  ? practiceGame
+  : gameMode === '1v1'
+    ? oneVsOneGame
+    : twoVsTwoGame;
+    
   const { refreshProfile } = useProfile();
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -53,7 +74,7 @@ export default function GameScreen() {
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>([]);
 
   const gameInitializedRef = useRef(false);
-  const rewardPersistedRef = useRef(false);
+  const rewardSettlementRequestedRef = useRef(false);
   const boardAreaRef = useRef<any>(null);
 
   useEffect(() => {
@@ -84,7 +105,7 @@ export default function GameScreen() {
     const initializeGame = async () => {
       try {
         const { data: roomData, error: roomError } = await supabase
-          .from('game_rooms')
+          .from(gameMode === '1v1' ? 'one_vs_one_rooms' : 'two_vs_two_rooms')
           .select('status, state')
           .eq('id', roomId)
           .maybeSingle();
@@ -96,24 +117,24 @@ export default function GameScreen() {
 
         if (!roomData) return;
 
-const hands = roomData.state?.hands;
+        const hasStarted =
+          gameMode === '1v1'
+            ? roomData.state?.status === 'started' || !!roomData.state?.handCounts
+            : roomData.state?.status === 'started' || !!roomData.state?.handCounts;
 
-const hasHands =
-  !!hands &&
-  (
-    Array.isArray(hands)
-      ? hands.length > 0
-      : Object.keys(hands).length > 0
-  );
-
-        if (hasHands) return;
+        if (hasStarted) return;
         if (roomData.status !== 'waiting' && roomData.status !== 'active') return;
 
         gameInitializedRef.current = true;
 
-        const { error } = await supabase.rpc('start_game', {
-          p_game_id: roomId,
-        });
+        const { error } =
+          gameMode === '1v1'
+            ? await supabase.rpc('start_one_vs_one_game', {
+                p_room_id: roomId,
+              })
+            : await supabase.rpc('start_two_vs_two_game', {
+                p_room_id: roomId,
+              });
 
         if (error) {
           console.warn('Failed to start game (may already be started)', error);
@@ -124,7 +145,7 @@ const hasHands =
     };
 
     void initializeGame();
-  }, [isPracticeMode, (game as any).loading, roomId]);
+  }, [isPracticeMode, (game as any).loading, roomId, gameMode]);
 
   const topPlayer = game.players.find((p) => p.seat === 'top');
   const leftPlayer = game.players.find((p) => p.seat === 'left');
@@ -150,26 +171,28 @@ const hasHands =
   }, [game.roundWinnerPlayerId]);
 
   useEffect(() => {
-    if (!game.matchReward || !game.winningTeamId) return;
-    if (rewardPersistedRef.current) return;
+    if (isPracticeMode) return;
+    if (!roomId) return;
+    if (!game.winningTeamId) return;
+    if (rewardSettlementRequestedRef.current) return;
 
-    rewardPersistedRef.current = true;
+    rewardSettlementRequestedRef.current = true;
 
-    const persistReward = async () => {
+    const settleRewards = async () => {
       try {
-        await awardMatchReward(game.matchReward!.gold, game.matchReward!.points, {
-          tier: game.matchReward!.tier,
-          match_mode: game.mode,
+        await supabase.rpc('settle_match_rewards', {
+          p_mode: gameMode,
+          p_room_id: roomId,
         });
 
         await refreshProfile();
       } catch (error) {
-        console.warn('Unable to persist match reward', error);
+        console.warn('Unable to settle match rewards', error);
       }
     };
 
-    void persistReward();
-  }, [game.matchReward, game.winningTeamId, game.mode, refreshProfile]);
+    void settleRewards();
+  }, [isPracticeMode, roomId, game.winningTeamId, gameMode, refreshProfile]);
 
   useEffect(() => {
     if (game.winningTeamId) {
@@ -237,7 +260,7 @@ const hasHands =
         setSelectableBranches(branches);
       }
     } catch (err) {
-      console.warn('submit_move failed', err);
+      console.warn('play tile failed', err);
     }
   };
 
@@ -256,7 +279,7 @@ const hasHands =
 
       if (played) clearSelection();
     } catch (err) {
-      console.warn('submit_move failed', err);
+      console.warn('play tile failed', err);
     }
   };
 
@@ -275,9 +298,15 @@ const hasHands =
   const handleLeaveGame = async () => {
     try {
       if (!isPracticeMode && roomId) {
-        await supabase.rpc('cancel_matchmaking', {
-          p_game_id: roomId,
-        });
+        if (gameMode === '1v1') {
+          await supabase.rpc('cancel_one_vs_one_room', {
+            p_room_id: roomId,
+          });
+        } else {
+          await supabase.rpc('leave_two_vs_two_room', {
+            p_room_id: roomId,
+          });
+        }
       }
     } catch (error) {
       console.warn('Failed to leave game', error);

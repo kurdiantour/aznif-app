@@ -1,22 +1,86 @@
 import { FriendsPanel } from '@/components/friends/friends-panel';
+import { RequestsPanel } from '@/components/friends/requests-panel';
 import { TransfersPanel } from '@/components/friends/transfers-panel';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { getFriendRequests } from '@/lib/friends';
+import { supabase } from '@/lib/supabase';
+import { getCurrentUser } from '@/lib/supabaseAuth';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-type TabKey = 'friends' | 'transfers';
+type TabKey = 'friends' | 'requests' | 'transfers';
 
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'friends', label: 'FRIENDS' },
+  { key: 'requests', label: 'REQUESTS' },
   { key: 'transfers', label: 'TRANSFERS' },
 ];
 
 export default function InviteFriendsScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('friends');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [requestCount, setRequestCount] = useState(0);
+
+  const refreshRequestCount = useCallback(async () => {
+    const requests = await getFriendRequests();
+    setRequestCount(requests.length);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshRequestCount();
+    }, [refreshRequestCount])
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    getCurrentUser().then((user) => {
+      if (!mounted || !user) return;
+
+      channel = supabase
+        .channel(`friend-request-count:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'friendships',
+            filter: `addressee_id=eq.${user.id}`,
+          },
+          () => {
+            void refreshRequestCount();
+          }
+        )
+        .subscribe();
+    });
+
+    return () => {
+      mounted = false;
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [refreshRequestCount]);
 
   return (
     <View style={styles.container}>
       <View style={styles.body}>
         <View style={styles.sidebar}>
+          <View style={styles.searchBox}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search username or player ID"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              style={styles.searchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+          </View>
+
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
 
@@ -31,13 +95,22 @@ export default function InviteFriendsScreen() {
                 >
                   {tab.label}
                 </Text>
+                {tab.key === 'requests' && requestCount > 0 ? (
+                  <View style={styles.requestBadge} />
+                ) : null}
               </Pressable>
             );
           })}
         </View>
 
         <View style={styles.content}>
-          {activeTab === 'friends' ? <FriendsPanel /> : <TransfersPanel />}
+          {activeTab === 'friends' ? (
+            <FriendsPanel searchQuery={searchQuery} />
+          ) : activeTab === 'requests' ? (
+            <RequestsPanel onRequestsChanged={setRequestCount} />
+          ) : (
+            <TransfersPanel />
+          )}
         </View>
       </View>
     </View>
@@ -64,6 +137,23 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
 
+  searchBox: {
+    height: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+
+  searchInput: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+    padding: 0,
+  },
+
   sidebarItem: {
     height: 46,
     borderRadius: 8,
@@ -72,6 +162,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
 
   sidebarItemActive: {
@@ -87,6 +178,16 @@ const styles = StyleSheet.create({
 
   sidebarTextActive: {
     color: '#ffffff',
+  },
+
+  requestBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
   },
 
   content: {

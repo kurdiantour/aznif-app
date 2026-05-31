@@ -1,55 +1,23 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  getFriends,
+  searchFriendCandidates,
+  sendFriendRequest,
+  type Friend,
+  type FriendSearchResult,
+} from '@/lib/friends';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { PlayerAvatar } from '@/components/player/PlayerAvatar';
-import type { AvatarId } from '@/constants/avatars';
 import { SendChipPopup } from './send-chip-popup';
-
-export type Friend = {
-  id: string;
-  name: string;
-  avatarId: AvatarId;
-  online: boolean;
-};
-
-const friends: Friend[] = [
-  {
-    id: '48273195',
-    name: 'ArminDomino',
-    avatarId: 'avatar-1',
-    online: true,
-  },
-  {
-    id: '77192410',
-    name: 'NedaDomino',
-    avatarId: 'avatar-2',
-    online: true,
-  },
-  {
-    id: '19458273',
-    name: 'MatinPro',
-    avatarId: 'avatar-3',
-    online: true,
-  },
-  {
-    id: '63829147',
-    name: 'DanielKing',
-    avatarId: 'avatar-4',
-    online: false,
-  },
-  {
-    id: '90517462',
-    name: 'SinaDomino',
-    avatarId: 'avatar-1',
-    online: false,
-  },
-  {
-    id: '31764028',
-    name: 'MinaPlay',
-    avatarId: 'avatar-2',
-    online: false,
-  },
-];
 
 function FriendCard({
   friend,
@@ -60,24 +28,8 @@ function FriendCard({
 }) {
   return (
     <View style={styles.friendCard}>
-      <View
-        style={[
-          styles.avatarWrap,
-          {
-            borderColor: friend.online ? '#1c7514' : 'rgba(180,180,200,0.45)',
-          },
-        ]}
-      >
+      <View style={styles.avatarWrap}>
         <PlayerAvatar avatarId={friend.avatarId} size={58} style={styles.avatar} />
-
-        <View
-          style={[
-            styles.avatarStatusDot,
-            {
-              backgroundColor: friend.online ? '#1c7514' : '#aaa7bc',
-            },
-          ]}
-        />
       </View>
 
       <View style={styles.info}>
@@ -85,27 +37,9 @@ function FriendCard({
           {friend.name}
         </Text>
 
-        <View style={styles.statusRow}>
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor: friend.online ? '#24961a' : '#aaa7bc',
-              },
-            ]}
-          />
-
-          <Text
-            style={[
-              styles.statusText,
-              {
-                color: friend.online ? '#24961a' : '#aaa7bc',
-              },
-            ]}
-          >
-            {friend.online ? 'Online' : 'Offline'}
-          </Text>
-        </View>
+        <Text style={styles.playerId} numberOfLines={1}>
+          {friend.playerId}
+        </Text>
       </View>
 
       <View style={styles.buttonStack}>
@@ -113,16 +47,154 @@ function FriendCard({
           <Text style={styles.buttonText}>SEND CHIP</Text>
         </Pressable>
 
-        <Pressable style={styles.actionButton}>
-          <Text style={styles.buttonText}>INVITE</Text>
+        <Pressable style={[styles.actionButton, styles.disabledButton]} disabled>
+          <Text style={[styles.buttonText, styles.disabledButtonText]}>INVITE</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-export function FriendsPanel() {
+function SearchResultRow({
+  result,
+  onAdd,
+  busy,
+}: {
+  result: FriendSearchResult;
+  onAdd: (result: FriendSearchResult) => void;
+  busy: boolean;
+}) {
+  const isFriend = result.friendshipStatus === 'accepted';
+  const isPending = result.friendshipStatus === 'pending';
+  const label = isFriend
+    ? 'FRIENDS'
+    : isPending && result.friendshipDirection === 'incoming'
+      ? 'PENDING'
+      : isPending
+        ? 'SENT'
+        : 'ADD';
+
+  return (
+    <View style={styles.searchRow}>
+      <PlayerAvatar avatarId={result.avatarId} size={38} style={styles.requestAvatar} />
+
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={1}>
+          {result.name}
+        </Text>
+        <Text style={styles.playerId} numberOfLines={1}>
+          {result.playerId}
+        </Text>
+      </View>
+
+      <Pressable
+        style={[
+          styles.smallButton,
+          !isFriend && !isPending && styles.acceptButton,
+          (isFriend || isPending) && styles.disabledButton,
+        ]}
+        disabled={busy || isFriend || isPending}
+        onPress={() => onAdd(result)}
+      >
+        <Text style={[styles.buttonText, (isFriend || isPending) && styles.disabledButtonText]}>
+          {label}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+type FriendsPanelProps = {
+  searchQuery?: string;
+};
+
+export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const nextFriends = await getFriends();
+    setFriends(nextFriends);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoading(true);
+    refresh()
+      .catch((err) => {
+        if (mounted) setError(err instanceof Error ? err.message : 'Unable to load friends.');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [refresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setError(null);
+      void refresh();
+    }, [refresh])
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    const handle = setTimeout(() => {
+      const trimmed = searchQuery.trim();
+
+      if (trimmed.length < 2) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+
+      setSearching(true);
+      searchFriendCandidates(trimmed)
+        .then((results) => {
+          if (mounted) setSearchResults(results);
+        })
+        .catch((err) => {
+          if (mounted) setError(err instanceof Error ? err.message : 'Search failed.');
+        })
+        .finally(() => {
+          if (mounted) setSearching(false);
+        });
+    }, 300);
+
+    return () => {
+      mounted = false;
+      clearTimeout(handle);
+    };
+  }, [searchQuery]);
+
+  async function handleAdd(result: FriendSearchResult) {
+    setBusyId(result.id);
+    setError(null);
+
+    try {
+      await sendFriendRequest(result.id);
+      setSearchResults((current) =>
+        current.map((item) =>
+          item.id === result.id
+            ? { ...item, friendshipStatus: 'pending', friendshipDirection: 'outgoing' }
+            : item
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send friend request.');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <>
@@ -131,13 +203,37 @@ export function FriendsPanel() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {friends.map((friend) => (
-          <FriendCard
-            key={friend.id}
-            friend={friend}
-            onSendChip={setSelectedFriend}
-          />
-        ))}
+        {searching || searchResults.length > 0 ? (
+          <View style={styles.fullWidthSection}>
+            {searching ? <ActivityIndicator color="#a855f7" style={styles.inlineLoader} /> : null}
+
+            {searchResults.map((result) => (
+              <SearchResultRow
+                key={result.id}
+                result={result}
+                busy={busyId === result.id}
+                onAdd={handleAdd}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        {loading ? (
+          <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
+        ) : friends.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>No friends yet</Text>
+            <Text style={styles.emptyText}>
+              Search by username or player ID to send a friend request.
+            </Text>
+          </View>
+        ) : (
+          friends.map((friend) => (
+            <FriendCard key={friend.id} friend={friend} onSendChip={setSelectedFriend} />
+          ))
+        )}
       </ScrollView>
 
       <SendChipPopup
@@ -161,6 +257,29 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
   },
 
+  inlineLoader: {
+    marginTop: 10,
+  },
+
+  searchRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+
+  fullWidthSection: {
+    width: '100%',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+
+  requestAvatar: {
+    borderRadius: 21,
+  },
+
   friendCard: {
     width: '48.8%',
     minHeight: 92,
@@ -179,8 +298,8 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 29,
     borderWidth: 2,
+    borderColor: 'rgba(180,180,200,0.45)',
     padding: 2,
-    position: 'relative',
   },
 
   avatar: {
@@ -189,21 +308,10 @@ const styles = StyleSheet.create({
     borderRadius: 27,
   },
 
-  avatarStatusDot: {
-    position: 'absolute',
-    right: 1,
-    bottom: 6,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#05020b',
-  },
-
   info: {
     flex: 1,
-    marginLeft: 12,
     justifyContent: 'center',
+    minWidth: 0,
   },
 
   name: {
@@ -212,20 +320,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  statusRow: {
+  playerId: {
     marginTop: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 5,
-  },
-
-  statusText: {
+    color: '#aaa7bc',
     fontSize: 12,
     fontWeight: '800',
   },
@@ -233,6 +330,7 @@ const styles = StyleSheet.create({
   buttonStack: {
     width: 104,
     gap: 6,
+    marginLeft: 12,
   },
 
   actionButton: {
@@ -245,9 +343,72 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
 
+  smallButton: {
+    minWidth: 68,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 8,
+  },
+
+  acceptButton: {
+    borderColor: 'rgba(34,197,94,0.55)',
+    backgroundColor: 'rgba(34,197,94,0.16)',
+  },
+
+  disabledButton: {
+    opacity: 0.48,
+  },
+
   buttonText: {
     color: '#ffffff',
     fontSize: 10,
     fontWeight: '900',
+  },
+
+  disabledButtonText: {
+    color: 'rgba(255,255,255,0.72)',
+  },
+
+  loader: {
+    width: '100%',
+    marginTop: 40,
+  },
+
+  emptyBox: {
+    width: '100%',
+    marginTop: 24,
+    borderRadius: 12,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.28)',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+  },
+
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+
+  emptyText: {
+    color: '#9ca3af',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+
+  errorText: {
+    width: '100%',
+    color: '#ff8a8a',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

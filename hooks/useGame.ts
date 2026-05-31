@@ -1,22 +1,27 @@
-import { GameMode } from '@/types/game';
-import useMultiplayerGame from './useMultiplayerGame';
+import type { GameMode } from '@/types/game';
 import { useAiPracticeGame } from './useAiPracticeGame';
-import { MockGameState } from './useGameBase';
+import type { MockGameState } from './useGameBase';
+import { useOneVsOneGame } from './useOneVsOneGame';
+import { useTwoVsTwoGame } from './useTwoVsTwoGame';
 
 export function useGame(
   mode: GameMode = '2v2',
   practice = false,
   gameId?: string,
 ): MockGameState {
-  /**
-   * Practice / offline mode only.
-   */
+  const practiceGame = useAiPracticeGame();
+
+  const oneVsOneGame = useOneVsOneGame(!practice && mode === '1v1' ? gameId : undefined);
+
+  const twoVsTwoGame = useTwoVsTwoGame(!practice && mode === '2v2' ? gameId : undefined);
+
   if (practice) {
-    return useAiPracticeGame();
+    return practiceGame;
   }
 
-  /**
-   * Real multiplayer mode.
-   */
-  return useMultiplayerGame(gameId) as unknown as MockGameState;
+  if (mode === '1v1') {
+    return oneVsOneGame as unknown as MockGameState;
+  }
+
+  return twoVsTwoGame as unknown as MockGameState;
 }

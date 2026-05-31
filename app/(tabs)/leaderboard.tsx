@@ -10,6 +10,7 @@ type LeaderboardPlayer = {
   name: string;
   level: number;
   points: number;
+  rank: number;
   gold?: number;
   avatarId?: AvatarId;
 };
@@ -33,7 +34,8 @@ export default function LeaderboardScreen() {
             name: player.displayName,
             level: player.level,
             points: player.points,
-            gold: player.gold ?? 0,
+            rank: player.rank,
+            gold: player.gold,
             avatarId: player.avatarId,
           })),
         );
@@ -72,7 +74,7 @@ export default function LeaderboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         {sortedPlayers.map((player, index) => {
-          const rank = index + 1;
+          const rank = player.rank || index + 1;
           const isCurrentUser = player.id === profile?.id;
 
           const rankLabel =

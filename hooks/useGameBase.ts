@@ -21,7 +21,6 @@ import {
 } from '@/types/game';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BotMoveDecision,
   calculateMatchReward,
   getInitialDeal,
   pickPreferredBranch,
@@ -68,24 +67,14 @@ type ShouldRefusePassFn = (
   hasPlayableTile: boolean,
 ) => boolean;
 
-type GetBotMoveFn = (
-  hand: DominoTileData[],
-  board: KozelBoardState,
-  spinnerValue: number | null,
-  isOpeningRound: boolean,
-  openingDouble?: number | null,
-) => BotMoveDecision | null;
-
 type GameConfig = {
   mode: GameMode;
   seats: SeatDefinition[];
-  getBotMove: GetBotMoveFn;
   canDrawTile: CanDrawTileFn;
   shouldRefusePassBecauseDrawAvailable: ShouldRefusePassFn;
   resolveBlockedRound: ResolveBlockedRoundFn;
   awardEndOfHandPoints: AwardEndOfHandPointsFn;
   scoringEnabled: boolean;
-  botCanDrawUntilPlayable: boolean;
 };
 
 function findOpeningDoubleAndStarter(hands: DominoTileData[][]) {
@@ -112,7 +101,6 @@ function findOpeningDoubleAndStarter(hands: DominoTileData[][]) {
 
 export function useGameBase(config: GameConfig): MockGameState {
   const seats = config.seats;
-
   const initialDeal = useMemo(() => getInitialDeal(seats.length), [seats.length]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -151,7 +139,6 @@ export function useGameBase(config: GameConfig): MockGameState {
   const [matchReward, setMatchReward] = useState<MatchReward | null>(null);
 
   const hasStartedRef = useRef(false);
-  const botMoveScheduledRef = useRef(false);
   const nextRoundScheduledRef = useRef(false);
   const lastTilePlayerIndexRef = useRef<number | null>(null);
   const passBadgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -274,51 +261,39 @@ export function useGameBase(config: GameConfig): MockGameState {
   };
 
   const drawOneTileForPlayer = (playerIndex: number) => {
-    if (!canDrawTile) return false;
     if (roundWinnerPlayerId) return false;
     if (winningTeamId) return false;
+    if (playerIndex !== currentIndex) return false;
     if (boneyard.length === 0) return false;
+
+    const hand = hands[playerIndex] ?? [];
+    const playerHasPlayableTile = canHandMove(
+      hand,
+      board,
+      spinnerValue,
+      isOpeningRound,
+      openingDouble,
+    );
+
+    const playerCanDraw = config.canDrawTile(
+      playerIndex,
+      currentIndex,
+      board,
+      roundWinnerPlayerId,
+      winningTeamId,
+      playerHasPlayableTile,
+      boneyard.length,
+    );
+
+    if (!playerCanDraw) return false;
 
     const drawnTile = boneyard[0];
     const nextBoneyard = boneyard.slice(1);
 
     setHands((prev) =>
-      prev.map((hand, index) => (index === playerIndex ? [...hand, drawnTile] : hand)),
-    );
-
-    setBoneyard(nextBoneyard);
-    setBoneyardCount(nextBoneyard.length);
-    setTimeLeft(10);
-
-    return true;
-  };
-
-  const drawUntilPlayableForBot = (playerIndex: number) => {
-    if (!config.botCanDrawUntilPlayable) return false;
-    if (roundWinnerPlayerId) return false;
-    if (winningTeamId) return false;
-    if (boneyard.length === 0) return false;
-
-    const currentHand = hands[playerIndex] ?? [];
-
-    if (canHandMove(currentHand, board, spinnerValue, isOpeningRound, openingDouble)) {
-      return false;
-    }
-
-    const nextHand = [...currentHand];
-    const nextBoneyard = [...boneyard];
-
-    while (
-      nextBoneyard.length > 0 &&
-      !canHandMove(nextHand, board, spinnerValue, isOpeningRound, openingDouble)
-    ) {
-      const drawnTile = nextBoneyard.shift();
-      if (!drawnTile) break;
-      nextHand.push(drawnTile);
-    }
-
-    setHands((prev) =>
-      prev.map((hand, index) => (index === playerIndex ? nextHand : hand)),
+      prev.map((handItem, index) =>
+        index === playerIndex ? [...handItem, drawnTile] : handItem,
+      ),
     );
 
     setBoneyard(nextBoneyard);
@@ -381,7 +356,10 @@ export function useGameBase(config: GameConfig): MockGameState {
 
       const nextDeal = dealDominoHands(shuffleArray(FULL_DOMINO_SET), seats.length);
       const opening = findOpeningDoubleAndStarter(nextDeal.hands);
+      const nextStarterIndex =
+        opening.starterIndex === -1 ? starterIndex : opening.starterIndex;
 
+      hasStartedRef.current = false;
       lastTilePlayerIndexRef.current = null;
 
       setBoard(createEmptyBoard());
@@ -394,18 +372,15 @@ export function useGameBase(config: GameConfig): MockGameState {
       setOpeningDouble(opening.openingDouble);
 
       setRoundWinnerPlayerId(null);
-      setNextRoundLeaderIndex(
-        opening.starterIndex === -1 ? starterIndex : opening.starterIndex,
-      );
+      setNextRoundLeaderIndex(nextStarterIndex);
       setLastPlayedTile(null);
       setLastPassedPlayerId(null);
       setLastScoringEvent(null);
 
-      setLeaderIndex(opening.starterIndex === -1 ? starterIndex : opening.starterIndex);
-      setCurrentIndex(opening.starterIndex === -1 ? starterIndex : opening.starterIndex);
+      setLeaderIndex(nextStarterIndex);
+      setCurrentIndex(nextStarterIndex);
       setTimeLeft(10);
 
-      botMoveScheduledRef.current = false;
       nextRoundScheduledRef.current = false;
     }, 5000);
 
@@ -431,12 +406,21 @@ export function useGameBase(config: GameConfig): MockGameState {
 
     if (!player) return false;
 
+    const hand = hands[actualIndex] ?? [];
+    const playerHasPlayableTile = canHandMove(
+      hand,
+      board,
+      spinnerValue,
+      isOpeningRound,
+      openingDouble,
+    );
+
     if (
       config.shouldRefusePassBecauseDrawAvailable(
         actualIndex,
         board,
         boneyard.length,
-        hasPlayableTile,
+        playerHasPlayableTile,
       )
     ) {
       return false;
@@ -537,7 +521,7 @@ export function useGameBase(config: GameConfig): MockGameState {
 
     const blocked =
       !canAnyPlayerMove(nextHands, nextBoard, nextSpinnerValue, false, null) &&
-      (!config.botCanDrawUntilPlayable || boneyard.length === 0);
+      boneyard.length === 0;
 
     if (blocked) {
       resolveBlockedRound(nextHands, playerIndex);
@@ -569,23 +553,10 @@ export function useGameBase(config: GameConfig): MockGameState {
     const timer = setTimeout(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          const activeSeat = seats[currentIndex];
-          const activeHand = hands[currentIndex] ?? [];
-
-          if (
-            config.mode === '1v1' &&
-            activeSeat?.kind === 'human' &&
-            board.centerTile &&
-            boneyard.length > 0 &&
-            !canHandMove(activeHand, board, spinnerValue, isOpeningRound, openingDouble)
-          ) {
-            return 10;
-          }
-
           if (
             board.centerTile &&
             !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) &&
-            (!config.botCanDrawUntilPlayable || boneyard.length === 0)
+            boneyard.length === 0
           ) {
             const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
             resolveBlockedRound(hands, blockerIndex);
@@ -613,72 +584,6 @@ export function useGameBase(config: GameConfig): MockGameState {
     openingDouble,
     currentIndex,
     seats,
-    config,
-  ]);
-
-  useEffect(() => {
-    if (roundWinnerPlayerId) return;
-    if (winningTeamId) return;
-
-    const activeSeat = seats[currentIndex];
-
-    if (!activeSeat || activeSeat.kind !== 'bot') {
-      botMoveScheduledRef.current = false;
-      return;
-    }
-
-    if (botMoveScheduledRef.current) return;
-
-    botMoveScheduledRef.current = true;
-
-    const botTimer = setTimeout(() => {
-      const botHand = hands[currentIndex] ?? [];
-
-      const botMove = config.getBotMove(
-        botHand,
-        board,
-        spinnerValue,
-        isOpeningRound,
-        openingDouble,
-      );
-
-      if (botMove) {
-        playTileForPlayer(botMove.tile, currentIndex, botMove.branch);
-      } else if (
-        config.botCanDrawUntilPlayable &&
-        board.centerTile &&
-        boneyard.length > 0
-      ) {
-        drawUntilPlayableForBot(currentIndex);
-      } else if (
-        board.centerTile &&
-        !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) &&
-        (!config.botCanDrawUntilPlayable || boneyard.length === 0)
-      ) {
-        const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
-        resolveBlockedRound(hands, blockerIndex);
-      } else {
-        passTurnInternal(currentIndex);
-      }
-
-      botMoveScheduledRef.current = false;
-    }, 700);
-
-    return () => {
-      clearTimeout(botTimer);
-      botMoveScheduledRef.current = false;
-    };
-  }, [
-    board,
-    currentIndex,
-    hands,
-    boneyard,
-    roundWinnerPlayerId,
-    winningTeamId,
-    seats,
-    spinnerValue,
-    isOpeningRound,
-    openingDouble,
     config,
   ]);
 
