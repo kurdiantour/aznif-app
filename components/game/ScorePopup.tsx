@@ -1,4 +1,4 @@
-﻿import type { MatchReward } from '@/types/game';
+import type { MatchReward } from '@/types/game';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 type Props = {

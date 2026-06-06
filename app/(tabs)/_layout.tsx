@@ -1,19 +1,22 @@
 import { Slot } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BottomNav } from '@/components/lobby/BottomNav';
 import { LobbyHeader } from '@/components/lobby/LobbyHeader';
 
 export default function TabsLayout() {
+  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+
   return (
     <View style={styles.container}>
-      <LobbyHeader />
+      <LobbyHeader onProfileDrawerVisibilityChange={setIsProfileDrawerOpen} />
 
       <View style={styles.content}>
         <Slot />
       </View>
 
-      <BottomNav />
+      {!isProfileDrawerOpen ? <BottomNav /> : null}
     </View>
   );
 }

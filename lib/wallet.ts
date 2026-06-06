@@ -84,19 +84,19 @@ export async function getCurrentUserId(): Promise<string> {
 
 export async function transferMc(recipientUserId: string, amount: number) {
   const uid = await getUid();
+  const wholeAmount = Math.floor(amount);
 
   if (recipientUserId === uid) {
     throw new Error('You cannot transfer to yourself.');
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (!Number.isFinite(amount) || wholeAmount <= 0) {
     throw new Error('Amount must be greater than zero');
   }
 
-  const { data, error } = await supabase.rpc('transfer_mc', {
-    p_from: uid,
-    p_to: recipientUserId,
-    p_amount: amount,
+  const { data, error } = await supabase.rpc('transfer_mc_to_friend', {
+    receiver_profile_id: recipientUserId,
+    transfer_amount: wholeAmount,
   });
 
   if (error) throw error;

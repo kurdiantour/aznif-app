@@ -53,7 +53,7 @@ export function TransfersPanel() {
           Object.fromEntries(
             (data ?? []).map((profile: any) => [
               profile.id,
-              `${profile.username} (${profile.player_id})`,
+              `${profile.username} (ID: ${profile.player_id})`,
             ])
           )
         );
@@ -74,13 +74,9 @@ export function TransfersPanel() {
       ? item.from_user_id === currentUserId
       : false;
 
-    const playerId = isOutgoing
-      ? item.to_user_id
-      : item.from_user_id;
+    const profileId = isOutgoing ? item.to_user_id : item.from_user_id;
 
-    const player = playerId
-      ? profileNames[playerId] ?? playerId
-      : 'System';
+    const player = profileId ? profileNames[profileId] ?? 'Unknown Player' : 'System';
 
     return (
       <View style={styles.transferCard}>
@@ -101,9 +97,7 @@ export function TransfersPanel() {
         <Text
           style={[
             styles.transferAmount,
-            isOutgoing
-              ? styles.outgoingAmount
-              : styles.incomingAmount,
+            isOutgoing ? styles.outgoingAmount : styles.incomingAmount,
           ]}
         >
           {isOutgoing ? '-' : '+'}
@@ -123,9 +117,7 @@ export function TransfersPanel() {
         />
       ) : transferTransactions.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyTitle}>
-            No transfers yet
-          </Text>
+          <Text style={styles.emptyTitle}>No transfers yet</Text>
 
           <Text style={styles.emptyText}>
             Your sent and received MC Chips will appear here.
@@ -204,13 +196,10 @@ const styles = StyleSheet.create({
   },
 
   emptyBox: {
-    marginTop: 8,
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.28)',
-    backgroundColor: 'rgba(20,16,42,0.82)',
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
 
   emptyTitle: {
@@ -218,6 +207,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 8,
+    textAlign: 'center',
   },
 
   emptyText: {

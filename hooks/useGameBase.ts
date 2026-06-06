@@ -1,31 +1,34 @@
 import { FULL_DOMINO_SET } from '@/constants/domino-set';
 import { dealDominoHands } from '@/lib/domino/deal';
 import { shuffleArray } from '@/lib/domino/shuffle';
+import { getNextHandKingIndex, NEXT_HAND_OPENING_STATE } from '@/lib/game/king-rules';
+import { resolveMatchOutcome } from '@/lib/game/match-rules';
 import {
-  applyMove,
-  canAnyPlayerMove,
-  canHandMove,
-  createEmptyBoard,
-  getPlayableBranches,
-  isValidMove,
+    applyMove,
+    canAnyPlayerMove,
+    canHandMove,
+    createEmptyBoard,
+    getPlayableBranches,
+    isValidMove,
 } from '@/lib/game/kozel-engine';
 import {
-  DominoTileData,
-  GameMode,
-  GameState,
-  KozelBoardState,
-  KozelBranch,
-  MatchReward,
-  Player,
-  TeamId,
+    DominoTileData,
+    GameMode,
+    GameState,
+    KozelBoardState,
+    KozelBranch,
+    MatchReward,
+    Player,
+    TeamId,
 } from '@/types/game';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  calculateMatchReward,
-  getInitialDeal,
-  pickPreferredBranch,
-  SeatDefinition,
+    getInitialDeal,
+    pickPreferredBranch,
+    SeatDefinition,
 } from './gameShared';
+
+import type { RoundPhase, RoundResult } from '@/types/game';
 
 export type MockGameState = GameState & {
   passTurn: () => boolean;
@@ -138,6 +141,13 @@ export function useGameBase(config: GameConfig): MockGameState {
   const [winningTeamId, setWinningTeamId] = useState<TeamId | null>(null);
   const [matchReward, setMatchReward] = useState<MatchReward | null>(null);
 
+  const [phase, setPhase] = useState<RoundPhase>('playing');
+  const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
+  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(3);
+
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const hasStartedRef = useRef(false);
   const nextRoundScheduledRef = useRef(false);
   const lastTilePlayerIndexRef = useRef<number | null>(null);
@@ -214,21 +224,11 @@ export function useGameBase(config: GameConfig): MockGameState {
     if (!config.scoringEnabled) return;
     if (winningTeamId) return;
 
-    const teamAReachedTarget = scores.teamA >= 350;
-    const teamBReachedTarget = scores.teamB >= 350;
+    const outcome = resolveMatchOutcome(scores, matchReward);
+    if (!outcome.winningTeamId) return;
 
-    if (!teamAReachedTarget && !teamBReachedTarget) return;
-
-    if (scores.teamA > scores.teamB) {
-      setWinningTeamId('teamA');
-      setMatchReward(calculateMatchReward(scores.teamA, scores.teamB));
-      return;
-    }
-
-    if (scores.teamB > scores.teamA) {
-      setWinningTeamId('teamB');
-      setMatchReward(calculateMatchReward(scores.teamB, scores.teamA));
-    }
+    setWinningTeamId(outcome.winningTeamId);
+    setMatchReward(outcome.matchReward);
   };
 
   const resolveBlockedRound = (blockedHands: DominoTileData[][], blockerIndex: number) => {
@@ -344,48 +344,108 @@ export function useGameBase(config: GameConfig): MockGameState {
       }
       return;
     }
-
+    // Begin centralized end-of-round flow: reveal -> countdown -> deal
     if (nextRoundScheduledRef.current) return;
     nextRoundScheduledRef.current = true;
 
-    const timer = setTimeout(() => {
-      const winnerIndex = seats.findIndex((player) => player.id === roundWinnerPlayerId);
+    // Build round result snapshot from current hands
+    const remainingTilesByPlayer: Record<string, DominoTileData[]> = {};
+    const remainingPipsByPlayer: Record<string, number> = {};
+    seats.forEach((seat, idx) => {
+      const tiles = hands[idx] ?? [];
+      remainingTilesByPlayer[seat.id] = tiles.map((t) => ({ ...t }));
+      remainingPipsByPlayer[seat.id] = tiles.reduce((s, t) => s + t.left + t.right, 0);
+    });
 
-      const starterIndex =
-        nextRoundLeaderIndex ?? (winnerIndex === -1 ? 0 : winnerIndex);
+    const winnerIndex = seats.findIndex((p) => p.id === roundWinnerPlayerId);
+    const winnerTeam = winnerIndex >= 0 ? seats[winnerIndex].teamId : undefined;
+    const awardedPoints = lastScoringEvent?.points ??
+      (remainingPipsByPlayer[seats[(winnerIndex === -1 ? 0 : winnerIndex) % seats.length]?.id] ? Math.round((remainingPipsByPlayer[seats[(winnerIndex === -1 ? 0 : winnerIndex) % seats.length]?.id] / 5)) * 5 : 0);
 
-      const nextDeal = dealDominoHands(shuffleArray(FULL_DOMINO_SET), seats.length);
-      const opening = findOpeningDoubleAndStarter(nextDeal.hands);
-      const nextStarterIndex =
-        opening.starterIndex === -1 ? starterIndex : opening.starterIndex;
+    setRoundResult({
+      winnerId: roundWinnerPlayerId ?? undefined,
+      winnerTeam,
+      awardedPoints,
+      remainingTilesByPlayer,
+      remainingPipsByPlayer,
+    });
 
-      hasStartedRef.current = false;
-      lastTilePlayerIndexRef.current = null;
+    setPhase('round_result_reveal');
 
-      setBoard(createEmptyBoard());
-      setHands(nextDeal.hands);
-      setBoneyard(nextDeal.boneyard);
-      setBoneyardCount(nextDeal.boneyard.length);
+    // after reveal, move to countdown
+    phaseTimerRef.current = setTimeout(() => {
+      setPhase('next_round_countdown');
+      setNextRoundCountdown(3);
 
-      setSpinnerValue(null);
-      setIsOpeningRound(true);
-      setOpeningDouble(opening.openingDouble);
+      // start countdown interval
+      countdownIntervalRef.current = setInterval(() => {
+        setNextRoundCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
 
-      setRoundWinnerPlayerId(null);
-      setNextRoundLeaderIndex(nextStarterIndex);
-      setLastPlayedTile(null);
-      setLastPassedPlayerId(null);
-      setLastScoringEvent(null);
+            // start next round
+            startNextRound();
+            return 0;
+          }
 
-      setLeaderIndex(nextStarterIndex);
-      setCurrentIndex(nextStarterIndex);
-      setTimeLeft(10);
+          return prev - 1;
+        });
+      }, 1000);
+    }, 2500);
 
-      nextRoundScheduledRef.current = false;
-    }, 5000);
-
-    return () => clearTimeout(timer);
+    return () => {
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+        phaseTimerRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+    };
   }, [roundWinnerPlayerId, nextRoundLeaderIndex, seats, winningTeamId]);
+
+  const startNextRound = () => {
+    // perform dealing/next-hand setup (preserve scores)
+    const starterIndex =
+      nextRoundLeaderIndex ??
+      getNextHandKingIndex(seats, roundWinnerPlayerId);
+
+    const nextDeal = dealDominoHands(shuffleArray(FULL_DOMINO_SET), seats.length);
+    const nextStarterIndex = starterIndex;
+
+    hasStartedRef.current = true;
+    lastTilePlayerIndexRef.current = null;
+
+    setPhase('dealing');
+
+    // reset hand-specific state
+    setBoard(createEmptyBoard());
+    setHands(nextDeal.hands);
+    setBoneyard(nextDeal.boneyard);
+    setBoneyardCount(nextDeal.boneyard.length);
+
+    setSpinnerValue(null);
+    setIsOpeningRound(NEXT_HAND_OPENING_STATE.isOpeningRound);
+    setOpeningDouble(NEXT_HAND_OPENING_STATE.openingDouble);
+
+    setRoundWinnerPlayerId(null);
+    setNextRoundLeaderIndex(nextStarterIndex);
+    setLastPlayedTile(null);
+    setLastPassedPlayerId(null);
+    setLastScoringEvent(null);
+    setRoundResult(null);
+
+    setLeaderIndex(nextStarterIndex);
+    setCurrentIndex(nextStarterIndex);
+    setTimeLeft(10);
+
+    setPhase('playing');
+    nextRoundScheduledRef.current = false;
+  };
 
   const availableBranchesForTile = (tile: DominoTileData) => {
     return getPlayableBranches(
@@ -618,5 +678,8 @@ export function useGameBase(config: GameConfig): MockGameState {
     canDrawTile,
     hasPlayableTile,
     lastPassedPlayerId,
+    phase,
+    roundResult,
+    nextRoundCountdown,
   };
 }

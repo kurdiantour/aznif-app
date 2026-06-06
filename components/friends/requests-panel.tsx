@@ -34,14 +34,19 @@ function RequestCard({
 }) {
   return (
     <View style={styles.requestCard}>
-      <PlayerAvatar avatarId={request.avatarId} size={42} style={styles.requestAvatar} />
+      <PlayerAvatar
+        avatarId={request.avatarId}
+        size={42}
+        style={styles.requestAvatar}
+      />
 
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>
           {request.name} sent you a friend request
         </Text>
+
         <Text style={styles.playerId} numberOfLines={1}>
-          {request.playerId}
+          ID: {request.playerId}
         </Text>
       </View>
 
@@ -53,6 +58,7 @@ function RequestCard({
         >
           <Text style={styles.buttonText}>ACCEPT</Text>
         </Pressable>
+
         <Pressable
           style={styles.smallButton}
           disabled={busy}
@@ -81,10 +87,15 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
     let mounted = true;
 
     setLoading(true);
+
     refresh()
       .catch((err) => {
         if (mounted) {
-          setError(err instanceof Error ? err.message : 'Unable to load friend requests.');
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Unable to load friend requests.'
+          );
         }
       })
       .finally(() => {
@@ -129,6 +140,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
 
     return () => {
       mounted = false;
+
       if (channel) {
         void supabase.removeChannel(channel);
       }
@@ -143,7 +155,11 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
       await respondFriendRequest(request.friendshipId, accept);
       await Promise.all([refresh(), getFriends()]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to update friend request.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to update friend request.'
+      );
     } finally {
       setBusyId(null);
     }
@@ -156,16 +172,21 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.fullWidthSection}>
-        <Text style={styles.sectionTitle}>Friend Requests</Text>
-
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {loading ? (
-          <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
+          <ActivityIndicator
+            color="#a855f7"
+            size="large"
+            style={styles.loader}
+          />
         ) : requests.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>No requests</Text>
-            <Text style={styles.emptyText}>Incoming friend requests will appear here.</Text>
+
+            <Text style={styles.emptyText}>
+              Incoming friend requests will appear here.
+            </Text>
           </View>
         ) : (
           requests.map((request) => (
@@ -188,24 +209,13 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    flexGrow: 1,
     paddingBottom: 18,
   },
 
   fullWidthSection: {
+    flex: 1,
     width: '100%',
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 4,
-  },
-
-  sectionTitle: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
   },
 
   requestCard: {
@@ -214,7 +224,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(170, 105, 255, 0.28)',
+    borderColor: 'rgba(170,105,255,0.28)',
     borderRadius: 12,
     padding: 10,
     backgroundColor: 'transparent',
@@ -278,14 +288,10 @@ const styles = StyleSheet.create({
   },
 
   emptyBox: {
-    width: '100%',
-    marginTop: 24,
-    borderRadius: 12,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.28)',
-    backgroundColor: 'transparent',
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
 
   emptyTitle: {
@@ -293,6 +299,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 8,
+    textAlign: 'center',
   },
 
   emptyText: {

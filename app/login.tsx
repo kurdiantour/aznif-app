@@ -1,23 +1,28 @@
+import { useProfile } from '@/lib/profile';
 import {
-  getCurrentUser,
-  getOrCreateProfile,
-  signInWithEmail,
-  signUpWithEmail,
-  updateMyProfile,
+    getCurrentUser,
+    getOrCreateProfile,
+    signInWithEmail,
+    signUpWithEmail,
+    updateMyProfile,
 } from '@/lib/supabaseAuth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
+
+const SAVED_EMAIL_KEY = 'domino_saved_email';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { refreshProfile } = useProfile();
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -32,11 +37,17 @@ export default function LoginScreen() {
 
     async function verifySession() {
       try {
+        const savedEmail = await AsyncStorage.getItem(SAVED_EMAIL_KEY);
+
+        if (savedEmail && isMounted) {
+          setEmail(savedEmail);
+        }
+
         const user = await getCurrentUser();
 
         if (user && isMounted) {
           await getOrCreateProfile();
-          router.replace('/lobby');
+          router.replace('/(tabs)/lobby');
           return;
         }
       } catch {
@@ -94,9 +105,11 @@ export default function LoginScreen() {
 
       if (mode === 'signup') {
         await updateMyProfile({ username: cleanUsername });
+        await refreshProfile();
       }
 
-      router.replace('/lobby');
+      await AsyncStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
+      router.replace('/(tabs)/lobby');
     } catch (error) {
       console.warn('[auth] login failed', error);
 

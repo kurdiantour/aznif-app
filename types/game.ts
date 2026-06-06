@@ -78,6 +78,16 @@ export type ScoringEvent = {
   openEndsTotal: number;
 };
 
+export type RoundPhase = 'playing' | 'round_result_reveal' | 'next_round_countdown' | 'dealing';
+
+export type RoundResult = {
+  winnerId?: string;
+  winnerTeam?: TeamId;
+  awardedPoints: number;
+  remainingTilesByPlayer: Record<string, DominoTileData[]>;
+  remainingPipsByPlayer: Record<string, number>;
+};
+
 export type GameState = {
   players: Player[];
   currentTurnPlayerId: string;
@@ -97,6 +107,10 @@ export type GameState = {
 
   leaderPlayerId: string;
   isFirstRound: boolean;
+
+  phase?: RoundPhase;
+  roundResult?: RoundResult | null;
+  nextRoundCountdown?: number;
 
   availableBranchesForTile: (tile: DominoTileData) => KozelBranch[];
   playTile: (tile: DominoTileData, branch?: KozelBranch) => boolean;

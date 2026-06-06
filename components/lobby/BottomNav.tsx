@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -12,19 +13,19 @@ const items = [
   {
     key: 'home',
     label: 'Home',
-    icon: '🎮',
+    icon: 'home',
     href: '/lobby',
   },
   {
     key: 'leaderboard',
     label: 'Leaderboard',
-    icon: '🏆',
+    icon: 'trophy',
     href: '/leaderboard',
   },
   {
     key: 'friends',
     label: 'Friends',
-    icon: '👥',
+    icon: 'people',
     href: '/invite-friends',
   },
 ] as const;
@@ -66,14 +67,11 @@ export function BottomNav({ active: controlledActive, onChange }: BottomNavProps
                 pressed && styles.pressedItem,
               ]}
             >
-              <Text
-                style={[
-                  styles.icon,
-                  isActive ? styles.activeText : styles.inactiveText,
-                ]}
-              >
-                {item.icon}
-              </Text>
+              <Ionicons
+                name={item.icon}
+                size={15}
+                color={isActive ? '#ffffff' : 'rgba(255,255,255,0.52)'}
+              />
 
               <Text
                 style={[
@@ -130,10 +128,6 @@ const styles = StyleSheet.create({
 
   pressedItem: {
     opacity: 0.82,
-  },
-
-  icon: {
-    fontSize: 14,
   },
 
   text: {

@@ -1,4 +1,5 @@
-import { CURRENT_USER_ID, getTransactions } from '@/lib/wallet';
+import { supabase } from '@/lib/supabase';
+import { getCurrentUserId, getTransactions } from '@/lib/wallet';
 import { WalletTransaction } from '@/types/wallet';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -15,12 +16,35 @@ export default function WalletHistoryScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setLoading(true);
 
-    getTransactions()
-      .then(setTransactions)
+    Promise.all([getTransactions(), getCurrentUserId()])
+      .then(async ([txs, userId]) => {
+        setTransactions(txs);
+        setCurrentUserId(userId);
+
+        const profileIds = Array.from(new Set(
+          txs.flatMap((item) => [item.from_user_id, item.to_user_id]).filter((id): id is string => !!id)
+        ));
+        if (profileIds.length === 0) return;
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, player_id')
+          .in('id', profileIds);
+        if (error) throw error;
+
+        setProfileNames(Object.fromEntries(
+          (data ?? []).map((profile: any) => [
+            profile.id,
+            `${profile.username} (ID: ${profile.player_id})`,
+          ])
+        ));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -31,8 +55,9 @@ export default function WalletHistoryScreen() {
   }, [transactions]);
 
   const renderItem = ({ item }: { item: WalletTransaction }) => {
-    const isOutgoing = item.from_user_id === CURRENT_USER_ID;
-    const player = isOutgoing ? item.to_user_id : item.from_user_id || 'System';
+    const isOutgoing = item.from_user_id === currentUserId;
+    const profileId = isOutgoing ? item.to_user_id : item.from_user_id;
+    const player = profileId ? profileNames[profileId] ?? 'Unknown Player' : 'System';
 
     return (
       <View style={styles.transferCard}>

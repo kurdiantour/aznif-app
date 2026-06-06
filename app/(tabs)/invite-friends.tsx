@@ -72,7 +72,7 @@ export default function InviteFriendsScreen() {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search username or player ID"
+              placeholder="Username or Player ID..."
               placeholderTextColor="rgba(255,255,255,0.45)"
               style={styles.searchInput}
               autoCapitalize="none"
@@ -127,19 +127,19 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: 12,
-    paddingTop: 22,
+    paddingTop: 0,
     paddingBottom: 82,
   },
 
   sidebar: {
-    width: 170,
+    width: 150,
     gap: 10,
     paddingTop: 2,
   },
 
   searchBox: {
-    height: 46,
-    borderRadius: 8,
+    height: 36,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -155,8 +155,8 @@ const styles = StyleSheet.create({
   },
 
   sidebarItem: {
-    height: 46,
-    borderRadius: 8,
+    height: 36,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.28)',
     backgroundColor: 'transparent',

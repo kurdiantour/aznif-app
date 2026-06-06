@@ -37,7 +37,7 @@ export default function CreateRoomScreen() {
   };
 
   const handleBackToLobby = () => {
-    router.push('/lobby');
+    router.replace('/(tabs)/lobby');
   };
 
   if (loading) {

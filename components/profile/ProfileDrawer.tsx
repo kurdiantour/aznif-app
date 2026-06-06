@@ -1,7 +1,9 @@
+import { AvatarPickerModal } from '@/components/player/AvatarPickerModal';
 import { PlayerAvatar } from '@/components/player/PlayerAvatar';
-import { AVATAR_IDS, type AvatarId } from '@/constants/avatars';
+import type { AvatarId } from '@/constants/avatars';
 import { useProfile } from '@/lib/profile';
 import { signOut } from '@/lib/supabaseAuth';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -31,6 +33,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const slideX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fade = useRef(new Animated.Value(0)).current;
@@ -95,6 +98,14 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
     } catch {
       // ignore logout errors
     }
+  }
+
+  async function handleCopyPlayerId() {
+    if (!profile?.playerId) return;
+
+    await Clipboard.setStringAsync(profile.playerId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   useEffect(() => {
@@ -203,48 +214,31 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
             )}
           </View>
 
+          <Text style={styles.level}>Level {profile?.level ?? 1}</Text>
+
+          <View style={styles.playerIdRow}>
+            <Text style={styles.playerId}>ID: {profile?.playerId ?? 'Unavailable'}</Text>
+            <Pressable
+              style={styles.copyButton}
+              disabled={!profile?.playerId}
+              onPress={() => void handleCopyPlayerId()}
+            >
+              <Text style={styles.copyButtonText}>{copied ? 'Copied' : 'Copy'}</Text>
+            </Pressable>
+          </View>
+
           <Pressable style={styles.logoutButton} onPress={() => void handleLogout()}>
             <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
         </ScrollView>
       </Animated.View>
 
-      {isAvatarPickerOpen && (
-        <View style={styles.avatarPickerOverlay}>
-          <Pressable
-            style={styles.avatarPickerBackdrop}
-            onPress={() => setIsAvatarPickerOpen(false)}
-          />
-
-          <View style={styles.avatarPickerCard}>
-            <Text style={styles.avatarPickerTitle}>Choose Avatar</Text>
-            <Text style={styles.avatarPickerSubtitle}>Select your profile look</Text>
-
-            <View style={styles.avatarOptions}>
-              {AVATAR_IDS.map((avatarId) => {
-                const active = activeAvatarId === avatarId;
-
-                return (
-                  <Pressable
-                    key={avatarId}
-                    style={[styles.avatarOption, active && styles.avatarOptionSelected]}
-                    onPress={() => void handleSelectAvatar(avatarId)}
-                  >
-                    <PlayerAvatar avatarId={avatarId} size={58} />
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Pressable
-              style={styles.avatarPickerClose}
-              onPress={() => setIsAvatarPickerOpen(false)}
-            >
-              <Text style={styles.avatarPickerCloseText}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      <AvatarPickerModal
+        visible={isAvatarPickerOpen}
+        selectedAvatarId={activeAvatarId}
+        onSelect={(avatarId) => void handleSelectAvatar(avatarId)}
+        onClose={() => setIsAvatarPickerOpen(false)}
+      />
     </View>
   );
 }
@@ -379,6 +373,46 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  level: {
+    marginTop: 2,
+    color: '#8fa4d3',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  playerIdRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  playerId: {
+    color: '#c4b5fd',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  copyButton: {
+    minWidth: 48,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.45)',
+    backgroundColor: 'rgba(139, 92, 246, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+  },
+
+  copyButtonText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
   logoutButton: {
     marginTop: 22,
     height: 40,
@@ -396,90 +430,4 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  avatarPickerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1001,
-    elevation: 1001,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-
-  avatarPickerBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.58)',
-  },
-
-  avatarPickerCard: {
-    width: '100%',
-    maxWidth: 320,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.45)',
-    backgroundColor: '#0b0718',
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 16,
-    alignItems: 'center',
-  },
-
-  avatarPickerTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-
-  avatarPickerSubtitle: {
-    marginTop: 4,
-    color: '#9ca3ff',
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-
-  avatarOptions: {
-    width: '100%',
-    marginTop: 18,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 12,
-  },
-
-  avatarOption: {
-    width: 66,
-    height: 66,
-    borderRadius: 50,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-
-  avatarOptionSelected: {
-    borderColor: '#14f1c1',
-    backgroundColor: 'rgba(20, 241, 193, 0.14)',
-  },
-
-  avatarPickerClose: {
-    marginTop: 18,
-    height: 38,
-    minWidth: 112,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-
-  avatarPickerCloseText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '900',
-  },
 });

@@ -1,8 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { PlayerAvatar } from '@/components/player/PlayerAvatar';
-import { type AvatarId } from '@/constants/avatars';
 import { getLeaderboardProfiles, useProfile } from '@/lib/profile';
 
 type LeaderboardPlayer = {
@@ -10,9 +9,13 @@ type LeaderboardPlayer = {
   name: string;
   level: number;
   points: number;
-  rank: number;
   gold?: number;
-  avatarId?: AvatarId;
+};
+
+const MEDAL_COLORS: Record<number, string> = {
+  1: '#FACC15',
+  2: '#CBD5E1',
+  3: '#D97706',
 };
 
 export default function LeaderboardScreen() {
@@ -34,9 +37,7 @@ export default function LeaderboardScreen() {
             name: player.displayName,
             level: player.level,
             points: player.points,
-            rank: player.rank,
             gold: player.gold,
-            avatarId: player.avatarId,
           })),
         );
       } catch (error) {
@@ -60,10 +61,26 @@ export default function LeaderboardScreen() {
     [players],
   );
 
+  const renderRank = (rank: number, isCurrentUser: boolean) => {
+    const medalColor = MEDAL_COLORS[rank];
+
+    if (medalColor) {
+      return <Ionicons name="medal" size={18} color={medalColor} />;
+    }
+
+    return (
+      <Text style={[styles.rankText, isCurrentUser && styles.currentUserText]}>
+        #{rank}
+      </Text>
+    );
+  };
+
   return (
     <View style={styles.screen}>
       <View style={styles.tableHeader}>
+        <Text style={[styles.headerText, styles.rankHeader]}>RANK</Text>
         <Text style={[styles.headerText, styles.playersHeader]}>PLAYERS</Text>
+        <Text style={[styles.headerText, styles.levelHeader]}>LEVEL</Text>
         <Text style={[styles.headerText, styles.pointsHeader]}>POINTS</Text>
         <Text style={[styles.headerText, styles.goldHeader]}>GOLD</Text>
       </View>
@@ -74,11 +91,8 @@ export default function LeaderboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         {sortedPlayers.map((player, index) => {
-          const rank = player.rank || index + 1;
+          const rank = index + 1;
           const isCurrentUser = player.id === profile?.id;
-
-          const rankLabel =
-            rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
 
           return (
             <View
@@ -90,47 +104,55 @@ export default function LeaderboardScreen() {
               ]}
             >
               <View style={styles.playerColumn}>
-                <Text
-                  style={[
-                    styles.rankText,
-                    rank <= 3 && styles.topRankText,
-                    isCurrentUser && styles.currentUserText,
-                  ]}
-                >
-                  {rankLabel}
-                </Text>
-
-                <PlayerAvatar
-                  avatarId={isCurrentUser ? profile?.avatarId ?? player.avatarId : player.avatarId}
-                  size={40}
-                  style={[
-                    styles.avatar,
-                    rank <= 3 && styles.topAvatar,
-                    isCurrentUser && styles.currentAvatar,
-                  ]}
-                />
+                <View style={styles.rankBox}>
+                  {renderRank(rank, isCurrentUser)}
+                </View>
 
                 <View style={styles.playerInfo}>
                   <Text
-                    style={[styles.playerName, isCurrentUser && styles.currentUserText]}
+                    style={[
+                      styles.playerName,
+                      isCurrentUser && styles.currentUserText,
+                    ]}
                     numberOfLines={1}
                   >
                     {player.name}
                     {isCurrentUser ? ' (You)' : ''}
                   </Text>
-
-                  <Text style={styles.levelText}>Lv. {player.level}</Text>
                 </View>
               </View>
 
+              <View style={styles.levelColumn}>
+                <Text
+                  style={[
+                    styles.levelText,
+                    isCurrentUser && styles.currentUserText,
+                  ]}
+                >
+                  Lv. {player.level}
+                </Text>
+              </View>
+
               <View style={styles.pointsColumn}>
-                <Text style={[styles.pointsText, isCurrentUser && styles.currentUserText]}>
+                <Text
+                  style={[
+                    styles.pointsText,
+                    isCurrentUser && styles.currentUserText,
+                  ]}
+                >
                   {player.points.toLocaleString()}
                 </Text>
               </View>
 
               <View style={styles.goldColumn}>
-                <Text style={styles.goldText}>{(player.gold ?? 0).toLocaleString()}</Text>
+                <Text
+                  style={[
+                    styles.goldText,
+                    isCurrentUser && styles.currentUserText,
+                  ]}
+                >
+                  {(player.gold ?? 0).toLocaleString()}
+                </Text>
               </View>
             </View>
           );
@@ -143,18 +165,18 @@ export default function LeaderboardScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    paddingHorizontal: 22,
+    paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 74,
   },
 
   tableHeader: {
-    height: 34,
+    height: 40,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     marginBottom: 6,
-    borderRadius: 14,
+    borderRadius: 20,
     backgroundColor: 'rgba(15,23,42,0.45)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -167,18 +189,29 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
 
+  rankHeader: {
+    width: 38,
+    textAlign: 'center',
+    marginRight: 8,
+  },
+
   playersHeader: {
     flex: 1,
     textAlign: 'left',
   },
 
+  levelHeader: {
+    width: 64,
+    textAlign: 'right',
+  },
+
   pointsHeader: {
-    width: 88,
+    width: 82,
     textAlign: 'right',
   },
 
   goldHeader: {
-    width: 74,
+    width: 64,
     textAlign: 'right',
   },
 
@@ -192,24 +225,20 @@ const styles = StyleSheet.create({
   },
 
   row: {
-    height: 58,
+    height: 40,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 12,
+    borderRadius: 20,
+    paddingHorizontal: 16,
     backgroundColor: 'rgba(15,23,42,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
 
   topRow: {
     backgroundColor: 'rgba(35,46,26,0.72)',
-    borderColor: 'rgba(250,204,21,0.22)',
   },
 
   currentUserRow: {
     backgroundColor: 'rgba(80,62,18,0.82)',
-    borderColor: '#facc15',
   },
 
   playerColumn: {
@@ -219,37 +248,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  rankText: {
+  rankBox: {
     width: 38,
     marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  rankText: {
     color: '#f8fafc',
-    fontSize: 15,
+    fontSize: 11,
     fontWeight: '900',
     textAlign: 'center',
   },
 
-  topRankText: {
-    fontSize: 18,
-  },
-
   currentUserText: {
     color: '#facc15',
-  },
-
-  avatar: {
-    marginRight: 12,
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-
-  topAvatar: {
-    borderColor: '#facc15',
-  },
-
-  currentAvatar: {
-    borderColor: '#facc15',
-    backgroundColor: 'rgba(250,204,21,0.14)',
   },
 
   playerInfo: {
@@ -259,36 +273,41 @@ const styles = StyleSheet.create({
 
   playerName: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+
+  levelColumn: {
+    width: 64,
+    alignItems: 'flex-end',
   },
 
   levelText: {
-    marginTop: 3,
     color: '#cbd5e1',
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '900',
   },
 
   pointsColumn: {
-    width: 88,
+    width: 82,
     alignItems: 'flex-end',
   },
 
   pointsText: {
     color: '#f97316',
-    fontSize: 15,
+    fontSize: 11,
     fontWeight: '900',
   },
 
   goldColumn: {
-    width: 74,
+    width: 64,
     alignItems: 'flex-end',
   },
 
   goldText: {
     color: '#d6d3d1',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '900',
   },
 });

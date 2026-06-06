@@ -1,4 +1,5 @@
 import { getBalance, transferFunds } from '@/lib/wallet';
+import { notifyWalletRefresh } from '@/lib/walletEvents';
 import type { Friend } from '@/lib/friends';
 import { useEffect, useState } from 'react';
 import {
@@ -15,9 +16,15 @@ type SendChipPopupProps = {
   visible: boolean;
   friend: Friend | null;
   onClose: () => void;
+  onTransferSuccess?: () => void;
 };
 
-export function SendChipPopup({ visible, friend, onClose }: SendChipPopupProps) {
+export function SendChipPopup({
+  visible,
+  friend,
+  onClose,
+  onTransferSuccess,
+}: SendChipPopupProps) {
   const [amount, setAmount] = useState('');
   const [mcBalance, setMcBalance] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -83,10 +90,13 @@ export function SendChipPopup({ visible, friend, onClose }: SendChipPopupProps) 
       const wallet = await getBalance();
       setMcBalance(wallet.balances.mc);
 
+      notifyWalletRefresh();
       setAmount('');
+      onTransferSuccess?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transfer failed.');
+      console.error('[SendChipPopup] MC transfer failed:', err);
+      setError('Transfer failed.');
     } finally {
       setSubmitting(false);
     }
@@ -101,6 +111,7 @@ export function SendChipPopup({ visible, friend, onClose }: SendChipPopupProps) 
           </Text>
 
           <Text style={styles.title}>Send chip to {friend.name}</Text>
+          <Text style={styles.playerId}>ID: {friend.playerId}</Text>
 
           <View style={styles.divider} />
 
@@ -236,6 +247,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#7c3aed',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  playerId: {
+    marginTop: 6,
+    color: '#aaa7bc',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
   },
 
   sendButtonDisabled: {

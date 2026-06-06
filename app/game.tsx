@@ -1,20 +1,21 @@
 import BoardArea from '@/components/game/BoardArea';
+import DominoTile from '@/components/game/DominoTile';
 import DrawPilePrompt from '@/components/game/DrawPilePrompt';
 import GameOverPopup from '@/components/game/GameOverPopup';
 import PlayerHand from '@/components/game/PlayerHand';
 import PlayerSeat from '@/components/game/PlayerSeat';
 import ScorePopup from '@/components/game/ScorePopup';
 import TableBackground from '@/components/game/TableBackground';
-import WinnerPopup from '@/components/game/WinnerPopup';
 import { useGame } from '@/hooks/useGame';
 import { useOneVsOneGame } from '@/hooks/useOneVsOneGame';
 import { useTwoVsTwoGame } from '@/hooks/useTwoVsTwoGame';
+import { awardAiPracticeWin } from '@/lib/aiPracticeRewards';
 import { useProfile } from '@/lib/profile';
 import { supabase } from '@/lib/supabase';
 import { DominoTileData, KozelBranch } from '@/types/game';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const HUMAN_BRANCH_PRIORITY: KozelBranch[] = ['right', 'left', 'up', 'down'];
 
@@ -44,38 +45,66 @@ export default function GameScreen() {
 
   const isPracticeMode = practice === 'true';
 
-const practiceGame = useGame(gameMode, true);
+  const practiceGame = useGame(gameMode, true);
 
-const oneVsOneGame = useOneVsOneGame(
-  !isPracticeMode && gameMode === '1v1'
-    ? roomId
-    : undefined,
-);
+  const oneVsOneGame = useOneVsOneGame(
+    !isPracticeMode && gameMode === '1v1'
+      ? roomId
+      : undefined,
+  );
 
-const twoVsTwoGame = useTwoVsTwoGame(
-  !isPracticeMode && gameMode === '2v2'
-    ? roomId
-    : undefined,
-);
+  const twoVsTwoGame = useTwoVsTwoGame(
+    !isPracticeMode && gameMode === '2v2'
+      ? roomId
+      : undefined,
+  );
 
-const game = isPracticeMode
-  ? practiceGame
-  : gameMode === '1v1'
-    ? oneVsOneGame
-    : twoVsTwoGame;
+  const game = isPracticeMode
+    ? practiceGame
+    : gameMode === '1v1'
+      ? oneVsOneGame
+      : twoVsTwoGame;
+
+  const gameLoading = !isPracticeMode && (game as any).loading;
+  const gameError = !isPracticeMode ? (game as any).error : null;
     
   const { refreshProfile } = useProfile();
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
   const [showScorePopup, setShowScorePopup] = useState(false);
   const [showGameOverPopup, setShowGameOverPopup] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [isLeavingMatch, setIsLeavingMatch] = useState(false);
   const [selectedTile, setSelectedTile] = useState<DominoTileData | null>(null);
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>([]);
+  const [finalTileAnimationTileId, setFinalTileAnimationTileId] = useState<string | null>(null);
+  const [isFinalTileAnimationRunning, setIsFinalTileAnimationRunning] = useState(false);
+  const [passCountdown, setPassCountdown] = useState(15);
+  const [isPassingTurn, setIsPassingTurn] = useState(false);
 
   const gameInitializedRef = useRef(false);
   const rewardSettlementRequestedRef = useRef(false);
+  const practiceRewardSettlementRequestedRef = useRef(false);
+  const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
+  const animatedFinalTileKeyRef = useRef<string | null>(null);
   const boardAreaRef = useRef<any>(null);
+  const passRequestedRef = useRef(false);
+  const passTurnRef = useRef(game.passTurn);
+  passTurnRef.current = game.passTurn;
+  const localCurrentUserId =
+    !isPracticeMode && gameMode === '1v1'
+      ? ((game as any).currentUserId ?? null)
+      : currentUserId;
+
+  useEffect(() => {
+    gameInitializedRef.current = false;
+    rewardSettlementRequestedRef.current = false;
+    practiceRewardSettlementRequestedRef.current = false;
+    practiceMatchIdRef.current = roomId || `${Date.now()}-${Math.random()}`;
+    animatedFinalTileKeyRef.current = null;
+    setFinalTileAnimationTileId(null);
+    setIsFinalTileAnimationRunning(false);
+  }, [roomId, gameMode, isPracticeMode]);
 
   useEffect(() => {
     let mounted = true;
@@ -98,7 +127,7 @@ const game = isPracticeMode
 
   useEffect(() => {
     if (isPracticeMode) return;
-    if ((game as any).loading) return;
+    if (gameLoading) return;
     if (gameInitializedRef.current) return;
     if (!roomId) return;
 
@@ -118,9 +147,7 @@ const game = isPracticeMode
         if (!roomData) return;
 
         const hasStarted =
-          gameMode === '1v1'
-            ? roomData.state?.status === 'started' || !!roomData.state?.handCounts
-            : roomData.state?.status === 'started' || !!roomData.state?.handCounts;
+          roomData.state?.status === 'started' || !!roomData.state?.handCounts;
 
         if (hasStarted) return;
         if (roomData.status !== 'waiting' && roomData.status !== 'active') return;
@@ -145,7 +172,7 @@ const game = isPracticeMode
     };
 
     void initializeGame();
-  }, [isPracticeMode, (game as any).loading, roomId, gameMode]);
+  }, [isPracticeMode, gameLoading, roomId, gameMode]);
 
   const topPlayer = game.players.find((p) => p.seat === 'top');
   const leftPlayer = game.players.find((p) => p.seat === 'left');
@@ -153,11 +180,50 @@ const game = isPracticeMode
 
   const humanPlayer = isPracticeMode
     ? game.players.find((p) => p.kind === 'human')
-    : game.players.find((p) => p.id === currentUserId);
+    : game.players.find((p) => p.id === localCurrentUserId);
 
-  const winnerPlayer = game.players.find((p) => p.id === game.roundWinnerPlayerId);
+  const isMyTurn =
+    !isPracticeMode && gameMode === '1v1'
+      ? !!localCurrentUserId && game.currentTurnPlayerId === localCurrentUserId
+      : !!humanPlayer && game.currentTurnPlayerId === humanPlayer.id;
+  const debugMyPlayerIndex = (game as any).myPlayerIndex ?? null;
+  const debugOpponentPlayerIndex = (game as any).opponentPlayerIndex ?? null;
 
-  const isMyTurn = !!humanPlayer && game.currentTurnPlayerId === humanPlayer.id;
+  useEffect(() => {
+    if (isPracticeMode || gameLoading) return;
+
+    console.log('[1v1 game screen turn]', {
+      roomId,
+      frontendCurrentUserId: localCurrentUserId,
+      gameCurrentTurnPlayerId: game.currentTurnPlayerId,
+      humanPlayerId: humanPlayer?.id ?? null,
+      isMyTurn,
+      myPlayerIndex: debugMyPlayerIndex,
+      opponentPlayerIndex: debugOpponentPlayerIndex,
+      myHandIds: game.myHand.map((tile) => tile.id),
+      activePlayerIds: game.players
+        .filter((player) => player.isActive)
+        .map((player) => player.id),
+      players: game.players.map((player) => ({
+        id: player.id,
+        seat: player.seat,
+        isActive: player.isActive,
+        tileCount: player.tileCount,
+      })),
+    });
+  }, [
+    isPracticeMode,
+    gameLoading,
+    roomId,
+    localCurrentUserId,
+    game.currentTurnPlayerId,
+    humanPlayer?.id,
+    isMyTurn,
+    debugMyPlayerIndex,
+    debugOpponentPlayerIndex,
+    game.myHand,
+    game.players,
+  ]);
 
   const playableTileIds =
     isMyTurn && !game.canDrawTile
@@ -165,9 +231,60 @@ const game = isPracticeMode
           .filter((tile) => game.availableBranchesForTile(tile).length > 0)
           .map((tile) => tile.id)
       : [];
+  const shouldShowPassPrompt =
+    isMyTurn &&
+    (game as any).phase === 'playing' &&
+    !game.roundWinnerPlayerId &&
+    !game.winningTeamId &&
+    !game.canDrawTile &&
+    playableTileIds.length === 0;
+
+  const handlePassTurn = useCallback(async () => {
+    if (!shouldShowPassPrompt || passRequestedRef.current) return;
+
+    passRequestedRef.current = true;
+    setIsPassingTurn(true);
+
+    try {
+      const passed = await passTurnRef.current();
+
+      if (!passed) {
+        passRequestedRef.current = false;
+        setIsPassingTurn(false);
+      }
+    } catch (err) {
+      console.warn('pass turn failed', err);
+      passRequestedRef.current = false;
+      setIsPassingTurn(false);
+    }
+  }, [shouldShowPassPrompt]);
 
   useEffect(() => {
-    setShowWinnerPopup(!!game.roundWinnerPlayerId);
+    if (!shouldShowPassPrompt) {
+      setPassCountdown(15);
+      setIsPassingTurn(false);
+      passRequestedRef.current = false;
+      return;
+    }
+
+    setPassCountdown(15);
+    const interval = setInterval(() => {
+      setPassCountdown((previous) => {
+        if (previous <= 1) {
+          clearInterval(interval);
+          void handlePassTurn();
+          return 0;
+        }
+
+        return previous - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [game.currentTurnPlayerId, shouldShowPassPrompt, handlePassTurn]);
+
+  useEffect(() => {
+    // Winner popup removed; UI uses new round result overlay driven by game.phase
   }, [game.roundWinnerPlayerId]);
 
   useEffect(() => {
@@ -202,6 +319,30 @@ const game = isPracticeMode
   }, [game.winningTeamId]);
 
   useEffect(() => {
+    const winnerId = game.roundWinnerPlayerId;
+    const lastPlayedTile = game.lastPlayedTile;
+
+    if (!winnerId || !lastPlayedTile) return;
+
+    const roundWinner = game.players.find((player) => player.id === winnerId);
+
+    if (!roundWinner || roundWinner.tileCount !== 0) return;
+
+    const animationKey = `${winnerId}:${lastPlayedTile.id}`;
+
+    if (animatedFinalTileKeyRef.current === animationKey) return;
+
+    animatedFinalTileKeyRef.current = animationKey;
+    setFinalTileAnimationTileId(lastPlayedTile.id);
+    setIsFinalTileAnimationRunning(true);
+  }, [game.roundWinnerPlayerId, game.lastPlayedTile, game.players]);
+
+  const handleFinalTileAnimationComplete = useCallback(() => {
+    setIsFinalTileAnimationRunning(false);
+    setFinalTileAnimationTileId(null);
+  }, []);
+
+  useEffect(() => {
     if (!isMyTurn) {
       setSelectedTile(null);
       setSelectableBranches([]);
@@ -224,8 +365,13 @@ const game = isPracticeMode
     setSelectableBranches([]);
   };
 
+  const isTileInMyHand = (tile: DominoTileData) => {
+    return game.myHand.some((handTile) => handTile.id === tile.id);
+  };
+
   const handlePreviewTile = (tile: DominoTileData) => {
     if (!isMyTurn) return;
+    if (!isTileInMyHand(tile)) return;
 
     const branches = game.availableBranchesForTile(tile);
 
@@ -240,6 +386,7 @@ const game = isPracticeMode
 
   const handleDropTile = async (tile: DominoTileData) => {
     if (!isMyTurn) return;
+    if (!isTileInMyHand(tile)) return;
 
     const branches = game.availableBranchesForTile(tile);
 
@@ -266,6 +413,10 @@ const game = isPracticeMode
 
   const handleSelectBranch = async (branch: KozelBranch) => {
     if (!isMyTurn || !selectedTile) return;
+    if (!isTileInMyHand(selectedTile)) {
+      clearSelection();
+      return;
+    }
 
     const branches = game.availableBranchesForTile(selectedTile);
 
@@ -295,24 +446,30 @@ const game = isPracticeMode
     if (drew) clearSelection();
   };
 
-  const handleLeaveGame = async () => {
+  const handleConfirmLeaveGame = async () => {
+    if (isLeavingMatch) return;
+
+    setIsLeavingMatch(true);
+
     try {
       if (!isPracticeMode && roomId) {
         if (gameMode === '1v1') {
-          await supabase.rpc('cancel_one_vs_one_room', {
+          await supabase.rpc('leave_one_vs_one_match', {
             p_room_id: roomId,
           });
         } else {
-          await supabase.rpc('leave_two_vs_two_room', {
+          await supabase.rpc('leave_two_vs_two_match', {
             p_room_id: roomId,
           });
         }
       }
+
+      setShowLeaveConfirm(false);
+      router.replace('/(tabs)/lobby');
     } catch (error) {
       console.warn('Failed to leave game', error);
+      setIsLeavingMatch(false);
     }
-
-    router.replace('/');
   };
 
   const scoreTeamAName = getTeamName(game.players, 'teamA', 'Team A');
@@ -322,7 +479,80 @@ const game = isPracticeMode
     ? game.winningTeamId === humanPlayer.teamId
     : game.winningTeamId === 'teamA';
 
-  if (!isPracticeMode && (game as any).loading) {
+  const practiceWinReward = useMemo(
+    () =>
+      isPracticeMode && didWinMatch && game.winningTeamId
+        ? { tier: 'close' as const, gold: 0, points: 1 }
+        : null,
+    [didWinMatch, game.winningTeamId, isPracticeMode],
+  );
+
+  useEffect(() => {
+    console.log('[AI practice reward] reward effect evaluated', {
+      isPracticeMode,
+      winningTeamId: game.winningTeamId,
+      didWinMatch,
+      humanPlayerId: humanPlayer?.id ?? null,
+      humanTeamId: humanPlayer?.teamId ?? null,
+      showGameOverPopup,
+      hasPracticeWinReward: !!practiceWinReward,
+      alreadyRequested: practiceRewardSettlementRequestedRef.current,
+      practiceMatchId: practiceMatchIdRef.current,
+    });
+
+    if (!practiceWinReward) return;
+    if (!showGameOverPopup) return;
+    if (practiceRewardSettlementRequestedRef.current) return;
+
+    practiceRewardSettlementRequestedRef.current = true;
+
+    const persistPracticeReward = async () => {
+      try {
+        console.log('[AI practice reward] before awardAiPracticeWin call', {
+          practiceMatchId: practiceMatchIdRef.current,
+          rewardPoints: practiceWinReward.points,
+          winningTeamId: game.winningTeamId,
+          humanTeamId: humanPlayer?.teamId ?? null,
+        });
+
+        const claim = await awardAiPracticeWin(practiceMatchIdRef.current);
+
+        console.log('[AI practice reward] after awardAiPracticeWin call', {
+          claim,
+        });
+
+        const refreshedProfile = await refreshProfile();
+
+        console.log('[AI practice reward] after refreshProfile', {
+          profileId: refreshedProfile?.id ?? null,
+          profilePoints: refreshedProfile?.points ?? null,
+        });
+      } catch (error) {
+        practiceRewardSettlementRequestedRef.current = false;
+        console.warn('Unable to persist AI practice win reward', error);
+      }
+    };
+
+    void persistPracticeReward();
+  }, [
+    didWinMatch,
+    game.winningTeamId,
+    humanPlayer?.id,
+    humanPlayer?.teamId,
+    isPracticeMode,
+    practiceWinReward,
+    showGameOverPopup,
+    refreshProfile,
+  ]);
+
+  const shouldRenderPlayedBoardTiles =
+    (game as any).phase === 'playing' || isFinalTileAnimationRunning;
+  const isRoundResultReveal = (game as any).phase === 'round_result_reveal';
+  const shouldShowRoundResultReveal = isRoundResultReveal && !isFinalTileAnimationRunning;
+  const shouldShowNextRoundCountdown =
+    (game as any).phase === 'next_round_countdown' && !isFinalTileAnimationRunning;
+
+  if (gameLoading) {
     return (
       <View style={styles.centerScreen}>
         <Text style={styles.statusText}>Loading game...</Text>
@@ -330,11 +560,11 @@ const game = isPracticeMode
     );
   }
 
-  if (!isPracticeMode && (game as any).error) {
+  if (gameError) {
     return (
       <View style={styles.centerScreen}>
         <Text style={styles.statusText}>Unable to load game</Text>
-        <Text style={styles.errorText}>{(game as any).error}</Text>
+        <Text style={styles.errorText}>{gameError}</Text>
       </View>
     );
   }
@@ -390,12 +620,91 @@ const game = isPracticeMode
                 selectableBranches={selectableBranches}
                 onSelectBranch={handleSelectBranch}
                 boneyardCount={game.boneyardCount}
+                shouldRenderPlayedBoardTiles={shouldRenderPlayedBoardTiles}
+                finalTileAnimationTileId={finalTileAnimationTileId}
+                onFinalTileAnimationComplete={handleFinalTileAnimationComplete}
                 ref={boardAreaRef}
               />
             </View>
 
             <View style={styles.sideArea} />
           </View>
+
+          {/* Round result reveal */}
+          {shouldShowRoundResultReveal && (game as any).roundResult && (
+            <View style={styles.resultOverlay} pointerEvents="none">
+              <View style={styles.resultCenter}>
+                <Text style={styles.resultWinnerText}>
+                  {(() => {
+                    const winnerId = (game as any).roundResult?.winnerId;
+                    const winner = game.players.find((p) => p.id === winnerId);
+                    return winner ? `${winner.name} Wins` : 'Round Over';
+                  })()}
+                </Text>
+                <Text style={styles.resultPointsText}>+{(game as any).roundResult?.awardedPoints ?? 0}</Text>
+              </View>
+
+              {/* Top player tiles */}
+              {topPlayer && (
+                <View style={[styles.revealTilesTop]}>
+                  <View style={styles.revealTilesRow}>
+                    {((game as any).roundResult?.remainingTilesByPlayer?.[topPlayer.id] ?? []).map((t: any) => (
+                      <DominoTile key={t.id} tile={t} width={28} height={54} />
+                    ))}
+                  </View>
+                  <Text style={styles.revealPipsText}>
+                    {((game as any).roundResult?.remainingPipsByPlayer?.[topPlayer.id] ?? 0)} pips
+                  </Text>
+                </View>
+              )}
+
+              {/* Left player tiles */}
+              {leftPlayer && (
+                <View style={[styles.revealTilesLeft]}>
+                  {((game as any).roundResult?.remainingTilesByPlayer?.[leftPlayer.id] ?? []).map((t: any) => (
+                    <DominoTile key={t.id} tile={t} width={24} height={46} rotation={90} />
+                  ))}
+                  <Text style={styles.revealPipsText}>
+                    {((game as any).roundResult?.remainingPipsByPlayer?.[leftPlayer.id] ?? 0)} pips
+                  </Text>
+                </View>
+              )}
+
+              {/* Right player tiles */}
+              {rightPlayer && (
+                <View style={[styles.revealTilesRight]}>
+                  {((game as any).roundResult?.remainingTilesByPlayer?.[rightPlayer.id] ?? []).map((t: any) => (
+                    <DominoTile key={t.id} tile={t} width={24} height={46} rotation={270} />
+                  ))}
+                  <Text style={styles.revealPipsText}>
+                    {((game as any).roundResult?.remainingPipsByPlayer?.[rightPlayer.id] ?? 0)} pips
+                  </Text>
+                </View>
+              )}
+
+              {/* Bottom/human player tiles */}
+              {humanPlayer && (
+                <View style={[styles.revealTilesBottom]}>
+                  <Text style={styles.revealPipsText}>
+                    {((game as any).roundResult?.remainingPipsByPlayer?.[humanPlayer.id] ?? 0)} pips
+                  </Text>
+                  <View style={styles.revealTilesRow}>
+                    {((game as any).roundResult?.remainingTilesByPlayer?.[humanPlayer.id] ?? []).map((t: any) => (
+                      <DominoTile key={t.id} tile={t} width={28} height={54} />
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Next round countdown */}
+          {shouldShowNextRoundCountdown && (
+            <View style={styles.countdownOverlay} pointerEvents="none">
+              <Text style={styles.countdownLabel}>ROUND STARTS IN</Text>
+              <Text style={styles.countdownNumber}>{(game as any).nextRoundCountdown ?? 3}</Text>
+            </View>
+          )}
 
           <Pressable style={styles.miniScoreBoard} onPress={() => setShowScorePopup(true)}>
             <View style={styles.miniScoreItem}>
@@ -411,15 +720,17 @@ const game = isPracticeMode
             </View>
           </Pressable>
 
-          <Pressable style={styles.leaveButton} onPress={handleLeaveGame}>
+          <Pressable style={styles.leaveButton} onPress={() => setShowLeaveConfirm(true)}>
             <Text style={styles.leaveButtonText}>Leave</Text>
           </Pressable>
 
           <DrawPilePrompt
-            visible={game.canDrawTile}
+            visible={game.canDrawTile || shouldShowPassPrompt}
             boneyardCount={game.boneyardCount}
             onDraw={handleDrawTile}
-            onPass={game.passTurn}
+            onPass={shouldShowPassPrompt ? handlePassTurn : undefined}
+            passCountdown={shouldShowPassPrompt ? passCountdown : undefined}
+            passing={isPassingTurn}
           />
 
           <View style={styles.bottomArea}>
@@ -433,7 +744,7 @@ const game = isPracticeMode
             />
           </View>
 
-          <WinnerPopup visible={showWinnerPopup} winnerName={winnerPlayer?.name} />
+          {/* WinnerPopup removed — replaced by round result overlay driven by game.phase */}
 
           <ScorePopup
             visible={showScorePopup}
@@ -446,16 +757,56 @@ const game = isPracticeMode
             teamBName={scoreTeamBName}
           />
 
-          <GameOverPopup
-            visible={showGameOverPopup}
-            didWin={didWinMatch}
-            reward={game.matchReward}
-            onClose={() => setShowGameOverPopup(false)}
-            onViewScore={() => {
-              setShowGameOverPopup(false);
-              setShowScorePopup(true);
-            }}
-          />
+<GameOverPopup
+  visible={showGameOverPopup && !isFinalTileAnimationRunning}
+  didWin={didWinMatch}
+  reward={practiceWinReward ?? game.matchReward}
+  onClose={() => {
+    setShowGameOverPopup(false);
+    router.replace('/(tabs)/lobby');
+  }}
+  onPlayAgain={() => {
+    if (isPracticeMode) {
+      router.replace('/play-ai');
+      return;
+    }
+
+    router.replace('/(tabs)/lobby');
+  }}
+/>
+
+          <Modal transparent visible={showLeaveConfirm} animationType="fade">
+            <View style={styles.leaveModalBackdrop}>
+              <View style={styles.leaveModal}>
+                <Text style={styles.leaveModalTitle}>Leave Match?</Text>
+                <Text style={styles.leaveModalBody}>
+                  If you leave now, a bot will continue playing for you. If you do not return before the current round ends, the match will be counted as a loss.
+                </Text>
+
+                <View style={styles.leaveModalActions}>
+                  <Pressable
+                    style={styles.leaveCancelButton}
+                    onPress={() => setShowLeaveConfirm(false)}
+                    disabled={isLeavingMatch}
+                  >
+                    <Text style={styles.leaveCancelText}>Cancel</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.leaveConfirmButton, isLeavingMatch && styles.leaveButtonDisabled]}
+                    onPress={handleConfirmLeaveGame}
+                    disabled={isLeavingMatch}
+                  >
+                    {isLeavingMatch ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.leaveConfirmText}>Leave Match</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </TableBackground>
       </View>
     </View>
@@ -631,10 +982,190 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
+  leaveModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
+  leaveModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 8,
+    padding: 20,
+    backgroundColor: '#082016',
+    borderWidth: 1,
+    borderColor: 'rgba(250, 204, 21, 0.45)',
+  },
+
+  leaveModalTitle: {
+    color: '#f8f3df',
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  leaveModalBody: {
+    marginTop: 12,
+    color: '#d7e2d2',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+
+  leaveModalActions: {
+    marginTop: 18,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
+
+  leaveCancelButton: {
+    minWidth: 112,
+    height: 38,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+
+  leaveConfirmButton: {
+    minWidth: 128,
+    height: 38,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc2626',
+  },
+
+  leaveButtonDisabled: {
+    opacity: 0.65,
+  },
+
+  leaveCancelText: {
+    color: '#f8f3df',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  leaveConfirmText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
   bottomArea: {
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 10,
     zIndex: 50,
+  },
+  resultOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+  },
+  resultCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(3,17,11,0.8)',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(250,204,21,0.6)',
+    marginBottom: 8,
+  },
+  resultWinnerText: {
+    color: '#f8f3df',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  resultPointsText: {
+    color: '#facc15',
+    fontSize: 26,
+    fontWeight: '900',
+    marginTop: 6,
+  },
+  revealTilesTop: {
+    position: 'absolute',
+    top: 80,
+    alignSelf: 'center',
+    flexDirection: 'column',
+    gap: 6,
+    zIndex: 210,
+    alignItems: 'center',
+  },
+  revealTilesBottom: {
+    position: 'absolute',
+    bottom: 86,
+    alignSelf: 'center',
+    flexDirection: 'column',
+    gap: 6,
+    zIndex: 210,
+    alignItems: 'center',
+  },
+  revealTilesRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  revealPipsText: {
+    color: '#f8f3df',
+    fontSize: 12,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  revealTilesLeft: {
+    position: 'absolute',
+    left: 8,
+    top: '45%',
+    flexDirection: 'column',
+    gap: 6,
+    zIndex: 210,
+    alignItems: 'center',
+  },
+  revealTilesRight: {
+    position: 'absolute',
+    right: 8,
+    top: '45%',
+    flexDirection: 'column',
+    gap: 6,
+    zIndex: 210,
+    alignItems: 'center',
+  },
+  countdownOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 300,
+  },
+  countdownLabel: {
+    color: '#f8f3df',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  countdownNumber: {
+    color: '#facc15',
+    fontSize: 56,
+    fontWeight: '900',
   },
 });

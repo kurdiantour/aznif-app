@@ -2,6 +2,7 @@ import type { AvatarId } from '@/constants/avatars';
 import { FULL_DOMINO_SET } from '@/constants/domino-set';
 import { dealDominoHands } from '@/lib/domino/deal';
 import { shuffleArray } from '@/lib/domino/shuffle';
+import { calculateMatchReward, getFinalMatchWinner } from '@/lib/game/match-rules';
 import {
     getHandPipTotal,
     roundToNearestFive,
@@ -10,37 +11,12 @@ import {
     DominoTileData,
     KozelBoardState,
     KozelBranch,
-    MatchPerformanceTier,
-    MatchReward,
     Player,
     TeamId,
 } from '@/types/game';
 import { MutableRefObject } from 'react';
 
-const MATCH_REWARD_RULES: Array<{
-  tier: MatchPerformanceTier;
-  maxDifference: number;
-  gold: number;
-  points: number;
-}> = [
-  { tier: 'close', maxDifference: 50, gold: 3, points: 10 },
-  { tier: 'normal', maxDifference: 150, gold: 6, points: 20 },
-  { tier: 'dominating', maxDifference: Number.POSITIVE_INFINITY, gold: 9, points: 30 },
-];
-
-export function calculateMatchReward(
-  winnerScore: number,
-  loserScore: number,
-): MatchReward {
-  const difference = Math.max(0, winnerScore - loserScore);
-  const rule = MATCH_REWARD_RULES.find((item) => difference <= item.maxDifference) ?? MATCH_REWARD_RULES[2];
-
-  return {
-    tier: rule.tier,
-    gold: rule.gold,
-    points: rule.points,
-  };
-}
+export { calculateMatchReward };
 
 export type SeatDefinition = {
   id: string;
@@ -145,7 +121,7 @@ export function shouldRefusePassBecauseDrawAvailable1v1(
 
 export function resolveBlockedRound1v1(
   blockedHands: DominoTileData[][],
-  blockerIndex: number,
+  _blockerIndex: number,
   seats: SeatDefinition[],
   addTeamPoints: (
     teamId: TeamId,
@@ -172,15 +148,15 @@ export function resolveBlockedRound1v1(
   }
 
   setRoundWinnerPlayerId(scoreWinner.id);
-  setLeaderIndex(blockerIndex);
-  setNextRoundLeaderIndex(blockerIndex);
+  setLeaderIndex(playerIndex);
+  setNextRoundLeaderIndex(playerIndex);
 
   return true;
 }
 
 export function resolveBlockedRound2v2(
   blockedHands: DominoTileData[][],
-  blockerIndex: number,
+  _blockerIndex: number,
   seats: SeatDefinition[],
   teamScoresRef: MutableRefObject<Record<TeamId, number>>,
   addTeamPoints: (
@@ -225,8 +201,8 @@ export function resolveBlockedRound2v2(
   }
 
   setRoundWinnerPlayerId(scoreWinner.id);
-  setLeaderIndex(blockerIndex);
-  setNextRoundLeaderIndex(blockerIndex);
+  setLeaderIndex(lowestIndex);
+  setNextRoundLeaderIndex(lowestIndex);
 
   return true;
 }
@@ -288,14 +264,6 @@ export function evaluateFinalWinner(
   scores: Record<TeamId, number>,
   setWinningTeamId: (value: TeamId | null) => void,
 ) {
-  const teamAScore = scores.teamA;
-  const teamBScore = scores.teamB;
-
-  if (teamAScore >= 350 || teamBScore >= 350) {
-    if (teamAScore > teamBScore) {
-      setWinningTeamId('teamA');
-    } else if (teamBScore > teamAScore) {
-      setWinningTeamId('teamB');
-    }
-  }
+  const winner = getFinalMatchWinner(scores);
+  if (winner) setWinningTeamId(winner);
 }

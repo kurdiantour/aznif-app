@@ -145,16 +145,7 @@ export default function LobbyScreen() {
           subtitle="Practice offline"
           image={require('@/assets/images/lobby/play-ai-bg.webp')}
           disabled={isSearching}
-          onPress={() =>
-            router.push({
-              pathname: '/game',
-              params: {
-                mode: '1v1',
-                practice: 'true',
-                matchType: 'bot',
-              },
-            })
-          }
+          onPress={() => router.push('/play-ai')}
         />
 
         <ModeCard

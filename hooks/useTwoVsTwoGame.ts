@@ -1,14 +1,18 @@
 import { canHandMove, createEmptyBoard, getPlayableBranches } from '@/lib/game/kozel-engine';
-import submitTwoVsTwoMove from '@/lib/multiplayer/submitTwoVsTwoMove';
-import submitTwoVsTwoPass from '@/lib/multiplayer/submitTwoVsTwoPass';
+import {
+  submitTwoVsTwoMove,
+  submitTwoVsTwoPass,
+} from '@/lib/multiplayer/multiplayerApi';
 import { supabase } from '@/lib/supabase';
 import type {
-  DominoTileData,
-  KozelBoardState,
-  KozelBranch,
-  MatchReward,
-  ScoringEvent,
-  TeamId,
+    DominoTileData,
+    KozelBoardState,
+    KozelBranch,
+    MatchReward,
+    RoundPhase,
+    RoundResult,
+    ScoringEvent,
+    TeamId,
 } from '@/types/game';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MockGameState } from './useGameBase';
@@ -22,11 +26,11 @@ type UseTwoVsTwoResult = Omit<MockGameState, 'playTile' | 'passTurn'> & {
 };
 
 function getDisplaySeat(
-  rowIndex: number,
-  myRowIndex: number,
+  playerIndex: number,
+  myPlayerIndex: number,
 ): 'bottom' | 'top' | 'left' | 'right' {
   const totalSeats = 4;
-  const offset = (rowIndex - myRowIndex + totalSeats) % totalSeats;
+  const offset = (playerIndex - myPlayerIndex + totalSeats) % totalSeats;
 
   if (offset === 0) return 'bottom';
   if (offset === 1) return 'right';
@@ -44,6 +48,12 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const roomChannelRef = useRef<any>(null);
   const playersChannelRef = useRef<any>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [phase, setPhase] = useState<RoundPhase>('playing');
+  const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
+  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(5);
 
   useEffect(() => {
     if (!roomId) {
@@ -116,6 +126,12 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
         setCurrentUserId(userResp.data.user?.id ?? null);
 
+        if (userResp.data.user?.id) {
+          await supabase.rpc('restore_two_vs_two_human_control', {
+            p_room_id: roomId,
+          });
+        }
+
         await Promise.all([loadRoom(), loadPlayers()]);
 
         roomChannelRef.current = supabase
@@ -187,35 +203,37 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     };
   }, [roomId]);
 
-  const myRowIndex = useMemo(() => {
-    if (!currentUserId) return 0;
-    const index = playersRows.findIndex((row) => row.user_id === currentUserId);
-    return index >= 0 ? index : 0;
+  const myPlayerIndex = useMemo(() => {
+    if (!currentUserId) return -1;
+    const myRow = playersRows.find((row) => row.user_id === currentUserId);
+    return typeof myRow?.player_index === 'number' ? myRow.player_index : -1;
   }, [playersRows, currentUserId]);
 
   const players = useMemo(() => {
     const state = rawState ?? {};
     const handCounts = state.handCounts ?? [];
 
-    return playersRows.map((row, index) => {
+    return playersRows.map((row) => {
       const playerId = row.user_id ?? `bot-${row.id}`;
       const profile = row.user_id ? profileById.get(row.user_id) : null;
+      const playerIndex =
+        typeof row.player_index === 'number' ? row.player_index : -1;
 
       return {
         id: playerId,
         name: profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
-        seat: getDisplaySeat(index, myRowIndex),
+        seat: getDisplaySeat(playerIndex, myPlayerIndex),
         kind: row.kind,
         teamId: row.team_id,
         isActive: playerId === state.currentTurnPlayerId,
         timeLeft: 10,
-        tileCount: handCounts[index] ?? 0,
+        tileCount: playerIndex >= 0 ? handCounts[playerIndex] ?? 0 : 0,
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
       };
     });
-  }, [playersRows, profileById, rawState, myRowIndex]);
+  }, [playersRows, profileById, rawState, myPlayerIndex]);
 
   const board: KozelBoardState = rawState?.board ?? createEmptyBoard();
 
@@ -231,8 +249,17 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   };
 
   const myHand: DominoTileData[] = useMemo(() => {
+    const snapshotHands = rawState?.privateHands ?? rawState?.debugPrivateHandsRaw;
+    if (
+      myPlayerIndex >= 0 &&
+      Array.isArray(snapshotHands) &&
+      Array.isArray(snapshotHands[myPlayerIndex])
+    ) {
+      return snapshotHands[myPlayerIndex];
+    }
+
     return rawState?.myHand ?? [];
-  }, [rawState]);
+  }, [rawState, myPlayerIndex]);
 
   const openingDouble =
     typeof rawState?.openingDouble === 'number' ? rawState.openingDouble : null;
@@ -297,6 +324,81 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     return () => clearTimeout(timeout);
   }, [roomId, rawState?.handCounts, playersRows.length]);
 
+  useEffect(() => {
+    const winnerId = rawState?.roundWinnerPlayerId ?? null;
+    if (!winnerId || rawState?.winningTeamId) return;
+
+    const remainingTilesByPlayer: Record<string, any[]> = {};
+    const remainingPipsByPlayer: Record<string, number> = {};
+
+    const snapshotHands = rawState?.debugPrivateHandsRaw ?? rawState?.privateHands ?? null;
+
+    playersRows.forEach((row) => {
+      const playerId = row.user_id ?? `bot-${row.id}`;
+      const playerIndex = row.player_index;
+      const tiles =
+        Array.isArray(snapshotHands) && typeof playerIndex === 'number'
+          ? snapshotHands[playerIndex] ?? []
+          : [];
+      remainingTilesByPlayer[playerId] = tiles.map((t: any) => ({ ...t }));
+      remainingPipsByPlayer[playerId] = tiles.reduce((s: number, t: any) => s + (t.left ?? 0) + (t.right ?? 0), 0);
+    });
+
+    const winnerTeam = playersRows.find((row) => (row.user_id ?? `bot-${row.id}`) === winnerId)?.team_id;
+    const awardedPoints = rawState?.lastScoringEvent?.points ?? 0;
+
+    setRoundResult({
+      winnerId,
+      winnerTeam,
+      awardedPoints,
+      remainingTilesByPlayer,
+      remainingPipsByPlayer,
+    });
+
+    setPhase('round_result_reveal');
+
+    if (phaseTimerRef.current) {
+      clearTimeout(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
+
+    phaseTimerRef.current = setTimeout(() => {
+      setPhase('next_round_countdown');
+      setNextRoundCountdown(5);
+
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+
+      countdownIntervalRef.current = setInterval(() => {
+        setNextRoundCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
+
+            startNextRound();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }, 5000);
+
+    return () => {
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+        phaseTimerRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+    };
+  }, [rawState?.roundWinnerPlayerId, rawState?.winningTeamId, rawState?.lastScoringEvent, rawState?.debugPrivateHandsRaw, rawState?.privateHands, playersRows]);
+
   const playTile = async (tile: DominoTileData, branch?: KozelBranch) => {
     if (!roomId) throw new Error('No 2v2 room id');
     return submitTwoVsTwoMove(roomId, tile, branch);
@@ -311,8 +413,22 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       const result = await submitTwoVsTwoPass(roomId);
       return !!result?.ok;
     } catch (err) {
-      console.warn('submit_two_vs_two_pass failed', err);
+      console.warn('submit_two_vs_two action=pass failed', err);
       return false;
+    }
+  };
+
+  const startNextRound = async () => {
+    if (!roomId) return;
+    setPhase('dealing');
+    try {
+      await supabase.rpc('start_two_vs_two_game', { p_room_id: roomId });
+    } catch (err) {
+      console.warn('start_two_vs_two_game failed', err);
+    } finally {
+      setRoundResult(null);
+      setNextRoundCountdown(5);
+      setPhase('playing');
     }
   };
 
@@ -345,6 +461,10 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     canDrawTile: Boolean(rawState?.canDrawTile ?? false),
     hasPlayableTile,
     lastPassedPlayerId: rawState?.lastPassedPlayerId ?? null,
+
+    phase,
+    roundResult,
+    nextRoundCountdown,
 
     rawState,
   };

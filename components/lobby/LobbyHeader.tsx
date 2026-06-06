@@ -3,11 +3,17 @@ import { ProfileDrawer } from '@/components/profile/ProfileDrawer';
 import { SettingsDrawer } from '@/components/settings/SettingsDrawer';
 import { useProfile } from '@/lib/profile';
 import { getBalance } from '@/lib/wallet';
+import { subscribeWalletRefresh } from '@/lib/walletEvents';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-export function LobbyHeader() {
+type LobbyHeaderProps = {
+  onProfileDrawerVisibilityChange?: (visible: boolean) => void;
+};
+
+export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProps) {
   const { profile, loading } = useProfile();
 
   const [mcBalance, setMcBalance] = useState<string>('...');
@@ -15,37 +21,41 @@ export function LobbyHeader() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadBalance() {
-      if (loading || !profile?.id) {
-        return;
-      }
-
-      try {
-        const wallet = await getBalance();
-
-        if (isMounted) {
-          setMcBalance(Number(wallet.balances.mc || 0).toFixed(0));
-          setGoldBalance(Number(wallet.balances.gold || 0).toFixed(0));
-        }
-      } catch (error) {
-        console.log('[LobbyHeader] Failed to load wallet balance:', error);
-
-        if (isMounted) {
-          setMcBalance('0');
-          setGoldBalance('0');
-        }
-      }
+  const loadBalance = useCallback(async () => {
+    if (loading || !profile?.id) {
+      return;
     }
 
-    loadBalance();
+    try {
+      const wallet = await getBalance();
+
+      setMcBalance(Number(wallet.balances.mc || 0).toFixed(0));
+      setGoldBalance(Number(wallet.balances.gold || 0).toFixed(0));
+    } catch (error) {
+      console.log('[LobbyHeader] Failed to load wallet balance:', error);
+
+      setMcBalance('0');
+      setGoldBalance('0');
+    }
+  }, [loading, profile?.id]);
+
+  useEffect(() => {
+    void loadBalance();
+  }, [loadBalance]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeWalletRefresh(() => {
+      void loadBalance();
+    });
 
     return () => {
-      isMounted = false;
+      unsubscribe();
     };
-  }, [loading, profile?.id]);
+  }, [loadBalance]);
+
+  useEffect(() => {
+    onProfileDrawerVisibilityChange?.(isProfileOpen);
+  }, [isProfileOpen, onProfileDrawerVisibilityChange]);
 
   return (
     <>
@@ -65,20 +75,46 @@ export function LobbyHeader() {
 
           <View style={styles.topRight}>
             <View style={styles.balanceGroup}>
-              <View style={styles.balancePill}>
-                <Text style={styles.balanceText}>{mcBalance} MC</Text>
-              </View>
+              <LinearGradient
+                colors={['rgba(255,183,59,0.22)', 'rgba(255,255,255,0.07)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.balancePill}
+              >
+                <View style={styles.balanceIconCircle}>
+                  <Ionicons name="wallet" size={14} color="#F5C542" />
+                </View>
 
-              <View style={styles.balancePillSecondary}>
+                <Text style={styles.balanceText}>{mcBalance} MC</Text>
+
+                <Pressable style={styles.plusButton}>
+                  <Ionicons name="add" size={15} color="#ffffff" />
+                </Pressable>
+              </LinearGradient>
+
+              <LinearGradient
+                colors={['rgba(168,85,247,0.24)', 'rgba(255,255,255,0.06)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.balancePillSecondary}
+              >
+                <View style={styles.balanceIconCircleGold}>
+                  <Ionicons name="diamond" size={14} color="#C084FC" />
+                </View>
+
                 <Text style={styles.balanceText}>{goldBalance} Gold</Text>
-              </View>
+
+                <Pressable style={styles.plusButton}>
+                  <Ionicons name="add" size={15} color="#ffffff" />
+                </Pressable>
+              </LinearGradient>
             </View>
 
             <Pressable
               style={styles.topIcon}
               onPress={() => setIsSettingsOpen(true)}
             >
-              <Text style={styles.topIconText}>⚙️</Text>
+              <Ionicons name="settings-outline" size={19} color="#ffffff" />
             </Pressable>
           </View>
         </View>
@@ -135,23 +171,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  avatarText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '900',
-  },
-
   username: {
     maxWidth: 105,
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
   },
 
   level: {
     marginTop: 1,
     color: '#8fa4d3',
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
   },
 
@@ -170,26 +200,50 @@ const styles = StyleSheet.create({
 
   balancePill: {
     height: 36,
-    minWidth: 92,
-    paddingHorizontal: 14,
+    minWidth: 116,
+    paddingLeft: 7,
+    paddingRight: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,214,102,0.20)',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
   },
 
   balancePillSecondary: {
     height: 36,
-    minWidth: 92,
-    paddingHorizontal: 14,
+    minWidth: 128,
+    paddingLeft: 7,
+    paddingRight: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(168,85,247,0.26)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  balanceIconCircle: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,183,59,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,214,102,0.30)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 7,
+  },
+
+  balanceIconCircleGold: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: 'rgba(168,85,247,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(216,180,254,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 7,
   },
 
   balanceText: {
@@ -197,6 +251,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0.2,
+  },
+
+  plusButton: {
+    width: 23,
+    height: 23,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
 
   topIcon: {
@@ -208,10 +274,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  topIconText: {
-    fontSize: 16,
   },
 
   headerGradientLine: {

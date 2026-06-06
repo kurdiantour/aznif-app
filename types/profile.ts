@@ -4,6 +4,7 @@ export type ProfileStatus = 'active' | 'offline' | 'banned';
 
 export type Profile = {
   id: string;
+  playerId: string;
   username: string;
   displayName: string;
   avatarId?: AvatarId;

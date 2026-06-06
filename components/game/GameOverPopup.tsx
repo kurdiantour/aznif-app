@@ -6,7 +6,7 @@ type GameOverPopupProps = {
   didWin: boolean;
   reward?: MatchReward | null;
   onClose: () => void;
-  onViewScore: () => void;
+  onPlayAgain: () => void;
 };
 
 export default function GameOverPopup({
@@ -14,7 +14,7 @@ export default function GameOverPopup({
   didWin,
   reward,
   onClose,
-  onViewScore,
+  onPlayAgain,
 }: GameOverPopupProps) {
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -26,24 +26,20 @@ export default function GameOverPopup({
             {didWin ? 'YOU WON!' : 'YOU LOST'}
           </Text>
 
-          <Text style={styles.message}>
-            {didWin
-              ? 'Great game! You finished this match as the winner.'
-              : 'Good try! The opponent won this match.'}
-          </Text>
-
           {reward && didWin && (
             <View style={styles.rewardBox}>
-              <Text style={styles.rewardLabel}>Reward</Text>
+              <Text style={styles.rewardLabel}>REWARD</Text>
               <Text style={styles.rewardValue}>
-                +{reward.gold} Gold · +{reward.points} Points
+                {reward.gold > 0
+                  ? `+${reward.gold} Gold · +${reward.points} Point`
+                  : `+${reward.points} Point`}
               </Text>
             </View>
           )}
 
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={onViewScore}>
-              <Text style={styles.secondaryButtonText}>View Score</Text>
+            <Pressable style={styles.secondaryButton} onPress={onPlayAgain}>
+              <Text style={styles.secondaryButtonText}>Play Again</Text>
             </Pressable>
 
             <Pressable style={styles.primaryButton} onPress={onClose}>
@@ -67,13 +63,14 @@ const styles = StyleSheet.create({
 
   card: {
     width: '100%',
-    maxWidth: 360,
-    borderRadius: 24,
+    maxWidth: 350,
+    borderRadius: 22,
     paddingHorizontal: 22,
-    paddingVertical: 24,
-    backgroundColor: '#082016',
+    paddingTop: 24,
+    paddingBottom: 20,
+    backgroundColor: '#071f15',
     borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.65)',
+    borderColor: 'rgba(250, 204, 21, 0.7)',
     alignItems: 'center',
   },
 
@@ -81,15 +78,15 @@ const styles = StyleSheet.create({
     color: '#facc15',
     fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 1.2,
-    marginBottom: 8,
+    letterSpacing: 1.4,
+    marginBottom: 10,
   },
 
   title: {
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: '900',
     letterSpacing: 0.8,
-    marginBottom: 10,
+    marginBottom: 18,
   },
 
   winText: {
@@ -100,37 +97,29 @@ const styles = StyleSheet.create({
     color: '#f8f3df',
   },
 
-  message: {
-    color: '#f8f3df',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    opacity: 0.9,
-  },
-
   rewardBox: {
-    marginTop: 18,
     width: '100%',
-    borderRadius: 16,
-    paddingVertical: 12,
+    borderRadius: 15,
+    paddingVertical: 13,
     paddingHorizontal: 14,
     backgroundColor: 'rgba(250, 204, 21, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.35)',
+    borderColor: 'rgba(250, 204, 21, 0.4)',
     alignItems: 'center',
   },
 
   rewardLabel: {
     color: '#f8f3df',
-    fontSize: 11,
-    fontWeight: '800',
-    opacity: 0.8,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    opacity: 0.75,
   },
 
   rewardValue: {
-    marginTop: 4,
+    marginTop: 5,
     color: '#facc15',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '900',
   },
 
@@ -143,13 +132,13 @@ const styles = StyleSheet.create({
 
   secondaryButton: {
     flex: 1,
-    height: 46,
+    height: 44,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(248, 243, 223, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(248, 243, 223, 0.2)',
+    borderColor: 'rgba(248, 243, 223, 0.22)',
   },
 
   secondaryButtonText: {
@@ -160,7 +149,7 @@ const styles = StyleSheet.create({
 
   primaryButton: {
     flex: 1,
-    height: 46,
+    height: 44,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -168,7 +157,7 @@ const styles = StyleSheet.create({
   },
 
   primaryButtonText: {
-    color: '#082016',
+    color: '#071f15',
     fontSize: 13,
     fontWeight: '900',
   },

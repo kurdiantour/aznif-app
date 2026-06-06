@@ -75,7 +75,7 @@ function fallbackProfile(userId: string): FriendProfile {
   return {
     id: userId,
     name: `Player ${userId.slice(0, 8)}`,
-    playerId: userId.slice(0, 8),
+    playerId: 'Unavailable',
     avatarId: 'avatar-1' as AvatarId,
   };
 }

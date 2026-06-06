@@ -5,6 +5,7 @@ import { getCurrentUser, getOrCreateProfile, updateMyProfile } from './supabaseA
 
 type DbProfile = {
   id: string;
+  player_id: string;
   username: string;
   avatar_id: string;
   level?: number;
@@ -16,6 +17,7 @@ type DbProfile = {
 function mapDbProfile(profile: DbProfile, email?: string): Profile {
   return {
     id: profile.id,
+    playerId: profile.player_id,
     username: profile.username,
     displayName: profile.username,
     avatarId: profile.avatar_id as unknown as Profile['avatarId'],
@@ -79,7 +81,7 @@ export async function getLeaderboardProfiles(
 export async function getProfileById(id: string): Promise<Profile> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, avatar_id, level, points, created_at, updated_at')
+    .select('id, player_id, username, avatar_id, level, points, created_at, updated_at')
     .eq('id', id)
     .maybeSingle<DbProfile>();
 

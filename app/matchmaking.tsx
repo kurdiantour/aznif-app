@@ -5,11 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Animated,
   ImageBackground,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
@@ -367,7 +367,7 @@ export default function MatchmakingScreen() {
   }, [pulse, rotate]);
 
   const orderedSlots = useMemo(() => {
-    const slots: Array<MatchPlayer | null> = Array.from(
+    const slots: (MatchPlayer | null)[] = Array.from(
       { length: requiredPlayers },
       () => null,
     );
@@ -417,7 +417,7 @@ export default function MatchmakingScreen() {
 
     setCountdownSeconds(null);
 
-    router.replace('/lobby');
+    router.replace('/(tabs)/lobby');
   };
 
   useEffect(() => {

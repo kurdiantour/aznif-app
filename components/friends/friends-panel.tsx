@@ -38,7 +38,7 @@ function FriendCard({
         </Text>
 
         <Text style={styles.playerId} numberOfLines={1}>
-          {friend.playerId}
+          ID: {friend.playerId}
         </Text>
       </View>
 
@@ -58,10 +58,12 @@ function FriendCard({
 function SearchResultRow({
   result,
   onAdd,
+  onSendChip,
   busy,
 }: {
   result: FriendSearchResult;
   onAdd: (result: FriendSearchResult) => void;
+  onSendChip: (result: FriendSearchResult) => void;
   busy: boolean;
 }) {
   const isFriend = result.friendshipStatus === 'accepted';
@@ -83,7 +85,7 @@ function SearchResultRow({
           {result.name}
         </Text>
         <Text style={styles.playerId} numberOfLines={1}>
-          {result.playerId}
+          ID: {result.playerId}
         </Text>
       </View>
 
@@ -94,10 +96,10 @@ function SearchResultRow({
           (isFriend || isPending) && styles.disabledButton,
         ]}
         disabled={busy || isFriend || isPending}
-        onPress={() => onAdd(result)}
+        onPress={() => (isFriend ? onSendChip(result) : onAdd(result))}
       >
         <Text style={[styles.buttonText, (isFriend || isPending) && styles.disabledButtonText]}>
-          {label}
+          {isFriend ? 'SEND CHIP' : label}
         </Text>
       </Pressable>
     </View>
@@ -116,6 +118,7 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const nextFriends = await getFriends();
@@ -179,6 +182,7 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
   async function handleAdd(result: FriendSearchResult) {
     setBusyId(result.id);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       await sendFriendRequest(result.id);
@@ -194,6 +198,21 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
     } finally {
       setBusyId(null);
     }
+  }
+
+  function handleSearchTransfer(result: FriendSearchResult) {
+    setSelectedFriend({
+      id: result.id,
+      name: result.name,
+      playerId: result.playerId,
+      avatarId: result.avatarId,
+      friendshipId: '',
+    });
+  }
+
+  function handleTransferSuccess() {
+    setSuccessMessage('MC sent successfully.');
+    void refresh();
   }
 
   return (
@@ -213,12 +232,14 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
                 result={result}
                 busy={busyId === result.id}
                 onAdd={handleAdd}
+                onSendChip={handleSearchTransfer}
               />
             ))}
           </View>
         ) : null}
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
 
         {loading ? (
           <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
@@ -240,6 +261,7 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
         friend={selectedFriend}
         visible={!!selectedFriend}
         onClose={() => setSelectedFriend(null)}
+        onTransferSuccess={handleTransferSuccess}
       />
     </>
   );
@@ -251,6 +273,7 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
+    flexGrow: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
@@ -380,14 +403,10 @@ const styles = StyleSheet.create({
   },
 
   emptyBox: {
-    width: '100%',
-    marginTop: 24,
-    borderRadius: 12,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.28)',
-    backgroundColor: 'transparent',
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
 
   emptyTitle: {
@@ -395,6 +414,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 8,
+    textAlign: 'center',
   },
 
   emptyText: {
@@ -408,6 +428,13 @@ const styles = StyleSheet.create({
   errorText: {
     width: '100%',
     color: '#ff8a8a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  successText: {
+    width: '100%',
+    color: '#7dd3fc',
     fontSize: 12,
     fontWeight: '800',
   },

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { findBestBotMove } from '@/lib/game/bot-ai';
+import { getNextHandKingIndex, NEXT_HAND_OPENING_STATE } from '@/lib/game/king-rules';
+import { getFinalMatchWinner } from '@/lib/game/match-rules';
 import {
   applyMove,
   canAnyPlayerMove,
@@ -16,17 +18,13 @@ import {
   Player,
   TeamId,
 } from '@/types/game';
-import { findBestBotMove } from '@/lib/game/bot-ai';
-import {
-  pickPreferredBranch,
-} from './gameShared';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createAiPracticeDeal,
   createAiPracticeSeats,
   findAiOpeningDoubleAndStarter,
 } from './aiPracticeLocal';
-
-const MATCH_TARGET_SCORE = 350;
+import { pickPreferredBranch } from './gameShared';
 
 export type AiPracticeGameState = GameState & {
   passTurn: () => boolean;
@@ -74,6 +72,21 @@ export function useAiPracticeGame(): AiPracticeGameState {
   const nextRoundScheduledRef = useRef(false);
   const lastTilePlayerIndexRef = useRef<number | null>(null);
   const passBadgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [phase, setPhase] = useState<'playing' | 'round_result_reveal' | 'next_round_countdown' | 'dealing'>('playing');
+  const [roundResult, setRoundResult] = useState<
+    | {
+        winnerId?: string;
+        winnerTeam?: TeamId;
+        awardedPoints: number;
+        remainingTilesByPlayer: Record<string, DominoTileData[]>;
+        remainingPipsByPlayer: Record<string, number>;
+      }
+    | null
+  >(null);
+  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(5);
 
   const humanHand = hands[0] ?? [];
 
@@ -114,31 +127,15 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }, 3000);
   };
 
-  const getMatchWinner = (scores: Record<TeamId, number>): TeamId | null => {
-    const teamAReachedTarget = scores.teamA >= MATCH_TARGET_SCORE;
-    const teamBReachedTarget = scores.teamB >= MATCH_TARGET_SCORE;
-
-    if (!teamAReachedTarget && !teamBReachedTarget) return null;
-
-    if (scores.teamA > scores.teamB) {
-      return 'teamA';
-    }
-
-    if (scores.teamB > scores.teamA) {
-      return 'teamB';
-    }
-
-    return null;
-  };
-
   useEffect(() => {
     if (winningTeamId) return;
+    if (!roundWinnerPlayerId) return;
 
-    const winnerTeamId = getMatchWinner(teamScores);
+    const winnerTeamId = getFinalMatchWinner(teamScores);
     if (!winnerTeamId) return;
 
     setWinningTeamId(winnerTeamId);
-  }, [teamScores, winningTeamId]);
+  }, [roundWinnerPlayerId, teamScores, winningTeamId]);
 
   const addTeamPoints = (
     teamId: TeamId,
@@ -148,12 +145,10 @@ export function useAiPracticeGame(): AiPracticeGameState {
   ) => {
     if (points <= 0) return;
 
-    setTeamScores((prev) => {
-      return {
-        ...prev,
-        [teamId]: prev[teamId] + points,
-      };
-    });
+    setTeamScores((prev) => ({
+      ...prev,
+      [teamId]: prev[teamId] + points,
+    }));
 
     setLastScoringEvent({ playerId, teamId, points, openEndsTotal });
   };
@@ -177,7 +172,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }
   };
 
-  const resolveBlockedRound = (blockedHands: DominoTileData[][], blockerIndex: number) => {
+  const resolveBlockedRound = (blockedHands: DominoTileData[][], _blockerIndex: number) => {
     const winnerIndex = blockedHands[0].length <= blockedHands[1].length ? 0 : 1;
     const winner = seats[winnerIndex];
 
@@ -193,7 +188,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }
 
     setRoundWinnerPlayerId(winner.id);
-    setLeaderIndex(blockerIndex);
+    setLeaderIndex(winnerIndex);
     return true;
   };
 
@@ -208,34 +203,85 @@ export function useAiPracticeGame(): AiPracticeGameState {
     if (nextRoundScheduledRef.current) return;
     nextRoundScheduledRef.current = true;
 
-    const timer = setTimeout(() => {
-      const nextDeal = createAiPracticeDeal(seats.length);
-      const opening = findAiOpeningDoubleAndStarter(nextDeal.hands);
+    const remainingTilesByPlayer: Record<string, DominoTileData[]> = {};
+    const remainingPipsByPlayer: Record<string, number> = {};
 
-      lastTilePlayerIndexRef.current = null;
-      botMoveScheduledRef.current = false;
+    seats.forEach((seat, idx) => {
+      const tiles = hands[idx] ?? [];
+      remainingTilesByPlayer[seat.id] = tiles.map((t) => ({ ...t }));
+      remainingPipsByPlayer[seat.id] = tiles.reduce((s, t) => s + t.left + t.right, 0);
+    });
 
-      setBoard(createEmptyBoard());
-      setHands(nextDeal.hands);
-      setBoneyard(nextDeal.boneyard);
-      setSpinnerValue(null);
-      setIsOpeningRound(true);
-      setOpeningDouble(opening.openingDouble);
+    const winnerIndex = seats.findIndex((p) => p.id === roundWinnerPlayerId);
+    const winnerTeam = winnerIndex >= 0 ? seats[winnerIndex].teamId : undefined;
+    const awardedPoints = lastScoringEvent?.points ?? 0;
 
-      setRoundWinnerPlayerId(null);
-      setLastPlayedTile(null);
-      setLastPassedPlayerId(null);
-      setLastScoringEvent(null);
+    setRoundResult({
+      winnerId: roundWinnerPlayerId ?? undefined,
+      winnerTeam,
+      awardedPoints,
+      remainingTilesByPlayer,
+      remainingPipsByPlayer,
+    });
 
-      setLeaderIndex(opening.starterIndex);
-      setCurrentIndex(opening.starterIndex);
-      setTimeLeft(10);
+    setPhase('round_result_reveal');
 
-      nextRoundScheduledRef.current = false;
-    }, 3000);
+    phaseTimerRef.current = setTimeout(() => {
+      setPhase('next_round_countdown');
+      setNextRoundCountdown(5);
 
-    return () => clearTimeout(timer);
-  }, [roundWinnerPlayerId, winningTeamId, seats]);
+      countdownIntervalRef.current = setInterval(() => {
+        setNextRoundCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
+
+            const nextDeal = createAiPracticeDeal(seats.length);
+            const nextKingIndex = getNextHandKingIndex(seats, roundWinnerPlayerId);
+
+            lastTilePlayerIndexRef.current = null;
+            botMoveScheduledRef.current = false;
+
+            setBoard(createEmptyBoard());
+            setHands(nextDeal.hands);
+            setBoneyard(nextDeal.boneyard);
+            setSpinnerValue(null);
+            setIsOpeningRound(NEXT_HAND_OPENING_STATE.isOpeningRound);
+            setOpeningDouble(NEXT_HAND_OPENING_STATE.openingDouble);
+
+            setRoundWinnerPlayerId(null);
+            setLastPlayedTile(null);
+            setLastPassedPlayerId(null);
+            setLastScoringEvent(null);
+
+            setLeaderIndex(nextKingIndex);
+            setCurrentIndex(nextKingIndex);
+            setTimeLeft(10);
+
+            nextRoundScheduledRef.current = false;
+            setRoundResult(null);
+            setPhase('playing');
+
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }, 5000);
+
+    return () => {
+      if (phaseTimerRef.current) {
+        clearTimeout(phaseTimerRef.current);
+        phaseTimerRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+    };
+  }, [roundWinnerPlayerId, winningTeamId, seats, hands, lastScoringEvent]);
 
   const availableBranchesForTile = (tile: DominoTileData) => {
     return getPlayableBranches(
@@ -419,14 +465,27 @@ export function useAiPracticeGame(): AiPracticeGameState {
     const nextHand = [...currentHand];
     const nextBoneyard = [...boneyard];
 
+    let drawCount = 0;
+
     while (
+      drawCount < 3 &&
       nextBoneyard.length > 0 &&
       !canHandMove(nextHand, board, spinnerValue, isOpeningRound, openingDouble)
     ) {
       const drawnTile = nextBoneyard.shift();
       if (!drawnTile) break;
+
       nextHand.push(drawnTile);
+      drawCount += 1;
     }
+
+    const stillCannotMove = !canHandMove(
+      nextHand,
+      board,
+      spinnerValue,
+      isOpeningRound,
+      openingDouble,
+    );
 
     setHands((prev) =>
       prev.map((playerHand, index) =>
@@ -436,6 +495,16 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
     setBoneyard(nextBoneyard);
     setTimeLeft(10);
+
+    if (stillCannotMove) {
+      const player = seats[playerIndex];
+      if (player) {
+        showPassBadge(player.id);
+      }
+
+      setLastScoringEvent(null);
+      setCurrentIndex((playerIndex + 1) % seats.length);
+    }
 
     return true;
   };
@@ -593,5 +662,8 @@ export function useAiPracticeGame(): AiPracticeGameState {
     canDrawTile,
     hasPlayableTile,
     lastPassedPlayerId,
+    phase,
+    roundResult,
+    nextRoundCountdown,
   };
 }
