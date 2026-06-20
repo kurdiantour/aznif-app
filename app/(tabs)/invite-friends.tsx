@@ -11,9 +11,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 type TabKey = 'friends' | 'requests' | 'transfers';
 
 const tabs: { key: TabKey; label: string }[] = [
-  { key: 'friends', label: 'FRIENDS' },
-  { key: 'requests', label: 'REQUESTS' },
-  { key: 'transfers', label: 'TRANSFERS' },
+  { key: 'friends', label: 'هاوڕێکان' },
+  { key: 'requests', label: 'داواکارییەکان' },
+  { key: 'transfers', label: 'گواستنەوەکان' },
 ];
 
 export default function InviteFriendsScreen() {

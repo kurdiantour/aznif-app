@@ -23,7 +23,7 @@ export default function GameOverPopup({
           <Text style={styles.eyebrow}>یارییەکە تەواو بوو</Text>
 
           <Text style={[styles.title, didWin ? styles.winText : styles.loseText]}>
-            {didWin ? 'YOU WON!' : 'YOU LOST'}
+            {didWin ? 'تۆ بردتەوە!' : 'تۆ دۆڕایت'}
           </Text>
 
           {reward && didWin && (

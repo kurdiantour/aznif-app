@@ -708,7 +708,7 @@ export default function GameScreen() {
 
           <Pressable style={styles.miniScoreBoard} onPress={() => setShowScorePopup(true)}>
             <View style={styles.miniScoreItem}>
-              <Text style={styles.miniScoreLabel}>{game.mode === '1v1' ? 'YOU' : 'TEAM A'}</Text>
+              <Text style={styles.miniScoreLabel}>{game.mode === '1v1' ? 'تۆ' : 'تیمی A'}</Text>
               <Text style={styles.miniScoreValue}>{game.teamScores?.teamA ?? 0}</Text>
             </View>
 

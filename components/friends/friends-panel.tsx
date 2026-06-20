@@ -69,12 +69,12 @@ function SearchResultRow({
   const isFriend = result.friendshipStatus === 'accepted';
   const isPending = result.friendshipStatus === 'pending';
   const label = isFriend
-    ? 'FRIENDS'
+    ? 'هاوڕێکان'
     : isPending && result.friendshipDirection === 'incoming'
-      ? 'PENDING'
+      ? 'چاوەڕوان'
       : isPending
-        ? 'SENT'
-        : 'ADD';
+        ? 'نێردراو'
+        : 'زیادکردن';
 
   return (
     <View style={styles.searchRow}>
