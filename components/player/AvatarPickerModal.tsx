@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   title: {
     color: '#ffffff',
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: '#9ca3ff',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -139,6 +139,6 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 });

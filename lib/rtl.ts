@@ -3,11 +3,11 @@ import { fontStyles } from './fonts';
 
 export const isKurdishRTL = true;
 
-I18nManager.allowRTL(isKurdishRTL);
-
-if (I18nManager.isRTL) {
-  I18nManager.forceRTL(false);
-}
+// Do not force RTL at the native layout-manager level. It mirrors every
+// screen, including the domino board whose fixed coordinates must stay LTR.
+// Menu routes receive RTL through the navigator's content direction instead.
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 
 export const rtlStyles = {
   row: {

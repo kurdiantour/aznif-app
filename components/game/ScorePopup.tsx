@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     width: '100%',
     color: '#f8f3df',
     fontSize: 13,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     width: 15,
     color: '#facc15',
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     lineHeight: 16,
     textAlign: 'center',
     textShadowColor: 'rgba(250, 204, 21, 0.35)',
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     width: 15,
     color: '#22c55e',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     lineHeight: 14,
     textAlign: 'center',
     textShadowColor: 'rgba(34, 197, 94, 0.3)',
@@ -279,13 +279,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: '#22c55e',
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   winnerText: {
     color: '#facc15',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
     marginTop: 8,
   },
@@ -298,14 +298,14 @@ const styles = StyleSheet.create({
   rewardTitle: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   rewardDetail: {
     marginTop: 4,
     color: '#d1d5db',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   bottomDivider: {
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   target: {
     color: '#d8c894',
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 });

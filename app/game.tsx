@@ -555,7 +555,7 @@ export default function GameScreen() {
   if (gameLoading) {
     return (
       <View style={styles.centerScreen}>
-        <Text style={styles.statusText}>Loading game...</Text>
+        <Text style={styles.statusText}>یاری بار دەکرێت...</Text>
       </View>
     );
   }
@@ -563,7 +563,7 @@ export default function GameScreen() {
   if (gameError) {
     return (
       <View style={styles.centerScreen}>
-        <Text style={styles.statusText}>Unable to load game</Text>
+        <Text style={styles.statusText}>نەتوانرا یارییەکە باربکرێت</Text>
         <Text style={styles.errorText}>{gameError}</Text>
       </View>
     );
@@ -638,7 +638,7 @@ export default function GameScreen() {
                   {(() => {
                     const winnerId = (game as any).roundResult?.winnerId;
                     const winner = game.players.find((p) => p.id === winnerId);
-                    return winner ? `${winner.name} Wins` : 'Round Over';
+                    return winner ? `${winner.name} بردیەوە` : 'کۆتایی هاتنی دەور';
                   })()}
                 </Text>
                 <Text style={styles.resultPointsText}>+{(game as any).roundResult?.awardedPoints ?? 0}</Text>
@@ -701,7 +701,7 @@ export default function GameScreen() {
           {/* Next round countdown */}
           {shouldShowNextRoundCountdown && (
             <View style={styles.countdownOverlay} pointerEvents="none">
-              <Text style={styles.countdownLabel}>ROUND STARTS IN</Text>
+              <Text style={styles.countdownLabel}>دەوری نوێ دەست پێدەکات لە</Text>
               <Text style={styles.countdownNumber}>{(game as any).nextRoundCountdown ?? 3}</Text>
             </View>
           )}
@@ -715,13 +715,13 @@ export default function GameScreen() {
             <View style={styles.miniScoreDivider} />
 
             <View style={styles.miniScoreItem}>
-              <Text style={styles.miniScoreLabel}>TEAM B</Text>
+              <Text style={styles.miniScoreLabel}>تیمی B</Text>
               <Text style={styles.miniScoreValue}>{game.teamScores?.teamB ?? 0}</Text>
             </View>
           </Pressable>
 
           <Pressable style={styles.leaveButton} onPress={() => setShowLeaveConfirm(true)}>
-            <Text style={styles.leaveButtonText}>Leave</Text>
+            <Text style={styles.leaveButtonText}>دەرچوون</Text>
           </Pressable>
 
           <DrawPilePrompt
@@ -778,7 +778,7 @@ export default function GameScreen() {
           <Modal transparent visible={showLeaveConfirm} animationType="fade">
             <View style={styles.leaveModalBackdrop}>
               <View style={styles.leaveModal}>
-                <Text style={styles.leaveModalTitle}>Leave Match?</Text>
+                <Text style={styles.leaveModalTitle}>لە یارییەکە دەچیتە دەرەوە؟</Text>
                 <Text style={styles.leaveModalBody}>
                   If you leave now, a bot will continue playing for you. If you do not return before the current round ends, the match will be counted as a loss.
                 </Text>
@@ -789,7 +789,7 @@ export default function GameScreen() {
                     onPress={() => setShowLeaveConfirm(false)}
                     disabled={isLeavingMatch}
                   >
-                    <Text style={styles.leaveCancelText}>Cancel</Text>
+                    <Text style={styles.leaveCancelText}>پاشگەزبوونەوە</Text>
                   </Pressable>
 
                   <Pressable
@@ -800,7 +800,7 @@ export default function GameScreen() {
                     {isLeavingMatch ? (
                       <ActivityIndicator color="#ffffff" size="small" />
                     ) : (
-                      <Text style={styles.leaveConfirmText}>Leave Match</Text>
+                      <Text style={styles.leaveConfirmText}>دەرچوون لە یاری</Text>
                     )}
                   </Pressable>
                 </View>
@@ -816,6 +816,7 @@ export default function GameScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    direction: 'ltr',
     width: '100%',
     height: '100%',
     backgroundColor: '#03110b',
@@ -824,6 +825,7 @@ const styles = StyleSheet.create({
 
   centerScreen: {
     flex: 1,
+    direction: 'ltr',
     width: '100%',
     height: '100%',
     backgroundColor: '#03110b',
@@ -835,7 +837,7 @@ const styles = StyleSheet.create({
   statusText: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -843,12 +845,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: '#fca5a5',
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
   stage: {
     flex: 1,
+    direction: 'ltr',
     width: '100%',
     height: '100%',
     backgroundColor: '#03110b',
@@ -942,7 +945,7 @@ const styles = StyleSheet.create({
   miniScoreLabel: {
     color: '#f8f3df',
     fontSize: 9,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.4,
   },
 
@@ -950,7 +953,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
     color: '#facc15',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   miniScoreDivider: {
@@ -979,7 +982,7 @@ const styles = StyleSheet.create({
   leaveButtonText: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   leaveModalBackdrop: {
@@ -1003,7 +1006,7 @@ const styles = StyleSheet.create({
   leaveModalTitle: {
     color: '#f8f3df',
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -1011,7 +1014,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#d7e2d2',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     lineHeight: 19,
     textAlign: 'center',
   },
@@ -1050,13 +1053,13 @@ const styles = StyleSheet.create({
   leaveCancelText: {
     color: '#f8f3df',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   leaveConfirmText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   bottomArea: {
@@ -1088,12 +1091,12 @@ const styles = StyleSheet.create({
   resultWinnerText: {
     color: '#f8f3df',
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
   resultPointsText: {
     color: '#facc15',
     fontSize: 26,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginTop: 6,
   },
   revealTilesTop: {
@@ -1123,7 +1126,7 @@ const styles = StyleSheet.create({
   revealPipsText: {
     color: '#f8f3df',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textShadowColor: 'rgba(0,0,0,0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -1159,13 +1162,13 @@ const styles = StyleSheet.create({
   countdownLabel: {
     color: '#f8f3df',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.6,
     marginBottom: 6,
   },
   countdownNumber: {
     color: '#facc15',
     fontSize: 56,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 });

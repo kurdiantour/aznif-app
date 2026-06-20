@@ -20,7 +20,7 @@ export default function GameOverPopup({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.eyebrow}>MATCH FINISHED</Text>
+          <Text style={styles.eyebrow}>یارییەکە تەواو بوو</Text>
 
           <Text style={[styles.title, didWin ? styles.winText : styles.loseText]}>
             {didWin ? 'YOU WON!' : 'YOU LOST'}
@@ -28,7 +28,7 @@ export default function GameOverPopup({
 
           {reward && didWin && (
             <View style={styles.rewardBox}>
-              <Text style={styles.rewardLabel}>REWARD</Text>
+              <Text style={styles.rewardLabel}>خەڵات</Text>
               <Text style={styles.rewardValue}>
                 {reward.gold > 0
                   ? `+${reward.gold} Gold · +${reward.points} Point`
@@ -39,11 +39,11 @@ export default function GameOverPopup({
 
           <View style={styles.actions}>
             <Pressable style={styles.secondaryButton} onPress={onPlayAgain}>
-              <Text style={styles.secondaryButtonText}>Play Again</Text>
+              <Text style={styles.secondaryButtonText}>دووبارە یاری بکە</Text>
             </Pressable>
 
             <Pressable style={styles.primaryButton} onPress={onClose}>
-              <Text style={styles.primaryButtonText}>Close</Text>
+              <Text style={styles.primaryButtonText}>داخستن</Text>
             </Pressable>
           </View>
         </View>
@@ -77,14 +77,14 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: '#facc15',
     fontSize: 11,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 1.4,
     marginBottom: 10,
   },
 
   title: {
     fontSize: 32,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.8,
     marginBottom: 18,
   },
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   rewardLabel: {
     color: '#f8f3df',
     fontSize: 10,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 1,
     opacity: 0.75,
   },
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: '#facc15',
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   actions: {
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#f8f3df',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   primaryButton: {
@@ -159,6 +159,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#071f15',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 });

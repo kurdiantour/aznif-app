@@ -24,7 +24,7 @@ export default function DrawPilePrompt({
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <View style={styles.card}>
-        <Text style={styles.title}>No playable tile</Text>
+        <Text style={styles.title}>هیچ خشتێکی یاریکردن نییە</Text>
 
         <Text style={styles.subtitle}>
           {hasTiles
@@ -34,10 +34,10 @@ export default function DrawPilePrompt({
 
         {hasTiles ? (
           <Pressable style={styles.drawButton} onPress={onDraw}>
-            <Text style={styles.drawButtonText}>Draw Tile</Text>
+            <Text style={styles.drawButtonText}>خشت وەربگرە</Text>
           </Pressable>
         ) : (
-          <Text style={styles.emptyText}>The pile is empty.</Text>
+          <Text style={styles.emptyText}>کۆمەڵەکە بەتاڵە.</Text>
         )}
 
         <Text style={styles.countText}>{boneyardCount} tiles left</Text>
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   title: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: 'rgba(255, 255, 255, 0.72)',
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'SpedaBold',
     lineHeight: 16,
     textAlign: 'center',
   },
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   drawButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.4,
   },
 
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#facc15',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     color: 'rgba(255, 255, 255, 0.78)',
     fontSize: 13,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   passButtonText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     marginTop: 9,
     color: '#facc15',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 });

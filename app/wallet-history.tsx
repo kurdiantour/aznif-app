@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   title: {
     color: '#ffffff',
     fontSize: 30,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
   closeButton: {
     paddingVertical: 8,
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: '#7dd3fc',
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
   loader: {
     marginTop: 40,
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   transactionAmount: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
   transactionDetail: {
     color: '#b7c5ff',

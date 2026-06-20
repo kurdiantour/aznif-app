@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   headerText: {
     color: '#cbd5e1',
     fontSize: 10,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.7,
   },
 
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   rankText: {
     color: '#f8fafc',
     fontSize: 11,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   playerName: {
     color: '#ffffff',
     fontSize: 11,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.7,
   },
 
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   levelText: {
     color: '#cbd5e1',
     fontSize: 11,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   pointsColumn: {
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   pointsText: {
     color: '#f97316',
     fontSize: 11,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   goldColumn: {
@@ -308,6 +308,6 @@ const styles = StyleSheet.create({
   goldText: {
     color: '#d6d3d1',
     fontSize: 11,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 });

@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   playersText: {
     color: '#ffffff',
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   bottomFade: {
@@ -253,13 +253,13 @@ const styles = StyleSheet.create({
   cardTitle: {
     color: '#ffffff',
     fontSize: 17,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   cardSubtitle: {
     marginTop: 2,
     color: '#f3f4f6',
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 });

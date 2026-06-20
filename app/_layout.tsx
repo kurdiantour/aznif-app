@@ -67,6 +67,7 @@ export default function Layout() {
             animation: 'none',
             contentStyle: {
               backgroundColor: '#050b22',
+              direction: 'rtl',
             },
           }}
         >

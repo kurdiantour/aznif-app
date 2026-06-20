@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
 
   text: {
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   activeText: {

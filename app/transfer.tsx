@@ -140,14 +140,14 @@ const styles = StyleSheet.create({
   title: {
     color: '#ffffff',
     fontSize: 30,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   subtitle: {
     marginTop: 4,
     color: '#9ca3af',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
 
   backButton: {
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   loader: {
@@ -189,26 +189,26 @@ const styles = StyleSheet.create({
   transferTitle: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginBottom: 5,
   },
 
   transferPlayer: {
     color: '#d8ccff',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     marginBottom: 4,
   },
 
   transferDate: {
     color: '#8f9bb7',
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
 
   transferAmount: {
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   incomingAmount: {
@@ -232,14 +232,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginBottom: 8,
   },
 
   emptyText: {
     color: '#9ca3af',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
     lineHeight: 19,
   },

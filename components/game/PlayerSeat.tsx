@@ -135,7 +135,7 @@ export default function PlayerSeat({
       {showPass && (
         <View style={styles.passBadge}>
           <Text style={styles.passEmoji}>✋</Text>
-          <Text style={styles.passText}>PASS</Text>
+          <Text style={styles.passText}>تێپەڕبوون</Text>
         </View>
       )}
     </View>
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   timerText: {
     color: "#ffffff",
     fontSize: 13,
-    fontWeight: "800",
+    fontFamily: 'SpedaBold',
   },
 
   avatar: {
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: "#5a3b22",
     fontSize: 18,
-    fontWeight: "800",
+    fontFamily: 'SpedaBold',
   },
 
   info: {
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   name: {
     color: "#f5e4c7",
     fontSize: 14,
-    fontWeight: "800",
+    fontFamily: 'SpedaBold',
     maxWidth: 82,
   },
 
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   passText: {
     color: "#f5e4c7",
     fontSize: 14,
-    fontWeight: "900",
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.3,
   },
 })

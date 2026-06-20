@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
   searchInput: {
     color: '#ffffff',
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     padding: 0,
   },
 
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   sidebarText: {
     color: 'rgba(255,255,255,0.82)',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   sidebarTextActive: {

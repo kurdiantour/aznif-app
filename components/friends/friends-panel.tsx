@@ -340,14 +340,14 @@ const styles = StyleSheet.create({
   name: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   playerId: {
     marginTop: 5,
     color: '#aaa7bc',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   buttonStack: {
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     fontSize: 10,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   disabledButtonText: {
@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#9ca3af',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
     lineHeight: 19,
   },
@@ -429,13 +429,13 @@ const styles = StyleSheet.create({
     width: '100%',
     color: '#ff8a8a',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   successText: {
     width: '100%',
     color: '#7dd3fc',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 });

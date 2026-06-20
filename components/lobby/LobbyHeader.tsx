@@ -175,14 +175,14 @@ const styles = StyleSheet.create({
     maxWidth: 105,
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   level: {
     marginTop: 1,
     color: '#8fa4d3',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   topRight: {
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   balanceText: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     letterSpacing: 0.2,
   },
 

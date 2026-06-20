@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   balance: {
     color: 'rgba(255,255,255,0.82)',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
     marginBottom: 22,
   },
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
   title: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -205,14 +205,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     paddingHorizontal: 14,
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
   errorText: {
     color: '#ff8a8a',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
     marginTop: 12,
   },
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   cancelText: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textTransform: 'uppercase',
   },
 
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: '#aaa7bc',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
   sendText: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textTransform: 'uppercase',
   },
 });

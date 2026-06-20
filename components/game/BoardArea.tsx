@@ -1679,7 +1679,7 @@ const styles = StyleSheet.create({
   dropZoneText: {
     color: '#facc15',
     fontSize: 24,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     lineHeight: 26,
   },
 
@@ -1721,7 +1721,7 @@ const styles = StyleSheet.create({
   },
 
   scoreBadgeText: {
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     color: '#111827',
   },
 });

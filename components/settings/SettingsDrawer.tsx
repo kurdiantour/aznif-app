@@ -154,14 +154,14 @@ const styles = StyleSheet.create({
   title: {
     color: '#ffffff',
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   subtitle: {
     marginTop: 5,
     color: '#a99bd8',
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
 
   divider: {
@@ -190,12 +190,12 @@ const styles = StyleSheet.create({
   settingLabel: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   settingValue: {
     color: '#a99bd8',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 });

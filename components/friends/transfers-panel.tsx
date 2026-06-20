@@ -165,26 +165,26 @@ const styles = StyleSheet.create({
   transferTitle: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginBottom: 5,
   },
 
   transferPlayer: {
     color: '#d8ccff',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     marginBottom: 4,
   },
 
   transferDate: {
     color: '#8f9bb7',
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
 
   transferAmount: {
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   incomingAmount: {
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#9ca3af',
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
     lineHeight: 19,
   },

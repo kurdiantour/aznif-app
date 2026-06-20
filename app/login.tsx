@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   switchButton: {
@@ -273,6 +273,6 @@ const styles = StyleSheet.create({
   switchButtonText: {
     color: '#9fc2ff',
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
 });

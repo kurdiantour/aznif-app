@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   uploadText: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginTop: -1,
   },
 
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     maxWidth: 176,
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   editNameText: {
     color: '#c4b5fd',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   nameInput: {
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     paddingHorizontal: 10,
     fontSize: 15,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     color: '#8fa4d3',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   playerId: {
     color: '#c4b5fd',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   copyButton: {
@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
   copyButtonText: {
     color: '#ffffff',
     fontSize: 10,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   logoutButton: {
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: '#ff8b8b',
     fontSize: 13,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
 });

@@ -2,14 +2,23 @@ import { Text, TextInput } from 'react-native';
 import type { TextStyle } from 'react-native';
 
 export const appFonts = {
-  regular: 'Speda-Regular',
-  bold: 'Speda-Bold',
+  regular: 'SpedaRegular',
+  bold: 'SpedaBold',
 } as const;
 
 export const appFontAssets = {
-  [appFonts.regular]: require('@/assets/fonts/Speda-Regular.ttf'),
-  [appFonts.bold]: require('@/assets/fonts/Speda-Bold.ttf'),
+  SpedaRegular: require('../assets/fonts/Speda-Regular.ttf'),
+  SpedaBold: require('../assets/fonts/Speda-Bold.ttf'),
 };
+
+export const typography = {
+  regular: {
+    fontFamily: 'SpedaRegular',
+  },
+  bold: {
+    fontFamily: 'SpedaBold',
+  },
+} satisfies Record<'regular' | 'bold', TextStyle>;
 
 let defaultsApplied = false;
 
@@ -36,34 +45,28 @@ export function applyAppFontDefaults() {
 
 export const fontStyles = {
   regular: {
-    fontFamily: appFonts.regular,
-    fontWeight: '400',
+    ...typography.regular,
   } satisfies TextStyle,
   bold: {
-    fontFamily: appFonts.bold,
-    fontWeight: '400',
+    ...typography.bold,
   } satisfies TextStyle,
   regularRtl: {
-    fontFamily: appFonts.regular,
-    fontWeight: '400',
+    ...typography.regular,
     writingDirection: 'rtl',
     textAlign: 'right',
   } satisfies TextStyle,
   boldRtl: {
-    fontFamily: appFonts.bold,
-    fontWeight: '400',
+    ...typography.bold,
     writingDirection: 'rtl',
     textAlign: 'right',
   } satisfies TextStyle,
   centerRegularRtl: {
-    fontFamily: appFonts.regular,
-    fontWeight: '400',
+    ...typography.regular,
     writingDirection: 'rtl',
     textAlign: 'center',
   } satisfies TextStyle,
   centerBoldRtl: {
-    fontFamily: appFonts.bold,
-    fontWeight: '400',
+    ...typography.bold,
     writingDirection: 'rtl',
     textAlign: 'center',
   } satisfies TextStyle,

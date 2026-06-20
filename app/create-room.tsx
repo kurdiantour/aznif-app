@@ -166,14 +166,14 @@ const styles = StyleSheet.create({
   cardTitle: {
     color: '#ffffff',
     fontSize: 17,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   cardSubtitle: {
     marginTop: 2,
     color: '#f3f4f6',
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: 'SpedaBold',
   },
 
   backButton: {
@@ -188,14 +188,14 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   errorText: {
     marginTop: 10,
     color: '#ff9a9a',
     fontSize: 12,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     textAlign: 'center',
   },
 });

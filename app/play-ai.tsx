@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   emptyAvatarText: {
     color: '#ffffff',
     fontSize: 24,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   onlineDot: {
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
   playerName: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
     marginBottom: 5,
     maxWidth: 88,
   },
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
   playerRating: {
     color: '#d7c9ef',
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: 'SpedaBold',
   },
 
   centerColumn: {
@@ -363,13 +363,13 @@ const styles = StyleSheet.create({
   matchText: {
     color: '#ffffff',
     fontSize: 32,
-    fontWeight: '900',
+    fontFamily: 'SpedaBold',
   },
 
   waitText: {
     color: '#d7c9ef',
     fontSize: 15,
-    fontWeight: '600',
+    fontFamily: 'SpedaBold',
     marginTop: 6,
   },
 });
