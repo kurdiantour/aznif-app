@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { ReactNode } from 'react';
-import { ImageBackground, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 type Props = {
   children: ReactNode;
@@ -7,25 +8,22 @@ type Props = {
 
 export default function TableBackground({ children }: Props) {
   return (
-    <ImageBackground
-      source={require('@/assets/images/lobby/domino-table-bg.webp')}
-      style={styles.background}
-      imageStyle={styles.image}
-      resizeMode="stretch"
-    >
+    <View style={styles.background}>
+      <Image
+        source={require('@/assets/images/lobby/domino-table-bg.webp')}
+        style={StyleSheet.absoluteFill}
+        contentFit="fill"
+        cachePolicy="memory-disk"
+        transition={0}
+      />
       <View style={styles.overlay}>{children}</View>
-    </ImageBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-
-  image: {
     width: '100%',
     height: '100%',
   },

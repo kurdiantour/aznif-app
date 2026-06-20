@@ -1,4 +1,5 @@
 import type { User } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { supabase } from './supabase';
 
 export type Profile = {
@@ -16,7 +17,11 @@ export type Profile = {
 export type PublicProfile = Pick<Profile, 'username' | 'avatar_id' | 'player_id'>;
 
 export async function signUpWithEmail(email: string, password: string) {
-  return supabase.auth.signUp({ email, password });
+  return supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: Linking.createURL('/auth-callback') },
+  });
 }
 
 export async function signInWithEmail(email: string, password: string) {
@@ -94,4 +99,22 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
   if (error) throw error;
 
   return data;
+}
+
+export async function sendPasswordReset(email: string) {
+  return supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo: Linking.createURL('/auth-callback', { queryParams: { flow: 'recovery' } }),
+  });
+}
+
+export async function resendVerificationEmail(email: string) {
+  return supabase.auth.resend({
+    type: 'signup',
+    email: email.trim().toLowerCase(),
+    options: { emailRedirectTo: Linking.createURL('/auth-callback') },
+  });
+}
+
+export async function updatePassword(password: string) {
+  return supabase.auth.updateUser({ password });
 }

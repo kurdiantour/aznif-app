@@ -8,6 +8,18 @@ type Tile = {
 };
 
 type RequestBody = Record<string, unknown>;
+const MULTIPLAYER_REQUEST_TIMEOUT_MS = 15_000;
+
+export class MultiplayerRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+    readonly ambiguous: boolean,
+  ) {
+    super(message);
+    this.name = 'MultiplayerRequestError';
+  }
+}
 
 async function submitMultiplayerRequest(
   functionName: string,
@@ -26,16 +38,43 @@ async function submitMultiplayerRequest(
     throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL');
   }
 
-  const res = await fetch(`${baseUrl}/functions/v1/${functionName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    MULTIPLAYER_REQUEST_TIMEOUT_MS,
+  );
 
-  const responseText = await res.text();
+  try {
+    res = await fetch(`${baseUrl}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    throw new MultiplayerRequestError(
+      error?.message ?? `${functionName} request failed`,
+      null,
+      true,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let responseText: string;
+  try {
+    responseText = await res.text();
+  } catch (error: any) {
+    throw new MultiplayerRequestError(
+      error?.message ?? `${functionName} response failed`,
+      null,
+      true,
+    );
+  }
   let json: any = null;
 
   try {
@@ -53,7 +92,11 @@ async function submitMultiplayerRequest(
       rawResponse: responseText,
     });
 
-    throw new Error(json?.error || responseText || `${functionName} failed`);
+    throw new MultiplayerRequestError(
+      json?.error || responseText || `${functionName} failed`,
+      res.status,
+      false,
+    );
   }
 
   return json;
@@ -64,15 +107,6 @@ export async function submitOneVsOneMove(
   tile: Tile,
   branch?: string,
 ) {
-  const { data: userData } = await supabase.auth.getUser();
-
-  console.log('[1v1 submit before fetch]', {
-    roomId,
-    tokenUserId: userData.user?.id ?? null,
-    tileId: tile?.id ?? null,
-    branch: branch ?? null,
-  });
-
   return submitMultiplayerRequest('submit_one_vs_one', {
     action: 'move',
     room_id: roomId,
@@ -81,10 +115,11 @@ export async function submitOneVsOneMove(
   });
 }
 
-export async function submitOneVsOnePass(roomId: string) {
+export async function submitOneVsOnePass(roomId: string, timedOut = false) {
   return submitMultiplayerRequest('submit_one_vs_one', {
     action: 'pass',
     room_id: roomId,
+    timed_out: timedOut,
   });
 }
 
@@ -108,9 +143,10 @@ export async function submitTwoVsTwoMove(
   });
 }
 
-export async function submitTwoVsTwoPass(roomId: string) {
+export async function submitTwoVsTwoPass(roomId: string, timedOut = false) {
   return submitMultiplayerRequest('submit_two_vs_two', {
     action: 'pass',
     room_id: roomId,
+    timed_out: timedOut,
   });
 }

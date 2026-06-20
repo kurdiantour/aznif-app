@@ -18,4 +18,4 @@ export type Profile = {
   updatedAt: string;
 };
 
-export type ProfileUpdate = Partial<Pick<Profile, 'displayName' | 'avatarId' | 'avatarUrl' | 'bio' | 'status' | 'level'>>;
+export type ProfileUpdate = Partial<Pick<Profile, 'displayName' | 'avatarId' | 'avatarUrl' | 'bio' | 'status'>>;

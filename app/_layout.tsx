@@ -1,22 +1,91 @@
 import { ProfileProvider } from '@/lib/profile';
+import { appFontAssets, applyAppFontDefaults } from '@/lib/fonts';
+import '@/lib/rtl';
 import '@/lib/urlPolyfill';
+import { useFonts } from 'expo-font';
+import * as NavigationBar from 'expo-navigation-bar';
 import { Stack } from 'expo-router';
+import {
+  StatusBar,
+  setStatusBarBackgroundColor,
+  setStatusBarHidden,
+  setStatusBarTranslucent,
+} from 'expo-status-bar';
+import { useEffect } from 'react';
+import { AppState, Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+async function applyImmersiveFullscreen() {
+  if (Platform.OS !== 'android') return;
+
+  setStatusBarHidden(true, 'none');
+  setStatusBarTranslucent(true);
+  setStatusBarBackgroundColor('transparent', false);
+
+  try {
+    await NavigationBar.setPositionAsync('absolute');
+    await NavigationBar.setBackgroundColorAsync('#00000000');
+    await NavigationBar.setButtonStyleAsync('light');
+    await NavigationBar.setBehaviorAsync('overlay-swipe');
+    await NavigationBar.setStyle('dark');
+    await NavigationBar.setVisibilityAsync('hidden');
+  } catch (error) {
+    console.warn('Unable to enable immersive fullscreen mode', error);
+  }
+}
 
 export default function Layout() {
+  const [fontsLoaded] = useFonts(appFontAssets);
+
+  useEffect(() => {
+    void applyImmersiveFullscreen();
+
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void applyImmersiveFullscreen();
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, []);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  applyAppFontDefaults();
+
   return (
-    <ProfileProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="game" />
-        <Stack.Screen name="create-room" />
-        <Stack.Screen name="matchmaking" />
-        <Stack.Screen name="play-ai" />
-        <Stack.Screen name="shop" />
-        <Stack.Screen name="transfer" />
-        <Stack.Screen name="wallet-history" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </ProfileProvider>
+    <SafeAreaProvider>
+      <ProfileProvider>
+        <StatusBar hidden translucent backgroundColor="transparent" style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'none',
+            contentStyle: {
+              backgroundColor: '#050b22',
+            },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="forgot-password" />
+          <Stack.Screen name="verify-email" />
+          <Stack.Screen name="auth-callback" />
+          <Stack.Screen name="reset-password" />
+          <Stack.Screen name="delete-account" />
+          <Stack.Screen name="game" />
+          <Stack.Screen name="create-room" />
+          <Stack.Screen name="matchmaking" />
+          <Stack.Screen name="play-ai" />
+          <Stack.Screen name="transfer" />
+          <Stack.Screen name="wallet-history" />
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </ProfileProvider>
+    </SafeAreaProvider>
   );
 }

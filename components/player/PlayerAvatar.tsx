@@ -1,4 +1,5 @@
-import { Image, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
+import { View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
 
 import { getAvatarSource, type AvatarId } from '@/constants/avatars';
 
@@ -31,7 +32,9 @@ export function PlayerAvatar({
       <Image
         source={getAvatarSource(avatarId)}
         style={[{ width: size, height: size }, imageStyle]}
-        resizeMode="cover"
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={0}
       />
     </View>
   );

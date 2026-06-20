@@ -21,6 +21,7 @@ DECLARE
   v_has_existing_hands boolean := false;
   v_is_next_hand boolean := false;
   v_round_winner_player_id uuid := NULL;
+  v_has_playable_existing_hand boolean := false;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Authentication required';
@@ -71,10 +72,30 @@ BEGIN
   v_is_next_hand := COALESCE(v_room.state ->> 'roundWinnerPlayerId', '') <> '';
   v_round_winner_player_id := NULLIF(v_room.state ->> 'roundWinnerPlayerId', '')::uuid;
 
-  v_has_existing_hands :=
+  v_has_playable_existing_hand :=
     FOUND
-    AND NOT v_is_next_hand
     AND COALESCE(v_room.state ->> 'winningTeamId', '') = ''
+    AND COALESCE(v_room.state ->> 'roundWinnerPlayerId', '') = ''
+    AND COALESCE(v_room.state ->> 'status', '') = 'started'
+    AND jsonb_typeof(COALESCE(v_private.hands, '[]'::jsonb)) = 'array'
+    AND jsonb_array_length(COALESCE(v_private.hands, '[]'::jsonb)) >= 2
+    AND jsonb_typeof(COALESCE(v_private.hands -> 0, '[]'::jsonb)) = 'array'
+    AND jsonb_typeof(COALESCE(v_private.hands -> 1, '[]'::jsonb)) = 'array'
+    AND jsonb_array_length(COALESCE(v_private.hands -> 0, '[]'::jsonb)) > 0
+    AND jsonb_array_length(COALESCE(v_private.hands -> 1, '[]'::jsonb)) > 0;
+
+  IF v_room.status = 'active' AND v_has_playable_existing_hand THEN
+    RETURN jsonb_build_object(
+      'status', 'already_started',
+      'room_id', p_room_id,
+      'current_turn_player_id', v_room.current_turn_player_id,
+      'started_next_hand', false
+    );
+  END IF;
+
+  v_has_existing_hands :=
+    v_has_playable_existing_hand
+    AND NOT v_is_next_hand
     AND jsonb_typeof(COALESCE(v_private.hands, '[]'::jsonb)) = 'array'
     AND jsonb_array_length(COALESCE(v_private.hands, '[]'::jsonb)) >= 2
     AND jsonb_typeof(COALESCE(v_private.hands -> 0, '[]'::jsonb)) = 'array'

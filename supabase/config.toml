@@ -1,0 +1,31 @@
+project_id = "aznif"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:8081"
+additional_redirect_urls = ["dominoapp://**"]
+enable_signup = true
+
+[functions.process_bot_turns]
+verify_jwt = false
+
+[functions.submit_one_vs_one]
+verify_jwt = true
+
+[functions.submit_two_vs_two]
+verify_jwt = true
+
+[functions.delete_account]
+verify_jwt = true

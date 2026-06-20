@@ -4,6 +4,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import { resolveMatchOutcome } from '../../../lib/game/match-rules.ts';
 import { canHandMove } from '../_shared/kozel-engine.ts';
+import { pipTotal, roundToNearestFive } from '../_shared/game-utils.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('EXPO_PUBLIC_SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -11,19 +12,14 @@ const svc = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '', {
   auth: { persistSession: false },
 });
 
+const MAX_ONE_VS_ONE_DRAWS_PER_TURN = 3;
+const TURN_DURATION_MS = 20_000;
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
-
-function pipTotal(hand: any[]) {
-  return hand.reduce((sum, tile) => sum + Number(tile.left ?? 0) + Number(tile.right ?? 0), 0);
-}
-
-function roundToNearestFive(value: number) {
-  return Math.round(value / 5) * 5;
 }
 
 function hasPlayable(playerIndex: number, hands: any[][], state: any) {
@@ -47,12 +43,12 @@ export default async function handler(req: Request) {
     if (userError || !userData?.user) return json({ error: 'Invalid auth token' }, 401);
 
     const user = userData.user;
-    const { room_id } = await req.json();
+    const { room_id, timed_out: timedOut = false } = await req.json();
     if (!room_id) return json({ error: 'Missing room_id' }, 400);
 
     const { data: room, error: roomErr } = await svc
       .from('one_vs_one_rooms')
-      .select('id, status, state, version, current_turn_player_id')
+      .select('id, status, state, version, current_turn_player_id, updated_at')
       .eq('id', room_id)
       .maybeSingle();
 
@@ -72,11 +68,18 @@ export default async function handler(req: Request) {
     if (playersErr) throw playersErr;
     if (!Array.isArray(players) || players.length !== 2) return json({ error: '1v1 requires exactly 2 players' }, 400);
 
-    const playerIndex = players.findIndex((player: any) => player.user_id === user.id);
-    if (playerIndex === -1) return json({ error: 'You are not a player in this 1v1 room' }, 403);
+    const requestPlayerIndex = players.findIndex((player: any) => player.user_id === user.id);
+    if (requestPlayerIndex === -1) return json({ error: 'You are not a player in this 1v1 room' }, 403);
 
     const currentTurnPlayerId = state.currentTurnPlayerId ?? null;
-    if (currentTurnPlayerId !== user.id) {
+    const playerIndex = players.findIndex((player: any) => player.user_id === currentTurnPlayerId);
+    if (playerIndex === -1) return json({ error: 'Active player is missing' }, 409);
+    if (timedOut) {
+      const turnStartedAt = Date.parse(state.turnStartedAt ?? room.updated_at ?? '');
+      if (!Number.isFinite(turnStartedAt) || Date.now() - turnStartedAt < TURN_DURATION_MS) {
+        return json({ error: 'Turn timer has not expired' }, 409);
+      }
+    } else if (currentTurnPlayerId !== user.id) {
       const details = {
         reason: 'not_your_turn',
         room_id,
@@ -84,7 +87,7 @@ export default async function handler(req: Request) {
         roomCurrentTurnPlayerId: room.current_turn_player_id ?? null,
         stateCurrentTurnPlayerId: state.currentTurnPlayerId ?? null,
         effectiveCurrentTurnPlayerId: currentTurnPlayerId,
-        playerIndex,
+        playerIndex: requestPlayerIndex,
       };
 
       console.warn('submit_one_vs_one action=pass Not your turn', details);
@@ -92,7 +95,7 @@ export default async function handler(req: Request) {
       return json({ error: 'Not your turn', details }, 403);
     }
 
-    if (!state.board?.centerTile) return json({ error: 'Cannot pass before opening move' }, 400);
+    if (!timedOut && !state.board?.centerTile) return json({ error: 'Cannot pass before opening move' }, 400);
 
     const { data: privateState, error: privateErr } = await svc
       .from('one_vs_one_private_states')
@@ -106,13 +109,19 @@ export default async function handler(req: Request) {
 
     const hands = Array.isArray(privateState.hands) ? privateState.hands : [];
     const boneyard = Array.isArray(privateState.boneyard) ? privateState.boneyard : [];
+    const currentTurnDrawCount = Number(state.currentTurnDrawCount ?? 0);
 
-    if (hasPlayable(playerIndex, hands, state)) return json({ error: 'You have a playable tile' }, 400);
-    if (boneyard.length > 0) return json({ error: 'You must draw before passing' }, 400);
+    if (!timedOut && hasPlayable(playerIndex, hands, state)) return json({ error: 'You have a playable tile' }, 400);
+    if (
+      !timedOut && boneyard.length > 0 &&
+      currentTurnDrawCount < MAX_ONE_VS_ONE_DRAWS_PER_TURN
+    ) {
+      return json({ error: 'You must draw before passing' }, 400);
+    }
 
     const nextPlayerIndex = (playerIndex + 1) % 2;
     const nextPlayerId = players[nextPlayerIndex]?.user_id ?? null;
-    const blockedPasses = Array.from(new Set([...(state.blockedPasses ?? []), user.id]));
+    const blockedPasses = Array.from(new Set([...(state.blockedPasses ?? []), currentTurnPlayerId]));
 
     let nextScores = {
       teamA: Number(state.teamScores?.teamA ?? 0),
@@ -129,7 +138,9 @@ export default async function handler(req: Request) {
       mode: '1v1',
       currentTurnPlayerId: nextPlayerId,
       canDrawTile: false,
-      lastPassedPlayerId: user.id,
+      currentTurnDrawCount: 0,
+      lastPassedPlayerId: currentTurnPlayerId,
+      turnStartedAt: new Date().toISOString(),
       lastScoringEvent: null,
       blockedPasses,
     };
@@ -175,49 +186,17 @@ export default async function handler(req: Request) {
       currentTurnPlayerId: nextTurnPlayerId,
     };
 
-    const { data: updatedRoom, error: updateErr } = await svc
-      .from('one_vs_one_rooms')
-      .update({
-        state: nextState,
-        version: Number(room.version ?? 0) + 1,
-        current_turn_player_id: nextTurnPlayerId,
-        status: nextStatus,
-      })
-      .eq('id', room_id)
-      .eq('version', room.version)
-      .select()
-      .maybeSingle();
-
-    if (updateErr) throw updateErr;
-    if (!updatedRoom) return json({ error: 'Stale 1v1 state, please retry' }, 409);
-
-    const { error: privateUpdateErr } = await svc
-      .from('one_vs_one_private_states')
-      .upsert({ room_id, hands: finalHands, boneyard: finalBoneyard }, { onConflict: 'room_id' });
-
-    if (privateUpdateErr) throw privateUpdateErr;
-
-    if (nextStatus === 'finished') {
-      const { error: rewardErr } = await svc.rpc('settle_finished_match_rewards', {
-        p_mode: '1v1',
-        p_room_id: room_id,
-      });
-
-      if (rewardErr) throw rewardErr;
-    }
-
-    const { data: sequence, error: seqErr } = await svc.rpc('next_one_vs_one_move_sequence', { p_room_id: room_id });
-    if (seqErr) throw seqErr;
-
-    const { error: moveErr } = await svc.from('one_vs_one_moves').insert({
-      room_id,
-      player_id: user.id,
-      sequence,
-      action: 'pass_turn',
-      payload: { nextPlayerId: nextTurnPlayerId, blockedRoundResolved: Boolean(nextState.roundWinnerPlayerId) },
+    const { data: updatedRoom, error: commitError } = await svc.rpc('commit_multiplayer_action', {
+      p_mode: '1v1', p_room_id: room_id, p_expected_version: room.version,
+      p_state: nextState, p_hands: finalHands, p_boneyard: finalBoneyard,
+      p_current_turn_player_id: nextTurnPlayerId, p_status: nextStatus,
+      p_player_id: currentTurnPlayerId, p_action: 'pass_turn',
+      p_payload: { nextPlayerId: nextTurnPlayerId, timedOut, blockedRoundResolved: Boolean(nextState.roundWinnerPlayerId) },
     });
-
-    if (moveErr) throw moveErr;
+    if (commitError) {
+      if (commitError.message?.includes('STALE_GAME_STATE')) return json({ error: 'Stale 1v1 state, please retry' }, 409);
+      throw commitError;
+    }
 
     if (nextState.roundWinnerPlayerId && nextStatus !== 'finished') {
       const { error: forfeitErr } = await svc.rpc('resolve_one_vs_one_round_leave_forfeits', {
@@ -226,7 +205,15 @@ export default async function handler(req: Request) {
       if (forfeitErr) throw forfeitErr;
     }
 
-    return json({ ok: true, state: { ...nextState, myHand: finalHands[playerIndex] ?? [] }, room: updatedRoom }, 200);
+    return json({
+      ok: true,
+      state: {
+        ...nextState,
+        myHand: finalHands[requestPlayerIndex] ?? [],
+        myHandOwnerId: user.id,
+      },
+      room: updatedRoom,
+    }, 200);
   } catch (err) {
     console.error('submit_one_vs_one action=pass error', err);
     return json({ error: err?.message ?? String(err) }, 500);

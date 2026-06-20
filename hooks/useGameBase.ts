@@ -24,7 +24,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     getInitialDeal,
+    NEXT_ROUND_COUNTDOWN_SECONDS,
     pickPreferredBranch,
+    PLAYER_TURN_DURATION_SECONDS,
+    ROUND_RESULT_REVEAL_MS,
     SeatDefinition,
 } from './gameShared';
 
@@ -109,7 +112,7 @@ export function useGameBase(config: GameConfig): MockGameState {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [leaderIndex, setLeaderIndex] = useState(0);
   const [nextRoundLeaderIndex, setNextRoundLeaderIndex] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(PLAYER_TURN_DURATION_SECONDS);
 
   const [board, setBoard] = useState<KozelBoardState>(() => createEmptyBoard());
   const [hands, setHands] = useState<DominoTileData[][]>(initialDeal.hands);
@@ -143,7 +146,9 @@ export function useGameBase(config: GameConfig): MockGameState {
 
   const [phase, setPhase] = useState<RoundPhase>('playing');
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
-  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(3);
+  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(
+    NEXT_ROUND_COUNTDOWN_SECONDS,
+  );
 
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -298,7 +303,6 @@ export function useGameBase(config: GameConfig): MockGameState {
 
     setBoneyard(nextBoneyard);
     setBoneyardCount(nextBoneyard.length);
-    setTimeLeft(10);
 
     return true;
   };
@@ -327,7 +331,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     setLastScoringEvent(null);
 
     setCurrentIndex(opening.starterIndex);
-    setTimeLeft(10);
+    setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
   }, [hands]);
 
   useEffect(() => {
@@ -375,7 +379,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     // after reveal, move to countdown
     phaseTimerRef.current = setTimeout(() => {
       setPhase('next_round_countdown');
-      setNextRoundCountdown(3);
+      setNextRoundCountdown(NEXT_ROUND_COUNTDOWN_SECONDS);
 
       // start countdown interval
       countdownIntervalRef.current = setInterval(() => {
@@ -394,7 +398,7 @@ export function useGameBase(config: GameConfig): MockGameState {
           return prev - 1;
         });
       }, 1000);
-    }, 2500);
+    }, ROUND_RESULT_REVEAL_MS);
 
     return () => {
       if (phaseTimerRef.current) {
@@ -441,7 +445,7 @@ export function useGameBase(config: GameConfig): MockGameState {
 
     setLeaderIndex(nextStarterIndex);
     setCurrentIndex(nextStarterIndex);
-    setTimeLeft(10);
+    setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
 
     setPhase('playing');
     nextRoundScheduledRef.current = false;
@@ -457,7 +461,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     );
   };
 
-  const passTurnInternal = (playerIndex?: number) => {
+  const passTurnInternal = (playerIndex?: number, force = false) => {
     if (roundWinnerPlayerId) return false;
     if (winningTeamId) return false;
 
@@ -476,6 +480,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     );
 
     if (
+      !force &&
       config.shouldRefusePassBecauseDrawAvailable(
         actualIndex,
         board,
@@ -489,7 +494,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     showPassBadge(player.id);
     setLastScoringEvent(null);
     setCurrentIndex((actualIndex + 1) % seats.length);
-    setTimeLeft(10);
+    setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
 
     return true;
   };
@@ -589,7 +594,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     }
 
     setCurrentIndex((playerIndex + 1) % seats.length);
-    setTimeLeft(10);
+    setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
 
     return true;
   };
@@ -620,11 +625,11 @@ export function useGameBase(config: GameConfig): MockGameState {
           ) {
             const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
             resolveBlockedRound(hands, blockerIndex);
-            return 10;
+            return PLAYER_TURN_DURATION_SECONDS;
           }
 
-          passTurnInternal(currentIndex);
-          return 10;
+          passTurnInternal(currentIndex, true);
+          return PLAYER_TURN_DURATION_SECONDS;
         }
 
         return prev - 1;
@@ -650,7 +655,7 @@ export function useGameBase(config: GameConfig): MockGameState {
   const players: Player[] = seats.map((seat, index) => ({
     ...seat,
     isActive: index === currentIndex,
-    timeLeft: index === currentIndex ? timeLeft : 10,
+    timeLeft: index === currentIndex ? timeLeft : PLAYER_TURN_DURATION_SECONDS,
     tileCount: hands[index]?.length ?? 0,
     score: teamScores[seat.teamId] ?? 0,
     isLeader: index === leaderIndex,

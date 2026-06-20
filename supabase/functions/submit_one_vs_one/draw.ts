@@ -3,6 +3,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import { canHandMove } from '../_shared/kozel-engine.ts';
+import { handCounts } from '../_shared/game-utils.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('EXPO_PUBLIC_SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -10,6 +11,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const svc = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '', {
   auth: { persistSession: false },
 });
+
+const MAX_ONE_VS_ONE_DRAWS_PER_TURN = 3;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -23,6 +26,10 @@ function canDrawForPlayer(playerIndex: number, hands: any[][], boneyard: any[], 
     return false;
   }
 
+  if (Number(state.currentTurnDrawCount ?? 0) >= MAX_ONE_VS_ONE_DRAWS_PER_TURN) {
+    return false;
+  }
+
   return !canHandMove(
     hands[playerIndex] ?? [],
     state.board,
@@ -30,10 +37,6 @@ function canDrawForPlayer(playerIndex: number, hands: any[][], boneyard: any[], 
     state.isOpeningRound ?? state.isFirstRound ?? true,
     typeof state.openingDouble === 'number' ? state.openingDouble : null,
   );
-}
-
-function handCounts(hands: any[][]) {
-  return hands.map((hand) => hand.length);
 }
 
 export default async function handler(req: Request) {
@@ -117,7 +120,7 @@ export default async function handler(req: Request) {
     const opponentPlayerId = opponent?.user_id ?? currentTurnPlayerId;
 
     const shouldAutoPass =
-      !stillHasPlayableTile && nextTurnDrawCount >= 3;
+      !stillHasPlayableTile && nextTurnDrawCount >= MAX_ONE_VS_ONE_DRAWS_PER_TURN;
 
     const finalTurnPlayerId = shouldAutoPass
       ? opponentPlayerId
@@ -127,52 +130,31 @@ export default async function handler(req: Request) {
       ...state,
       mode: '1v1',
       currentTurnPlayerId: finalTurnPlayerId,
+      ...(shouldAutoPass ? { turnStartedAt: new Date().toISOString() } : {}),
       handCounts: handCounts(nextHands),
       boneyardCount: nextBoneyard.length,
-      canDrawTile: !shouldAutoPass && !stillHasPlayableTile,
+      canDrawTile: !shouldAutoPass && !stillHasPlayableTile && nextBoneyard.length > 0,
       currentTurnDrawCount: shouldAutoPass ? 0 : nextTurnDrawCount,
       lastDrawnTile: null,
       lastPassedPlayerId: shouldAutoPass ? user.id : null,
       blockedPasses: shouldAutoPass ? [user.id] : [],
     };
 
-    const { data: updatedRoom, error: updateErr } = await svc
-      .from('one_vs_one_rooms')
-      .update({
-        state: nextState,
-        version: Number(room.version ?? 0) + 1,
-        current_turn_player_id: finalTurnPlayerId,
-      })
-      .eq('id', room_id)
-      .eq('version', room.version)
-      .select()
-      .maybeSingle();
-
-    if (updateErr) throw updateErr;
-    if (!updatedRoom) return json({ error: 'Stale 1v1 state, please retry' }, 409);
-
-    const { error: privateUpdateErr } = await svc
-      .from('one_vs_one_private_states')
-      .upsert({ room_id, hands: nextHands, boneyard: nextBoneyard }, { onConflict: 'room_id' });
-
-    if (privateUpdateErr) throw privateUpdateErr;
-
-    const { data: sequence, error: seqErr } = await svc.rpc('next_one_vs_one_move_sequence', { p_room_id: room_id });
-    if (seqErr) throw seqErr;
-
-    const { error: moveErr } = await svc.from('one_vs_one_moves').insert({
-      room_id,
-      player_id: user.id,
-      sequence,
-      action: shouldAutoPass ? 'draw_tile_auto_pass' : 'draw_tile',
-      payload: {
+    const { data: updatedRoom, error: commitError } = await svc.rpc('commit_multiplayer_action', {
+      p_mode: '1v1', p_room_id: room_id, p_expected_version: room.version,
+      p_state: nextState, p_hands: nextHands, p_boneyard: nextBoneyard,
+      p_current_turn_player_id: finalTurnPlayerId, p_status: null,
+      p_player_id: user.id, p_action: shouldAutoPass ? 'draw_tile_auto_pass' : 'draw_tile',
+      p_payload: {
         remainingBoneyard: nextBoneyard.length,
         currentTurnDrawCount: nextTurnDrawCount,
         autoPassed: shouldAutoPass,
       },
     });
-
-    if (moveErr) throw moveErr;
+    if (commitError) {
+      if (commitError.message?.includes('STALE_GAME_STATE')) return json({ error: 'Stale 1v1 state, please retry' }, 409);
+      throw commitError;
+    }
 
     return json(
       {

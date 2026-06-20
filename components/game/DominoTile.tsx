@@ -1,5 +1,6 @@
 import { DominoTileData } from '@/types/game';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
+import { StyleSheet, View } from 'react-native';
 
 const dominoImages: Record<string, any> = {
   '0-0': require('@/assets/domino-set/0-0.webp'),
@@ -139,8 +140,9 @@ export default function DominoTile({
         <Image
           source={dominoImages[imageKey]}
           style={styles.image}
-          resizeMode="contain"
-          fadeDuration={0}
+          contentFit="contain"
+          transition={0}
+          cachePolicy="memory-disk"
         />
       </View>
     </View>

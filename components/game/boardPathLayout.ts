@@ -1,95 +1,97 @@
-import { KozelBranch } from '@/types/game';
-import { DominoTileDirection } from './DominoTile';
+import { DominoTileDirection } from '@/components/game/DominoTile';
+import { GameState, KozelBranch } from '@/types/game';
 
-export type BoardPathSlot = {
-  x: number;
-  y: number;
-  direction: DominoTileDirection;
-};
+export const BOARD_EDGE_PADDING = 12;
+export const TILE_GAP = 2;
 
-const HORIZONTAL_STEP = 86;
-const VERTICAL_STEP = 86;
-const RETURN_STEP = 56;
-const CENTER_CLEARANCE = 44;
-const EDGE_CLEARANCE = 42;
+export type BoardTile = GameState['board']['branches'][KozelBranch]['tiles'][number];
 
-function slotsThatFit(available: number, step: number, requested: number) {
-  return Math.max(1, Math.min(requested, Math.floor(available / step)));
+function isHorizontalDirection(direction: DominoTileDirection) {
+  return direction === 'left' || direction === 'right';
 }
 
-export function getBranchPathSlots(
-  branch: KozelBranch,
-  count: number,
-  boardWidth: number,
-  boardHeight: number,
-): BoardPathSlot[] {
-  if (count <= 0) return [];
+export function getTileSlotSize(
+  tile: BoardTile,
+  direction: DominoTileDirection,
+  tileWidth: number,
+  tileHeight: number,
+) {
+  const isDouble = tile.left === tile.right;
+  const isHorizontal = isHorizontalDirection(direction);
 
-  if (branch === 'left' || branch === 'right') {
-    const xSign = branch === 'right' ? 1 : -1;
-    const ySign = branch === 'right' ? 1 : -1;
-    const straight = slotsThatFit(
-      Math.max(HORIZONTAL_STEP, boardWidth / 2 - CENTER_CLEARANCE - EDGE_CLEARANCE),
-      HORIZONTAL_STEP,
-      count,
-    );
-    const bend = slotsThatFit(
-      Math.max(VERTICAL_STEP, boardHeight / 2 - EDGE_CLEARANCE),
-      VERTICAL_STEP,
-      Math.max(0, count - straight),
-    );
-    const cornerX = xSign * (CENTER_CLEARANCE + HORIZONTAL_STEP * straight);
-
-    return Array.from({ length: count }, (_, index) => {
-      if (index < straight) {
-        return {
-          x: xSign * (CENTER_CLEARANCE + HORIZONTAL_STEP * (index + 1)),
-          y: 0,
-          direction: branch,
-        };
-      }
-
-      const bendIndex = index - straight;
-      if (bendIndex < bend) {
-        return {
-          x: cornerX,
-          y: ySign * VERTICAL_STEP * (bendIndex + 1),
-          direction: ySign > 0 ? 'down' : 'up',
-        };
-      }
-
-      const returnIndex = bendIndex - bend;
-      return {
-        x: cornerX - xSign * RETURN_STEP * (returnIndex + 1),
-        y: ySign * VERTICAL_STEP * bend,
-        direction: xSign > 0 ? 'left' : 'right',
-      };
-    });
+  if (isHorizontal) {
+    return {
+      slotWidth: isDouble ? tileWidth : tileHeight,
+      slotHeight: isDouble ? tileHeight : tileWidth,
+    };
   }
 
-  const ySign = branch === 'down' ? 1 : -1;
-  const xSign = branch === 'up' ? 1 : -1;
-  const straight = slotsThatFit(
-    Math.max(VERTICAL_STEP, boardHeight / 2 - CENTER_CLEARANCE - EDGE_CLEARANCE),
-    VERTICAL_STEP,
-    count,
+  return {
+    slotWidth: isDouble ? tileHeight : tileWidth,
+    slotHeight: isDouble ? tileWidth : tileHeight,
+  };
+}
+
+export function getPathFootprint(
+  tile: BoardTile,
+  direction: DominoTileDirection,
+  tileWidth: number,
+  tileHeight: number,
+) {
+  const size = getTileSlotSize(tile, direction, tileWidth, tileHeight);
+  return isHorizontalDirection(direction) ? size.slotWidth : size.slotHeight;
+}
+
+export function estimateHorizontalWidth(
+  tiles: BoardTile[],
+  tileWidth: number,
+  tileHeight: number,
+) {
+  return tiles.reduce(
+    (sum, tile) =>
+      sum + getPathFootprint(tile, 'right', tileWidth, tileHeight) + TILE_GAP,
+    0,
   );
-  const cornerY = ySign * (CENTER_CLEARANCE + VERTICAL_STEP * straight);
+}
 
-  return Array.from({ length: count }, (_, index) => {
-    if (index < straight) {
-      return {
-        x: 0,
-        y: ySign * (CENTER_CLEARANCE + VERTICAL_STEP * (index + 1)),
-        direction: branch,
-      };
-    }
+export function estimateVerticalHeight(
+  tiles: BoardTile[],
+  tileWidth: number,
+  tileHeight: number,
+) {
+  return tiles.reduce(
+    (sum, tile) =>
+      sum + getPathFootprint(tile, 'down', tileWidth, tileHeight) + TILE_GAP,
+    0,
+  );
+}
 
-    const bendIndex = index - straight;
-    return {
-      x: xSign * RETURN_STEP * (bendIndex + 1),
-      y: cornerY,
-      direction: xSign > 0 ? 'right' : 'left',
-    };
-  });
+export function getSnapValue(value: number) {
+  return Math.round(value);
+}
+
+export function getStraightSegmentCount(
+  tiles: BoardTile[],
+  availableSpace: number,
+  tileWidth: number,
+  tileHeight: number,
+  direction: DominoTileDirection,
+) {
+  if (!tiles.length) return 0;
+  if (availableSpace <= 0) return 1;
+
+  let used = 0;
+  let count = 0;
+
+  for (const tile of tiles) {
+    const footprint = getPathFootprint(tile, direction, tileWidth, tileHeight);
+
+    if (count > 0 && used + footprint > availableSpace) break;
+    if (count === 0 && footprint > availableSpace) return 1;
+
+    used += footprint + TILE_GAP;
+    count += 1;
+  }
+
+  return Math.max(1, count);
 }

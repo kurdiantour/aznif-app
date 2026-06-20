@@ -1,0 +1,2 @@
+export const MOBILE_HORIZONTAL_INSET = 36;
+export const TABLET_HORIZONTAL_INSET = 30;

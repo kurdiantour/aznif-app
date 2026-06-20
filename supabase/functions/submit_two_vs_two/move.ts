@@ -4,6 +4,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getNextHandKingIndex, NEXT_HAND_OPENING_STATE } from '../../../lib/game/king-rules.ts';
 import { applyMove, canAnyPlayerMove, createEmptyBoard, isValidMove } from '../_shared/kozel-engine.ts';
 import { resolveMatchOutcome } from '../../../lib/game/match-rules.ts';
+import { handCounts, isBoardEmpty, isSameTile, pipTotal, roundToNearestFive } from '../_shared/game-utils.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('EXPO_PUBLIC_SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -34,32 +35,6 @@ function dealHands() {
     [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
   }
   return { hands: [tiles.slice(0, 7), tiles.slice(7, 14), tiles.slice(14, 21), tiles.slice(21, 28)], boneyard: [] };
-}
-
-function isSameTile(a: any, b: any) {
-  if (!a || !b) return false;
-  if (a.id && b.id && a.id === b.id) return true;
-  return (
-    (Number(a.left) === Number(b.left) && Number(a.right) === Number(b.right)) ||
-    (Number(a.left) === Number(b.right) && Number(a.right) === Number(b.left))
-  );
-}
-
-function isBoardEmpty(board: any) {
-  if (!board) return true;
-  return !board.centerTile && !Object.values(board.branches ?? {}).some((branch: any) => Array.isArray(branch?.tiles) && branch.tiles.length > 0);
-}
-
-function pipTotal(hand: any[]) {
-  return hand.reduce((sum, tile) => sum + Number(tile.left ?? 0) + Number(tile.right ?? 0), 0);
-}
-
-function roundToNearestFive(value: number) {
-  return Math.round(value / 5) * 5;
-}
-
-function handCounts(hands: any[][]) {
-  return hands.map((hand) => hand.length);
 }
 
 function scoreOpponentPips(hands: any[][], players: any[], winnerTeamId: string) {
@@ -197,6 +172,7 @@ export default async function handler(req: Request) {
       handCounts: handCounts(nextHands),
       boneyardCount: 0,
       currentTurnPlayerId: nextTurnPlayerId,
+      turnStartedAt: new Date().toISOString(),
       isOpeningRound: false,
       isFirstRound: false,
       openingDouble: null,
@@ -257,40 +233,17 @@ export default async function handler(req: Request) {
       }
     }
 
-    const { data: updatedRoom, error: updateErr } = await svc
-      .from('two_vs_two_rooms')
-      .update({ state: nextState, version: Number(room.version ?? 0) + 1, current_turn_player_id: nextTurnPlayerId, status: nextStatus })
-      .eq('id', room_id)
-      .eq('version', room.version)
-      .select()
-      .maybeSingle();
-
-    if (updateErr) throw updateErr;
-    if (!updatedRoom) return json({ error: 'Stale 2v2 state, please retry' }, 409);
-
-    const { error: privateUpdateErr } = await svc.from('two_vs_two_private_states').upsert({ room_id, hands: finalHands, boneyard: finalBoneyard }, { onConflict: 'room_id' });
-    if (privateUpdateErr) throw privateUpdateErr;
-
-    if (nextStatus === 'finished') {
-      const { error: rewardErr } = await svc.rpc('settle_finished_match_rewards', {
-        p_mode: '2v2',
-        p_room_id: room_id,
-      });
-
-      if (rewardErr) throw rewardErr;
-    }
-
-    const { data: sequence, error: seqErr } = await svc.rpc('next_two_vs_two_move_sequence', { p_room_id: room_id });
-    if (seqErr) throw seqErr;
-
-    const { error: moveErr } = await svc.from('two_vs_two_moves').insert({
-      room_id,
-      player_id: user.id,
-      sequence,
-      action: 'play_tile',
-      payload: { tile, branch: branch ?? null, moveScore, wasOpeningMove: isOpeningRound && boardEmpty },
+    const { data: updatedRoom, error: commitError } = await svc.rpc('commit_multiplayer_action', {
+      p_mode: '2v2', p_room_id: room_id, p_expected_version: room.version,
+      p_state: nextState, p_hands: finalHands, p_boneyard: finalBoneyard,
+      p_current_turn_player_id: nextTurnPlayerId, p_status: nextStatus,
+      p_player_id: user.id, p_action: 'play_tile',
+      p_payload: { tile, branch: branch ?? null, moveScore, wasOpeningMove: isOpeningRound && boardEmpty },
     });
-    if (moveErr) throw moveErr;
+    if (commitError) {
+      if (commitError.message?.includes('STALE_GAME_STATE')) return json({ error: 'Stale 2v2 state, please retry' }, 409);
+      throw commitError;
+    }
 
     if (roundWinnerPlayerId && nextStatus !== 'finished') {
       const { error: forfeitErr } = await svc.rpc('resolve_two_vs_two_round_leave_forfeits', {

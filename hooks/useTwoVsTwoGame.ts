@@ -1,8 +1,14 @@
-import { canHandMove, createEmptyBoard, getPlayableBranches } from '@/lib/game/kozel-engine';
+import { applyMove, createEmptyBoard } from '@/lib/game/kozel-engine';
 import {
   submitTwoVsTwoMove,
   submitTwoVsTwoPass,
+  MultiplayerRequestError,
 } from '@/lib/multiplayer/multiplayerApi';
+import {
+  boardContainsMove,
+  getSnapshotVersion,
+  type PendingMultiplayerMove,
+} from '@/lib/multiplayer/optimisticMove';
 import { supabase } from '@/lib/supabase';
 import type {
     DominoTileData,
@@ -14,29 +20,27 @@ import type {
     ScoringEvent,
     TeamId,
 } from '@/types/game';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MockGameState } from './useGameBase';
+import { getAvailableBranches, handHasPlayableTile } from './gameRuleQueries';
+import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
+import { runMultiplayerAction } from './multiplayerAction';
+import { buildRoundResult } from './roundResult';
+import { useRoundLifecycle } from './useRoundLifecycle';
+import {
+  NEXT_ROUND_COUNTDOWN_SECONDS,
+  PLAYER_TURN_DURATION_SECONDS,
+  ROUND_RESULT_REVEAL_MS,
+} from './gameShared';
 
 type UseTwoVsTwoResult = Omit<MockGameState, 'playTile' | 'passTurn'> & {
   loading: boolean;
   error: string | null;
   rawState: any;
+  pendingMove: PendingMultiplayerMove | null;
   playTile: (tile: DominoTileData, branch?: KozelBranch) => Promise<any>;
   passTurn: () => Promise<boolean>;
 };
-
-function getDisplaySeat(
-  playerIndex: number,
-  myPlayerIndex: number,
-): 'bottom' | 'top' | 'left' | 'right' {
-  const totalSeats = 4;
-  const offset = (playerIndex - myPlayerIndex + totalSeats) % totalSeats;
-
-  if (offset === 0) return 'bottom';
-  if (offset === 1) return 'right';
-  if (offset === 2) return 'top';
-  return 'left';
-}
 
 export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const [loading, setLoading] = useState(true);
@@ -45,15 +49,59 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const [playersRows, setPlayersRows] = useState<any[]>([]);
   const [profileById, setProfileById] = useState<Map<string, any>>(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingMultiplayerMove | null>(null);
+  const [turnTimeLeft, setTurnTimeLeft] = useState(PLAYER_TURN_DURATION_SECONDS);
 
   const roomChannelRef = useRef<any>(null);
   const playersChannelRef = useRef<any>(null);
-  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const botTurnInFlightRef = useRef(false);
+  const latestVersionRef = useRef(-1);
+  const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
+  const timeoutPassInFlightRef = useRef(false);
 
-  const [phase, setPhase] = useState<RoundPhase>('playing');
-  const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
-  const [nextRoundCountdown, setNextRoundCountdown] = useState<number>(5);
+
+  useEffect(() => {
+    latestVersionRef.current = -1;
+    pendingMoveRef.current = null;
+    setPendingMove(null);
+  }, [roomId]);
+
+  const applySnapshot = useCallback((snapshot: any) => {
+    const version = getSnapshotVersion(snapshot);
+    if (version >= 0 && version < latestVersionRef.current) return false;
+    if (version >= 0) latestVersionRef.current = version;
+
+    const room = snapshot?.room ?? snapshot ?? {};
+    const state = snapshot?.state ?? room?.state ?? {};
+    const nextRawState = {
+      ...room,
+      ...state,
+      mode: '2v2',
+      currentTurnPlayerId:
+        state?.currentTurnPlayerId ?? room?.current_turn_player_id ?? null,
+    };
+    setRawState(nextRawState);
+    const pending = pendingMoveRef.current;
+    if (
+      pending &&
+      version > pending.baseVersion &&
+      boardContainsMove(nextRawState.board, pending.tile.id, pending.branch)
+    ) {
+      pendingMoveRef.current = null;
+      setPendingMove(null);
+    }
+    return true;
+  }, []);
+
+  const refreshSnapshot = useCallback(async () => {
+    if (!roomId) throw new Error('No 2v2 room id');
+    const { data, error } = await supabase.rpc('get_two_vs_two_snapshot', {
+      p_room_id: roomId,
+    });
+    if (error) throw error;
+    applySnapshot(data);
+    return data;
+  }, [roomId, applySnapshot]);
 
   useEffect(() => {
     if (!roomId) {
@@ -64,33 +112,16 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
     let mounted = true;
 
-    const applySnapshot = (snapshot: any) => {
-      setRawState({
-        ...(snapshot ?? {}),
-        ...(snapshot?.state ?? {}),
-        mode: '2v2',
-        currentTurnPlayerId:
-          snapshot?.state?.currentTurnPlayerId ??
-          snapshot?.current_turn_player_id ??
-          null,
-      });
-    };
-
     const loadRoom = async () => {
-      const { data, error } = await supabase.rpc('get_two_vs_two_snapshot', {
-        p_room_id: roomId,
-      });
-
-      if (error) throw error;
+      const data = await refreshSnapshot();
       if (!mounted) return;
-
-      applySnapshot(data);
+      return data;
     };
 
     const loadPlayers = async () => {
       const { data, error } = await supabase
         .from('two_vs_two_players')
-        .select('id, user_id, player_index, seat, team_id, kind')
+        .select('id, user_id, player_index, seat, team_id, kind, connected, bot_takeover, abandoned')
         .eq('room_id', roomId)
         .order('player_index', { ascending: true });
 
@@ -201,12 +232,26 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
         playersChannelRef.current = null;
       }
     };
-  }, [roomId]);
+  }, [roomId, applySnapshot, refreshSnapshot]);
+
+  useEffect(() => {
+    if (!roomId || !currentUserId) return;
+
+    const heartbeat = async () => {
+      const { error } = await supabase.rpc('two_vs_two_player_heartbeat', {
+        p_room_id: roomId,
+      });
+      if (error) console.warn('2v2 heartbeat failed', error);
+    };
+
+    void heartbeat();
+    const interval = setInterval(() => void heartbeat(), 10_000);
+    return () => clearInterval(interval);
+  }, [roomId, currentUserId]);
 
   const myPlayerIndex = useMemo(() => {
     if (!currentUserId) return -1;
-    const myRow = playersRows.find((row) => row.user_id === currentUserId);
-    return typeof myRow?.player_index === 'number' ? myRow.player_index : -1;
+    return getPlayerIndex(playersRows, (row) => row.user_id === currentUserId);
   }, [playersRows, currentUserId]);
 
   const players = useMemo(() => {
@@ -222,18 +267,20 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       return {
         id: playerId,
         name: profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
-        seat: getDisplaySeat(playerIndex, myPlayerIndex),
+        seat: getRelativeSeat(playerIndex, myPlayerIndex, 4),
         kind: row.kind,
         teamId: row.team_id,
         isActive: playerId === state.currentTurnPlayerId,
-        timeLeft: 10,
+        timeLeft: playerId === state.currentTurnPlayerId
+          ? turnTimeLeft
+          : PLAYER_TURN_DURATION_SECONDS,
         tileCount: playerIndex >= 0 ? handCounts[playerIndex] ?? 0 : 0,
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
       };
     });
-  }, [playersRows, profileById, rawState, myPlayerIndex]);
+  }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft]);
 
   const board: KozelBoardState = rawState?.board ?? createEmptyBoard();
 
@@ -242,6 +289,63 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     rawState?.current_turn_player_id ??
     players[0]?.id ??
     '';
+
+  useEffect(() => {
+    if (!currentTurnPlayerId || rawState?.roundWinnerPlayerId || rawState?.winningTeamId) return;
+    const turnStartedAt = Date.parse(rawState?.turnStartedAt ?? rawState?.updated_at ?? '');
+    const updateTimer = () => {
+      const elapsed = Number.isFinite(turnStartedAt)
+        ? Math.floor((Date.now() - turnStartedAt) / 1000)
+        : 0;
+      setTurnTimeLeft(Math.max(0, PLAYER_TURN_DURATION_SECONDS - elapsed));
+    };
+    updateTimer();
+    const timer = setInterval(updateTimer, 250);
+    return () => clearInterval(timer);
+  }, [currentTurnPlayerId, rawState?.turnStartedAt, rawState?.updated_at, rawState?.roundWinnerPlayerId, rawState?.winningTeamId]);
+
+  useEffect(() => {
+    if (!roomId || loading) return;
+    if (!currentTurnPlayerId || rawState?.winningTeamId || rawState?.roundWinnerPlayerId) return;
+
+    const currentTurnPlayer = playersRows.find(
+      (row) => row.user_id === currentTurnPlayerId,
+    );
+
+    if (
+      !currentTurnPlayer?.bot_takeover ||
+      currentTurnPlayer.connected ||
+      currentTurnPlayer.abandoned
+    ) {
+      return;
+    }
+
+    if (botTurnInFlightRef.current) return;
+    botTurnInFlightRef.current = true;
+
+    void supabase.functions
+      .invoke('process_bot_turns', {
+        body: {
+          mode: '2v2',
+          room_id: roomId,
+        },
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.warn('process_bot_turns 2v2 failed', error);
+        }
+      })
+      .finally(() => {
+        botTurnInFlightRef.current = false;
+      });
+  }, [
+    roomId,
+    loading,
+    currentTurnPlayerId,
+    rawState?.winningTeamId,
+    rawState?.roundWinnerPlayerId,
+    playersRows,
+  ]);
 
   const teamScores: Record<TeamId, number> = {
     teamA: rawState?.teamScores?.teamA ?? 0,
@@ -268,32 +372,12 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     rawState?.isOpeningRound ?? rawState?.isFirstRound ?? false,
   );
 
-  const availableBranchesForTile = (tile: DominoTileData): KozelBranch[] => {
-    try {
-      return getPlayableBranches(
-        tile,
-        board,
-        rawState?.spinnerValue ?? null,
-        isOpeningRound,
-        openingDouble,
-      ) as KozelBranch[];
-    } catch {
-      return [];
-    }
-  };
+  const playabilityContext = { board, spinnerValue: rawState?.spinnerValue ?? null, isOpeningRound, openingDouble };
+  const availableBranchesForTile = (tile: DominoTileData): KozelBranch[] =>
+    getAvailableBranches(tile, playabilityContext);
 
   const hasPlayableTile = useMemo(() => {
-    try {
-      return canHandMove(
-        myHand,
-        board,
-        rawState?.spinnerValue ?? null,
-        isOpeningRound,
-        openingDouble,
-      );
-    } catch {
-      return false;
-    }
+    return handHasPlayableTile(myHand, playabilityContext);
   }, [myHand, board, rawState, isOpeningRound, openingDouble]);
 
   useEffect(() => {
@@ -310,98 +394,58 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
       if (error || !data) return;
 
-      setRawState({
-        ...(data ?? {}),
-        ...(data.state ?? {}),
-        mode: '2v2',
-        currentTurnPlayerId:
-          data.state?.currentTurnPlayerId ??
-          data.current_turn_player_id ??
-          null,
-      });
+      applySnapshot(data);
     }, 700);
 
     return () => clearTimeout(timeout);
-  }, [roomId, rawState?.handCounts, playersRows.length]);
-
-  useEffect(() => {
-    const winnerId = rawState?.roundWinnerPlayerId ?? null;
-    if (!winnerId || rawState?.winningTeamId) return;
-
-    const remainingTilesByPlayer: Record<string, any[]> = {};
-    const remainingPipsByPlayer: Record<string, number> = {};
-
-    const snapshotHands = rawState?.debugPrivateHandsRaw ?? rawState?.privateHands ?? null;
-
-    playersRows.forEach((row) => {
-      const playerId = row.user_id ?? `bot-${row.id}`;
-      const playerIndex = row.player_index;
-      const tiles =
-        Array.isArray(snapshotHands) && typeof playerIndex === 'number'
-          ? snapshotHands[playerIndex] ?? []
-          : [];
-      remainingTilesByPlayer[playerId] = tiles.map((t: any) => ({ ...t }));
-      remainingPipsByPlayer[playerId] = tiles.reduce((s: number, t: any) => s + (t.left ?? 0) + (t.right ?? 0), 0);
-    });
-
-    const winnerTeam = playersRows.find((row) => (row.user_id ?? `bot-${row.id}`) === winnerId)?.team_id;
-    const awardedPoints = rawState?.lastScoringEvent?.points ?? 0;
-
-    setRoundResult({
-      winnerId,
-      winnerTeam,
-      awardedPoints,
-      remainingTilesByPlayer,
-      remainingPipsByPlayer,
-    });
-
-    setPhase('round_result_reveal');
-
-    if (phaseTimerRef.current) {
-      clearTimeout(phaseTimerRef.current);
-      phaseTimerRef.current = null;
-    }
-
-    phaseTimerRef.current = setTimeout(() => {
-      setPhase('next_round_countdown');
-      setNextRoundCountdown(5);
-
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-
-      countdownIntervalRef.current = setInterval(() => {
-        setNextRoundCountdown((prev) => {
-          if (prev <= 1) {
-            if (countdownIntervalRef.current) {
-              clearInterval(countdownIntervalRef.current);
-              countdownIntervalRef.current = null;
-            }
-
-            startNextRound();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }, 5000);
-
-    return () => {
-      if (phaseTimerRef.current) {
-        clearTimeout(phaseTimerRef.current);
-        phaseTimerRef.current = null;
-      }
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-    };
-  }, [rawState?.roundWinnerPlayerId, rawState?.winningTeamId, rawState?.lastScoringEvent, rawState?.debugPrivateHandsRaw, rawState?.privateHands, playersRows]);
+  }, [roomId, rawState?.handCounts, playersRows.length, applySnapshot]);
 
   const playTile = async (tile: DominoTileData, branch?: KozelBranch) => {
     if (!roomId) throw new Error('No 2v2 room id');
-    return submitTwoVsTwoMove(roomId, tile, branch);
+    if (pendingMoveRef.current) return false;
+
+    const resolvedBranch = branch ?? availableBranchesForTile(tile)[0];
+    if (!resolvedBranch) return false;
+
+    const pending: PendingMultiplayerMove = {
+      requestId: `${roomId}:${tile.id}:${Date.now()}`,
+      roomId,
+      tile,
+      branch: resolvedBranch,
+      baseVersion: latestVersionRef.current,
+      visualBoard: applyMove(
+        board,
+        tile,
+        resolvedBranch,
+        rawState?.spinnerValue ?? null,
+        isOpeningRound,
+      ).board,
+    };
+    pendingMoveRef.current = pending;
+    setPendingMove(pending);
+
+    try {
+      const result = await submitTwoVsTwoMove(roomId, tile, resolvedBranch);
+      if (result?.ok) {
+        applySnapshot(result);
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof MultiplayerRequestError && error.ambiguous) {
+        try {
+          await refreshSnapshot();
+          if (!pendingMoveRef.current) return { ok: true };
+        } catch {
+          // The original request remains unconfirmed; roll back the visual layer.
+        }
+      }
+
+      if (pendingMoveRef.current?.requestId === pending.requestId) {
+        pendingMoveRef.current = null;
+        setPendingMove(null);
+      }
+      throw error;
+    }
   };
 
   const drawTile = () => false;
@@ -409,28 +453,66 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const passTurn = async () => {
     if (!roomId) return false;
 
-    try {
-      const result = await submitTwoVsTwoPass(roomId);
-      return !!result?.ok;
-    } catch (err) {
-      console.warn('submit_two_vs_two action=pass failed', err);
-      return false;
-    }
+    return runMultiplayerAction({
+      action: () => submitTwoVsTwoPass(roomId),
+      onSuccess: (result) => !!result?.ok,
+      errorLabel: 'submit_two_vs_two action=pass failed',
+    });
   };
 
-  const startNextRound = async () => {
+  useEffect(() => {
+    if (!roomId || turnTimeLeft > 0 || rawState?.roundWinnerPlayerId || rawState?.winningTeamId) return;
+    if (timeoutPassInFlightRef.current) return;
+    timeoutPassInFlightRef.current = true;
+    void submitTwoVsTwoPass(roomId, true)
+      .then((result) => {
+        if (!result?.ok) return;
+        if (
+          result.state?.myHandOwnerId &&
+          result.state.myHandOwnerId !== currentUserId
+        ) {
+          console.warn('Ignored 2v2 timeout response with mismatched hand owner');
+        }
+        return refreshSnapshot();
+      })
+      .catch(() => refreshSnapshot().catch(() => undefined))
+      .finally(() => {
+        timeoutPassInFlightRef.current = false;
+      });
+  }, [roomId, turnTimeLeft, currentTurnPlayerId, currentUserId, rawState?.roundWinnerPlayerId, rawState?.winningTeamId, refreshSnapshot]);
+
+  const startNextRound = useCallback(async () => {
     if (!roomId) return;
-    setPhase('dealing');
     try {
       await supabase.rpc('start_two_vs_two_game', { p_room_id: roomId });
     } catch (err) {
       console.warn('start_two_vs_two_game failed', err);
-    } finally {
-      setRoundResult(null);
-      setNextRoundCountdown(5);
-      setPhase('playing');
     }
-  };
+  }, [roomId]);
+
+  const createRoundResult = useCallback((winnerId: string) => {
+    const snapshotHands = rawState?.debugPrivateHandsRaw ?? rawState?.privateHands ?? [];
+    const winnerTeam = playersRows.find(
+      (row) => (row.user_id ?? `bot-${row.id}`) === winnerId,
+    )?.team_id;
+    return buildRoundResult({
+      winnerId,
+      winnerTeam,
+      awardedPoints: rawState?.lastScoringEvent?.points ?? 0,
+      players: playersRows.map((row) => ({
+        id: row.user_id ?? `bot-${row.id}`,
+        playerIndex: typeof row.player_index === 'number' ? row.player_index : -1,
+      })),
+      hands: Array.isArray(snapshotHands) ? snapshotHands : [],
+    });
+  }, [playersRows, rawState]);
+
+  const { phase, roundResult, nextRoundCountdown } = useRoundLifecycle({
+    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
+    winningTeamId: rawState?.winningTeamId ?? null,
+    buildRoundResult: createRoundResult,
+    startNextRound,
+  });
 
   return {
     loading,
@@ -467,5 +549,6 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     nextRoundCountdown,
 
     rawState,
+    pendingMove,
   };
 }

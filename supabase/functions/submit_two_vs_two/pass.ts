@@ -9,6 +9,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const svc = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '', {
   auth: { persistSession: false },
 });
+const TURN_DURATION_MS = 20_000;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -27,12 +28,12 @@ export default async function handler(req: Request) {
     if (userError || !userData?.user) return json({ error: 'Invalid auth token' }, 401);
 
     const user = userData.user;
-    const { room_id } = await req.json();
+    const { room_id, timed_out: timedOut = false } = await req.json();
     if (!room_id) return json({ error: 'Missing room_id' }, 400);
 
     const { data: room, error: roomErr } = await svc
       .from('two_vs_two_rooms')
-      .select('id, status, state, version, current_turn_player_id')
+      .select('id, status, state, version, current_turn_player_id, updated_at')
       .eq('id', room_id)
       .maybeSingle();
     if (roomErr) throw roomErr;
@@ -40,7 +41,7 @@ export default async function handler(req: Request) {
     if (room.status !== 'active') return json({ error: '2v2 room is not active' }, 400);
 
     const state = room.state || {};
-    if (!state.board?.centerTile) return json({ error: 'Cannot pass before opening move' }, 400);
+    if (!timedOut && !state.board?.centerTile) return json({ error: 'Cannot pass before opening move' }, 400);
     if (state.winningTeamId) return json({ error: '2v2 match is already finished' }, 400);
 
     const { data: players, error: playersErr } = await svc
@@ -51,9 +52,15 @@ export default async function handler(req: Request) {
     if (playersErr) throw playersErr;
     if (!Array.isArray(players) || players.length !== 4) return json({ error: '2v2 requires exactly 4 players' }, 400);
 
-    const playerIndex = players.findIndex((player) => player.user_id === user.id);
-    if (playerIndex === -1) return json({ error: 'You are not a player in this 2v2 room' }, 403);
-    if ((room.current_turn_player_id ?? state.currentTurnPlayerId) !== user.id) return json({ error: 'Not your turn' }, 403);
+    const requestPlayerIndex = players.findIndex((player) => player.user_id === user.id);
+    if (requestPlayerIndex === -1) return json({ error: 'You are not a player in this 2v2 room' }, 403);
+    const currentTurnPlayerId = room.current_turn_player_id ?? state.currentTurnPlayerId;
+    const playerIndex = players.findIndex((player) => player.user_id === currentTurnPlayerId);
+    if (playerIndex === -1) return json({ error: 'Active player is missing' }, 409);
+    if (timedOut) {
+      const turnStartedAt = Date.parse(state.turnStartedAt ?? room.updated_at ?? '');
+      if (!Number.isFinite(turnStartedAt) || Date.now() - turnStartedAt < TURN_DURATION_MS) return json({ error: 'Turn timer has not expired' }, 409);
+    } else if (currentTurnPlayerId !== user.id) return json({ error: 'Not your turn' }, 403);
 
     const { data: privateState, error: privateErr } = await svc
       .from('two_vs_two_private_states')
@@ -71,9 +78,9 @@ export default async function handler(req: Request) {
       state.isOpeningRound ?? state.isFirstRound ?? true,
       typeof state.openingDouble === 'number' ? state.openingDouble : null,
     );
-    if (hasPlayable) return json({ error: 'You have a playable tile' }, 400);
+    if (!timedOut && hasPlayable) return json({ error: 'You have a playable tile' }, 400);
 
-    if (!canAnyPlayerMove(hands, state.board, state.spinnerValue ?? null, state.isOpeningRound ?? state.isFirstRound ?? true, typeof state.openingDouble === 'number' ? state.openingDouble : null)) {
+    if (!timedOut && !canAnyPlayerMove(hands, state.board, state.spinnerValue ?? null, state.isOpeningRound ?? state.isFirstRound ?? true, typeof state.openingDouble === 'number' ? state.openingDouble : null)) {
       return json({ error: 'Round is blocked; play resolution is handled after moves' }, 400);
     }
 
@@ -81,34 +88,32 @@ export default async function handler(req: Request) {
     const nextState = {
       ...state,
       currentTurnPlayerId: nextPlayerId,
-      lastPassedPlayerId: user.id,
+      lastPassedPlayerId: currentTurnPlayerId,
+      turnStartedAt: new Date().toISOString(),
       canDrawTile: false,
-      blockedPasses: Array.from(new Set([...(state.blockedPasses ?? []), user.id])),
+      blockedPasses: Array.from(new Set([...(state.blockedPasses ?? []), currentTurnPlayerId])),
     };
 
-    const { data: updatedRoom, error: updateErr } = await svc
-      .from('two_vs_two_rooms')
-      .update({ state: nextState, version: Number(room.version ?? 0) + 1, current_turn_player_id: nextPlayerId })
-      .eq('id', room_id)
-      .eq('version', room.version)
-      .select()
-      .maybeSingle();
-    if (updateErr) throw updateErr;
-    if (!updatedRoom) return json({ error: 'Stale 2v2 state, please retry' }, 409);
-
-    const { data: sequence, error: seqErr } = await svc.rpc('next_two_vs_two_move_sequence', { p_room_id: room_id });
-    if (seqErr) throw seqErr;
-
-    const { error: moveErr } = await svc.from('two_vs_two_moves').insert({
-      room_id,
-      player_id: user.id,
-      sequence,
-      action: 'pass_turn',
-      payload: { nextPlayerId },
+    const { data: updatedRoom, error: commitError } = await svc.rpc('commit_multiplayer_action', {
+      p_mode: '2v2', p_room_id: room_id, p_expected_version: room.version,
+      p_state: nextState, p_hands: hands, p_boneyard: privateState.boneyard ?? [],
+      p_current_turn_player_id: nextPlayerId, p_status: null,
+      p_player_id: currentTurnPlayerId, p_action: 'pass_turn', p_payload: { nextPlayerId, timedOut },
     });
-    if (moveErr) throw moveErr;
+    if (commitError) {
+      if (commitError.message?.includes('STALE_GAME_STATE')) return json({ error: 'Stale 2v2 state, please retry' }, 409);
+      throw commitError;
+    }
 
-    return json({ ok: true, state: { ...nextState, myHand: hands[playerIndex] ?? [] }, room: updatedRoom }, 200);
+    return json({
+      ok: true,
+      state: {
+        ...nextState,
+        myHand: hands[requestPlayerIndex] ?? [],
+        myHandOwnerId: user.id,
+      },
+      room: updatedRoom,
+    }, 200);
   } catch (err) {
     console.error('submit_two_vs_two action=pass error', err);
     return json({ error: err?.message ?? String(err) }, 500);

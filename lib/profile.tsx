@@ -1,6 +1,7 @@
 ﻿import type { Profile, ProfileUpdate } from '@/types/profile';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { supabase } from './supabase';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { calculateLevelFromPoints } from './progression';
+import { isSupabaseConfigured, supabase } from './supabase';
 import { getCurrentUser, getOrCreateProfile, updateMyProfile } from './supabaseAuth';
 
 type DbProfile = {
@@ -15,6 +16,8 @@ type DbProfile = {
 };
 
 function mapDbProfile(profile: DbProfile, email?: string): Profile {
+  const points = Number(profile.points ?? 0);
+
   return {
     id: profile.id,
     playerId: profile.player_id,
@@ -25,8 +28,8 @@ function mapDbProfile(profile: DbProfile, email?: string): Profile {
     email,
     bio: undefined,
     status: 'active',
-    level: profile.level ?? 1,
-    points: profile.points ?? 0,
+    level: calculateLevelFromPoints(points),
+    points,
     createdAt: profile.created_at,
     updatedAt: profile.updated_at,
   };
@@ -67,15 +70,19 @@ export async function getLeaderboardProfiles(
     throw error;
   }
 
-  return (data ?? []).map((profile: any) => ({
-    id: profile.user_id,
-    displayName: profile.display_name,
-    avatarId: profile.avatar_id as Profile['avatarId'],
-    level: profile.level ?? 1,
-    points: Number(profile.points ?? 0),
-    rank: Number(profile.rank ?? 0),
-    gold: Number(profile.gold ?? 0),
-  }));
+  return (data ?? []).map((profile: any) => {
+    const points = Number(profile.points ?? 0);
+
+    return {
+      id: profile.user_id,
+      displayName: profile.display_name,
+      avatarId: profile.avatar_id as Profile['avatarId'],
+      level: calculateLevelFromPoints(points),
+      points,
+      rank: Number(profile.rank ?? 0),
+      gold: Number(profile.gold ?? 0),
+    };
+  });
 }
 
 export async function getProfileById(id: string): Promise<Profile> {
@@ -154,6 +161,12 @@ export function ProfileProvider({
   useEffect(() => {
     let isMounted = true;
 
+    if (!isSupabaseConfigured) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
     async function loadProfile() {
       try {
         setLoading(true);
@@ -200,21 +213,21 @@ export function ProfileProvider({
     };
   }, []);
 
-  async function refreshProfile() {
+  const refreshProfile = useCallback(async () => {
     const nextProfile = await getCurrentProfile();
 
     setProfile(nextProfile);
 
     return nextProfile;
-  }
+  }, []);
 
-  async function updateProfile(changes: ProfileUpdate) {
+  const updateProfile = useCallback(async (changes: ProfileUpdate) => {
     const nextProfile = await updateCurrentProfile(changes);
 
     setProfile(nextProfile);
 
     return nextProfile;
-  }
+  }, []);
 
   return (
     <ProfileContext.Provider

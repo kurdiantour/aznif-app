@@ -18,6 +18,12 @@ import { MutableRefObject } from 'react';
 
 export { calculateMatchReward };
 
+export const NEXT_ROUND_COUNTDOWN_SECONDS = 2;
+export const ROUND_RESULT_REVEAL_MS = 8000;
+export const ROUND_TRANSITION_SYNC_MS = 1000;
+export const MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN = 3;
+export const PLAYER_TURN_DURATION_SECONDS = 20;
+
 export type SeatDefinition = {
   id: string;
   name: string;
@@ -85,6 +91,15 @@ export function pickPreferredBranch(
   return priority.find((branch) => branches.includes(branch)) ?? branches[0];
 }
 
+export function getBlockedRoundWinnerIndex1v1(
+  blockedHands: DominoTileData[][],
+) {
+  const firstTotal = getHandPipTotal(blockedHands[0] ?? []);
+  const secondTotal = getHandPipTotal(blockedHands[1] ?? []);
+
+  return firstTotal <= secondTotal ? 0 : 1;
+}
+
 export function canDrawTileFor1v1(
   playerIndex: number,
   currentIndex: number,
@@ -133,7 +148,7 @@ export function resolveBlockedRound1v1(
   setLeaderIndex: (value: number) => void,
   setNextRoundLeaderIndex: (value: number) => void,
 ) {
-  const playerIndex = blockedHands[0].length <= blockedHands[1].length ? 0 : 1;
+  const playerIndex = getBlockedRoundWinnerIndex1v1(blockedHands);
   const scoreWinner = seats[playerIndex];
 
   const opponentPips = blockedHands[(playerIndex + 1) % 2].reduce(

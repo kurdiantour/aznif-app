@@ -40,14 +40,7 @@ export async function getBalance(userId?: string): Promise<Wallet> {
   if (error) throw error;
 
   if (!data) {
-    const { data: inserted, error: insertError } = await supabase
-      .from('wallets')
-      .insert({ user_id: uid })
-      .select('id, user_id, mc, gold, updated_at')
-      .maybeSingle();
-
-    if (insertError) throw insertError;
-    return mapWalletRow(inserted);
+    throw new Error('Wallet is not initialized. Please sign out and sign in again.');
   }
 
   return mapWalletRow(data);
@@ -108,70 +101,8 @@ export async function transferMc(recipientUserId: string, amount: number) {
 export const transferFunds = transferMc;
 export const CURRENT_USER_ID = 'DEPRECATED: use getCurrentUserId() async function';
 
-export async function placeRoomBet(amount: number) {
-  const uid = await getUid();
-
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('Amount must be greater than zero');
-  }
-
-  const { data, error } = await supabase.rpc('place_room_bet', {
-    p_user_id: uid,
-    p_amount: amount,
-  });
-
-  if (error) throw error;
-
-  return data;
-}
-
-export async function awardGoldReward(
-  amount: number,
-  metadata: Record<string, unknown> = {}
-) {
-  const uid = await getUid();
-
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('Amount must be greater than zero');
-  }
-
-  const { data, error } = await supabase.rpc('award_gold_reward', {
-    p_user_id: uid,
-    p_amount: amount,
-    p_metadata: metadata,
-  });
-
-  if (error) throw error;
-
-  return data;
-}
-
-export async function spendGoldInShop(
-  amount: number,
-  metadata: Record<string, unknown> = {}
-) {
-  const uid = await getUid();
-
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('Amount must be greater than zero');
-  }
-
-  const { data, error } = await supabase.rpc('spend_gold_shop', {
-    p_user_id: uid,
-    p_amount: amount,
-    p_metadata: metadata,
-  });
-
-  if (error) throw error;
-
-  return data;
-}
-
 export default {
   getBalance,
   getTransactions,
   transferMc,
-  placeRoomBet,
-  awardGoldReward,
-  spendGoldInShop,
 };
