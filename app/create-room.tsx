@@ -96,7 +96,7 @@ export default function CreateRoomScreen() {
       </View>
 
       <Pressable style={styles.backButton} onPress={handleBackToLobby}>
-        <Text style={styles.backButtonText}>Back</Text>
+        <Text style={styles.backButtonText}>گەڕانەوە</Text>
       </Pressable>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}

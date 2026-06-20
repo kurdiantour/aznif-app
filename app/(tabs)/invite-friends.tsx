@@ -72,7 +72,7 @@ export default function InviteFriendsScreen() {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Username or Player ID..."
+              placeholder="ناوی یاریزان یان ناسنامە..."
               placeholderTextColor="rgba(255,255,255,0.45)"
               style={styles.searchInput}
               autoCapitalize="none"

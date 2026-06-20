@@ -93,7 +93,7 @@ function PlayerCard({
         </Text>
 
         <Text style={styles.playerRating}>
-          {filled ? `Rating: ${rating ?? '0'}` : 'AI Opponent'}
+          {filled ? `پلە: ${rating ?? '0'}` : 'بەرامبەرە زیرەکە'}
         </Text>
       </LinearGradient>
     </Animated.View>
@@ -165,7 +165,7 @@ export default function PlayAIModeScreen() {
     outputRange: ['0deg', '360deg'],
   });
 
-  const playerName = profile?.displayName ?? profile?.username ?? 'Player';
+  const playerName = profile?.displayName ?? profile?.username ?? 'یاریزان';
   const playerRating = String(profile?.points ?? 0);
   const playerAvatarId = profile?.avatarId as AvatarId | undefined;
 
@@ -195,8 +195,8 @@ export default function PlayAIModeScreen() {
               </Animated.View>
 
               <Animated.View style={[styles.centerCircle, { transform: [{ scale: pulse }] }]}>
-                <Text style={styles.matchText}>VS</Text>
-                <Text style={styles.waitText}>AI Opponent</Text>
+                <Text style={styles.matchText}>بەرامبەر</Text>
+                <Text style={styles.waitText}>بەرامبەرە زیرەکە</Text>
               </Animated.View>
             </View>
           </View>

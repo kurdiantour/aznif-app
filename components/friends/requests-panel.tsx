@@ -56,7 +56,7 @@ function RequestCard({
           disabled={busy}
           onPress={() => onRespond(request, true)}
         >
-          <Text style={styles.buttonText}>ACCEPT</Text>
+          <Text style={styles.buttonText}>قبووڵکردن</Text>
         </Pressable>
 
         <Pressable
@@ -64,7 +64,7 @@ function RequestCard({
           disabled={busy}
           onPress={() => onRespond(request, false)}
         >
-          <Text style={styles.buttonText}>REJECT</Text>
+          <Text style={styles.buttonText}>ڕەتکردنەوە</Text>
         </Pressable>
       </View>
     </View>
@@ -182,7 +182,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
           />
         ) : requests.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>No requests</Text>
+            <Text style={styles.emptyTitle}>هیچ داواکارییەک نییە</Text>
 
             <Text style={styles.emptyText}>
               Incoming friend requests will appear here.

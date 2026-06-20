@@ -28,8 +28,8 @@ export default function PrivacyPolicyScreen() {
       showsVerticalScrollIndicator
     >
         <View style={[styles.document, isTablet && styles.documentTablet]}>
-          <Text style={styles.title}>Privacy Policy</Text>
-          <Text style={styles.effectiveDate}>Effective and last updated: {EFFECTIVE_DATE}</Text>
+          <Text style={styles.title}>سیاسەتی تایبەتمەندی</Text>
+          <Text style={styles.effectiveDate}>بەرواری کارپێکردن و نوێکردنەوە: {EFFECTIVE_DATE}</Text>
 
           <Text style={styles.intro}>
             This Privacy Policy explains how Aznif (&quot;Aznif,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) collects,

@@ -44,11 +44,11 @@ function FriendCard({
 
       <View style={styles.buttonStack}>
         <Pressable style={styles.actionButton} onPress={() => onSendChip(friend)}>
-          <Text style={styles.buttonText}>SEND CHIP</Text>
+          <Text style={styles.buttonText}>تۆکن بنێرە</Text>
         </Pressable>
 
         <Pressable style={[styles.actionButton, styles.disabledButton]} disabled>
-          <Text style={[styles.buttonText, styles.disabledButtonText]}>INVITE</Text>
+          <Text style={[styles.buttonText, styles.disabledButtonText]}>بانگهێشت</Text>
         </Pressable>
       </View>
     </View>
@@ -99,7 +99,7 @@ function SearchResultRow({
         onPress={() => (isFriend ? onSendChip(result) : onAdd(result))}
       >
         <Text style={[styles.buttonText, (isFriend || isPending) && styles.disabledButtonText]}>
-          {isFriend ? 'SEND CHIP' : label}
+          {isFriend ? 'تۆکن بنێرە' : label}
         </Text>
       </Pressable>
     </View>
@@ -245,9 +245,9 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
           <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
         ) : friends.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>No friends yet</Text>
+            <Text style={styles.emptyTitle}>هێشتا هیچ هاوڕێیەک نییە</Text>
             <Text style={styles.emptyText}>
-              Search by username or player ID to send a friend request.
+              بە ناوی یاریزان یان ناسنامە بگەڕێ بۆ ناردنی داواکاری هاوڕێیەتی.
             </Text>
           </View>
         ) : (

@@ -85,9 +85,9 @@ export function SettingsDrawer({ visible, onClose }: SettingsDrawerProps) {
           bounces={false}
           contentContainerStyle={styles.scrollContent}
         >
-          <Text style={styles.title}>Settings</Text>
+          <Text style={styles.title}>ڕێکخستنەکان</Text>
 
-          <Text style={styles.subtitle}>Customize your game experience</Text>
+          <Text style={styles.subtitle}>ئەزموونی یاریکردنت ڕێک بخە</Text>
 
           <View style={styles.divider} />
 

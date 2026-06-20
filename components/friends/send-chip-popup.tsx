@@ -110,8 +110,8 @@ export function SendChipPopup({
             Balance: {loadingBalance ? '...' : mcBalance.toFixed(0)} MC
           </Text>
 
-          <Text style={styles.title}>Send chip to {friend.name}</Text>
-          <Text style={styles.playerId}>ID: {friend.playerId}</Text>
+          <Text style={styles.title}>تۆکن بنێرە بۆ {friend.name}</Text>
+          <Text style={styles.playerId}>ناسنامە: {friend.playerId}</Text>
 
           <View style={styles.divider} />
 
@@ -128,7 +128,7 @@ export function SendChipPopup({
 
           <View style={styles.footer}>
             <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.cancelText}>پاشگەزبوونەوە</Text>
             </Pressable>
 
             <Pressable
@@ -139,7 +139,7 @@ export function SendChipPopup({
               {submitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.sendText}>Send MC</Text>
+                <Text style={styles.sendText}>تۆکن بنێرە</Text>
               )}
             </Pressable>
           </View>

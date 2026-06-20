@@ -214,10 +214,10 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
             )}
           </View>
 
-          <Text style={styles.level}>Level {profile?.level ?? 1}</Text>
+          <Text style={styles.level}>ئاستی {profile?.level ?? 1}</Text>
 
           <View style={styles.playerIdRow}>
-            <Text style={styles.playerId}>ID: {profile?.playerId ?? 'Unavailable'}</Text>
+            <Text style={styles.playerId}>ناسنامە: {profile?.playerId ?? 'بەردەست نییە'}</Text>
             <Pressable
               style={styles.copyButton}
               disabled={!profile?.playerId}
@@ -228,7 +228,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
           </View>
 
           <Pressable style={styles.logoutButton} onPress={() => void handleLogout()}>
-            <Text style={styles.logoutButtonText}>Logout</Text>
+            <Text style={styles.logoutButtonText}>دەرچوون</Text>
           </Pressable>
         </ScrollView>
       </Animated.View>

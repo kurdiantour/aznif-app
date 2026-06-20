@@ -25,8 +25,8 @@ export function AvatarPickerModal({
       <Pressable style={styles.backdrop} onPress={onClose} />
 
       <View style={styles.card}>
-        <Text style={styles.title}>Choose Avatar</Text>
-        <Text style={styles.subtitle}>Select your profile look</Text>
+        <Text style={styles.title}>وێنەی یاریزان هەڵبژێرە</Text>
+        <Text style={styles.subtitle}>ڕووکارێک بۆ پرۆفایلەکەت دیاری بکە</Text>
 
         <View style={styles.options}>
           {AVATAR_IDS.map((avatarId) => {
@@ -45,7 +45,7 @@ export function AvatarPickerModal({
         </View>
 
         <Pressable style={styles.closeButton} onPress={onClose}>
-          <Text style={styles.closeButtonText}>Close</Text>
+          <Text style={styles.closeButtonText}>داخستن</Text>
         </Pressable>
       </View>
     </View>

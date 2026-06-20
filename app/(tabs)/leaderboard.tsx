@@ -78,11 +78,11 @@ export default function LeaderboardScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.tableHeader}>
-        <Text style={[styles.headerText, styles.rankHeader]}>RANK</Text>
-        <Text style={[styles.headerText, styles.playersHeader]}>PLAYERS</Text>
-        <Text style={[styles.headerText, styles.levelHeader]}>LEVEL</Text>
-        <Text style={[styles.headerText, styles.pointsHeader]}>POINTS</Text>
-        <Text style={[styles.headerText, styles.goldHeader]}>GOLD</Text>
+        <Text style={[styles.headerText, styles.rankHeader]}>پلە</Text>
+        <Text style={[styles.headerText, styles.playersHeader]}>یاریزانان</Text>
+        <Text style={[styles.headerText, styles.levelHeader]}>ئاست</Text>
+        <Text style={[styles.headerText, styles.pointsHeader]}>خاڵ</Text>
+        <Text style={[styles.headerText, styles.goldHeader]}>زێڕ</Text>
       </View>
 
       <ScrollView

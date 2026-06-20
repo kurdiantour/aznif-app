@@ -98,7 +98,7 @@ function PlayerCard({
         <Text style={styles.playerName}>{name}</Text>
 
         <Text style={styles.playerRating}>
-          {filled ? `Rating: ${rating ?? '0'}` : 'Searching...'}
+          {filled ? `پلە: ${rating ?? '0'}` : 'گەڕان...'}
         </Text>
       </LinearGradient>
     </Animated.View>
@@ -284,7 +284,7 @@ export default function MatchmakingScreen() {
           return {
             id: String(row.id ?? row.user_id ?? `player-${index}`),
             userId: row.user_id ?? null,
-            name: profile?.username ?? `Player ${index + 1}`,
+            name: profile?.username ?? `یاریزان ${index + 1}`,
             rating: String(profile?.points ?? 0),
             avatarId: profile?.avatar_id as AvatarId | undefined,
             playerIndex:
@@ -454,10 +454,10 @@ export default function MatchmakingScreen() {
   const isMatchFound = matchmakingStatus === 'matched' && players.length >= requiredPlayers;
 
   const centerTitle = isSearching
-    ? 'Looking for an opponent...'
+    ? 'بەدوای بەرامبەر دەگەڕێین...'
     : isMatchFound
-    ? 'Match found'
-    : 'Looking for an opponent...';
+    ? 'یاری دۆزرایەوە'
+    : 'بەدوای بەرامبەر دەگەڕێین...';
 
   const centerSubtitle = isSearching
     ? ''
@@ -559,7 +559,7 @@ export default function MatchmakingScreen() {
             </View>
 
             <Pressable style={styles.cancelButton} onPress={handleCancel}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelButtonText}>پاشگەزبوونەوە</Text>
             </Pressable>
           </View>
 

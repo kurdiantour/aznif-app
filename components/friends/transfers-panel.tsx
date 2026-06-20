@@ -76,17 +76,17 @@ export function TransfersPanel() {
 
     const profileId = isOutgoing ? item.to_user_id : item.from_user_id;
 
-    const player = profileId ? profileNames[profileId] ?? 'Unknown Player' : 'System';
+    const player = profileId ? profileNames[profileId] ?? 'یاریزانی نەناسراو' : 'سیستەم';
 
     return (
       <View style={styles.transferCard}>
         <View>
           <Text style={styles.transferTitle}>
-            {isOutgoing ? 'Sent Chip' : 'Received Chip'}
+            {isOutgoing ? 'تۆکنی نێردراو' : 'تۆکنی وەرگیراو'}
           </Text>
 
           <Text style={styles.transferPlayer}>
-            {isOutgoing ? 'To' : 'From'}: {player}
+            {isOutgoing ? 'بۆ' : 'لە'}: {player}
           </Text>
 
           <Text style={styles.transferDate}>
@@ -117,10 +117,10 @@ export function TransfersPanel() {
         />
       ) : transferTransactions.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyTitle}>No transfers yet</Text>
+          <Text style={styles.emptyTitle}>هێشتا هیچ گواستنەوەیەک نییە</Text>
 
           <Text style={styles.emptyText}>
-            Your sent and received MC Chips will appear here.
+            تۆکنە نێردراو و وەرگیراوەکانت لێرە دەردەکەون.
           </Text>
         </View>
       ) : (

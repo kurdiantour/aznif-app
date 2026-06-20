@@ -49,7 +49,7 @@ export default function WalletHistoryScreen() {
           <Text style={styles.transactionLabel}>{label}</Text>
           <Text style={styles.transactionAmount}>{amountText}</Text>
         </View>
-        <Text style={styles.transactionDetail}>Counterparty: {counterparty}</Text>
+        <Text style={styles.transactionDetail}>لایەنی بەرامبەر: {counterparty}</Text>
         <Text style={styles.transactionDetail}>{new Date(item.created_at).toLocaleString()}</Text>
       </View>
     );
@@ -58,16 +58,16 @@ export default function WalletHistoryScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Transaction History</Text>
+        <Text style={styles.title}>مێژووی مامەڵەکان</Text>
         <Pressable onPress={() => router.back()} style={styles.closeButton}>
-          <Text style={styles.closeButtonText}>Back</Text>
+          <Text style={styles.closeButtonText}>گەڕانەوە</Text>
         </Pressable>
       </View>
 
       {loading ? (
         <ActivityIndicator color="#7dd3fc" size="large" style={styles.loader} />
       ) : transactions.length === 0 ? (
-        <Text style={styles.emptyText}>No transactions have been recorded yet.</Text>
+        <Text style={styles.emptyText}>هێشتا هیچ مامەڵەیەک تۆمار نەکراوە.</Text>
       ) : (
         <FlatList
           data={transactions}

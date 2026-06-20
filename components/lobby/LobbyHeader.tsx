@@ -69,7 +69,7 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
                 {profile?.displayName ?? 'Player'}
               </Text>
 
-              <Text style={styles.level}>Lv. {profile?.level ?? 1}</Text>
+              <Text style={styles.level}>ئاستی {profile?.level ?? 1}</Text>
             </View>
           </Pressable>
 

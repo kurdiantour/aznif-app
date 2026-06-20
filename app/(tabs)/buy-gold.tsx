@@ -198,7 +198,7 @@ export default function PlayerSeat({
             },
           ]}
         >
-          <Text style={[styles.passText, { fontSize: 13 * scale }]}>PASS</Text>
+          <Text style={[styles.passText, { fontSize: 13 * scale }]}>تێپەڕبوون</Text>
         </View>
       )}
     </View>

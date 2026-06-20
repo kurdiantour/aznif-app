@@ -161,7 +161,7 @@ export default function ScorePopup({
 
         <View style={styles.bottomDivider} />
 
-        <Text style={styles.target}>Target: {TARGET_SCORE} points</Text>
+        <Text style={styles.target}>ئامانج: {TARGET_SCORE} خاڵ</Text>
       </View>
     </View>
   );
