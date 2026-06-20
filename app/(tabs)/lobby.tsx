@@ -51,7 +51,7 @@ function ModeCard({
       {playersOnline && (
         <View style={styles.playersBadge}>
           <View style={styles.onlineDot} />
-          <Text style={styles.playersText}>Players Online</Text>
+          <Text style={styles.playersText}>یاریزانان بەردەستن</Text>
         </View>
       )}
 
@@ -116,24 +116,24 @@ export default function LobbyScreen() {
       <View style={styles.leftCards}>
         <ModeCard
           playersOnline
-          title="1 vs 1"
-          subtitle="Real player match"
+          title="یەک بە یەک"
+          subtitle="یاری لەگەڵ یاریزانی ڕاستەقینە"
           image={require('@/assets/images/mode-select/1vs1.webp')}
           disabled={isSearching}
           onPress={() => startPublicMatch('1v1', 'duo')}
         />
 
         <ModeCard
-          title="2 vs 2"
-          subtitle="Real 4-player match"
+          title="دوو بە دوو"
+          subtitle="یاری چوار یاریزانی ڕاستەقینە"
           image={require('@/assets/images/mode-select/2vs2.webp')}
           disabled={isSearching}
           onPress={() => startPublicMatch('2v2', 'squad')}
         />
 
         <ModeCard
-          title="Tournament"
-          subtitle="Join special events"
+          title="پاڵەوانێتی"
+          subtitle="بەشداربە لە ڕووداوە تایبەتەکان"
           image={require('@/assets/images/lobby/tournament-bg.webp')}
           disabled={isSearching}
         />
@@ -141,16 +141,16 @@ export default function LobbyScreen() {
 
       <View style={styles.rightCards}>
         <ModeCard
-          title="Play with AI"
-          subtitle="Practice offline"
+          title="یاری لەگەڵ زیرەکی دەستکرد"
+          subtitle="ڕاهێنان بەبێ ئینتەرنێت"
           image={require('@/assets/images/lobby/play-ai-bg.webp')}
           disabled={isSearching}
           onPress={() => router.push('/play-ai')}
         />
 
         <ModeCard
-          title="Create Room"
-          subtitle="Host a table"
+          title="ژوور دروست بکە"
+          subtitle="مێزی خۆت بەڕێوەببە"
           image={require('@/assets/images/lobby/create-room.webp')}
           disabled={isSearching}
           onPress={() =>

@@ -12,19 +12,19 @@ type BottomNavProps = {
 const items = [
   {
     key: 'home',
-    label: 'Home',
+    label: 'سەرەکی',
     icon: 'home',
     href: '/lobby',
   },
   {
     key: 'leaderboard',
-    label: 'Leaderboard',
+    label: 'خشتەی پێشبڕکێ',
     icon: 'trophy',
     href: '/leaderboard',
   },
   {
     key: 'friends',
-    label: 'Friends',
+    label: 'هاوڕێکان',
     icon: 'people',
     href: '/invite-friends',
   },
