@@ -152,7 +152,7 @@ export default function ScorePopup({
                 </Text>
 
                 <Text style={styles.rewardDetail}>
-                  +{matchReward.gold} Gold · +{matchReward.points} Points
+                  +{matchReward.gold} گەوهەر · +{matchReward.points} Points
                 </Text>
               </View>
             ) : null}

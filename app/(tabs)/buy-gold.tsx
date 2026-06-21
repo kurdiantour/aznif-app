@@ -4,9 +4,9 @@ export default function BuyGoldScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.card}>
-        <Text style={styles.title}>Buy Gold</Text>
+        <Text style={styles.title}>گەوهەر بکڕە</Text>
         <Text style={styles.message}>
-          Gold purchases will be available here soon.
+          بەزوویی کڕینی گەوهەر لێرە بەردەست دەبێت.
         </Text>
       </View>
     </View>

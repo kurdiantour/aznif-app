@@ -33,7 +33,7 @@ export default function GameOverPopup({
               <Text style={styles.rewardLabel}>خەڵات</Text>
               <Text style={styles.rewardValue}>
                 {reward.gold > 0
-                  ? `+${reward.gold} Gold · +${reward.points} Point`
+                  ? `+${reward.gold} گەوهەر · +${reward.points} Point`
                   : `+${reward.points} Point`}
               </Text>
             </View>

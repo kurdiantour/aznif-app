@@ -25,18 +25,14 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const loadBalance = useCallback(async () => {
-    if (loading || !profile?.id) {
-      return;
-    }
+    if (loading || !profile?.id) return;
 
     try {
       const wallet = await getBalance();
-
-      setMcBalance(Number(wallet.balances.mc || 0).toFixed(0));
-      setGoldBalance(Number(wallet.balances.gold || 0).toFixed(0));
+      setMcBalance(Number(wallet.balances.mc || 0).toLocaleString());
+      setGoldBalance(Number(wallet.balances.gold || 0).toLocaleString());
     } catch (error) {
       console.log('[LobbyHeader] Failed to load wallet balance:', error);
-
       setMcBalance('0');
       setGoldBalance('0');
     }
@@ -51,9 +47,7 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
       void loadBalance();
     });
 
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [loadBalance]);
 
   useEffect(() => {
@@ -93,23 +87,20 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
 
               <Pressable onPress={() => router.push('/buy-gold')}>
                 <LinearGradient
-                colors={['rgba(168,85,247,0.24)', 'rgba(255,255,255,0.06)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.balancePillSecondary}
-              >
-                <View style={styles.balanceIconCircleGold}>
-                  <Ionicons name="diamond" size={14} color="#C084FC" />
-                </View>
-
-                <Text style={styles.balanceText}>{goldBalance} Gold</Text>
-
-                <Pressable
-                  style={styles.plusButton}
-                  onPress={() => router.push('/buy-gold')}
+                  colors={['rgba(168,85,247,0.24)', 'rgba(255,255,255,0.06)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.balancePillSecondary}
                 >
-                  <Ionicons name="add" size={15} color="#ffffff" />
-                </Pressable>
+                  <View style={styles.balanceIconCircleGold}>
+                    <Ionicons name="diamond" size={14} color="#C084FC" />
+                  </View>
+
+                  <Text style={styles.balanceText}>{goldBalance} گەوهەر</Text>
+
+                  <View style={styles.plusButton}>
+                    <Ionicons name="add" size={15} color="#ffffff" />
+                  </View>
                 </LinearGradient>
               </Pressable>
             </View>
@@ -151,10 +142,13 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
 
 const styles = StyleSheet.create({
   topBar: {
-    height: 48,
+    minHeight: 48,
     flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 30,
+    rowGap: 8,
   },
 
   userBox: {
@@ -200,37 +194,43 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
 
   balanceGroup: {
     flexDirection: 'row-reverse',
     gap: 8,
     alignItems: 'center',
+    flexShrink: 1,
+    minWidth: 0,
   },
 
-balancePill: {
-  height: 36,
-  width: 140,
-  paddingHorizontal: 10,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: 'rgba(255,214,102,0.20)',
-  flexDirection: 'row-reverse',
-  alignItems: 'center',
-  gap: 12,
-},
+  balancePill: {
+    height: 36,
+    minWidth: 140,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,214,102,0.20)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
 
-balancePillSecondary: {
-  height: 36,
-  width: 140,
-  paddingHorizontal: 10,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: 'rgba(168,85,247,0.26)',
-  flexDirection: 'row-reverse',
-  alignItems: 'center',
-  gap: 12,
-},
+  balancePillSecondary: {
+    height: 36,
+    minWidth: 140,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.26)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
 
   balanceIconCircle: {
     width: 25,
@@ -259,6 +259,7 @@ balancePillSecondary: {
     fontSize: 12,
     fontFamily: 'SpedaBold',
     letterSpacing: 0.2,
+    flexShrink: 0,
   },
 
   plusButton: {
@@ -270,7 +271,7 @@ balancePillSecondary: {
     borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    flexShrink: 0,
   },
 
   topIcon: {

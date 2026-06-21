@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getLeaderboardProfiles, useProfile } from '@/lib/profile';
+import { getRankTitleFromLevel } from '@/lib/progression';
 
 type LeaderboardPlayer = {
   id: string;
@@ -78,11 +79,11 @@ export default function LeaderboardScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.tableHeader}>
-        <Text style={[styles.headerText, styles.rankHeader]}>RANK</Text>
-        <Text style={[styles.headerText, styles.playersHeader]}>PLAYERS</Text>
-        <Text style={[styles.headerText, styles.levelHeader]}>LEVEL</Text>
-        <Text style={[styles.headerText, styles.pointsHeader]}>POINTS</Text>
-        <Text style={[styles.headerText, styles.goldHeader]}>GOLD</Text>
+        <Text style={[styles.headerText, styles.rankHeader]}>پلە</Text>
+        <Text style={[styles.headerText, styles.playersHeader]}>یاریزانان</Text>
+        <Text style={[styles.headerText, styles.levelHeader]}>ئاست</Text>
+        <Text style={[styles.headerText, styles.pointsHeader]}>خاڵ</Text>
+        <Text style={[styles.headerText, styles.goldHeader]}>گەوهەر</Text>
       </View>
 
       <ScrollView
@@ -117,7 +118,7 @@ export default function LeaderboardScreen() {
                     numberOfLines={1}
                   >
                     {player.name}
-                    {isCurrentUser ? ' (You)' : ''}
+                    {isCurrentUser ? ' (تۆ)' : ''}
                   </Text>
                 </View>
               </View>
@@ -129,7 +130,7 @@ export default function LeaderboardScreen() {
                     isCurrentUser && styles.currentUserText,
                   ]}
                 >
-                  Lv. {player.level}
+                  {getRankTitleFromLevel(player.level)}
                 </Text>
               </View>
 
@@ -163,12 +164,13 @@ export default function LeaderboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 74,
-  },
+screen: {
+  flex: 1,
+  paddingHorizontal: 16,
+  paddingTop: 10,
+  paddingBottom: 74,
+  direction: 'ltr',
+},
 
   tableHeader: {
     height: 40,
