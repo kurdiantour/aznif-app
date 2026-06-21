@@ -90,14 +90,15 @@ export function BottomNav({ active: controlledActive, onChange }: BottomNavProps
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    position: 'absolute',
-    left: 28,
-    bottom: 18,
-    alignItems: 'flex-start',
-    zIndex: 999,
-    elevation: 20,
-  },
+wrapper: {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 18,
+  alignItems: 'center',
+  zIndex: 999,
+  elevation: 20,
+},
 
   container: {
     flexDirection: 'row',

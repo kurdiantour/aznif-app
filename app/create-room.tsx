@@ -7,10 +7,12 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
 import { LobbyHeader } from '@/components/lobby/LobbyHeader';
+import { supabase } from '@/lib/supabase';
 import { getBalance } from '@/lib/wallet';
 import { Wallet } from '@/types/wallet';
 
@@ -22,6 +24,8 @@ export default function CreateRoomScreen() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [selectedBet, setSelectedBet] = useState<number>(25);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,6 +42,61 @@ export default function CreateRoomScreen() {
 
   const handleBackToLobby = () => {
     router.replace('/(tabs)/lobby');
+  };
+
+  const openPrivateRoom = (roomId: string, code?: string) => {
+    router.replace({
+      pathname: '/matchmaking',
+      params: { mode: '1v1', matchmaking_status: 'private', room_id: roomId, room_code: code ?? '', matchType: 'private' },
+    });
+  };
+
+  const friendlyRoomError = (reason: unknown, fallback: string) => {
+    const message = reason instanceof Error ? reason.message : fallback;
+    const normalized = message.toLowerCase();
+    if (normalized.includes('not found')) return 'We could not find a room with that code.';
+    if (normalized.includes('not joinable') || normalized.includes('full')) return 'This room is no longer available. Ask the host for a new code.';
+    if (normalized.includes('authentication')) return 'Please sign in again before joining a room.';
+    return message;
+  };
+
+  const handleCreateRoom = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { data, error: createError } = await supabase.rpc('create_one_vs_one_room', {
+        p_bet_amount: selectedBet,
+      });
+      if (createError) throw createError;
+      if (!data?.id) throw new Error('Unable to create a private room.');
+      openPrivateRoom(data.id, data.room_code);
+    } catch (createError) {
+      setError(friendlyRoomError(createError, 'Unable to create private room.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleJoinRoom = async () => {
+    const code = roomCode.trim().toUpperCase();
+    if (!code) {
+      setError('Enter a room code.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { data, error: joinError } = await supabase.rpc('join_one_vs_one_room', {
+        p_room_code: code,
+      });
+      if (joinError) throw joinError;
+      if (!data?.room_id) throw new Error('Unable to join this private room.');
+      openPrivateRoom(data.room_id, code);
+    } catch (joinError) {
+      setError(friendlyRoomError(joinError, 'Unable to join private room.'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -84,15 +143,27 @@ export default function CreateRoomScreen() {
               />
 
               <View style={styles.cardInfo}>
-                <Text style={styles.cardTitle}>{amount} MC</Text>
+                <Text style={styles.cardTitle}>{amount} ئەزنیف</Text>
 
                 <Text style={styles.cardSubtitle}>
-                  Prize pool {amount * 2} MC
+                  Prize pool {amount * 2} ئەزنیف
                 </Text>
               </View>
             </Pressable>
           );
         })}
+      </View>
+
+      <View style={styles.privateActions}>
+        <Pressable style={[styles.actionButton, submitting && styles.actionButtonDisabled]} onPress={handleCreateRoom} disabled={submitting}>
+          {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.actionButtonText}>Create private room</Text>}
+        </Pressable>
+        <View style={styles.joinRow}>
+          <TextInput value={roomCode} onChangeText={setRoomCode} placeholder="Room code" placeholderTextColor="#aab4c8" autoCapitalize="characters" editable={!submitting} style={styles.roomCodeInput} />
+          <Pressable style={[styles.joinButton, submitting && styles.actionButtonDisabled]} onPress={handleJoinRoom} disabled={submitting}>
+            <Text style={styles.actionButtonText}>Join by code</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Pressable style={styles.backButton} onPress={handleBackToLobby}>
@@ -124,6 +195,14 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
   },
+
+  privateActions: { marginTop: 14, gap: 8 },
+  actionButton: { height: 44, borderRadius: 12, backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center' },
+  actionButtonDisabled: { opacity: 0.6 },
+  actionButtonText: { color: '#ffffff', fontSize: 13, fontFamily: 'SpedaBold' },
+  joinRow: { flexDirection: 'row', gap: 8 },
+  roomCodeInput: { flex: 1, height: 44, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(180,120,255,0.42)', backgroundColor: 'rgba(17,24,39,0.82)', color: '#ffffff', paddingHorizontal: 12, fontFamily: 'SpedaBold' },
+  joinButton: { width: 126, height: 44, borderRadius: 12, backgroundColor: '#6d28d9', alignItems: 'center', justifyContent: 'center' },
 
   card: {
     flex: 1,

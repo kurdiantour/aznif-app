@@ -2,6 +2,7 @@ import { PlayerAvatar } from '@/components/player/PlayerAvatar';
 import type { AvatarId } from '@/constants/avatars';
 import { getCurrentProfile } from '@/lib/profile';
 import { supabase } from '@/lib/supabase';
+import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -137,6 +138,7 @@ export default function MatchmakingScreen() {
     mode,
     matchmaking_status: initialStatus,
     room_id,
+    room_code,
     matchType,
   } = useLocalSearchParams();
 
@@ -146,6 +148,7 @@ export default function MatchmakingScreen() {
   const requiredPlayers = getRequiredPlayers(gameMode, currentMatchType);
 
   const initialRoomId = String(room_id ?? '');
+  const privateRoomCode = String(room_code ?? '');
   const initialMatchmakingStatus = String(initialStatus ?? 'searching');
 
   
@@ -154,6 +157,7 @@ export default function MatchmakingScreen() {
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
   const [matchmakingStatus, setMatchmakingStatus] = useState(initialMatchmakingStatus);
   const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
+  const [copyMessage, setCopyMessage] = useState('');
 
   const pulse = useRef(new Animated.Value(1)).current;
   const rotate = useRef(new Animated.Value(0)).current;
@@ -201,6 +205,7 @@ export default function MatchmakingScreen() {
   }, [initialMatchmakingStatus, initialRoomId]);
 
   useEffect(() => {
+    if (currentMatchType === 'private') return;
     if (matchmakingStatus !== 'searching') return;
 
     const checkStatus = async () => {
@@ -232,7 +237,7 @@ export default function MatchmakingScreen() {
         statusCheckIntervalRef.current = null;
       }
     };
-  }, [matchmakingStatus, isOneVsOne]);
+  }, [currentMatchType, matchmakingStatus, isOneVsOne]);
 
   useEffect(() => {
     let mounted = true;
@@ -390,11 +395,28 @@ export default function MatchmakingScreen() {
   const playersReady =
     currentMatchType === 'bot'
       ? players.length >= 1
+      : currentMatchType === 'private'
+      ? players.length >= requiredPlayers
       : matchmakingStatus === 'matched' && players.length >= requiredPlayers;
 
   const isMatched = playersReady;
 
   const handleCancel = async () => {
+    if (currentMatchType === 'private') {
+      if (currentRoomId) {
+        try {
+          const { error } = await supabase.rpc('leave_one_vs_one_match', {
+            p_room_id: currentRoomId,
+          });
+          if (error) throw error;
+        } catch (error) {
+          console.warn('Failed to leave private room', error);
+        }
+      }
+      router.replace('/(tabs)/lobby');
+      return;
+    }
+
     try {
       if (isOneVsOne) {
         await supabase.rpc('cancel_one_vs_one_matchmaking', {
@@ -424,7 +446,7 @@ export default function MatchmakingScreen() {
     return () => {
       if (navigationStartedRef.current) return;
 
-      if (matchmakingStatus === 'searching') {
+      if (currentMatchType !== 'private' && matchmakingStatus === 'searching') {
         void (async () => {
           try {
             if (isOneVsOne) {
@@ -442,7 +464,7 @@ export default function MatchmakingScreen() {
         })();
       }
     };
-  }, [matchmakingStatus, isMatched, currentRoomId, isOneVsOne]);
+  }, [currentMatchType, matchmakingStatus, isMatched, currentRoomId, isOneVsOne]);
 
   const spin = rotate.interpolate({
     inputRange: [0, 1],
@@ -450,22 +472,33 @@ export default function MatchmakingScreen() {
   });
 
   
-  const isSearching = matchmakingStatus === 'searching';
-  const isMatchFound = matchmakingStatus === 'matched' && players.length >= requiredPlayers;
+  const isSearching = currentMatchType !== 'private' && matchmakingStatus === 'searching';
+  const isMatchFound = playersReady;
+  const isPrivateWaiting = currentMatchType === 'private' && !playersReady;
 
-  const centerTitle = isSearching
+  const centerTitle = isPrivateWaiting
+    ? 'Waiting for your friend'
+    : isSearching
     ? 'بەدوای بەرامبەر دەگەڕێین...'
     : isMatchFound
     ? 'یاری دۆزرایەوە'
     : 'بەدوای بەرامبەر دەگەڕێین...';
 
-  const centerSubtitle = isSearching
+  const centerSubtitle = isPrivateWaiting
+    ? 'Share the room code below to begin.'
+    : isSearching
     ? ''
     : isMatchFound
     ? countdownSeconds !== null
       ? `Starting in ${countdownSeconds}`
       : 'Starting in 5'
     : '';
+
+  const copyPrivateRoomCode = async () => {
+    if (!privateRoomCode) return;
+    await Clipboard.setStringAsync(privateRoomCode);
+    setCopyMessage('Room code copied');
+  };
 
   // Trigger countdown when a match is found
   useEffect(() => {
@@ -557,6 +590,14 @@ export default function MatchmakingScreen() {
                 <Text style={styles.waitText}>{centerSubtitle}</Text>
               </Animated.View>
             </View>
+
+            {isPrivateWaiting && privateRoomCode ? (
+              <Pressable style={styles.roomCodeCard} onPress={() => void copyPrivateRoomCode()}>
+                <Text style={styles.roomCodeLabel}>Private room code</Text>
+                <Text style={styles.roomCodeValue}>{privateRoomCode}</Text>
+                <Text style={styles.roomCodeHint}>{copyMessage || 'Tap to copy'}</Text>
+              </Pressable>
+            ) : null}
 
             <Pressable style={styles.cancelButton} onPress={handleCancel}>
               <Text style={styles.cancelButtonText}>پاشگەزبوونەوە</Text>
@@ -715,6 +756,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  roomCodeCard: { marginTop: 14, minWidth: 190, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 18, alignItems: 'center', backgroundColor: 'rgba(19, 8, 48, 0.94)', borderWidth: 1, borderColor: '#a855f7' },
+  roomCodeLabel: { color: '#d8b4fe', fontFamily: 'SpedaBold', fontSize: 12 },
+  roomCodeValue: { color: '#ffffff', fontFamily: 'SpedaBold', fontSize: 24, letterSpacing: 3, marginTop: 3 },
+  roomCodeHint: { color: '#b7c8e8', fontSize: 11, marginTop: 3 },
 
   timer: {
     color: '#ffffff',

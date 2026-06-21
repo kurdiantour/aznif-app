@@ -1,5 +1,5 @@
 import type { DominoTileData, Player, TeamId } from '@/types/game';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 export function useRoundPresentation({
   players,
@@ -14,7 +14,7 @@ export function useRoundPresentation({
 }) {
   const [releasedWinningTileKey, setReleasedWinningTileKey] = useState<string | null>(null);
   const [showScorePopup, setShowScorePopup] = useState(false);
-  const winningTileHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showGameOverPopup, setShowGameOverPopup] = useState(false);
 
   const winningTileKey = useMemo(() => {
     const winner = players.find((player) => player.id === roundWinnerPlayerId);
@@ -26,28 +26,29 @@ export function useRoundPresentation({
   const isWinningTileConfirmationVisible =
     !!winningTileKey && releasedWinningTileKey !== winningTileKey;
 
-  const handleWinningTileAnimationComplete = useCallback((animationKey: string) => {
-    if (winningTileHoldTimerRef.current) clearTimeout(winningTileHoldTimerRef.current);
-    winningTileHoldTimerRef.current = setTimeout(() => {
-      setReleasedWinningTileKey(animationKey);
-      winningTileHoldTimerRef.current = null;
-    }, 1000);
-  }, []);
+  const finalTileAnimationTileId = isWinningTileConfirmationVisible
+    ? lastPlayedTile?.id ?? null
+    : null;
+
+  const handleWinningTileAnimationComplete = useCallback(() => {
+    setReleasedWinningTileKey(winningTileKey);
+  }, [winningTileKey]);
 
   useEffect(() => {
-    if (winningTeamId) setShowScorePopup(false);
+    if (winningTeamId) {
+      setShowScorePopup(false);
+      setShowGameOverPopup(true);
+    }
   }, [winningTeamId]);
-
-  useEffect(() => () => {
-    if (winningTileHoldTimerRef.current) clearTimeout(winningTileHoldTimerRef.current);
-  }, []);
 
   return {
     winningTileKey,
     isWinningTileConfirmationVisible,
+    finalTileAnimationTileId,
     handleWinningTileAnimationComplete,
     showScorePopup,
     setShowScorePopup,
-    showGameOverPopup: !!winningTeamId,
+    showGameOverPopup,
+    setShowGameOverPopup,
   };
 }

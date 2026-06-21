@@ -4,7 +4,6 @@ import type { Friend } from '@/lib/friends';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -63,7 +62,7 @@ export function SendChipPopup({
     };
   }, [visible]);
 
-  if (!friend) return null;
+  if (!visible || !friend) return null;
 
   const handleSend = async () => {
     if (submitting) return;
@@ -73,12 +72,12 @@ export function SendChipPopup({
     const parsedAmount = Number(amount.replace(/[^0-9.]/g, ''));
 
     if (!parsedAmount || parsedAmount <= 0) {
-      setError('Please enter a valid MC amount.');
+      setError('Please enter a valid ئەزنیف amount.');
       return;
     }
 
     if (parsedAmount > mcBalance) {
-      setError('Insufficient MC balance.');
+      setError('Insufficient ئەزنیف balance.');
       return;
     }
 
@@ -103,11 +102,11 @@ export function SendChipPopup({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <View style={styles.overlay}>
       <View style={styles.backdrop}>
         <View style={styles.popup}>
           <Text style={styles.balance}>
-            Balance: {loadingBalance ? '...' : mcBalance.toFixed(0)} MC
+            Balance: {loadingBalance ? '...' : mcBalance.toFixed(0)} ئەزنیف
           </Text>
 
           <Text style={styles.title}>تۆکن بنێرە بۆ {friend.name}</Text>
@@ -145,11 +144,17 @@ export function SendChipPopup({
           </View>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    elevation: 10,
+  },
+
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.68)',

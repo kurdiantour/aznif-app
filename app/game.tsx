@@ -8,6 +8,7 @@ import ScorePopup from '@/components/game/ScorePopup';
 import TableBackground from '@/components/game/TableBackground';
 import { useGame } from '@/hooks/useGame';
 import { useOneVsOneGame } from '@/hooks/useOneVsOneGame';
+import { useRoundPresentation } from '@/hooks/useRoundPresentation';
 import { useTwoVsTwoGame } from '@/hooks/useTwoVsTwoGame';
 import { awardAiPracticeWin } from '@/lib/aiPracticeRewards';
 import { useProfile } from '@/lib/profile';
@@ -15,7 +16,7 @@ import { supabase } from '@/lib/supabase';
 import { DominoTileData, KozelBranch } from '@/types/game';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const HUMAN_BRANCH_PRIORITY: KozelBranch[] = ['right', 'left', 'up', 'down'];
 
@@ -71,22 +72,16 @@ export default function GameScreen() {
   const { refreshProfile } = useProfile();
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [showScorePopup, setShowScorePopup] = useState(false);
-  const [showGameOverPopup, setShowGameOverPopup] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [isLeavingMatch, setIsLeavingMatch] = useState(false);
   const [selectedTile, setSelectedTile] = useState<DominoTileData | null>(null);
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>([]);
-  const [finalTileAnimationTileId, setFinalTileAnimationTileId] = useState<string | null>(null);
-  const [isFinalTileAnimationRunning, setIsFinalTileAnimationRunning] = useState(false);
   const [passCountdown, setPassCountdown] = useState(15);
   const [isPassingTurn, setIsPassingTurn] = useState(false);
 
   const gameInitializedRef = useRef(false);
-  const rewardSettlementRequestedRef = useRef(false);
   const practiceRewardSettlementRequestedRef = useRef(false);
   const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
-  const animatedFinalTileKeyRef = useRef<string | null>(null);
   const boardAreaRef = useRef<any>(null);
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
@@ -98,12 +93,8 @@ export default function GameScreen() {
 
   useEffect(() => {
     gameInitializedRef.current = false;
-    rewardSettlementRequestedRef.current = false;
     practiceRewardSettlementRequestedRef.current = false;
     practiceMatchIdRef.current = roomId || `${Date.now()}-${Math.random()}`;
-    animatedFinalTileKeyRef.current = null;
-    setFinalTileAnimationTileId(null);
-    setIsFinalTileAnimationRunning(false);
   }, [roomId, gameMode, isPracticeMode]);
 
   useEffect(() => {
@@ -181,6 +172,21 @@ export default function GameScreen() {
   const humanPlayer = isPracticeMode
     ? game.players.find((p) => p.kind === 'human')
     : game.players.find((p) => p.id === localCurrentUserId);
+
+  const {
+    finalTileAnimationTileId,
+    isWinningTileConfirmationVisible: isFinalTileAnimationRunning,
+    handleWinningTileAnimationComplete: handleFinalTileAnimationComplete,
+    showScorePopup,
+    setShowScorePopup,
+    showGameOverPopup,
+    setShowGameOverPopup,
+  } = useRoundPresentation({
+    players: game.players,
+    roundWinnerPlayerId: game.roundWinnerPlayerId,
+    lastPlayedTile: game.lastPlayedTile,
+    winningTeamId: game.winningTeamId,
+  });
 
   const isMyTurn =
     !isPracticeMode && gameMode === '1v1'
@@ -282,65 +288,6 @@ export default function GameScreen() {
 
     return () => clearInterval(interval);
   }, [game.currentTurnPlayerId, shouldShowPassPrompt, handlePassTurn]);
-
-  useEffect(() => {
-    // Winner popup removed; UI uses new round result overlay driven by game.phase
-  }, [game.roundWinnerPlayerId]);
-
-  useEffect(() => {
-    if (isPracticeMode) return;
-    if (!roomId) return;
-    if (!game.winningTeamId) return;
-    if (rewardSettlementRequestedRef.current) return;
-
-    rewardSettlementRequestedRef.current = true;
-
-    const settleRewards = async () => {
-      try {
-        await supabase.rpc('settle_match_rewards', {
-          p_mode: gameMode,
-          p_room_id: roomId,
-        });
-
-        await refreshProfile();
-      } catch (error) {
-        console.warn('Unable to settle match rewards', error);
-      }
-    };
-
-    void settleRewards();
-  }, [isPracticeMode, roomId, game.winningTeamId, gameMode, refreshProfile]);
-
-  useEffect(() => {
-    if (game.winningTeamId) {
-      setShowScorePopup(false);
-      setShowGameOverPopup(true);
-    }
-  }, [game.winningTeamId]);
-
-  useEffect(() => {
-    const winnerId = game.roundWinnerPlayerId;
-    const lastPlayedTile = game.lastPlayedTile;
-
-    if (!winnerId || !lastPlayedTile) return;
-
-    const roundWinner = game.players.find((player) => player.id === winnerId);
-
-    if (!roundWinner || roundWinner.tileCount !== 0) return;
-
-    const animationKey = `${winnerId}:${lastPlayedTile.id}`;
-
-    if (animatedFinalTileKeyRef.current === animationKey) return;
-
-    animatedFinalTileKeyRef.current = animationKey;
-    setFinalTileAnimationTileId(lastPlayedTile.id);
-    setIsFinalTileAnimationRunning(true);
-  }, [game.roundWinnerPlayerId, game.lastPlayedTile, game.players]);
-
-  const handleFinalTileAnimationComplete = useCallback(() => {
-    setIsFinalTileAnimationRunning(false);
-    setFinalTileAnimationTileId(null);
-  }, []);
 
   useEffect(() => {
     if (!isMyTurn) {
@@ -775,38 +722,40 @@ export default function GameScreen() {
   }}
 />
 
-          <Modal transparent visible={showLeaveConfirm} animationType="fade">
-            <View style={styles.leaveModalBackdrop}>
-              <View style={styles.leaveModal}>
-                <Text style={styles.leaveModalTitle}>لە یارییەکە دەچیتە دەرەوە؟</Text>
-                <Text style={styles.leaveModalBody}>
-                  If you leave now, a bot will continue playing for you. If you do not return before the current round ends, the match will be counted as a loss.
-                </Text>
+          {showLeaveConfirm ? (
+            <View style={styles.leaveOverlay}>
+              <View style={styles.leaveModalBackdrop}>
+                <View style={styles.leaveModal}>
+                  <Text style={styles.leaveModalTitle}>لە یارییەکە دەچیتە دەرەوە؟</Text>
+                  <Text style={styles.leaveModalBody}>
+                    If you leave now, a bot will continue playing for you. If you do not return before the current round ends, the match will be counted as a loss.
+                  </Text>
 
-                <View style={styles.leaveModalActions}>
-                  <Pressable
-                    style={styles.leaveCancelButton}
-                    onPress={() => setShowLeaveConfirm(false)}
-                    disabled={isLeavingMatch}
-                  >
-                    <Text style={styles.leaveCancelText}>پاشگەزبوونەوە</Text>
-                  </Pressable>
+                  <View style={styles.leaveModalActions}>
+                    <Pressable
+                      style={styles.leaveCancelButton}
+                      onPress={() => setShowLeaveConfirm(false)}
+                      disabled={isLeavingMatch}
+                    >
+                      <Text style={styles.leaveCancelText}>پاشگەزبوونەوە</Text>
+                    </Pressable>
 
-                  <Pressable
-                    style={[styles.leaveConfirmButton, isLeavingMatch && styles.leaveButtonDisabled]}
-                    onPress={handleConfirmLeaveGame}
-                    disabled={isLeavingMatch}
-                  >
-                    {isLeavingMatch ? (
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    ) : (
-                      <Text style={styles.leaveConfirmText}>دەرچوون لە یاری</Text>
-                    )}
-                  </Pressable>
+                    <Pressable
+                      style={[styles.leaveConfirmButton, isLeavingMatch && styles.leaveButtonDisabled]}
+                      onPress={handleConfirmLeaveGame}
+                      disabled={isLeavingMatch}
+                    >
+                      {isLeavingMatch ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <Text style={styles.leaveConfirmText}>دەرچوون لە یاری</Text>
+                      )}
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
-          </Modal>
+          ) : null}
         </TableBackground>
       </View>
     </View>
@@ -991,6 +940,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+  },
+
+  leaveOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 1000,
   },
 
   leaveModal: {

@@ -30,13 +30,21 @@ export function applyAppFontDefaults() {
 
   textComponent.defaultProps = textComponent.defaultProps ?? {};
   textComponent.defaultProps.style = [
-    { fontFamily: appFonts.regular },
+    {
+      fontFamily: appFonts.regular,
+      writingDirection: 'rtl',
+      textAlign: 'right',
+    },
     textComponent.defaultProps.style,
   ];
 
   textInputComponent.defaultProps = textInputComponent.defaultProps ?? {};
   textInputComponent.defaultProps.style = [
-    { fontFamily: appFonts.regular },
+    {
+      fontFamily: appFonts.regular,
+      writingDirection: 'rtl',
+      textAlign: 'right',
+    },
     textInputComponent.defaultProps.style,
   ];
 

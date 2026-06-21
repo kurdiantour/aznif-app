@@ -44,7 +44,7 @@ export function TransfersPanel() {
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, username, player_id')
+          .select('id, username')
           .in('id', profileIds);
 
         if (error) throw error;
@@ -53,7 +53,7 @@ export function TransfersPanel() {
           Object.fromEntries(
             (data ?? []).map((profile: any) => [
               profile.id,
-              `${profile.username} (ID: ${profile.player_id})`,
+              profile.username,
             ])
           )
         );
@@ -76,21 +76,16 @@ export function TransfersPanel() {
 
     const profileId = isOutgoing ? item.to_user_id : item.from_user_id;
 
-    const player = profileId ? profileNames[profileId] ?? 'یاریزانی نەناسراو' : 'سیستەم';
+    const player = profileId
+      ? profileNames[profileId] ?? 'یاریزانی نەناسراو'
+      : 'سیستەم';
 
     return (
       <View style={styles.transferCard}>
         <View>
           <Text style={styles.transferTitle}>
-            {isOutgoing ? 'تۆکنی نێردراو' : 'تۆکنی وەرگیراو'}
-          </Text>
-
-          <Text style={styles.transferPlayer}>
+            {isOutgoing ? 'ئەزنیفی نێردراو' : 'ئەزنیفی وەرگیراو'}{' '}
             {isOutgoing ? 'بۆ' : 'لە'}: {player}
-          </Text>
-
-          <Text style={styles.transferDate}>
-            {new Date(item.created_at).toLocaleString()}
           </Text>
         </View>
 
@@ -101,7 +96,7 @@ export function TransfersPanel() {
           ]}
         >
           {isOutgoing ? '-' : '+'}
-          {item.amount.toFixed(2)} MC
+          {item.amount.toFixed(2)} ئەزنیف
         </Text>
       </View>
     );
@@ -120,7 +115,7 @@ export function TransfersPanel() {
           <Text style={styles.emptyTitle}>هێشتا هیچ گواستنەوەیەک نییە</Text>
 
           <Text style={styles.emptyText}>
-            تۆکنە نێردراو و وەرگیراوەکانت لێرە دەردەکەون.
+            مێژووی گواستنەوەی ئەزنیفەکانت لێرە دەردەکەوێت.
           </Text>
         </View>
       ) : (
@@ -151,8 +146,8 @@ const styles = StyleSheet.create({
   },
 
   transferCard: {
-    minHeight: 86,
-    borderRadius: 18,
+    minHeight: 10,
+    borderRadius: 40,
     padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(168,85,247,0.35)',
@@ -164,26 +159,12 @@ const styles = StyleSheet.create({
 
   transferTitle: {
     color: '#ffffff',
-    fontSize: 15,
-    fontFamily: 'SpedaBold',
-    marginBottom: 5,
-  },
-
-  transferPlayer: {
-    color: '#d8ccff',
-    fontSize: 12,
-    fontFamily: 'SpedaBold',
-    marginBottom: 4,
-  },
-
-  transferDate: {
-    color: '#8f9bb7',
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: 'SpedaBold',
   },
 
   transferAmount: {
-    fontSize: 18,
+    fontSize: 13,
     fontFamily: 'SpedaBold',
   },
 

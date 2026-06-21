@@ -78,11 +78,11 @@ export default function LeaderboardScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.tableHeader}>
-        <Text style={[styles.headerText, styles.rankHeader]}>پلە</Text>
-        <Text style={[styles.headerText, styles.playersHeader]}>یاریزانان</Text>
-        <Text style={[styles.headerText, styles.levelHeader]}>ئاست</Text>
-        <Text style={[styles.headerText, styles.pointsHeader]}>خاڵ</Text>
-        <Text style={[styles.headerText, styles.goldHeader]}>زێڕ</Text>
+        <Text style={[styles.headerText, styles.rankHeader]}>RANK</Text>
+        <Text style={[styles.headerText, styles.playersHeader]}>PLAYERS</Text>
+        <Text style={[styles.headerText, styles.levelHeader]}>LEVEL</Text>
+        <Text style={[styles.headerText, styles.pointsHeader]}>POINTS</Text>
+        <Text style={[styles.headerText, styles.goldHeader]}>GOLD</Text>
       </View>
 
       <ScrollView
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   headerText: {
     color: '#cbd5e1',
     fontSize: 10,
-    fontFamily: 'SpedaBold',
+    fontWeight: '900',
     letterSpacing: 0.7,
   },
 
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   rankText: {
     color: '#f8fafc',
     fontSize: 11,
-    fontFamily: 'SpedaBold',
+    fontWeight: '900',
     textAlign: 'center',
   },
 
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   playerName: {
     color: '#ffffff',
     fontSize: 11,
-    fontFamily: 'SpedaBold',
+    fontWeight: '900',
     letterSpacing: 0.7,
   },
 
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   levelText: {
     color: '#cbd5e1',
     fontSize: 11,
-    fontFamily: 'SpedaBold',
+    fontWeight: '900',
   },
 
   pointsColumn: {
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   pointsText: {
     color: '#f97316',
     fontSize: 11,
-    fontFamily: 'SpedaBold',
+    fontWeight: '900',
   },
 
   goldColumn: {
@@ -308,6 +308,6 @@ const styles = StyleSheet.create({
   goldText: {
     color: '#d6d3d1',
     fontSize: 11,
-    fontFamily: 'SpedaBold',
+    fontWeight: '900',
   },
 });

@@ -458,25 +458,39 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
   const createRoundResult = useCallback((winnerId: string) => {
     if (playersRows.length < 2) return null;
-    if (
-      !Array.isArray(rawState?.revealedFinalHands) ||
-      rawState.revealedFinalHands.length < 2
-    ) {
-      return null;
-    }
     const winnerTeam = playersRows.find(
       (row) => (row.user_id ?? `bot-${row.id}`) === winnerId,
     )?.team_id;
-    return buildRoundResult({
+    const players = playersRows.map((row) => ({
+      id: row.user_id ?? `bot-${row.id}`,
+      playerIndex: typeof row.player_index === 'number' ? row.player_index : -1,
+    }));
+    const awardedPoints = rawState?.lastScoringEvent?.points ?? 0;
+
+    if (
+      Array.isArray(rawState?.revealedFinalHands) &&
+      rawState.revealedFinalHands.length >= 2
+    ) {
+      return buildRoundResult({
+        winnerId,
+        winnerTeam,
+        awardedPoints,
+        players,
+        hands: rawState.revealedFinalHands,
+      });
+    }
+
+    return {
       winnerId,
       winnerTeam,
-      awardedPoints: rawState?.lastScoringEvent?.points ?? 0,
-      players: playersRows.map((row) => ({
-        id: row.user_id ?? `bot-${row.id}`,
-        playerIndex: typeof row.player_index === 'number' ? row.player_index : -1,
-      })),
-      hands: rawState.revealedFinalHands,
-    });
+      awardedPoints,
+      remainingTilesByPlayer: Object.fromEntries(
+        players.map((player) => [player.id, []]),
+      ),
+      remainingPipsByPlayer: Object.fromEntries(
+        players.map((player) => [player.id, 0]),
+      ),
+    };
   }, [playersRows, rawState]);
 
   const { phase, roundResult, nextRoundCountdown, resetRoundPresentation } =

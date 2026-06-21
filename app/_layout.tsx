@@ -82,7 +82,6 @@ export default function Layout() {
           <Stack.Screen name="create-room" />
           <Stack.Screen name="matchmaking" />
           <Stack.Screen name="play-ai" />
-          <Stack.Screen name="transfer" />
           <Stack.Screen name="wallet-history" />
           <Stack.Screen name="(tabs)" />
         </Stack>

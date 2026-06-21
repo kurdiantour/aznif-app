@@ -310,8 +310,9 @@ export function getPlayableBranches(
   const leftStarted = board.branches.left.tiles.length > 0;
 
   return matchingBranches.filter((branch) => {
-    if (branch === 'right') return true;
-    if (branch === 'left') return rightStarted;
+    // A spinner exposes both horizontal values immediately.  Each branch owns
+    // its own open value, so extending one must not make the other unavailable.
+    if (branch === 'right' || branch === 'left') return true;
     if (branch === 'up' || branch === 'down') return rightStarted && leftStarted;
 
     return false;

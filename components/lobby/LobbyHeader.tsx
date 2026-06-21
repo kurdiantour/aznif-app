@@ -2,9 +2,11 @@ import { PlayerAvatar } from '@/components/player/PlayerAvatar';
 import { ProfileDrawer } from '@/components/profile/ProfileDrawer';
 import { SettingsDrawer } from '@/components/settings/SettingsDrawer';
 import { useProfile } from '@/lib/profile';
+import { getRankTitleFromPoints } from '@/lib/progression';
 import { getBalance } from '@/lib/wallet';
 import { subscribeWalletRefresh } from '@/lib/walletEvents';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -15,6 +17,7 @@ type LobbyHeaderProps = {
 
 export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProps) {
   const { profile, loading } = useProfile();
+  const rankTitle = getRankTitleFromPoints(profile?.points);
 
   const [mcBalance, setMcBalance] = useState<string>('...');
   const [goldBalance, setGoldBalance] = useState<string>('...');
@@ -64,12 +67,12 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
           <Pressable style={styles.userBox} onPress={() => setIsProfileOpen(true)}>
             <PlayerAvatar avatarId={profile?.avatarId} size={50} style={styles.avatar} />
 
-            <View>
+            <View style={styles.userText}>
               <Text style={styles.username} numberOfLines={1}>
                 {profile?.displayName ?? 'Player'}
               </Text>
 
-              <Text style={styles.level}>ئاستی {profile?.level ?? 1}</Text>
+              <Text style={styles.level}>{rankTitle}</Text>
             </View>
           </Pressable>
 
@@ -85,14 +88,11 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
                   <Ionicons name="wallet" size={14} color="#F5C542" />
                 </View>
 
-                <Text style={styles.balanceText}>{mcBalance} MC</Text>
-
-                <Pressable style={styles.plusButton}>
-                  <Ionicons name="add" size={15} color="#ffffff" />
-                </Pressable>
+                <Text style={styles.balanceText}>{mcBalance} ئەزنیف</Text>
               </LinearGradient>
 
-              <LinearGradient
+              <Pressable onPress={() => router.push('/buy-gold')}>
+                <LinearGradient
                 colors={['rgba(168,85,247,0.24)', 'rgba(255,255,255,0.06)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -104,10 +104,14 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
 
                 <Text style={styles.balanceText}>{goldBalance} Gold</Text>
 
-                <Pressable style={styles.plusButton}>
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={() => router.push('/buy-gold')}
+                >
                   <Ionicons name="add" size={15} color="#ffffff" />
                 </Pressable>
-              </LinearGradient>
+                </LinearGradient>
+              </Pressable>
             </View>
 
             <Pressable
@@ -148,16 +152,20 @@ export function LobbyHeader({ onProfileDrawerVisibilityChange }: LobbyHeaderProp
 const styles = StyleSheet.create({
   topBar: {
     height: 48,
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
   userBox: {
     width: 165,
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 9,
+  },
+
+  userText: {
+    alignItems: 'flex-end',
   },
 
   avatar: {
@@ -176,6 +184,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontFamily: 'SpedaBold',
+    textAlign: 'right',
   },
 
   level: {
@@ -183,44 +192,45 @@ const styles = StyleSheet.create({
     color: '#8fa4d3',
     fontSize: 12,
     fontFamily: 'SpedaBold',
+    textAlign: 'right',
   },
 
   topRight: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 8,
   },
 
   balanceGroup: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     gap: 8,
     alignItems: 'center',
   },
 
-  balancePill: {
-    height: 36,
-    minWidth: 116,
-    paddingLeft: 7,
-    paddingRight: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,214,102,0.20)',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+balancePill: {
+  height: 36,
+  width: 140,
+  paddingHorizontal: 10,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: 'rgba(255,214,102,0.20)',
+  flexDirection: 'row-reverse',
+  alignItems: 'center',
+  gap: 12,
+},
 
-  balancePillSecondary: {
-    height: 36,
-    minWidth: 128,
-    paddingLeft: 7,
-    paddingRight: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.26)',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+balancePillSecondary: {
+  height: 36,
+  width: 140,
+  paddingHorizontal: 10,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: 'rgba(168,85,247,0.26)',
+  flexDirection: 'row-reverse',
+  alignItems: 'center',
+  gap: 12,
+},
 
   balanceIconCircle: {
     width: 25,
@@ -231,7 +241,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,214,102,0.30)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 7,
   },
 
   balanceIconCircleGold: {
@@ -243,7 +252,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(216,180,254,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 7,
   },
 
   balanceText: {
@@ -262,7 +270,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginRight: 8,
   },
 
   topIcon: {

@@ -1,27 +1,31 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-    type ImageSourcePropType,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ImageSourcePropType,
 } from 'react-native';
 
 import { supabase } from '@/lib/supabase';
+import { rtlStyles } from '@/lib/rtl';
 
 type GameMode = '1v1' | '2v2';
 type MatchType = 'duo' | 'squad';
 
 type ModeCardProps = {
-  title: string;
+  title?: string;
   subtitle: string;
   playersOnline?: boolean;
   image?: ImageSourcePropType;
   imageOnly?: boolean;
   disabled?: boolean;
+  badge?: string;
+  isTablet?: boolean;
   onPress?: () => void;
 };
 
@@ -32,15 +36,23 @@ function ModeCard({
   image,
   imageOnly,
   disabled,
+  badge,
+  isTablet,
   onPress,
 }: ModeCardProps) {
   return (
     <Pressable
-      style={[styles.card, disabled && styles.cardDisabled]}
+      style={[styles.card, isTablet && styles.cardTablet, disabled && styles.cardDisabled]}
       onPress={disabled ? undefined : onPress}
     >
       {image ? (
-        <Image source={image} style={styles.cardImageInner} resizeMode="cover" />
+        <Image
+          source={image}
+          style={styles.cardImageInner}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={0}
+        />
       ) : (
         <LinearGradient
           colors={['#1d1145', '#3b1676', '#090b1d']}
@@ -49,22 +61,39 @@ function ModeCard({
       )}
 
       {playersOnline && (
-        <View style={styles.playersBadge}>
-          <View style={styles.onlineDot} />
-          <Text style={styles.playersText}>یاریزانان بەردەستن</Text>
+        <View style={[styles.playersBadge, isTablet && styles.playersBadgeTablet]}>
+          <View style={[styles.onlineDot, isTablet && styles.onlineDotTablet]} />
+          <Text style={[styles.playersText, isTablet && styles.playersTextTablet]}>
+            یاریزان لەسەر هێڵە
+          </Text>
         </View>
       )}
+
+      {badge ? (
+        <View style={[styles.comingSoonBadge, isTablet && styles.comingSoonBadgeTablet]}>
+          <Text style={[styles.comingSoonText, isTablet && styles.comingSoonTextTablet]}>
+            {badge}
+          </Text>
+        </View>
+      ) : null}
 
       {!imageOnly && (
         <>
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.92)']}
-            style={styles.bottomFade}
+            style={[styles.bottomFade, isTablet && styles.bottomFadeTablet]}
           />
 
-          <View style={styles.cardInfo}>
-            <Text style={styles.cardTitle}>{title}</Text>
-            <Text style={styles.cardSubtitle}>{subtitle}</Text>
+          <View style={[styles.cardInfo, isTablet && styles.cardInfoTablet]}>
+            {title ? (
+              <Text style={[styles.cardTitle, isTablet && styles.cardTitleTablet]}>
+                {title}
+              </Text>
+            ) : null}
+
+            <Text style={[styles.cardSubtitle, isTablet && styles.cardSubtitleTablet]}>
+              {subtitle}
+            </Text>
           </View>
         </>
       )}
@@ -75,6 +104,10 @@ function ModeCard({
 export default function LobbyScreen() {
   const router = useRouter();
   const [isSearching, setIsSearching] = useState(false);
+  const { width, height } = useWindowDimensions();
+
+  const shortestSide = Math.min(width, height);
+  const isTablet = shortestSide >= 600;
 
   const startPublicMatch = async (mode: GameMode, matchType: MatchType) => {
     if (isSearching) return;
@@ -87,21 +120,15 @@ export default function LobbyScreen() {
           ? await supabase.rpc('find_one_vs_one_opponent')
           : await supabase.rpc('find_two_vs_two_match');
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
+      if (!result) throw new Error('نەتوانرا گەڕان بۆ یاری دەست پێ بکات.');
 
-      if (!result) {
-        throw new Error('Failed to start matchmaking.');
-      }
-
-      // Navigate to matchmaking screen - both immediate match and "searching" states
       router.push({
         pathname: '/matchmaking',
         params: {
           mode,
-          matchmaking_status: result.status, // 'matched' or 'searching'
-          room_id: result.room_id, // Present if 'matched', undefined if 'searching'
+          matchmaking_status: result.status,
+          room_id: result.room_id,
           matchType,
         },
       });
@@ -112,45 +139,49 @@ export default function LobbyScreen() {
   };
 
   return (
-    <View style={styles.content}>
-      <View style={styles.leftCards}>
+    <View style={[styles.content, rtlStyles.row, isTablet && styles.contentTablet]}>
+      <View style={[styles.leftCards, rtlStyles.row, isTablet && styles.leftCardsTablet]}>
         <ModeCard
+          isTablet={isTablet}
           playersOnline
-          title="یەک بە یەک"
-          subtitle="یاری لەگەڵ یاریزانی ڕاستەقینە"
+          title="پێکدادان"
+          subtitle="توانای خۆت بسەلمێنە"
           image={require('@/assets/images/mode-select/1vs1.webp')}
           disabled={isSearching}
           onPress={() => startPublicMatch('1v1', 'duo')}
         />
 
         <ModeCard
-          title="دوو بە دوو"
-          subtitle="یاری چوار یاریزانی ڕاستەقینە"
+          isTablet={isTablet}
+          title="هاوپەیمان"
+          subtitle="یاری (4) یاریزانی ڕاستەقینە"
           image={require('@/assets/images/mode-select/2vs2.webp')}
           disabled={isSearching}
           onPress={() => startPublicMatch('2v2', 'squad')}
         />
 
         <ModeCard
-          title="پاڵەوانێتی"
-          subtitle="بەشداربە لە ڕووداوە تایبەتەکان"
+          isTablet={isTablet}
+          title="پاڵەوانیەتی"
+          subtitle="تاجی سەرکەوتن چاوەڕێتە"
+          badge="بەم زووانە"
           image={require('@/assets/images/lobby/tournament-bg.webp')}
-          disabled={isSearching}
+          disabled
         />
       </View>
 
-      <View style={styles.rightCards}>
+      <View style={[styles.rightCards, isTablet && styles.rightCardsTablet]}>
         <ModeCard
-          title="یاری لەگەڵ زیرەکی دەستکرد"
-          subtitle="ڕاهێنان بەبێ ئینتەرنێت"
+          isTablet={isTablet}
+          subtitle="یاریکردن لەگەڵ رۆبۆت"
           image={require('@/assets/images/lobby/play-ai-bg.webp')}
           disabled={isSearching}
           onPress={() => router.push('/play-ai')}
         />
 
         <ModeCard
-          title="ژوور دروست بکە"
-          subtitle="مێزی خۆت بەڕێوەببە"
+          isTablet={isTablet}
+          subtitle="یارییەکی تایبەت دروست بکە"
           image={require('@/assets/images/lobby/create-room.webp')}
           disabled={isSearching}
           onPress={() =>
@@ -169,7 +200,6 @@ export default function LobbyScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    flexDirection: 'row',
     alignSelf: 'center',
     width: '100%',
     height: '80%',
@@ -179,15 +209,32 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
 
+  contentTablet: {
+    width: '100%',
+    height: '72%',
+    maxHeight: 520,
+    minHeight: 390,
+    gap: 18,
+    marginTop: 12,
+  },
+
   leftCards: {
     flex: 1,
-    flexDirection: 'row',
     gap: 8,
+  },
+
+  leftCardsTablet: {
+    gap: 18,
   },
 
   rightCards: {
     width: '26%',
     gap: 8,
+  },
+
+  rightCardsTablet: {
+    width: '28%',
+    gap: 18,
   },
 
   card: {
@@ -197,6 +244,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.2,
     borderColor: 'rgba(180,120,255,0.42)',
     backgroundColor: 'rgba(17,24,39,0.82)',
+  },
+
+  cardTablet: {
+    borderRadius: 18,
+    borderWidth: 1.4,
   },
 
   cardDisabled: {
@@ -221,6 +273,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  playersBadgeTablet: {
+    top: 18,
+    left: 18,
+  },
+
   onlineDot: {
     width: 8,
     height: 8,
@@ -229,10 +286,49 @@ const styles = StyleSheet.create({
     marginRight: 7,
   },
 
+  onlineDotTablet: {
+    width: 10,
+    height: 10,
+    marginRight: 9,
+  },
+
   playersText: {
     color: '#ffffff',
     fontSize: 11,
     fontFamily: 'SpedaBold',
+  },
+
+  playersTextTablet: {
+    fontSize: 14,
+  },
+
+  comingSoonBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(88, 28, 135, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(233, 213, 255, 0.55)',
+  },
+
+  comingSoonBadgeTablet: {
+    top: 16,
+    right: 16,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+
+  comingSoonText: {
+    color: '#f3e8ff',
+    fontSize: 8,
+    fontFamily: 'SpedaBold',
+  },
+
+  comingSoonTextTablet: {
+    fontSize: 11,
   },
 
   bottomFade: {
@@ -243,23 +339,45 @@ const styles = StyleSheet.create({
     height: 86,
   },
 
+  bottomFadeTablet: {
+    height: 125,
+  },
+
   cardInfo: {
     position: 'absolute',
     left: 15,
     right: 15,
     bottom: 12,
+    alignItems: 'center',
+  },
+
+  cardInfoTablet: {
+    left: 20,
+    right: 20,
+    bottom: 18,
   },
 
   cardTitle: {
     color: '#ffffff',
     fontSize: 17,
     fontFamily: 'SpedaBold',
+    textAlign: 'center',
+  },
+
+  cardTitleTablet: {
+    fontSize: 24,
   },
 
   cardSubtitle: {
-    marginTop: 2,
+    marginTop: 5,
     color: '#f3f4f6',
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: 'SpedaBold',
+    textAlign: 'center',
+  },
+
+  cardSubtitleTablet: {
+    marginTop: 8,
+    fontSize: 16,
   },
 });

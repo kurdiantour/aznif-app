@@ -211,12 +211,12 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
   }
 
   function handleTransferSuccess() {
-    setSuccessMessage('MC sent successfully.');
+    setSuccessMessage('ئەزنیف sent successfully.');
     void refresh();
   }
 
   return (
-    <>
+    <View style={styles.panel}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -263,11 +263,16 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
         onClose={() => setSelectedFriend(null)}
         onTransferSuccess={handleTransferSuccess}
       />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  panel: {
+    flex: 1,
+    position: 'relative',
+  },
+
   scroll: {
     flex: 1,
   },

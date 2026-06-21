@@ -185,7 +185,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
             <Text style={styles.emptyTitle}>هیچ داواکارییەک نییە</Text>
 
             <Text style={styles.emptyText}>
-              Incoming friend requests will appear here.
+              ئەگەر کەسێک داواکاری هاوڕێیەتی بنێرێت، لێرە پیشان دەدرێت.
             </Text>
           </View>
         ) : (
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
 
   emptyTitle: {
     color: '#ffffff',
-    fontSize: 18,
+    fontSize: 14,
     fontFamily: 'SpedaBold',
     marginBottom: 8,
     textAlign: 'center',
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
 
   emptyText: {
     color: '#9ca3af',
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'SpedaBold',
     textAlign: 'center',
     lineHeight: 19,

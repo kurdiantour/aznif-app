@@ -1,5 +1,5 @@
 import { MatchReward } from '@/types/game';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 type GameOverPopupProps = {
   visible: boolean;
@@ -16,8 +16,10 @@ export default function GameOverPopup({
   onClose,
   onPlayAgain,
 }: GameOverPopupProps) {
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <View style={styles.overlay}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={styles.eyebrow}>یارییەکە تەواو بوو</Text>
@@ -48,11 +50,17 @@ export default function GameOverPopup({
           </View>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 1000,
+  },
+
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.72)',
