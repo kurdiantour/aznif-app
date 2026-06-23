@@ -1,5 +1,7 @@
 import type { DominoTileData, Player, TeamId } from '@/types/game';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+const FINAL_TILE_REVEAL_DELAY_MS = 900;
 
 export function useRoundPresentation({
   players,
@@ -12,6 +14,7 @@ export function useRoundPresentation({
   lastPlayedTile: DominoTileData | null;
   winningTeamId: TeamId | null;
 }) {
+  const winningTileReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [releasedWinningTileKey, setReleasedWinningTileKey] = useState<string | null>(null);
   const [showScorePopup, setShowScorePopup] = useState(false);
   const [showGameOverPopup, setShowGameOverPopup] = useState(false);
@@ -31,8 +34,23 @@ export function useRoundPresentation({
     : null;
 
   const handleWinningTileAnimationComplete = useCallback(() => {
-    setReleasedWinningTileKey(winningTileKey);
+    if (!winningTileKey) return;
+
+    if (winningTileReleaseTimerRef.current) {
+      clearTimeout(winningTileReleaseTimerRef.current);
+    }
+
+    winningTileReleaseTimerRef.current = setTimeout(() => {
+      setReleasedWinningTileKey(winningTileKey);
+      winningTileReleaseTimerRef.current = null;
+    }, FINAL_TILE_REVEAL_DELAY_MS);
   }, [winningTileKey]);
+
+  useEffect(() => () => {
+    if (winningTileReleaseTimerRef.current) {
+      clearTimeout(winningTileReleaseTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (winningTeamId) {

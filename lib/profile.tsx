@@ -1,8 +1,19 @@
-﻿import type { Profile, ProfileUpdate } from '@/types/profile';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { calculateLevelFromPoints } from './progression';
-import { isSupabaseConfigured, supabase } from './supabase';
-import { getCurrentUser, getOrCreateProfile, updateMyProfile } from './supabaseAuth';
+﻿import type { Profile, ProfileUpdate } from "@/types/profile";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import { calculateLevelFromPoints } from "./progression";
+import { isSupabaseConfigured, supabase } from "./supabase";
+import {
+  getCurrentUser,
+  getOrCreateProfile,
+  updateMyProfile,
+} from "./supabaseAuth";
 
 type DbProfile = {
   id: string;
@@ -23,11 +34,11 @@ function mapDbProfile(profile: DbProfile, email?: string): Profile {
     playerId: profile.player_id,
     username: profile.username,
     displayName: profile.username,
-    avatarId: profile.avatar_id as unknown as Profile['avatarId'],
+    avatarId: profile.avatar_id as unknown as Profile["avatarId"],
     avatarUrl: undefined,
     email,
     bio: undefined,
-    status: 'active',
+    status: "active",
     level: calculateLevelFromPoints(points),
     points,
     createdAt: profile.created_at,
@@ -53,7 +64,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
 export type LeaderboardProfile = Pick<
   Profile,
-  'id' | 'displayName' | 'avatarId' | 'level' | 'points'
+  "id" | "displayName" | "avatarId" | "level" | "points"
 > & {
   rank: number;
   gold: number;
@@ -62,7 +73,7 @@ export type LeaderboardProfile = Pick<
 export async function getLeaderboardProfiles(
   limit = 50,
 ): Promise<LeaderboardProfile[]> {
-  const { data, error } = await supabase.rpc('get_leaderboard', {
+  const { data, error } = await supabase.rpc("get_leaderboard", {
     p_limit: limit,
   });
 
@@ -76,7 +87,7 @@ export async function getLeaderboardProfiles(
     return {
       id: profile.user_id,
       displayName: profile.display_name,
-      avatarId: profile.avatar_id as Profile['avatarId'],
+      avatarId: profile.avatar_id as Profile["avatarId"],
       level: calculateLevelFromPoints(points),
       points,
       rank: Number(profile.rank ?? 0),
@@ -87,9 +98,11 @@ export async function getLeaderboardProfiles(
 
 export async function getProfileById(id: string): Promise<Profile> {
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, player_id, username, avatar_id, level, points, created_at, updated_at')
-    .eq('id', id)
+    .from("profiles")
+    .select(
+      "id, player_id, username, avatar_id, level, points, created_at, updated_at",
+    )
+    .eq("id", id)
     .maybeSingle<DbProfile>();
 
   if (error) {
@@ -97,7 +110,7 @@ export async function getProfileById(id: string): Promise<Profile> {
   }
 
   if (!data) {
-    throw new Error('Profile not found for id ' + id);
+    throw new Error("Profile not found for id " + id);
   }
 
   return mapDbProfile(data);
@@ -109,12 +122,12 @@ export async function updateCurrentProfile(
   const user = await getCurrentUser();
 
   if (!user) {
-    throw new Error('User is not authenticated');
+    throw new Error("User is not authenticated");
   }
 
   const payload: { username?: string; avatar_id?: string } = {};
 
-  if (typeof changes.displayName === 'string') {
+  if (typeof changes.displayName === "string") {
     const trimmedName = changes.displayName.trim();
 
     if (trimmedName) {
@@ -122,7 +135,7 @@ export async function updateCurrentProfile(
     }
   }
 
-  if (typeof changes.avatarId === 'string') {
+  if (typeof changes.avatarId === "string") {
     payload.avatar_id = changes.avatarId;
   }
 
@@ -130,7 +143,7 @@ export async function updateCurrentProfile(
     const current = await getCurrentProfile();
 
     if (!current) {
-      throw new Error('Unable to refresh profile.');
+      throw new Error("Unable to refresh profile.");
     }
 
     return current;
@@ -150,11 +163,7 @@ type ProfileContextValue = {
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
 
-export function ProfileProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -177,7 +186,7 @@ export function ProfileProvider({
           setProfile(nextProfile);
         }
       } catch (error) {
-        console.warn('[ProfileProvider] Failed to load profile:', error);
+        console.warn("[ProfileProvider] Failed to load profile:", error);
 
         if (isMounted) {
           setProfile(null);
@@ -247,7 +256,7 @@ export function useProfile() {
   const context = useContext(ProfileContext);
 
   if (!context) {
-    throw new Error('useProfile must be used within ProfileProvider');
+    throw new Error("useProfile must be used within ProfileProvider");
   }
 
   return context;

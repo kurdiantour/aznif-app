@@ -1,7 +1,7 @@
-import { useProfile } from '@/lib/profile';
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { useProfile } from "@/lib/profile";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, StyleSheet, View } from "react-native";
 
 const MIN_SPLASH_DURATION = 5000;
 const BAR_COUNT = 7;
@@ -52,7 +52,7 @@ export default function IndexScreen() {
   useEffect(() => {
     if (!minimumDurationElapsed || startupLoading) return;
 
-    router.replace(profile ? '/(tabs)/lobby' : '/login');
+    router.replace(profile ? "/(tabs)/lobby" : "/login");
   }, [minimumDurationElapsed, profile, router, startupLoading]);
 
   return (
@@ -106,24 +106,24 @@ export default function IndexScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050b22',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#050b22",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   loader: {
-    position: 'relative',
+    position: "relative",
     width: 160,
     height: 46,
   },
 
   bar: {
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     bottom: 0,
     width: 5,
     height: 40,
     borderRadius: 2,
-    backgroundColor: '#f8fbff',
+    backgroundColor: "#f8fbff",
   },
 });

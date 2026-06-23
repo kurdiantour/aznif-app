@@ -1,27 +1,78 @@
-import { AuthScreen, styles } from './forgot-password';
-import { updatePassword } from '@/lib/supabaseAuth';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput } from 'react-native';
+import { AuthScreen, styles } from "./forgot-password";
+import { updatePassword } from "@/lib/supabaseAuth";
+import { useRouter } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
-  const [password, setPassword] = useState(''); const [confirmation, setConfirmation] = useState('');
-  const [message, setMessage] = useState(''); const [loading, setLoading] = useState(false); const [success, setSuccess] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const handleReset = async () => {
-    if (password.length < 6) return setMessage('Your password must be at least 6 characters.');
-    if (password !== confirmation) return setMessage('Passwords do not match.');
-    setLoading(true); setMessage('');
-    try { const { error } = await updatePassword(password); if (error) throw error; setSuccess(true); setMessage('Your password has been updated. You can now sign in.'); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to update your password. Open a new reset link and try again.'); }
-    finally { setLoading(false); }
+    if (password.length < 6)
+      return setMessage("Your password must be at least 6 characters.");
+    if (password !== confirmation) return setMessage("Passwords do not match.");
+    setLoading(true);
+    setMessage("");
+    try {
+      const { error } = await updatePassword(password);
+      if (error) throw error;
+      setSuccess(true);
+      setMessage("Your password has been updated. You can now sign in.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to update your password. Open a new reset link and try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
-  return <AuthScreen title="Choose a new password" subtitle="Use a password with at least 6 characters.">
-    <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="New password" placeholderTextColor="#7f8fb2" secureTextEntry autoComplete="new-password" editable={!loading && !success} />
-    <TextInput style={styles.input} value={confirmation} onChangeText={setConfirmation} placeholder="Confirm new password" placeholderTextColor="#7f8fb2" secureTextEntry autoComplete="new-password" editable={!loading && !success} />
-    {!!message && <Text style={success ? styles.success : styles.error}>{message}</Text>}
-    <Pressable style={[styles.primaryButton, (loading || success) && styles.disabled]} onPress={success ? () => router.replace('/login') : handleReset} disabled={loading}>
-      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{success ? 'Go to sign in' : 'Update password'}</Text>}
-    </Pressable>
-  </AuthScreen>;
+  return (
+    <AuthScreen
+      title="Choose a new password"
+      subtitle="Use a password with at least 6 characters."
+    >
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        placeholder="New password"
+        placeholderTextColor="#7f8fb2"
+        secureTextEntry
+        autoComplete="new-password"
+        editable={!loading && !success}
+      />
+      <TextInput
+        style={styles.input}
+        value={confirmation}
+        onChangeText={setConfirmation}
+        placeholder="Confirm new password"
+        placeholderTextColor="#7f8fb2"
+        secureTextEntry
+        autoComplete="new-password"
+        editable={!loading && !success}
+      />
+      {!!message && (
+        <Text style={success ? styles.success : styles.error}>{message}</Text>
+      )}
+      <Pressable
+        style={[styles.primaryButton, (loading || success) && styles.disabled]}
+        onPress={success ? () => router.replace("/login") : handleReset}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryText}>
+            {success ? "Go to sign in" : "Update password"}
+          </Text>
+        )}
+      </Pressable>
+    </AuthScreen>
+  );
 }

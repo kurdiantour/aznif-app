@@ -1,12 +1,12 @@
-import { PlayerAvatar } from '@/components/player/PlayerAvatar';
-import type { AvatarId } from '@/constants/avatars';
-import { getCurrentProfile } from '@/lib/profile';
-import { supabase } from '@/lib/supabase';
-import * as Clipboard from 'expo-clipboard';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import type { AvatarId } from "@/constants/avatars";
+import { getCurrentProfile } from "@/lib/profile";
+import { supabase } from "@/lib/supabase";
+import * as Clipboard from "expo-clipboard";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Animated,
   ImageBackground,
@@ -14,9 +14,9 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 
-type MatchType = 'bot' | 'duo' | 'squad' | 'private';
+type MatchType = "bot" | "duo" | "squad" | "private";
 
 type MatchPlayer = {
   id: string;
@@ -29,7 +29,6 @@ type MatchPlayer = {
   teamId?: string | null;
   kind?: string | null;
 };
-
 
 type PlayerCardProps = {
   name: string;
@@ -79,14 +78,20 @@ function PlayerCard({
   }, [delay, filled, pulse]);
 
   return (
-    <Animated.View style={[styles.playerCard, { transform: [{ scale: pulse }] }]}>
+    <Animated.View
+      style={[styles.playerCard, { transform: [{ scale: pulse }] }]}
+    >
       <LinearGradient
-        colors={['rgba(57,18,105,0.92)', 'rgba(12,8,28,0.96)']}
+        colors={["rgba(57,18,105,0.92)", "rgba(12,8,28,0.96)"]}
         style={styles.playerGradient}
       >
         <View style={styles.avatarRing}>
           {filled && avatarId ? (
-            <PlayerAvatar avatarId={avatarId} size={44} style={styles.avatarCircle} />
+            <PlayerAvatar
+              avatarId={avatarId}
+              size={44}
+              style={styles.avatarCircle}
+            />
           ) : (
             <View style={[styles.avatarCircle, styles.emptyAvatar]}>
               <Text style={styles.emptyAvatarText}>?</Text>
@@ -99,38 +104,47 @@ function PlayerCard({
         <Text style={styles.playerName}>{name}</Text>
 
         <Text style={styles.playerRating}>
-          {filled ? `پلە: ${rating ?? '0'}` : 'گەڕان...'}
+          {filled ? `پلە: ${rating ?? "0"}` : "گەڕان..."}
         </Text>
       </LinearGradient>
     </Animated.View>
   );
 }
 
-function renderPlayerSlot(player: MatchPlayer | null, index: number, delayOffset = 0) {
+function renderPlayerSlot(
+  player: MatchPlayer | null,
+  index: number,
+  delayOffset = 0,
+) {
   if (!player) {
-    return <PlayerCard key={`empty-${index}`} name="?" delay={delayOffset + index * 200} />;
+    return (
+      <PlayerCard
+        key={`empty-${index}`}
+        name="?"
+        delay={delayOffset + index * 200}
+      />
+    );
   }
 
   return (
     <PlayerCard
       key={player.id}
       name={player.name}
-      rating={player.rating ?? '0'}
+      rating={player.rating ?? "0"}
       filled
       avatarId={player.avatarId}
     />
   );
 }
 
-function normalizeMode(value: unknown): '1v1' | '2v2' {
-  return String(value ?? '') === '1v1' ? '1v1' : '2v2';
+function normalizeMode(value: unknown): "1v1" | "2v2" {
+  return String(value ?? "") === "1v1" ? "1v1" : "2v2";
 }
 
-function getRequiredPlayers(mode: '1v1' | '2v2', matchType: MatchType) {
-  if (matchType === 'bot') return 1;
-  return mode === '1v1' ? 2 : 4;
+function getRequiredPlayers(mode: "1v1" | "2v2", matchType: MatchType) {
+  if (matchType === "bot") return 1;
+  return mode === "1v1" ? 2 : 4;
 }
-
 
 export default function MatchmakingScreen() {
   const router = useRouter();
@@ -143,30 +157,33 @@ export default function MatchmakingScreen() {
   } = useLocalSearchParams();
 
   const gameMode = normalizeMode(mode);
-  const isOneVsOne = gameMode === '1v1';
-  const currentMatchType = String(matchType ?? 'duo') as MatchType;
+  const isOneVsOne = gameMode === "1v1";
+  const currentMatchType = String(matchType ?? "duo") as MatchType;
   const requiredPlayers = getRequiredPlayers(gameMode, currentMatchType);
 
-  const initialRoomId = String(room_id ?? '');
-  const privateRoomCode = String(room_code ?? '');
-  const initialMatchmakingStatus = String(initialStatus ?? 'searching');
+  const initialRoomId = String(room_id ?? "");
+  const privateRoomCode = String(room_code ?? "");
+  const initialMatchmakingStatus = String(initialStatus ?? "searching");
 
-  
   const [localPlayer, setLocalPlayer] = useState<MatchPlayer | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
-  const [matchmakingStatus, setMatchmakingStatus] = useState(initialMatchmakingStatus);
+  const [matchmakingStatus, setMatchmakingStatus] = useState(
+    initialMatchmakingStatus,
+  );
   const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
-  const [copyMessage, setCopyMessage] = useState('');
+  const [copyMessage, setCopyMessage] = useState("");
 
   const pulse = useRef(new Animated.Value(1)).current;
   const rotate = useRef(new Animated.Value(0)).current;
-  const statusCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const countdownSecondsRef = useRef<number | null>(null);
   const navigationStartedRef = useRef(false);
-
-  
 
   useEffect(() => {
     let mounted = true;
@@ -188,7 +205,7 @@ export default function MatchmakingScreen() {
           });
         }
       } catch (err) {
-        console.warn('Failed to load local profile', err);
+        console.warn("Failed to load local profile", err);
       }
     })();
 
@@ -198,33 +215,33 @@ export default function MatchmakingScreen() {
   }, []);
 
   useEffect(() => {
-    if (initialMatchmakingStatus === 'matched' && initialRoomId) {
-      setMatchmakingStatus('matched');
+    if (initialMatchmakingStatus === "matched" && initialRoomId) {
+      setMatchmakingStatus("matched");
       setCurrentRoomId(initialRoomId);
     }
   }, [initialMatchmakingStatus, initialRoomId]);
 
   useEffect(() => {
-    if (currentMatchType === 'private') return;
-    if (matchmakingStatus !== 'searching') return;
+    if (currentMatchType === "private") return;
+    if (matchmakingStatus !== "searching") return;
 
     const checkStatus = async () => {
       try {
         const { data: status, error: statusError } = isOneVsOne
-          ? await supabase.rpc('get_one_vs_one_matchmaking_status')
-          : await supabase.rpc('get_two_vs_two_matchmaking_status');
+          ? await supabase.rpc("get_one_vs_one_matchmaking_status")
+          : await supabase.rpc("get_two_vs_two_matchmaking_status");
 
         if (statusError) {
-          console.warn('Failed to check matchmaking status', statusError);
+          console.warn("Failed to check matchmaking status", statusError);
           return;
         }
 
-        if (status?.status === 'matched' && status?.matched_room_id) {
+        if (status?.status === "matched" && status?.matched_room_id) {
           setCurrentRoomId(status.matched_room_id);
-          setMatchmakingStatus('matched');
+          setMatchmakingStatus("matched");
         }
       } catch (err) {
-        console.warn('Error checking matchmaking status', err);
+        console.warn("Error checking matchmaking status", err);
       }
     };
 
@@ -249,13 +266,13 @@ export default function MatchmakingScreen() {
       }
 
       const { data: playerRows, error: playersError } = await supabase
-        .from(isOneVsOne ? 'one_vs_one_players' : 'two_vs_two_players')
-        .select('id, user_id, player_index, seat, team_id, kind, connected')
-        .eq('room_id', currentRoomId)
-        .order('player_index', { ascending: true });
+        .from(isOneVsOne ? "one_vs_one_players" : "two_vs_two_players")
+        .select("id, user_id, player_index, seat, team_id, kind, connected")
+        .eq("room_id", currentRoomId)
+        .order("player_index", { ascending: true });
 
       if (playersError) {
-        console.warn('Unable to load matchmaking players', playersError);
+        console.warn("Unable to load matchmaking players", playersError);
         return;
       }
 
@@ -267,12 +284,12 @@ export default function MatchmakingScreen() {
 
       if (userIds.length > 0) {
         const { data: profileRows, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, username, avatar_id, level, points')
-          .in('id', userIds);
+          .from("profiles")
+          .select("id, username, avatar_id, level, points")
+          .in("id", userIds);
 
         if (profilesError) {
-          console.warn('Unable to load player profiles', profilesError);
+          console.warn("Unable to load player profiles", profilesError);
         }
 
         profileById = new Map(
@@ -293,7 +310,7 @@ export default function MatchmakingScreen() {
             rating: String(profile?.points ?? 0),
             avatarId: profile?.avatar_id as AvatarId | undefined,
             playerIndex:
-              typeof row.player_index === 'number' ? row.player_index : index,
+              typeof row.player_index === "number" ? row.player_index : index,
             seat: row.seat,
             teamId: row.team_id,
             kind: row.kind,
@@ -311,11 +328,11 @@ export default function MatchmakingScreen() {
     const channel = supabase
       .channel(`matchmaking_players:${currentRoomId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: isOneVsOne ? 'one_vs_one_players' : 'two_vs_two_players',
+          event: "*",
+          schema: "public",
+          table: isOneVsOne ? "one_vs_one_players" : "two_vs_two_players",
           filter: `room_id=eq.${currentRoomId}`,
         },
         () => {
@@ -329,7 +346,6 @@ export default function MatchmakingScreen() {
       void supabase.removeChannel(channel);
     };
   }, [currentRoomId, isOneVsOne]);
-
 
   useEffect(() => {
     const pulseLoop = Animated.loop(
@@ -379,7 +395,7 @@ export default function MatchmakingScreen() {
 
     players.forEach((player, fallbackIndex) => {
       const index =
-        typeof player.playerIndex === 'number'
+        typeof player.playerIndex === "number"
           ? Math.max(0, Math.min(requiredPlayers - 1, player.playerIndex))
           : fallbackIndex;
 
@@ -393,42 +409,42 @@ export default function MatchmakingScreen() {
   const rightSlots = orderedSlots.slice(isOneVsOne ? 1 : 2);
 
   const playersReady =
-    currentMatchType === 'bot'
+    currentMatchType === "bot"
       ? players.length >= 1
-      : currentMatchType === 'private'
-      ? players.length >= requiredPlayers
-      : matchmakingStatus === 'matched' && players.length >= requiredPlayers;
+      : currentMatchType === "private"
+        ? players.length >= requiredPlayers
+        : matchmakingStatus === "matched" && players.length >= requiredPlayers;
 
   const isMatched = playersReady;
 
   const handleCancel = async () => {
-    if (currentMatchType === 'private') {
+    if (currentMatchType === "private") {
       if (currentRoomId) {
         try {
-          const { error } = await supabase.rpc('leave_one_vs_one_match', {
+          const { error } = await supabase.rpc("leave_one_vs_one_match", {
             p_room_id: currentRoomId,
           });
           if (error) throw error;
         } catch (error) {
-          console.warn('Failed to leave private room', error);
+          console.warn("Failed to leave private room", error);
         }
       }
-      router.replace('/(tabs)/lobby');
+      router.replace("/(tabs)/lobby");
       return;
     }
 
     try {
       if (isOneVsOne) {
-        await supabase.rpc('cancel_one_vs_one_matchmaking', {
+        await supabase.rpc("cancel_one_vs_one_matchmaking", {
           p_room_id: currentRoomId || null,
         });
       } else {
-        await supabase.rpc('cancel_two_vs_two_matchmaking', {
+        await supabase.rpc("cancel_two_vs_two_matchmaking", {
           p_room_id: currentRoomId || null,
         });
       }
     } catch (err) {
-      console.warn('Failed to cancel matchmaking', err);
+      console.warn("Failed to cancel matchmaking", err);
     }
 
     // stop any local countdown
@@ -439,22 +455,22 @@ export default function MatchmakingScreen() {
 
     setCountdownSeconds(null);
 
-    router.replace('/(tabs)/lobby');
+    router.replace("/(tabs)/lobby");
   };
 
   useEffect(() => {
     return () => {
       if (navigationStartedRef.current) return;
 
-      if (currentMatchType !== 'private' && matchmakingStatus === 'searching') {
+      if (currentMatchType !== "private" && matchmakingStatus === "searching") {
         void (async () => {
           try {
             if (isOneVsOne) {
-              await supabase.rpc('cancel_one_vs_one_matchmaking', {
+              await supabase.rpc("cancel_one_vs_one_matchmaking", {
                 p_room_id: null,
               });
             } else {
-              await supabase.rpc('cancel_two_vs_two_matchmaking', {
+              await supabase.rpc("cancel_two_vs_two_matchmaking", {
                 p_room_id: null,
               });
             }
@@ -464,40 +480,46 @@ export default function MatchmakingScreen() {
         })();
       }
     };
-  }, [currentMatchType, matchmakingStatus, isMatched, currentRoomId, isOneVsOne]);
+  }, [
+    currentMatchType,
+    matchmakingStatus,
+    isMatched,
+    currentRoomId,
+    isOneVsOne,
+  ]);
 
   const spin = rotate.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
-  
-  const isSearching = currentMatchType !== 'private' && matchmakingStatus === 'searching';
+  const isSearching =
+    currentMatchType !== "private" && matchmakingStatus === "searching";
   const isMatchFound = playersReady;
-  const isPrivateWaiting = currentMatchType === 'private' && !playersReady;
+  const isPrivateWaiting = currentMatchType === "private" && !playersReady;
 
   const centerTitle = isPrivateWaiting
-    ? 'Waiting for your friend'
+    ? "چاوەڕوانی"
     : isSearching
-    ? 'بەدوای بەرامبەر دەگەڕێین...'
-    : isMatchFound
-    ? 'یاری دۆزرایەوە'
-    : 'بەدوای بەرامبەر دەگەڕێین...';
+      ? "گەڕان بە دوای یاریزان"
+      : isMatchFound
+        ? "دۆزرایەوە"
+        : "گەڕان";
 
   const centerSubtitle = isPrivateWaiting
-    ? 'Share the room code below to begin.'
+    ? "Share the room code below to begin."
     : isSearching
-    ? ''
-    : isMatchFound
-    ? countdownSeconds !== null
-      ? `Starting in ${countdownSeconds}`
-      : 'Starting in 5'
-    : '';
+      ? ""
+      : isMatchFound
+        ? countdownSeconds !== null
+          ? `Starting in ${countdownSeconds}`
+          : "Starting in 5"
+        : "";
 
   const copyPrivateRoomCode = async () => {
     if (!privateRoomCode) return;
     await Clipboard.setStringAsync(privateRoomCode);
-    setCopyMessage('Room code copied');
+    setCopyMessage("Room code copied");
   };
 
   // Trigger countdown when a match is found
@@ -535,7 +557,7 @@ export default function MatchmakingScreen() {
         if (!navigationStartedRef.current) {
           navigationStartedRef.current = true;
           router.replace({
-            pathname: '/game',
+            pathname: "/game",
             params: {
               mode: gameMode,
               room_id: currentRoomId,
@@ -556,7 +578,7 @@ export default function MatchmakingScreen() {
 
   return (
     <ImageBackground
-      source={require('@/assets/images/lobby/lobby-bg.webp')}
+      source={require("@/assets/images/lobby/lobby-bg.webp")}
       style={styles.background}
       resizeMode="cover"
     >
@@ -568,10 +590,14 @@ export default function MatchmakingScreen() {
             {leftSlots.map((player, index) => {
               // If slot empty, show local player immediately on the left-most slot
               const alreadyInPlayers =
-                localPlayer && players.some((p) => p.userId === localPlayer.userId);
+                localPlayer &&
+                players.some((p) => p.userId === localPlayer.userId);
 
               const displayPlayer =
-                player ?? (index === 0 && localPlayer && !alreadyInPlayers ? localPlayer : null);
+                player ??
+                (index === 0 && localPlayer && !alreadyInPlayers
+                  ? localPlayer
+                  : null);
 
               return renderPlayerSlot(displayPlayer, index);
             })}
@@ -579,12 +605,20 @@ export default function MatchmakingScreen() {
 
           <View style={styles.centerColumn}>
             <View style={styles.centerWrap}>
-              <Animated.View style={[styles.outerRing, { transform: [{ rotate: spin }] }]}>
+              <Animated.View
+                style={[styles.outerRing, { transform: [{ rotate: spin }] }]}
+              >
                 <View style={styles.ringGlow} />
               </Animated.View>
 
-              <Animated.View style={[styles.centerCircle, { transform: [{ scale: pulse }] }]}>
-                <Text style={isMatched || playersReady ? styles.matchText : styles.timer}>
+              <Animated.View
+                style={[styles.centerCircle, { transform: [{ scale: pulse }] }]}
+              >
+                <Text
+                  style={
+                    isMatched || playersReady ? styles.matchText : styles.timer
+                  }
+                >
                   {centerTitle}
                 </Text>
                 <Text style={styles.waitText}>{centerSubtitle}</Text>
@@ -592,10 +626,15 @@ export default function MatchmakingScreen() {
             </View>
 
             {isPrivateWaiting && privateRoomCode ? (
-              <Pressable style={styles.roomCodeCard} onPress={() => void copyPrivateRoomCode()}>
+              <Pressable
+                style={styles.roomCodeCard}
+                onPress={() => void copyPrivateRoomCode()}
+              >
                 <Text style={styles.roomCodeLabel}>Private room code</Text>
                 <Text style={styles.roomCodeValue}>{privateRoomCode}</Text>
-                <Text style={styles.roomCodeHint}>{copyMessage || 'Tap to copy'}</Text>
+                <Text style={styles.roomCodeHint}>
+                  {copyMessage || "Tap to copy"}
+                </Text>
               </Pressable>
             ) : null}
 
@@ -605,7 +644,9 @@ export default function MatchmakingScreen() {
           </View>
 
           <View style={styles.sidePlayers}>
-            {rightSlots.map((player, index) => renderPlayerSlot(player, index, 150))}
+            {rightSlots.map((player, index) =>
+              renderPlayerSlot(player, index, 150),
+            )}
           </View>
         </View>
       </SafeAreaView>
@@ -616,7 +657,7 @@ export default function MatchmakingScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    backgroundColor: '#050214',
+    backgroundColor: "#050214",
   },
 
   safeArea: {
@@ -625,20 +666,20 @@ const styles = StyleSheet.create({
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(3,0,15,0.54)',
+    backgroundColor: "rgba(3,0,15,0.54)",
   },
 
   matchArea: {
     flex: 1,
     paddingHorizontal: 70,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 34,
   },
 
   sidePlayers: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
   },
 
@@ -646,16 +687,16 @@ const styles = StyleSheet.create({
     width: 106,
     height: 152,
     borderRadius: 15,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: '#a855f7',
-    backgroundColor: 'rgba(17,7,35,0.88)',
+    borderColor: "#a855f7",
+    backgroundColor: "rgba(17,7,35,0.88)",
   },
 
   playerGradient: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 9,
   },
 
@@ -664,9 +705,9 @@ const styles = StyleSheet.create({
     height: 62,
     borderRadius: 31,
     borderWidth: 2,
-    borderColor: '#a855f7',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#a855f7",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 9,
   },
 
@@ -674,111 +715,133 @@ const styles = StyleSheet.create({
     width: 51,
     height: 51,
     borderRadius: 26,
-    backgroundColor: '#f8d17b',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#f8d17b",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   emptyAvatar: {
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    backgroundColor: "rgba(0,0,0,0.42)",
   },
 
   emptyAvatarText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 24,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   onlineDot: {
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     bottom: 6,
     width: 11,
     height: 11,
     borderRadius: 6,
-    backgroundColor: '#22c55e',
+    backgroundColor: "#22c55e",
   },
 
   playerName: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 15,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     marginBottom: 5,
   },
 
   playerRating: {
-    color: '#d7c9ef',
+    color: "#d7c9ef",
     fontSize: 10,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   centerColumn: {
     width: 185,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   centerWrap: {
     width: 170,
     height: 170,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   outerRing: {
-    position: 'absolute',
+    position: "absolute",
     width: 164,
     height: 164,
     borderRadius: 82,
     borderWidth: 3,
-    borderColor: 'rgba(168,85,247,0.55)',
-    borderTopColor: '#e9d5ff',
-    borderRightColor: '#7c3aed',
+    borderColor: "rgba(168,85,247,0.55)",
+    borderTopColor: "#e9d5ff",
+    borderRightColor: "#7c3aed",
   },
 
   ringGlow: {
-    position: 'absolute',
+    position: "absolute",
     top: -4,
     left: 70,
     width: 24,
     height: 8,
     borderRadius: 99,
-    backgroundColor: '#c084fc',
+    backgroundColor: "#c084fc",
   },
 
   centerCircle: {
     width: 128,
     height: 128,
     borderRadius: 64,
-    backgroundColor: 'rgba(12,5,35,0.88)',
+    backgroundColor: "rgba(12,5,35,0.88)",
     borderWidth: 1,
-    borderColor: 'rgba(216,180,254,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(216,180,254,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
   },
 
-  roomCodeCard: { marginTop: 14, minWidth: 190, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 18, alignItems: 'center', backgroundColor: 'rgba(19, 8, 48, 0.94)', borderWidth: 1, borderColor: '#a855f7' },
-  roomCodeLabel: { color: '#d8b4fe', fontFamily: 'SpedaBold', fontSize: 12 },
-  roomCodeValue: { color: '#ffffff', fontFamily: 'SpedaBold', fontSize: 24, letterSpacing: 3, marginTop: 3 },
-  roomCodeHint: { color: '#b7c8e8', fontSize: 11, marginTop: 3 },
+  roomCodeCard: {
+    marginTop: 14,
+    minWidth: 190,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    backgroundColor: "rgba(19, 8, 48, 0.94)",
+    borderWidth: 1,
+    borderColor: "#a855f7",
+  },
+  roomCodeLabel: { color: "#d8b4fe", fontFamily: "SpedaBold", fontSize: 12 },
+  roomCodeValue: {
+    color: "#ffffff",
+    fontFamily: "SpedaBold",
+    fontSize: 24,
+    letterSpacing: 3,
+    marginTop: 3,
+  },
+  roomCodeHint: { color: "#b7c8e8", fontSize: 11, marginTop: 3 },
 
   timer: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    color: "#ffffff",
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    paddingHorizontal: 12,
   },
 
   matchText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontFamily: 'SpedaBold',
+    color: "#ffffff",
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    paddingHorizontal: 12,
   },
 
   waitText: {
-    color: '#d7c9ef',
+    color: "#d7c9ef",
     fontSize: 15,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     marginTop: 6,
   },
 
@@ -788,16 +851,16 @@ const styles = StyleSheet.create({
     minWidth: 110,
     paddingHorizontal: 22,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   cancelButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontFamily: 'SpedaBold',
+    color: "#ffffff",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
   },
 });

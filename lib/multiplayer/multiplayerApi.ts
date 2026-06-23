@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
 
 type Tile = {
   id: string;
@@ -17,7 +17,7 @@ export class MultiplayerRequestError extends Error {
     readonly ambiguous: boolean,
   ) {
     super(message);
-    this.name = 'MultiplayerRequestError';
+    this.name = "MultiplayerRequestError";
   }
 }
 
@@ -29,13 +29,13 @@ async function submitMultiplayerRequest(
   const token = sessionData?.session?.access_token;
 
   if (!token) {
-    throw new Error('User not authenticated');
+    throw new Error("User not authenticated");
   }
 
-  const baseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/+$/, '');
+  const baseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
 
   if (!baseUrl) {
-    throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL');
+    throw new Error("Missing EXPO_PUBLIC_SUPABASE_URL");
   }
 
   let res: Response;
@@ -47,9 +47,9 @@ async function submitMultiplayerRequest(
 
   try {
     res = await fetch(`${baseUrl}/functions/v1/${functionName}`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
@@ -107,8 +107,8 @@ export async function submitOneVsOneMove(
   tile: Tile,
   branch?: string,
 ) {
-  return submitMultiplayerRequest('submit_one_vs_one', {
-    action: 'move',
+  return submitMultiplayerRequest("submit_one_vs_one", {
+    action: "move",
     room_id: roomId,
     tile,
     branch,
@@ -116,16 +116,16 @@ export async function submitOneVsOneMove(
 }
 
 export async function submitOneVsOnePass(roomId: string, timedOut = false) {
-  return submitMultiplayerRequest('submit_one_vs_one', {
-    action: 'pass',
+  return submitMultiplayerRequest("submit_one_vs_one", {
+    action: "pass",
     room_id: roomId,
     timed_out: timedOut,
   });
 }
 
 export async function submitOneVsOneDraw(roomId: string) {
-  return submitMultiplayerRequest('submit_one_vs_one', {
-    action: 'draw',
+  return submitMultiplayerRequest("submit_one_vs_one", {
+    action: "draw",
     room_id: roomId,
   });
 }
@@ -135,8 +135,8 @@ export async function submitTwoVsTwoMove(
   tile: Tile,
   branch?: string,
 ) {
-  return submitMultiplayerRequest('submit_two_vs_two', {
-    action: 'move',
+  return submitMultiplayerRequest("submit_two_vs_two", {
+    action: "move",
     room_id: roomId,
     tile,
     branch,
@@ -144,8 +144,8 @@ export async function submitTwoVsTwoMove(
 }
 
 export async function submitTwoVsTwoPass(roomId: string, timedOut = false) {
-  return submitMultiplayerRequest('submit_two_vs_two', {
-    action: 'pass',
+  return submitMultiplayerRequest("submit_two_vs_two", {
+    action: "pass",
     room_id: roomId,
     timed_out: timedOut,
   });

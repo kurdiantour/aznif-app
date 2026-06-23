@@ -1,11 +1,11 @@
-export type PlayerSeatPosition = 'bottom' | 'left' | 'top' | 'right';
-export type PlayerKind = 'human' | 'bot';
-export type TeamId = 'teamA' | 'teamB';
-export type GameMode = '1v1' | '2v2';
+export type PlayerSeatPosition = "bottom" | "left" | "top" | "right";
+export type PlayerKind = "human" | "bot";
+export type TeamId = "teamA" | "teamB";
+export type GameMode = "1v1" | "2v2";
 
-import type { AvatarId } from '@/constants/avatars';
+import type { AvatarId } from "@/constants/avatars";
 
-export type MatchPerformanceTier = 'close' | 'normal' | 'dominating';
+export type MatchPerformanceTier = "close" | "normal" | "dominating";
 
 export type MatchReward = {
   tier: MatchPerformanceTier;
@@ -34,7 +34,7 @@ export type DominoTileData = {
   imageKey: string;
 };
 
-export type KozelBranch = 'up' | 'right' | 'down' | 'left';
+export type KozelBranch = "up" | "right" | "down" | "left";
 
 export type BoardPlacedTile = DominoTileData & {
   branch: KozelBranch;
@@ -78,7 +78,11 @@ export type ScoringEvent = {
   openEndsTotal: number;
 };
 
-export type RoundPhase = 'playing' | 'round_result_reveal' | 'next_round_countdown' | 'dealing';
+export type RoundPhase =
+  | "playing"
+  | "round_result_reveal"
+  | "next_round_countdown"
+  | "dealing";
 
 export type RoundResult = {
   winnerId?: string;

@@ -1,7 +1,12 @@
-import { Image } from 'expo-image';
-import { View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
+import { Image } from "expo-image";
+import {
+  View,
+  type ImageStyle,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 
-import { getAvatarSource, type AvatarId } from '@/constants/avatars';
+import { getAvatarSource, type AvatarId } from "@/constants/avatars";
 
 type PlayerAvatarProps = {
   avatarId?: AvatarId;
@@ -23,8 +28,8 @@ export function PlayerAvatar({
           width: size,
           height: size,
           borderRadius: size / 2,
-          overflow: 'hidden',
-          backgroundColor: 'rgba(255,255,255,0.08)',
+          overflow: "hidden",
+          backgroundColor: "rgba(255,255,255,0.08)",
         },
         style,
       ]}

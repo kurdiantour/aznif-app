@@ -1,9 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useMemo, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { getLeaderboardProfiles, useProfile } from '@/lib/profile';
-import { getRankTitleFromLevel } from '@/lib/progression';
+import { getLeaderboardProfiles, useProfile } from "@/lib/profile";
+import { getRankTitleFromLevel } from "@/lib/progression";
 
 type LeaderboardPlayer = {
   id: string;
@@ -14,9 +14,9 @@ type LeaderboardPlayer = {
 };
 
 const MEDAL_COLORS: Record<number, string> = {
-  1: '#FACC15',
-  2: '#CBD5E1',
-  3: '#D97706',
+  1: "#FACC15",
+  2: "#CBD5E1",
+  3: "#D97706",
 };
 
 export default function LeaderboardScreen() {
@@ -42,7 +42,7 @@ export default function LeaderboardScreen() {
           })),
         );
       } catch (error) {
-        console.warn('Failed to load leaderboard:', error);
+        console.warn("Failed to load leaderboard:", error);
 
         if (isMounted) {
           setPlayers([]);
@@ -118,7 +118,7 @@ export default function LeaderboardScreen() {
                     numberOfLines={1}
                   >
                     {player.name}
-                    {isCurrentUser ? ' (تۆ)' : ''}
+                    {isCurrentUser ? " (تۆ)" : ""}
                   </Text>
                 </View>
               </View>
@@ -164,57 +164,57 @@ export default function LeaderboardScreen() {
 }
 
 const styles = StyleSheet.create({
-screen: {
-  flex: 1,
-  paddingHorizontal: 16,
-  paddingTop: 10,
-  paddingBottom: 74,
-  direction: 'ltr',
-},
+  screen: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 74,
+    direction: "ltr",
+  },
 
   tableHeader: {
     height: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     marginBottom: 6,
     borderRadius: 20,
-    backgroundColor: 'rgba(15,23,42,0.45)',
+    backgroundColor: "rgba(15,23,42,0.45)",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: "rgba(255,255,255,0.06)",
   },
 
   headerText: {
-    color: '#cbd5e1',
+    color: "#cbd5e1",
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: "900",
     letterSpacing: 0.7,
   },
 
   rankHeader: {
     width: 38,
-    textAlign: 'center',
+    textAlign: "center",
     marginRight: 8,
   },
 
   playersHeader: {
     flex: 1,
-    textAlign: 'left',
+    textAlign: "left",
   },
 
   levelHeader: {
     width: 64,
-    textAlign: 'right',
+    textAlign: "right",
   },
 
   pointsHeader: {
     width: 82,
-    textAlign: 'right',
+    textAlign: "right",
   },
 
   goldHeader: {
     width: 64,
-    textAlign: 'right',
+    textAlign: "right",
   },
 
   list: {
@@ -228,44 +228,44 @@ screen: {
 
   row: {
     height: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 20,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(15,23,42,0.82)',
+    backgroundColor: "rgba(15,23,42,0.82)",
   },
 
   topRow: {
-    backgroundColor: 'rgba(35,46,26,0.72)',
+    backgroundColor: "rgba(35,46,26,0.72)",
   },
 
   currentUserRow: {
-    backgroundColor: 'rgba(80,62,18,0.82)',
+    backgroundColor: "rgba(80,62,18,0.82)",
   },
 
   playerColumn: {
     flex: 1,
     minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   rankBox: {
     width: 38,
     marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   rankText: {
-    color: '#f8fafc',
+    color: "#f8fafc",
     fontSize: 11,
-    fontWeight: '900',
-    textAlign: 'center',
+    fontWeight: "900",
+    textAlign: "center",
   },
 
   currentUserText: {
-    color: '#facc15',
+    color: "#facc15",
   },
 
   playerInfo: {
@@ -274,42 +274,42 @@ screen: {
   },
 
   playerName: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: "900",
     letterSpacing: 0.7,
   },
 
   levelColumn: {
     width: 64,
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
 
   levelText: {
-    color: '#cbd5e1',
+    color: "#cbd5e1",
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: "900",
   },
 
   pointsColumn: {
     width: 82,
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
 
   pointsText: {
-    color: '#f97316',
+    color: "#f97316",
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: "900",
   },
 
   goldColumn: {
     width: 64,
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
 
   goldText: {
-    color: '#d6d3d1',
+    color: "#d6d3d1",
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: "900",
   },
 });

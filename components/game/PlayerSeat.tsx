@@ -1,20 +1,20 @@
-import { PlayerAvatar } from '@/components/player/PlayerAvatar';
+import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { Player } from "@/types/game";
 import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle)
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type Props = {
-  player: Player
-  remainingTiles?: number
-  showPass?: boolean
-}
+  player: Player;
+  remainingTiles?: number;
+  showPass?: boolean;
+};
 
-const TURN_DURATION_SECONDS = 30
-const TURN_RING_SIZE = 64
-const TURN_RING_STROKE_WIDTH = 4
+const TURN_DURATION_SECONDS = 30;
+const TURN_RING_SIZE = 44;
+const TURN_RING_STROKE_WIDTH = 4;
 
 function TurnRing({
   secondsLeft,
@@ -23,40 +23,40 @@ function TurnRing({
   size = TURN_RING_SIZE,
   strokeWidth = TURN_RING_STROKE_WIDTH,
 }: {
-  secondsLeft: number
-  visible: boolean
-  durationSeconds?: number
-  size?: number
-  strokeWidth?: number
+  secondsLeft: number;
+  visible: boolean;
+  durationSeconds?: number;
+  size?: number;
+  strokeWidth?: number;
 }) {
-  const progress = useRef(new Animated.Value(0)).current
+  const progress = useRef(new Animated.Value(0)).current;
 
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
 
   useEffect(() => {
     if (visible) {
-      progress.stopAnimation()
-      progress.setValue(0)
+      progress.stopAnimation();
+      progress.setValue(0);
 
       Animated.timing(progress, {
         toValue: 1,
         duration: durationSeconds * 1000,
         easing: Easing.linear,
         useNativeDriver: false,
-      }).start()
+      }).start();
     } else {
-      progress.stopAnimation()
-      progress.setValue(0)
+      progress.stopAnimation();
+      progress.setValue(0);
     }
-  }, [visible, durationSeconds, progress])
+  }, [visible, durationSeconds, progress]);
 
-  if (!visible) return null
+  if (!visible) return null;
 
   const strokeDashoffset = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [circumference, 0],
-  })
+  });
 
   return (
     <View style={[styles.turnRingWrapper, { width: size, height: size }]}>
@@ -90,7 +90,7 @@ function TurnRing({
         <Text style={styles.timerText}>{secondsLeft}</Text>
       </View>
     </View>
-  )
+  );
 }
 
 export default function PlayerSeat({
@@ -104,7 +104,7 @@ export default function PlayerSeat({
     (player as any).hand?.length ??
     (player as any).tileCount ??
     (player as any).remainingTiles ??
-    7
+    7;
 
   return (
     <View style={styles.wrapper}>
@@ -116,7 +116,11 @@ export default function PlayerSeat({
             durationSeconds={TURN_DURATION_SECONDS}
           />
 
-          <PlayerAvatar avatarId={player.avatarId} size={38} style={styles.avatar} />
+          <PlayerAvatar
+            avatarId={player.avatarId}
+            size={38}
+            style={styles.avatar}
+          />
         </View>
 
         <View style={styles.info}>
@@ -139,7 +143,7 @@ export default function PlayerSeat({
         </View>
       )}
     </View>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -160,10 +164,10 @@ const styles = StyleSheet.create({
 
     borderRadius: 10,
 
-    backgroundColor: "rgba(94, 62, 34, 0.96)",
+    backgroundColor: "rgba(255,255,255,0.12)",
 
     borderWidth: 1,
-    borderColor: "rgba(39, 24, 12, 0.75)",
+    borderColor: "rgba(248, 243, 223, 0.22)",
 
     shadowColor: "#000",
     shadowOpacity: 0.28,
@@ -194,7 +198,7 @@ const styles = StyleSheet.create({
   timerText: {
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   avatar: {
@@ -216,7 +220,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: "#5a3b22",
     fontSize: 18,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   info: {
@@ -228,7 +232,7 @@ const styles = StyleSheet.create({
   name: {
     color: "#f5e4c7",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     maxWidth: 82,
   },
 
@@ -260,10 +264,10 @@ const styles = StyleSheet.create({
 
     borderRadius: 10,
 
-    backgroundColor: "rgba(94, 62, 34, 0.96)",
+    backgroundColor: "rgba(255,255,255,0.12)",
 
     borderWidth: 1,
-    borderColor: "rgba(39, 24, 12, 0.75)",
+    borderColor: "rgba(248, 243, 223, 0.22)",
 
     alignItems: "center",
     justifyContent: "center",
@@ -283,8 +287,8 @@ const styles = StyleSheet.create({
 
   passText: {
     color: "#f5e4c7",
-    fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontSize: 12,
+    fontFamily: "SpedaBold",
     letterSpacing: 0.3,
   },
-})
+});

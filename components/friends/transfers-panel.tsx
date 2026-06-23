@@ -1,14 +1,14 @@
-import { getCurrentUserId, getTransactions } from '@/lib/wallet';
-import { supabase } from '@/lib/supabase';
-import { WalletTransaction } from '@/types/wallet';
-import { useEffect, useMemo, useState } from 'react';
+import { getCurrentUserId, getTransactions } from "@/lib/wallet";
+import { supabase } from "@/lib/supabase";
+import { WalletTransaction } from "@/types/wallet";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 
 export function TransfersPanel() {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -29,12 +29,12 @@ export function TransfersPanel() {
             txs
               .filter(
                 (item) =>
-                  item.transaction_type === 'transfer' &&
-                  item.currency === 'MC'
+                  item.transaction_type === "transfer" &&
+                  item.currency === "MC",
               )
               .flatMap((item) => [item.from_user_id, item.to_user_id])
-              .filter((id): id is string => !!id)
-          )
+              .filter((id): id is string => !!id),
+          ),
         );
 
         if (profileIds.length === 0) {
@@ -43,19 +43,16 @@ export function TransfersPanel() {
         }
 
         const { data, error } = await supabase
-          .from('profiles')
-          .select('id, username')
-          .in('id', profileIds);
+          .from("profiles")
+          .select("id, username")
+          .in("id", profileIds);
 
         if (error) throw error;
 
         setProfileNames(
           Object.fromEntries(
-            (data ?? []).map((profile: any) => [
-              profile.id,
-              profile.username,
-            ])
-          )
+            (data ?? []).map((profile: any) => [profile.id, profile.username]),
+          ),
         );
       })
       .finally(() => setLoading(false));
@@ -63,9 +60,7 @@ export function TransfersPanel() {
 
   const transferTransactions = useMemo(() => {
     return transactions.filter(
-      (item) =>
-        item.transaction_type === 'transfer' &&
-        item.currency === 'MC'
+      (item) => item.transaction_type === "transfer" && item.currency === "MC",
     );
   }, [transactions]);
 
@@ -77,15 +72,15 @@ export function TransfersPanel() {
     const profileId = isOutgoing ? item.to_user_id : item.from_user_id;
 
     const player = profileId
-      ? profileNames[profileId] ?? 'یاریزانی نەناسراو'
-      : 'سیستەم';
+      ? (profileNames[profileId] ?? "یاریزانی نەناسراو")
+      : "سیستەم";
 
     return (
       <View style={styles.transferCard}>
         <View>
           <Text style={styles.transferTitle}>
-            {isOutgoing ? 'ئەزنیفی نێردراو' : 'ئەزنیفی وەرگیراو'}{' '}
-            {isOutgoing ? 'بۆ' : 'لە'}: {player}
+            {isOutgoing ? "ئەزنیفی نێردراو" : "ئەزنیفی وەرگیراو"}{" "}
+            {isOutgoing ? "بۆ" : "لە"}: {player}
           </Text>
         </View>
 
@@ -95,7 +90,7 @@ export function TransfersPanel() {
             isOutgoing ? styles.outgoingAmount : styles.incomingAmount,
           ]}
         >
-          {isOutgoing ? '-' : '+'}
+          {isOutgoing ? "-" : "+"}
           {item.amount.toFixed(2)} ئەزنیف
         </Text>
       </View>
@@ -105,11 +100,7 @@ export function TransfersPanel() {
   return (
     <View style={styles.container}>
       {loading ? (
-        <ActivityIndicator
-          color="#a855f7"
-          size="large"
-          style={styles.loader}
-        />
+        <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
       ) : transferTransactions.length === 0 ? (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyTitle}>هێشتا هیچ گواستنەوەیەک نییە</Text>
@@ -150,52 +141,52 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.35)',
-    backgroundColor: 'rgba(20,16,42,0.92)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderColor: "rgba(168,85,247,0.35)",
+    backgroundColor: "rgba(20,16,42,0.92)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   transferTitle: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   transferAmount: {
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   incomingAmount: {
-    color: '#22c55e',
+    color: "#22c55e",
   },
 
   outgoingAmount: {
-    color: '#f59e0b',
+    color: "#f59e0b",
   },
 
   emptyBox: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
   },
 
   emptyTitle: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 18,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   emptyText: {
-    color: '#9ca3af',
+    color: "#9ca3af",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
     lineHeight: 19,
   },
 });

@@ -1,8 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { router, usePathname } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-export type BottomNavKey = 'home' | 'leaderboard' | 'friends';
+export type BottomNavKey = "home" | "leaderboard" | "shop" | "friends";
 
 type BottomNavProps = {
   active?: BottomNavKey;
@@ -11,37 +11,51 @@ type BottomNavProps = {
 
 const items = [
   {
-    key: 'home',
-    label: 'سەرەکی',
-    icon: 'home',
-    href: '/lobby',
+    key: "home",
+    label: "سەرەکی",
+    icon: "home",
+    href: "/lobby",
   },
   {
-    key: 'leaderboard',
-    label: 'خشتەی پێشبڕکێ',
-    icon: 'trophy',
-    href: '/leaderboard',
+    key: "leaderboard",
+    label: "خشتەی پێشبڕکێ",
+    icon: "trophy",
+    href: "/leaderboard",
   },
   {
-    key: 'friends',
-    label: 'هاوڕێکان',
-    icon: 'people',
-    href: '/invite-friends',
+    key: "shop",
+    label: "شۆپ",
+    icon: "storefront",
+    href: "/shop",
+  },
+  {
+    key: "friends",
+    label: "هاوڕێکان",
+    icon: "people",
+    href: "/invite-friends",
   },
 ] as const;
 
-export function BottomNav({ active: controlledActive, onChange }: BottomNavProps) {
+export function BottomNav({
+  active: controlledActive,
+  onChange,
+}: BottomNavProps) {
   const pathname = usePathname();
 
-  const routeActive: BottomNavKey = pathname.includes('leaderboard')
-    ? 'leaderboard'
-    : pathname.includes('invite')
-      ? 'friends'
-      : 'home';
+  const routeActive: BottomNavKey = pathname.includes("leaderboard")
+    ? "leaderboard"
+    : pathname.includes("shop")
+      ? "shop"
+      : pathname.includes("invite")
+        ? "friends"
+        : "home";
 
   const active = controlledActive ?? routeActive;
 
-  const handlePress = (key: BottomNavKey, href: typeof items[number]['href']) => {
+  const handlePress = (
+    key: BottomNavKey,
+    href: (typeof items)[number]["href"],
+  ) => {
     if (onChange) {
       onChange(key);
       return;
@@ -70,7 +84,7 @@ export function BottomNav({ active: controlledActive, onChange }: BottomNavProps
               <Ionicons
                 name={item.icon}
                 size={15}
-                color={isActive ? '#ffffff' : 'rgba(255,255,255,0.52)'}
+                color={isActive ? "#ffffff" : "rgba(255,255,255,0.52)"}
               />
 
               <Text
@@ -90,41 +104,41 @@ export function BottomNav({ active: controlledActive, onChange }: BottomNavProps
 }
 
 const styles = StyleSheet.create({
-wrapper: {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  bottom: 18,
-  alignItems: 'center',
-  zIndex: 999,
-  elevation: 20,
-},
+  wrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 18,
+    alignItems: "center",
+    zIndex: 999,
+    elevation: 20,
+  },
 
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(180,120,255,0.18)',
-    backgroundColor: 'rgba(12, 10, 30, 0.88)',
+    borderColor: "rgba(180,120,255,0.18)",
+    backgroundColor: "rgba(12, 10, 30, 0.88)",
   },
 
   item: {
     height: 38,
     paddingHorizontal: 18,
     borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 7,
   },
 
   activeItem: {
-    backgroundColor: 'rgba(150, 90, 255, 0.22)',
+    backgroundColor: "rgba(150, 90, 255, 0.22)",
     borderWidth: 1,
-    borderColor: 'rgba(190,140,255,0.35)',
+    borderColor: "rgba(190,140,255,0.35)",
   },
 
   pressedItem: {
@@ -133,14 +147,14 @@ wrapper: {
 
   text: {
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   activeText: {
-    color: '#ffffff',
+    color: "#ffffff",
   },
 
   inactiveText: {
-    color: 'rgba(255,255,255,0.52)',
+    color: "rgba(255,255,255,0.52)",
   },
 });

@@ -1,7 +1,7 @@
-import { AVATAR_IDS, type AvatarId } from '@/constants/avatars';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { PlayerAvatar } from './PlayerAvatar';
+import { PlayerAvatar } from "./PlayerAvatar";
 
 type AvatarPickerModalProps = {
   visible: boolean;
@@ -57,51 +57,51 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 1001,
     elevation: 1001,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 14,
   },
 
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+    backgroundColor: "rgba(0, 0, 0, 0.62)",
   },
 
   card: {
-    width: '100%',
+    width: "100%",
     maxWidth: 460,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.55)',
-    backgroundColor: '#0b0718',
+    borderColor: "rgba(139, 92, 246, 0.55)",
+    backgroundColor: "#0b0718",
     paddingHorizontal: 24,
     paddingTop: 22,
     paddingBottom: 20,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   title: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 20,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 
   subtitle: {
     marginTop: 4,
-    color: '#9ca3ff',
+    color: "#9ca3ff",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 
   options: {
     width: 388,
-    maxWidth: '100%',
+    maxWidth: "100%",
     marginTop: 22,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     rowGap: 14,
   },
 
@@ -110,17 +110,17 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 38,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
 
   optionSelected: {
     borderWidth: 2,
-    borderColor: '#14f1c1',
-    backgroundColor: 'rgba(20, 241, 193, 0.14)',
+    borderColor: "#14f1c1",
+    backgroundColor: "rgba(20, 241, 193, 0.14)",
   },
 
   closeButton: {
@@ -128,17 +128,17 @@ const styles = StyleSheet.create({
     height: 40,
     minWidth: 130,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 20,
   },
 
   closeButtonText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 });

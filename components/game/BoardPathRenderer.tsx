@@ -1,4 +1,4 @@
-import DominoTile, { DominoTileDirection } from '@/components/game/DominoTile';
+import DominoTile, { DominoTileDirection } from "@/components/game/DominoTile";
 import {
   BOARD_EDGE_PADDING,
   BoardTile,
@@ -6,11 +6,11 @@ import {
   getSnapValue,
   getStraightSegmentCount,
   getTileSlotSize,
-} from '@/components/game/boardPathLayout';
-import { createPlacedTile, isDouble } from '@/lib/game/kozel-engine';
-import { DominoTileData, GameState, KozelBranch } from '@/types/game';
-import { createContext, useContext, useEffect } from 'react';
-import { Animated, Pressable, StyleSheet } from 'react-native';
+} from "@/components/game/boardPathLayout";
+import { createPlacedTile, isDouble } from "@/lib/game/kozel-engine";
+import { DominoTileData, GameState, KozelBranch } from "@/types/game";
+import { createContext, useContext, useEffect } from "react";
+import { Animated, Pressable, StyleSheet } from "react-native";
 
 type WinningTileAnimationContextValue = {
   tileId: string | null;
@@ -40,11 +40,13 @@ function BranchTile({
   zIndex?: number;
 }) {
   const winningAnimation = useContext(WinningTileAnimationContext);
-  const isPlacementPreview = '__placementPreview' in tile;
-  const previewBranch = (tile as BoardTile & {
-    __previewBranch?: KozelBranch;
-    __onPreviewPress?: (branch: KozelBranch) => void;
-  }).__previewBranch;
+  const isPlacementPreview = "__placementPreview" in tile;
+  const previewBranch = (
+    tile as BoardTile & {
+      __previewBranch?: KozelBranch;
+      __onPreviewPress?: (branch: KozelBranch) => void;
+    }
+  ).__previewBranch;
   const { slotWidth, slotHeight } = getTileSlotSize(
     tile,
     direction,
@@ -54,13 +56,13 @@ function BranchTile({
 
   useEffect(() => {
     if (winningAnimation?.tileId === tile.id) {
-      console.log('[winning tile beat] board tile found', { tileId: tile.id });
+      console.log("[winning tile beat] board tile found", { tileId: tile.id });
     }
   }, [tile.id, winningAnimation?.tileId]);
 
   return (
     <Pressable
-      pointerEvents={isPlacementPreview ? 'auto' : 'none'}
+      pointerEvents={isPlacementPreview ? "auto" : "none"}
       onPress={
         isPlacementPreview && previewBranch
           ? () => (tile as any).__onPreviewPress?.(previewBranch)
@@ -72,8 +74,8 @@ function BranchTile({
         {
           width: slotWidth,
           height: slotHeight,
-          left: '50%',
-          top: '50%',
+          left: "50%",
+          top: "50%",
           marginLeft: x - slotWidth / 2,
           marginTop: y - slotHeight / 2,
           zIndex,
@@ -117,7 +119,7 @@ function BranchTile({
 function buildBranchPlacementPreview(
   branch: KozelBranch,
   tile: DominoTileData,
-  board: GameState['board'],
+  board: GameState["board"],
   tileWidth: number,
   tileHeight: number,
   centerWidth: number,
@@ -126,49 +128,50 @@ function buildBranchPlacementPreview(
   boardHeight: number,
   onPress?: (branch: KozelBranch) => void,
 ) {
-const openValue = board.branches[branch].openValue;
+  const openValue = board.branches[branch].openValue;
 
-if (openValue === null) {
-  return null;
-}
+  if (openValue === null) {
+    return null;
+  }
 
-const previewTile = {
-  ...createPlacedTile(
-    tile,
-    branch,
-    openValue,
-    board.branches[branch].tiles.length,
-  ),
-  __placementPreview: true,
-  __previewBranch: branch,
-  __onPreviewPress: onPress,
-} as unknown as BoardTile;
+  const previewTile = {
+    ...createPlacedTile(
+      tile,
+      branch,
+      openValue,
+      board.branches[branch].tiles.length,
+    ),
+    __placementPreview: true,
+    __previewBranch: branch,
+    __onPreviewPress: onPress,
+  } as unknown as BoardTile;
   const previewTiles = [...board.branches[branch].tiles, previewTile];
-  const path = branch === 'left' || branch === 'right'
-    ? buildHorizontalBranchPath(
-        branch,
-        previewTiles,
-        tileWidth,
-        tileHeight,
-        centerWidth,
-        boardWidth,
-        boardHeight,
-      )
-    : buildVerticalBranchPath(
-        branch,
-        previewTiles,
-        tileWidth,
-        tileHeight,
-        centerHeight,
-        boardWidth,
-        boardHeight,
-      );
+  const path =
+    branch === "left" || branch === "right"
+      ? buildHorizontalBranchPath(
+          branch,
+          previewTiles,
+          tileWidth,
+          tileHeight,
+          centerWidth,
+          boardWidth,
+          boardHeight,
+        )
+      : buildVerticalBranchPath(
+          branch,
+          previewTiles,
+          tileWidth,
+          tileHeight,
+          centerHeight,
+          boardWidth,
+          boardHeight,
+        );
 
   return Array.isArray(path) ? path[path.length - 1] : null;
 }
 
 function buildHorizontalBranchPath(
-  branch: 'left' | 'right',
+  branch: "left" | "right",
   tiles: BoardTile[],
   tileWidth: number,
   tileHeight: number,
@@ -179,10 +182,10 @@ function buildHorizontalBranchPath(
   if (!tiles.length) return null;
 
   const primaryDirection: DominoTileDirection = branch;
-  const branchDirection = branch === 'right' ? 1 : -1;
-  const turnDirection = branch === 'right' ? 1 : -1;
+  const branchDirection = branch === "right" ? 1 : -1;
+  const turnDirection = branch === "right" ? 1 : -1;
   const verticalBendDirection: DominoTileDirection =
-    turnDirection === 1 ? 'down' : 'up';
+    turnDirection === 1 ? "down" : "up";
 
   const availableHorizontalSpace = Math.max(
     0,
@@ -291,9 +294,9 @@ function buildHorizontalBranchPath(
     return positions;
   }
 
-  const returnDirection = branch === 'right' ? -1 : 1;
+  const returnDirection = branch === "right" ? -1 : 1;
   const returnTileDirection: DominoTileDirection =
-    returnDirection === 1 ? 'right' : 'left';
+    returnDirection === 1 ? "right" : "left";
 
   const firstReturnTile = returnTiles[0];
 
@@ -346,9 +349,7 @@ function buildHorizontalBranchPath(
         tileWidth={tileWidth}
         tileHeight={tileHeight}
         direction={returnTileDirection}
-        zIndex={
-          20 + straightTiles.length + verticalBentTiles.length + index
-        }
+        zIndex={20 + straightTiles.length + verticalBentTiles.length + index}
       />,
     );
 
@@ -359,7 +360,7 @@ function buildHorizontalBranchPath(
 }
 
 function buildVerticalBranchPath(
-  branch: 'up' | 'down',
+  branch: "up" | "down",
   tiles: BoardTile[],
   tileWidth: number,
   tileHeight: number,
@@ -370,10 +371,10 @@ function buildVerticalBranchPath(
   if (!tiles.length) return null;
 
   const primaryDirection: DominoTileDirection = branch;
-  const branchDirection = branch === 'down' ? 1 : -1;
-  const turnDirection = branch === 'down' ? -1 : 1;
+  const branchDirection = branch === "down" ? 1 : -1;
+  const turnDirection = branch === "down" ? -1 : 1;
   const horizontalBendDirection: DominoTileDirection =
-    turnDirection === 1 ? 'right' : 'left';
+    turnDirection === 1 ? "right" : "left";
 
   const verticalSafetySpace = tileWidth + TILE_GAP * 2;
 
@@ -483,14 +484,15 @@ function buildVerticalBranchPath(
       x = 0;
 
       y = getSnapValue(
-        connectionY +
-          branchDirection * (slotHeight / 2 + TILE_GAP),
+        connectionY + branchDirection * (slotHeight / 2 + TILE_GAP),
       );
     } else if (lastX !== null && lastY !== null) {
-      const nextOffset = horizontalOffset + lastSlotWidth / 2 + TILE_GAP + slotWidth / 2;
+      const nextOffset =
+        horizontalOffset + lastSlotWidth / 2 + TILE_GAP + slotWidth / 2;
       x = getSnapValue(
         nextOffset <= maxHorizontalSpace
-          ? lastX + turnDirection * (lastSlotWidth / 2 + TILE_GAP + slotWidth / 2)
+          ? lastX +
+              turnDirection * (lastSlotWidth / 2 + TILE_GAP + slotWidth / 2)
           : lastX,
       );
 
@@ -500,15 +502,11 @@ function buildVerticalBranchPath(
           : getSnapValue(lastY + branchDirection * (tileHeight + TILE_GAP));
       horizontalOffset = nextOffset <= maxHorizontalSpace ? nextOffset : 0;
     } else {
-horizontalOffset = slotWidth / 2 - TILE_GAP * 6;
+      horizontalOffset = slotWidth / 2 - TILE_GAP * 6;
 
-x = getSnapValue(
-  turnDirection * horizontalOffset,
-);
+      x = getSnapValue(turnDirection * horizontalOffset);
 
-y = getSnapValue(
-  connectionY + branchDirection * (slotHeight / 2),
-);
+      y = getSnapValue(connectionY + branchDirection * (slotHeight / 2));
     }
 
     positions.push(
@@ -541,7 +539,7 @@ function BentHorizontalPathBranch({
   boardWidth,
   boardHeight,
 }: {
-  branch: 'left' | 'right';
+  branch: "left" | "right";
   tiles: BoardTile[];
   tileWidth: number;
   tileHeight: number;
@@ -573,7 +571,7 @@ function BentVerticalPathBranch({
   boardWidth,
   boardHeight,
 }: {
-  branch: 'up' | 'down';
+  branch: "up" | "down";
   tiles: BoardTile[];
   tileWidth: number;
   tileHeight: number;
@@ -597,7 +595,7 @@ function BentVerticalPathBranch({
 }
 
 type Props = {
-  board: GameState['board'];
+  board: GameState["board"];
   selectedTile: DominoTileData | null;
   selectableBranches: KozelBranch[];
   onSelectBranch?: (branch: KozelBranch) => void;
@@ -678,7 +676,8 @@ export default function BoardPathRenderer({
         boardHeight={boardHeight}
       />
 
-      {selectedTile && selectableBranches.map((branch) =>
+      {selectedTile &&
+        selectableBranches.map((branch) =>
           buildBranchPlacementPreview(
             branch,
             selectedTile,
@@ -691,34 +690,34 @@ export default function BoardPathRenderer({
             boardHeight,
             onSelectBranch,
           ),
-      )}
+        )}
     </WinningTileAnimationContext.Provider>
   );
 }
 
 const styles = StyleSheet.create({
   pathTileSlot: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
   },
   placementPreview: {
     opacity: 0.5,
     zIndex: 80,
   },
   winningTileOverlay: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     zIndex: 300,
     elevation: 14,
     borderWidth: 3,
-    borderColor: '#f6c945',
+    borderColor: "#f6c945",
     borderRadius: 7,
-    backgroundColor: 'rgba(246,201,69,0.18)',
-    shadowColor: '#f6c945',
+    backgroundColor: "rgba(246,201,69,0.18)",
+    shadowColor: "#f6c945",
     shadowOpacity: 0.9,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },

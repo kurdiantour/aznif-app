@@ -3,11 +3,11 @@ import {
   getFriends,
   respondFriendRequest,
   type FriendRequest,
-} from '@/lib/friends';
-import { supabase } from '@/lib/supabase';
-import { getCurrentUser } from '@/lib/supabaseAuth';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+} from "@/lib/friends";
+import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/lib/supabaseAuth";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,9 +15,9 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { PlayerAvatar } from '@/components/player/PlayerAvatar';
+import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 
 type RequestsPanelProps = {
   onRequestsChanged?: (count: number) => void;
@@ -94,7 +94,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
           setError(
             err instanceof Error
               ? err.message
-              : 'Unable to load friend requests.'
+              : "Unable to load friend requests.",
           );
         }
       })
@@ -111,7 +111,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
     useCallback(() => {
       setError(null);
       void refresh();
-    }, [refresh])
+    }, [refresh]),
   );
 
   useEffect(() => {
@@ -124,16 +124,16 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
       channel = supabase
         .channel(`friend-requests-panel:${user.id}`)
         .on(
-          'postgres_changes',
+          "postgres_changes",
           {
-            event: '*',
-            schema: 'public',
-            table: 'friendships',
+            event: "*",
+            schema: "public",
+            table: "friendships",
             filter: `addressee_id=eq.${user.id}`,
           },
           () => {
             void refresh();
-          }
+          },
         )
         .subscribe();
     });
@@ -156,9 +156,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
       await Promise.all([refresh(), getFriends()]);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to update friend request.'
+        err instanceof Error ? err.message : "Unable to update friend request.",
       );
     } finally {
       setBusyId(null);
@@ -215,19 +213,19 @@ const styles = StyleSheet.create({
 
   fullWidthSection: {
     flex: 1,
-    width: '100%',
+    width: "100%",
   },
 
   requestCard: {
     minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(170,105,255,0.28)',
+    borderColor: "rgba(170,105,255,0.28)",
     borderRadius: 12,
     padding: 10,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
 
   requestAvatar: {
@@ -236,84 +234,84 @@ const styles = StyleSheet.create({
 
   info: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     minWidth: 0,
   },
 
   name: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   playerId: {
     marginTop: 5,
-    color: '#aaa7bc',
+    color: "#aaa7bc",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   requestButtons: {
     width: 150,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 6,
   },
 
   smallButton: {
     minWidth: 68,
     height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: "rgba(255,255,255,0.35)",
     borderRadius: 8,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     paddingHorizontal: 8,
   },
 
   acceptButton: {
-    borderColor: 'rgba(34,197,94,0.55)',
-    backgroundColor: 'rgba(34,197,94,0.16)',
+    borderColor: "rgba(34,197,94,0.55)",
+    backgroundColor: "rgba(34,197,94,0.16)",
   },
 
   buttonText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 10,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   loader: {
-    width: '100%',
+    width: "100%",
     marginTop: 40,
   },
 
   emptyBox: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
   },
 
   emptyTitle: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   emptyText: {
-    color: '#9ca3af',
+    color: "#9ca3af",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
     lineHeight: 19,
   },
 
   errorText: {
-    width: '100%',
-    color: '#ff8a8a',
+    width: "100%",
+    color: "#ff8a8a",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 });

@@ -1,6 +1,6 @@
-import type { User } from '@supabase/supabase-js';
-import * as Linking from 'expo-linking';
-import { supabase } from './supabase';
+import type { User } from "@supabase/supabase-js";
+import * as Linking from "expo-linking";
+import { supabase } from "./supabase";
 
 export type Profile = {
   id: string;
@@ -14,13 +14,16 @@ export type Profile = {
   updated_at: string;
 };
 
-export type PublicProfile = Pick<Profile, 'username' | 'avatar_id' | 'player_id'>;
+export type PublicProfile = Pick<
+  Profile,
+  "username" | "avatar_id" | "player_id"
+>;
 
 export async function signUpWithEmail(email: string, password: string) {
   return supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: Linking.createURL('/auth-callback') },
+    options: { emailRedirectTo: Linking.createURL("/auth-callback") },
   });
 }
 
@@ -38,7 +41,7 @@ export async function getCurrentUser(): Promise<User | null> {
     if (error) return null;
     return data.user ?? null;
   } catch (error) {
-    console.warn('[supabase] getCurrentUser failed', error);
+    console.warn("[supabase] getCurrentUser failed", error);
     return null;
   }
 }
@@ -48,9 +51,11 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
   if (!user) return null;
 
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, email, player_id, username, avatar_id, level, points, created_at, updated_at')
-    .eq('id', user.id)
+    .from("profiles")
+    .select(
+      "id, email, player_id, username, avatar_id, level, points, created_at, updated_at",
+    )
+    .eq("id", user.id)
     .maybeSingle<Profile>();
 
   if (error) throw error;
@@ -64,24 +69,26 @@ export async function updateMyProfile(input: {
   const user = await getCurrentUser();
 
   if (!user) {
-    throw new Error('User is not authenticated');
+    throw new Error("User is not authenticated");
   }
 
-  const payload: Partial<Pick<Profile, 'username' | 'avatar_id'>> = {};
+  const payload: Partial<Pick<Profile, "username" | "avatar_id">> = {};
 
-  if (typeof input.username === 'string') {
+  if (typeof input.username === "string") {
     payload.username = input.username.trim();
   }
 
-  if (typeof input.avatar_id === 'string') {
+  if (typeof input.avatar_id === "string") {
     payload.avatar_id = input.avatar_id;
   }
 
   const { data, error } = await supabase
-    .from('profiles')
+    .from("profiles")
     .update(payload)
-    .eq('id', user.id)
-    .select('id, email, player_id, username, avatar_id, level, points, created_at, updated_at')
+    .eq("id", user.id)
+    .select(
+      "id, email, player_id, username, avatar_id, level, points, created_at, updated_at",
+    )
     .single<Profile>();
 
   if (error) throw error;
@@ -89,11 +96,13 @@ export async function updateMyProfile(input: {
   return data;
 }
 
-export async function getPublicProfile(userId: string): Promise<PublicProfile | null> {
+export async function getPublicProfile(
+  userId: string,
+): Promise<PublicProfile | null> {
   const { data, error } = await supabase
-    .from('profiles')
-    .select('username, avatar_id, player_id')
-    .eq('id', userId)
+    .from("profiles")
+    .select("username, avatar_id, player_id")
+    .eq("id", userId)
     .maybeSingle<PublicProfile>();
 
   if (error) throw error;
@@ -103,15 +112,17 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
 
 export async function sendPasswordReset(email: string) {
   return supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: Linking.createURL('/auth-callback', { queryParams: { flow: 'recovery' } }),
+    redirectTo: Linking.createURL("/auth-callback", {
+      queryParams: { flow: "recovery" },
+    }),
   });
 }
 
 export async function resendVerificationEmail(email: string) {
   return supabase.auth.resend({
-    type: 'signup',
+    type: "signup",
     email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: Linking.createURL('/auth-callback') },
+    options: { emailRedirectTo: Linking.createURL("/auth-callback") },
   });
 }
 

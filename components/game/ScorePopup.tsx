@@ -1,12 +1,12 @@
-import type { MatchReward } from '@/types/game';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { MatchReward } from "@/types/game";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   teamAScore: number;
   teamBScore: number;
-  winnerTeamId?: 'teamA' | 'teamB' | null;
+  winnerTeamId?: "teamA" | "teamB" | null;
   matchReward?: MatchReward | null;
   teamAName?: string;
   teamBName?: string;
@@ -34,7 +34,10 @@ function buildRoads(score: number) {
 
     const xCount = Math.min(MAX_X_PER_ROAD, Math.floor(roadScore / X_VALUE));
     const remainingAfterX = roadScore - xCount * X_VALUE;
-    const oCount = Math.min(MAX_O_PER_ROAD, Math.floor(remainingAfterX / O_VALUE));
+    const oCount = Math.min(
+      MAX_O_PER_ROAD,
+      Math.floor(remainingAfterX / O_VALUE),
+    );
 
     return {
       xCount,
@@ -97,8 +100,8 @@ export default function ScorePopup({
   teamAName,
   teamBName,
 }: Props) {
-  const teamA = teamAName ?? 'Team A';
-  const teamB = teamBName ?? 'Team B';
+  const teamA = teamAName ?? "Team A";
+  const teamB = teamBName ?? "Team B";
 
   if (!visible) {
     return null;
@@ -138,17 +141,17 @@ export default function ScorePopup({
         {winnerTeamId ? (
           <>
             <Text style={styles.winnerText}>
-              {winnerTeamId === 'teamA' ? teamA : teamB} wins
+              {winnerTeamId === "teamA" ? teamA : teamB} wins
             </Text>
 
             {matchReward ? (
               <View style={styles.rewardRow}>
                 <Text style={styles.rewardTitle}>
-                  {matchReward.tier === 'close'
-                    ? 'Close win'
-                    : matchReward.tier === 'normal'
-                      ? 'Normal win'
-                      : 'Dominating win'}
+                  {matchReward.tier === "close"
+                    ? "Close win"
+                    : matchReward.tier === "normal"
+                      ? "Normal win"
+                      : "Dominating win"}
                 </Text>
 
                 <Text style={styles.rewardDetail}>
@@ -172,13 +175,13 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 999,
     elevation: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: "rgba(0,0,0,0.65)",
   },
 
   backdropPressable: {
@@ -186,87 +189,85 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    width: 340,
+    width: 310,
     height: 250,
-    borderRadius: 18,
-    paddingHorizontal: 16,
+    borderRadius: 10,
+    paddingHorizontal: 26,
     paddingTop: 16,
     paddingBottom: 12,
-    backgroundColor: 'rgba(7, 35, 27, 0.98)',
-    borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.55)',
+    backgroundColor: "rgba(223, 223, 223, 0.95)",
     zIndex: 1000,
     elevation: 1000,
   },
 
   scoreBoard: {
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 190,
   },
 
   teamSide: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   teamName: {
-    width: '100%',
-    color: '#f8f3df',
+    width: "100%",
+    color: "#000000",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   verticalDivider: {
     width: 1.5,
     height: 164,
     borderRadius: 999,
-    backgroundColor: 'rgba(250, 204, 21, 0.55)',
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
     marginHorizontal: 10,
     marginTop: 24,
   },
 
   roadsBox: {
-    width: '100%',
+    width: "100%",
     height: 128,
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   road: {
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   markLine: {
     height: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   xMark: {
     width: 15,
-    color: '#facc15',
+    color: "#000000",
     fontSize: 16,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     lineHeight: 16,
-    textAlign: 'center',
-    textShadowColor: 'rgba(250, 204, 21, 0.35)',
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.35)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 5,
   },
 
   oMark: {
     width: 15,
-    color: '#22c55e',
+    color: "#000000",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     lineHeight: 14,
-    textAlign: 'center',
-    textShadowColor: 'rgba(34, 197, 94, 0.3)',
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.3)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
   },
@@ -277,47 +278,47 @@ const styles = StyleSheet.create({
 
   numericScore: {
     marginTop: 8,
-    color: '#22c55e',
+    color: "#000000",
     fontSize: 16,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   winnerText: {
-    color: '#facc15',
+    color: "#000000",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
     marginTop: 8,
   },
 
   rewardRow: {
     marginTop: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   rewardTitle: {
-    color: '#ffffff',
+    color: "#000000",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   rewardDetail: {
     marginTop: 4,
-    color: '#d1d5db',
+    color: "#000000",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   bottomDivider: {
     height: 1,
-    backgroundColor: 'rgba(250, 204, 21, 0.18)',
+    backgroundColor: "rgba(0, 0, 0, 0.18)",
     marginBottom: 9,
   },
 
   target: {
-    color: '#d8c894',
+    color: "#000000",
     fontSize: 11,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 });

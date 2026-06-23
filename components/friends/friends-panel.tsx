@@ -4,9 +4,9 @@ import {
   sendFriendRequest,
   type Friend,
   type FriendSearchResult,
-} from '@/lib/friends';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+} from "@/lib/friends";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -14,10 +14,10 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { PlayerAvatar } from '@/components/player/PlayerAvatar';
-import { SendChipPopup } from './send-chip-popup';
+import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import { SendChipPopup } from "./send-chip-popup";
 
 function FriendCard({
   friend,
@@ -28,8 +28,22 @@ function FriendCard({
 }) {
   return (
     <View style={styles.friendCard}>
-      <View style={styles.avatarWrap}>
-        <PlayerAvatar avatarId={friend.avatarId} size={58} style={styles.avatar} />
+      <View style={styles.buttonStack}>
+        <Pressable
+          style={styles.actionButton}
+          onPress={() => onSendChip(friend)}
+        >
+          <Text style={styles.buttonText}>تۆکن بنێرە</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.actionButton, styles.disabledButton]}
+          disabled
+        >
+          <Text style={[styles.buttonText, styles.disabledButtonText]}>
+            بانگهێشت
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.info}>
@@ -38,18 +52,16 @@ function FriendCard({
         </Text>
 
         <Text style={styles.playerId} numberOfLines={1}>
-          ID: {friend.playerId}
+          {friend.playerId}{" "}
         </Text>
       </View>
 
-      <View style={styles.buttonStack}>
-        <Pressable style={styles.actionButton} onPress={() => onSendChip(friend)}>
-          <Text style={styles.buttonText}>تۆکن بنێرە</Text>
-        </Pressable>
-
-        <Pressable style={[styles.actionButton, styles.disabledButton]} disabled>
-          <Text style={[styles.buttonText, styles.disabledButtonText]}>بانگهێشت</Text>
-        </Pressable>
+      <View style={styles.avatarWrap}>
+        <PlayerAvatar
+          avatarId={friend.avatarId}
+          size={58}
+          style={styles.avatar}
+        />
       </View>
     </View>
   );
@@ -66,26 +78,30 @@ function SearchResultRow({
   onSendChip: (result: FriendSearchResult) => void;
   busy: boolean;
 }) {
-  const isFriend = result.friendshipStatus === 'accepted';
-  const isPending = result.friendshipStatus === 'pending';
+  const isFriend = result.friendshipStatus === "accepted";
+  const isPending = result.friendshipStatus === "pending";
   const label = isFriend
-    ? 'هاوڕێکان'
-    : isPending && result.friendshipDirection === 'incoming'
-      ? 'چاوەڕوان'
+    ? "هاوڕێکان"
+    : isPending && result.friendshipDirection === "incoming"
+      ? "چاوەڕوان"
       : isPending
-        ? 'نێردراو'
-        : 'زیادکردن';
+        ? "نێردراو"
+        : "زیادکردن";
 
   return (
     <View style={styles.searchRow}>
-      <PlayerAvatar avatarId={result.avatarId} size={38} style={styles.requestAvatar} />
+      <PlayerAvatar
+        avatarId={result.avatarId}
+        size={38}
+        style={styles.requestAvatar}
+      />
 
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>
           {result.name}
         </Text>
         <Text style={styles.playerId} numberOfLines={1}>
-          ID: {result.playerId}
+          {result.playerId}
         </Text>
       </View>
 
@@ -98,8 +114,13 @@ function SearchResultRow({
         disabled={busy || isFriend || isPending}
         onPress={() => (isFriend ? onSendChip(result) : onAdd(result))}
       >
-        <Text style={[styles.buttonText, (isFriend || isPending) && styles.disabledButtonText]}>
-          {isFriend ? 'تۆکن بنێرە' : label}
+        <Text
+          style={[
+            styles.buttonText,
+            (isFriend || isPending) && styles.disabledButtonText,
+          ]}
+        >
+          {isFriend ? "تۆکن بنێرە" : label}
         </Text>
       </Pressable>
     </View>
@@ -110,7 +131,7 @@ type FriendsPanelProps = {
   searchQuery?: string;
 };
 
-export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
+export function FriendsPanel({ searchQuery = "" }: FriendsPanelProps) {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
@@ -131,7 +152,10 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
     setLoading(true);
     refresh()
       .catch((err) => {
-        if (mounted) setError(err instanceof Error ? err.message : 'Unable to load friends.');
+        if (mounted)
+          setError(
+            err instanceof Error ? err.message : "Unable to load friends.",
+          );
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -146,7 +170,7 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
     useCallback(() => {
       setError(null);
       void refresh();
-    }, [refresh])
+    }, [refresh]),
   );
 
   useEffect(() => {
@@ -166,7 +190,8 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
           if (mounted) setSearchResults(results);
         })
         .catch((err) => {
-          if (mounted) setError(err instanceof Error ? err.message : 'Search failed.');
+          if (mounted)
+            setError(err instanceof Error ? err.message : "Search failed.");
         })
         .finally(() => {
           if (mounted) setSearching(false);
@@ -189,12 +214,18 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
       setSearchResults((current) =>
         current.map((item) =>
           item.id === result.id
-            ? { ...item, friendshipStatus: 'pending', friendshipDirection: 'outgoing' }
-            : item
-        )
+            ? {
+                ...item,
+                friendshipStatus: "pending",
+                friendshipDirection: "outgoing",
+              }
+            : item,
+        ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to send friend request.');
+      setError(
+        err instanceof Error ? err.message : "Unable to send friend request.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -206,12 +237,12 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
       name: result.name,
       playerId: result.playerId,
       avatarId: result.avatarId,
-      friendshipId: '',
+      friendshipId: "",
     });
   }
 
   function handleTransferSuccess() {
-    setSuccessMessage('ئەزنیف sent successfully.');
+    setSuccessMessage("ئەزنیف sent successfully.");
     void refresh();
   }
 
@@ -224,7 +255,9 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
       >
         {searching || searchResults.length > 0 ? (
           <View style={styles.fullWidthSection}>
-            {searching ? <ActivityIndicator color="#a855f7" style={styles.inlineLoader} /> : null}
+            {searching ? (
+              <ActivityIndicator color="#a855f7" style={styles.inlineLoader} />
+            ) : null}
 
             {searchResults.map((result) => (
               <SearchResultRow
@@ -239,10 +272,16 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
         ) : null}
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+        {successMessage ? (
+          <Text style={styles.successText}>{successMessage}</Text>
+        ) : null}
 
         {loading ? (
-          <ActivityIndicator color="#a855f7" size="large" style={styles.loader} />
+          <ActivityIndicator
+            color="#a855f7"
+            size="large"
+            style={styles.loader}
+          />
         ) : friends.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>هێشتا هیچ هاوڕێیەک نییە</Text>
@@ -252,7 +291,11 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
           </View>
         ) : (
           friends.map((friend) => (
-            <FriendCard key={friend.id} friend={friend} onSendChip={setSelectedFriend} />
+            <FriendCard
+              key={friend.id}
+              friend={friend}
+              onSendChip={setSelectedFriend}
+            />
           ))
         )}
       </ScrollView>
@@ -270,7 +313,7 @@ export function FriendsPanel({ searchQuery = '' }: FriendsPanelProps) {
 const styles = StyleSheet.create({
   panel: {
     flex: 1,
-    position: 'relative',
+    position: "relative",
   },
 
   scroll: {
@@ -279,8 +322,8 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     paddingBottom: 18,
   },
@@ -291,14 +334,14 @@ const styles = StyleSheet.create({
 
   searchRow: {
     minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginTop: 10,
   },
 
   fullWidthSection: {
-    width: '100%',
+    width: "100%",
     gap: 8,
     marginTop: 4,
     marginBottom: 4,
@@ -309,16 +352,16 @@ const styles = StyleSheet.create({
   },
 
   friendCard: {
-    width: '48.8%',
+    width: "48.8%",
     minHeight: 92,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: 'rgba(170, 105, 255, 0.28)',
+    borderColor: "rgba(170, 105, 255, 0.28)",
     borderRadius: 12,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
 
   avatarWrap: {
@@ -326,66 +369,71 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 29,
     borderWidth: 2,
-    borderColor: 'rgba(180,180,200,0.45)',
+    borderColor: "rgba(180,180,200,0.45)",
     padding: 2,
   },
 
   avatar: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderRadius: 27,
   },
 
   info: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
+    alignItems: "flex-end",
     minWidth: 0,
   },
 
   name: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
+    textAlign: "right",
+    width: "100%",
   },
 
   playerId: {
     marginTop: 5,
-    color: '#aaa7bc',
+    color: "#aaa7bc",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
+    textAlign: "right",
+    width: "100%",
   },
 
   buttonStack: {
     width: 104,
     gap: 6,
-    marginLeft: 12,
+    marginRight: 12,
   },
 
   actionButton: {
     height: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: "rgba(255,255,255,0.35)",
     borderRadius: 8,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
 
   smallButton: {
     minWidth: 68,
     height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: "rgba(255,255,255,0.35)",
     borderRadius: 8,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     paddingHorizontal: 8,
   },
 
   acceptButton: {
-    borderColor: 'rgba(34,197,94,0.55)',
-    backgroundColor: 'rgba(34,197,94,0.16)',
+    borderColor: "rgba(34,197,94,0.55)",
+    backgroundColor: "rgba(34,197,94,0.16)",
   },
 
   disabledButton: {
@@ -393,54 +441,54 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 10,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   disabledButtonText: {
-    color: 'rgba(255,255,255,0.72)',
+    color: "rgba(255,255,255,0.72)",
   },
 
   loader: {
-    width: '100%',
+    width: "100%",
     marginTop: 40,
   },
 
   emptyBox: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
   },
 
   emptyTitle: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 18,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   emptyText: {
-    color: '#9ca3af',
+    color: "#9ca3af",
     fontSize: 13,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
     lineHeight: 19,
   },
 
   errorText: {
-    width: '100%',
-    color: '#ff8a8a',
+    width: "100%",
+    color: "#ff8a8a",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   successText: {
-    width: '100%',
-    color: '#7dd3fc',
+    width: "100%",
+    color: "#7dd3fc",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 });

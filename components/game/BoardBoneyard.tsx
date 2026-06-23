@@ -1,13 +1,13 @@
-import DominoTile from '@/components/game/DominoTile';
-import { BOARD_EDGE_PADDING } from '@/components/game/boardPathLayout';
-import { DominoTileData } from '@/types/game';
-import { Animated, StyleSheet, View } from 'react-native';
+import DominoTile from "@/components/game/DominoTile";
+import { BOARD_EDGE_PADDING } from "@/components/game/boardPathLayout";
+import { DominoTileData } from "@/types/game";
+import { Animated, StyleSheet, View } from "react-native";
 
 const HIDDEN_BONEYARD_TILE: DominoTileData = {
-  id: 'hidden-boneyard-0-0',
+  id: "hidden-boneyard-0-0",
   left: 0,
   right: 0,
-  imageKey: '0-0',
+  imageKey: "0-0",
 };
 
 type AnimatedSprite = {
@@ -59,7 +59,10 @@ function renderBoneyardStack(
 
   const startTop =
     stackHeight <= availableVerticalSpace
-      ? Math.max(BOARD_EDGE_PADDING, Math.round((boardHeight - stackHeight) / 2))
+      ? Math.max(
+          BOARD_EDGE_PADDING,
+          Math.round((boardHeight - stackHeight) / 2),
+        )
       : BOARD_EDGE_PADDING;
 
   const leftOffset = -displayWidth - 12;
@@ -124,7 +127,7 @@ export default function BoardBoneyard({
           style={[
             styles.boneyardTileSlot,
             {
-              position: 'absolute',
+              position: "absolute",
               left: animatedSprite.left,
               top: animatedSprite.top,
               width: animatedSprite.width,
@@ -153,16 +156,16 @@ export default function BoardBoneyard({
 
 const styles = StyleSheet.create({
   boneyardStackWrap: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     zIndex: 10,
   },
   boneyardTileSlot: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -1,5 +1,5 @@
-import type { Player, RoundResult } from '@/types/game';
-import { StyleSheet, Text, View } from 'react-native';
+import type { Player, RoundResult } from "@/types/game";
+import { StyleSheet, Text, View } from "react-native";
 
 type RoundResultPresentationProps = {
   roundResult: RoundResult;
@@ -15,7 +15,7 @@ export default function RoundResultPresentation({
   return (
     <View style={styles.container} pointerEvents="none">
       <Text style={styles.winnerText}>
-        {winner ? `${winner.name} won the round` : 'Round complete'}
+        {winner ? `${winner.name} won the round` : "Round complete"}
       </Text>
       <Text style={styles.pointsText}>+{roundResult.awardedPoints}</Text>
 
@@ -35,39 +35,39 @@ export default function RoundResultPresentation({
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 20,
     padding: 20,
-    backgroundColor: 'rgba(9,11,29,0.92)',
+    backgroundColor: "rgba(9,11,29,0.92)",
   },
   winnerText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 22,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
   pointsText: {
     marginTop: 6,
-    color: '#facc15',
+    color: "#facc15",
     fontSize: 30,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
   playerResults: {
-    alignSelf: 'stretch',
+    alignSelf: "stretch",
     marginTop: 16,
     gap: 8,
   },
   playerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   playerName: {
-    color: '#e5e7eb',
+    color: "#e5e7eb",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
   pipsText: {
-    color: '#c4b5fd',
+    color: "#c4b5fd",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 });

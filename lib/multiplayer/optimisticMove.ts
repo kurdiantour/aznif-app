@@ -2,7 +2,7 @@ import type {
   DominoTileData,
   KozelBoardState,
   KozelBranch,
-} from '@/types/game';
+} from "@/types/game";
 
 export type PendingMultiplayerMove = {
   requestId: string;

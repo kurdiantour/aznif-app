@@ -1,24 +1,26 @@
-import { FriendsPanel } from '@/components/friends/friends-panel';
-import { RequestsPanel } from '@/components/friends/requests-panel';
-import { TransfersPanel } from '@/components/friends/transfers-panel';
-import { getFriendRequests } from '@/lib/friends';
-import { supabase } from '@/lib/supabase';
-import { getCurrentUser } from '@/lib/supabaseAuth';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FriendsPanel } from "@/components/friends/friends-panel";
+import { RequestsPanel } from "@/components/friends/requests-panel";
+import { TransfersPanel } from "@/components/friends/transfers-panel";
+import { getFriendRequests } from "@/lib/friends";
+import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/lib/supabaseAuth";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-type TabKey = 'friends' | 'requests' | 'transfers';
+type TabKey = "friends" | "requests" | "transfers";
 
 const tabs: { key: TabKey; label: string }[] = [
-  { key: 'friends', label: 'هاوڕێکان' },
-  { key: 'requests', label: 'داواکارییەکان' },
-  { key: 'transfers', label: 'گواستنەوەکان' },
+  { key: "friends", label: "هاوڕێکان" },
+  { key: "requests", label: "داواکارییەکان" },
+  { key: "transfers", label: "گواستنەوەکان" },
 ];
 
+let friendRequestChannelSequence = 0;
+
 export default function InviteFriendsScreen() {
-  const [activeTab, setActiveTab] = useState<TabKey>('friends');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<TabKey>("friends");
+  const [searchQuery, setSearchQuery] = useState("");
   const [requestCount, setRequestCount] = useState(0);
 
   const refreshRequestCount = useCallback(async () => {
@@ -29,32 +31,51 @@ export default function InviteFriendsScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshRequestCount();
-    }, [refreshRequestCount])
+    }, [refreshRequestCount]),
   );
 
   useEffect(() => {
     let mounted = true;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channelId = ++friendRequestChannelSequence;
 
-    getCurrentUser().then((user) => {
+    async function subscribeToFriendRequestCount() {
+      const user = await getCurrentUser();
       if (!mounted || !user) return;
 
+      const channelPrefix = `realtime:friend-request-count:${user.id}`;
+      const staleChannels = supabase
+        .getChannels()
+        .filter((existingChannel) =>
+          existingChannel.topic.startsWith(channelPrefix),
+        );
+
+      await Promise.all(
+        staleChannels.map((existingChannel) =>
+          supabase.removeChannel(existingChannel),
+        ),
+      );
+
+      if (!mounted) return;
+
       channel = supabase
-        .channel(`friend-request-count:${user.id}`)
+        .channel(`friend-request-count:${user.id}:${channelId}`)
         .on(
-          'postgres_changes',
+          "postgres_changes",
           {
-            event: '*',
-            schema: 'public',
-            table: 'friendships',
+            event: "*",
+            schema: "public",
+            table: "friendships",
             filter: `addressee_id=eq.${user.id}`,
           },
           () => {
             void refreshRequestCount();
-          }
+          },
         )
         .subscribe();
-    });
+    }
+
+    void subscribeToFriendRequestCount();
 
     return () => {
       mounted = false;
@@ -87,15 +108,21 @@ export default function InviteFriendsScreen() {
             return (
               <Pressable
                 key={tab.key}
-                style={[styles.sidebarItem, isActive && styles.sidebarItemActive]}
+                style={[
+                  styles.sidebarItem,
+                  isActive && styles.sidebarItemActive,
+                ]}
                 onPress={() => setActiveTab(tab.key)}
               >
                 <Text
-                  style={[styles.sidebarText, isActive && styles.sidebarTextActive]}
+                  style={[
+                    styles.sidebarText,
+                    isActive && styles.sidebarTextActive,
+                  ]}
                 >
                   {tab.label}
                 </Text>
-                {tab.key === 'requests' && requestCount > 0 ? (
+                {tab.key === "requests" && requestCount > 0 ? (
                   <View style={styles.requestBadge} />
                 ) : null}
               </Pressable>
@@ -104,9 +131,9 @@ export default function InviteFriendsScreen() {
         </View>
 
         <View style={styles.content}>
-          {activeTab === 'friends' ? (
+          {activeTab === "friends" ? (
             <FriendsPanel searchQuery={searchQuery} />
-          ) : activeTab === 'requests' ? (
+          ) : activeTab === "requests" ? (
             <RequestsPanel onRequestsChanged={setRequestCount} />
           ) : (
             <TransfersPanel />
@@ -120,12 +147,12 @@ export default function InviteFriendsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
 
   body: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     paddingTop: 0,
     paddingBottom: 82,
@@ -141,16 +168,16 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    justifyContent: 'center',
+    borderColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    justifyContent: "center",
     paddingHorizontal: 12,
   },
 
   searchInput: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 11,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
     padding: 0,
   },
 
@@ -158,36 +185,36 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
+    borderColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
 
   sidebarItemActive: {
-    borderColor: 'rgba(255, 184, 64, 0.85)',
-    backgroundColor: 'rgba(28, 17, 52, 0.35)',
+    borderColor: "rgba(255, 184, 64, 0.85)",
+    backgroundColor: "rgba(28, 17, 52, 0.35)",
   },
 
   sidebarText: {
-    color: 'rgba(255,255,255,0.82)',
+    color: "rgba(255,255,255,0.82)",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   sidebarTextActive: {
-    color: '#ffffff',
+    color: "#ffffff",
   },
 
   requestBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     right: 10,
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: '#ef4444',
+    backgroundColor: "#ef4444",
   },
 
   content: {

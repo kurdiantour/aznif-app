@@ -1,4 +1,4 @@
-export type CurrencyType = 'MC' | 'Gold';
+export type CurrencyType = "MC" | "Gold";
 
 export type WalletBalances = {
   mc: number;
@@ -13,14 +13,14 @@ export type Wallet = {
 };
 
 export type WalletTransactionType =
-  | 'transfer'
-  | 'bet'
-  | 'manual_purchase'
-  | 'reward'
-  | 'reward_bonus'
-  | 'shop_purchase';
+  | "transfer"
+  | "bet"
+  | "manual_purchase"
+  | "reward"
+  | "reward_bonus"
+  | "shop_purchase";
 
-export type WalletTransactionStatus = 'pending' | 'completed' | 'failed';
+export type WalletTransactionStatus = "pending" | "completed" | "failed";
 
 export type WalletTransaction = {
   id: string;

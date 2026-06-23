@@ -1,5 +1,5 @@
-type TeamId = 'teamA' | 'teamB';
-type MatchPerformanceTier = 'close' | 'normal' | 'dominating';
+type TeamId = "teamA" | "teamB";
+type MatchPerformanceTier = "close" | "normal" | "dominating";
 
 type MatchReward = {
   tier: MatchPerformanceTier;
@@ -15,9 +15,14 @@ const MATCH_REWARD_RULES: Array<{
   gold: number;
   points: number;
 }> = [
-  { tier: 'close', maxDifference: 50, gold: 3, points: 10 },
-  { tier: 'normal', maxDifference: 150, gold: 6, points: 20 },
-  { tier: 'dominating', maxDifference: Number.POSITIVE_INFINITY, gold: 9, points: 30 },
+  { tier: "close", maxDifference: 50, gold: 3, points: 10 },
+  { tier: "normal", maxDifference: 150, gold: 6, points: 20 },
+  {
+    tier: "dominating",
+    maxDifference: Number.POSITIVE_INFINITY,
+    gold: 9,
+    points: 30,
+  },
 ];
 
 export function calculateMatchReward(
@@ -25,7 +30,9 @@ export function calculateMatchReward(
   loserScore: number,
 ): MatchReward {
   const difference = Math.max(0, winnerScore - loserScore);
-  const rule = MATCH_REWARD_RULES.find((item) => difference <= item.maxDifference) ?? MATCH_REWARD_RULES[2];
+  const rule =
+    MATCH_REWARD_RULES.find((item) => difference <= item.maxDifference) ??
+    MATCH_REWARD_RULES[2];
 
   return {
     tier: rule.tier,
@@ -41,11 +48,11 @@ export function getFinalMatchWinner(
   const teamBReachedTarget = scores.teamB >= MATCH_TARGET_SCORE;
 
   if (!teamAReachedTarget && !teamBReachedTarget) return null;
-  if (teamAReachedTarget && !teamBReachedTarget) return 'teamA';
-  if (teamBReachedTarget && !teamAReachedTarget) return 'teamB';
+  if (teamAReachedTarget && !teamBReachedTarget) return "teamA";
+  if (teamBReachedTarget && !teamAReachedTarget) return "teamB";
 
-  if (scores.teamA > scores.teamB) return 'teamA';
-  if (scores.teamB > scores.teamA) return 'teamB';
+  if (scores.teamA > scores.teamB) return "teamA";
+  if (scores.teamB > scores.teamA) return "teamB";
 
   return null;
 }
@@ -62,12 +69,13 @@ export function resolveMatchOutcome(
 
   const winnerScore = Number(scores[winningTeamId] ?? 0);
   const loserScore =
-    winningTeamId === 'teamA'
+    winningTeamId === "teamA"
       ? Number(scores.teamB ?? 0)
       : Number(scores.teamA ?? 0);
 
   return {
     winningTeamId,
-    matchReward: existingReward ?? calculateMatchReward(winnerScore, loserScore),
+    matchReward:
+      existingReward ?? calculateMatchReward(winnerScore, loserScore),
   };
 }

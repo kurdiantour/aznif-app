@@ -1,33 +1,33 @@
-import { useProfile } from '@/lib/profile';
+import { useProfile } from "@/lib/profile";
 import {
-    getCurrentUser,
-    getOrCreateProfile,
-    signInWithEmail,
-    signUpWithEmail,
-    updateMyProfile,
-} from '@/lib/supabaseAuth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+  getCurrentUser,
+  getOrCreateProfile,
+  signInWithEmail,
+  signUpWithEmail,
+  updateMyProfile,
+} from "@/lib/supabaseAuth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
-} from 'react-native';
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-const SAVED_EMAIL_KEY = 'domino_saved_email';
+const SAVED_EMAIL_KEY = "domino_saved_email";
 
 export default function LoginScreen() {
   const router = useRouter();
   const { refreshProfile } = useProfile();
 
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export default function LoginScreen() {
 
         if (user && isMounted) {
           await getOrCreateProfile();
-          router.replace('/(tabs)/lobby');
+          router.replace("/(tabs)/lobby");
           return;
         }
       } catch {
@@ -71,12 +71,12 @@ export default function LoginScreen() {
     const cleanUsername = username.trim();
 
     if (!cleanEmail || !password) {
-      setMessage('Please enter email and password.');
+      setMessage("Please enter email and password.");
       return;
     }
 
-    if (mode === 'signup' && cleanUsername.length < 3) {
-      setMessage('Username must be at least 3 characters.');
+    if (mode === "signup" && cleanUsername.length < 3) {
+      setMessage("Username must be at least 3 characters.");
       return;
     }
 
@@ -85,7 +85,7 @@ export default function LoginScreen() {
 
     try {
       const result =
-        mode === 'signup'
+        mode === "signup"
           ? await signUpWithEmail(cleanEmail, password)
           : await signInWithEmail(cleanEmail, password);
 
@@ -98,25 +98,25 @@ export default function LoginScreen() {
 
       if (!profile) {
         setMessage(
-          'Unable to sign in. Please verify your email and try again.'
+          "Unable to sign in. Please verify your email and try again.",
         );
         return;
       }
 
-      if (mode === 'signup') {
+      if (mode === "signup") {
         await updateMyProfile({ username: cleanUsername });
         await refreshProfile();
       }
 
       await AsyncStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
-      router.replace('/(tabs)/lobby');
+      router.replace("/(tabs)/lobby");
     } catch (error) {
-      console.warn('[auth] login failed', error);
+      console.warn("[auth] login failed", error);
 
       setMessage(
         error instanceof Error
           ? error.message
-          : 'Something went wrong. Please try again.'
+          : "Something went wrong. Please try again.",
       );
     } finally {
       setIsLoading(false);
@@ -131,7 +131,7 @@ export default function LoginScreen() {
     );
   }
 
-  const isSignup = mode === 'signup';
+  const isSignup = mode === "signup";
 
   return (
     <View style={styles.container}>
@@ -169,9 +169,7 @@ export default function LoginScreen() {
           editable={!isLoading}
         />
 
-        {message ? (
-          <Text style={styles.messageText}>{message}</Text>
-        ) : null}
+        {message ? <Text style={styles.messageText}>{message}</Text> : null}
 
         <Pressable
           style={[styles.primaryButton, isLoading && styles.disabledButton]}
@@ -182,7 +180,7 @@ export default function LoginScreen() {
             <ActivityIndicator color="#ffffff" />
           ) : (
             <Text style={styles.primaryButtonText}>
-              {isSignup ? 'Create Account' : 'Sign In'}
+              {isSignup ? "Create Account" : "Sign In"}
             </Text>
           )}
         </Pressable>
@@ -190,9 +188,7 @@ export default function LoginScreen() {
         <Pressable
           style={styles.switchButton}
           onPress={() => {
-            setMode((current) =>
-              current === 'signin' ? 'signup' : 'signin'
-            );
+            setMode((current) => (current === "signin" ? "signup" : "signin"));
 
             setMessage(null);
           }}
@@ -200,8 +196,8 @@ export default function LoginScreen() {
         >
           <Text style={styles.switchButtonText}>
             {isSignup
-              ? 'Already have an account? Sign in'
-              : 'New player? Create account'}
+              ? "Already have an account? Sign in"
+              : "New player? Create account"}
           </Text>
         </Pressable>
       </View>
@@ -212,14 +208,14 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050b22',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#050b22",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 20,
   },
 
   formCard: {
-    width: '100%',
+    width: "100%",
     maxWidth: 330,
     paddingHorizontal: 8,
   },
@@ -227,31 +223,31 @@ const styles = StyleSheet.create({
   input: {
     height: 40,
     borderRadius: 6,
-    backgroundColor: 'rgba(7, 26, 54, 0.78)',
-    color: '#ffffff',
+    backgroundColor: "rgba(7, 26, 54, 0.78)",
+    color: "#ffffff",
     paddingHorizontal: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(33, 65, 111, 0.65)',
+    borderColor: "rgba(33, 65, 111, 0.65)",
     fontSize: 13,
   },
 
   messageText: {
-    color: '#fca5a5',
+    color: "#fca5a5",
     fontSize: 12,
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   primaryButton: {
-    alignSelf: 'center',
+    alignSelf: "center",
     minWidth: 145,
     height: 40,
     paddingHorizontal: 20,
     borderRadius: 6,
-    backgroundColor: '#2563eb',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#2563eb",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
   },
 
@@ -260,19 +256,19 @@ const styles = StyleSheet.create({
   },
 
   primaryButtonText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 
   switchButton: {
     marginTop: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   switchButtonText: {
-    color: '#9fc2ff',
+    color: "#9fc2ff",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
+    fontFamily: "SpedaBold",
   },
 });

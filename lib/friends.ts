@@ -1,6 +1,6 @@
-import type { AvatarId } from '@/constants/avatars';
-import { supabase } from './supabase';
-import { getCurrentUser } from './supabaseAuth';
+import type { AvatarId } from "@/constants/avatars";
+import { supabase } from "./supabase";
+import { getCurrentUser } from "./supabaseAuth";
 
 export type FriendProfile = {
   id: string;
@@ -19,15 +19,15 @@ export type FriendRequest = FriendProfile & {
 };
 
 export type FriendSearchResult = FriendProfile & {
-  friendshipStatus: 'pending' | 'accepted' | 'rejected' | null;
-  friendshipDirection: 'incoming' | 'outgoing' | null;
+  friendshipStatus: "pending" | "accepted" | "rejected" | null;
+  friendshipDirection: "incoming" | "outgoing" | null;
 };
 
 type FriendshipRow = {
   id: string;
   requester_id: string;
   addressee_id: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: "pending" | "accepted" | "rejected";
   created_at: string;
   updated_at: string;
   responded_at?: string | null;
@@ -43,9 +43,9 @@ type ProfileRow = {
 function mapProfile(row: any): FriendProfile {
   return {
     id: row.friend_id ?? row.requester_id ?? row.id,
-    name: row.username ?? 'Unknown Player',
-    playerId: row.player_id ?? 'unknown',
-    avatarId: (row.avatar_id ?? 'avatar-1') as AvatarId,
+    name: row.username ?? "Unknown Player",
+    playerId: row.player_id ?? "unknown",
+    avatarId: (row.avatar_id ?? "avatar-1") as AvatarId,
   };
 }
 
@@ -62,25 +62,30 @@ async function getProfilesById(ids: string[]) {
   }
 
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, player_id, avatar_id')
-    .in('id', uniqueIds);
+    .from("profiles")
+    .select("id, username, player_id, avatar_id")
+    .in("id", uniqueIds);
 
   if (error) throw error;
 
-  return new Map((data ?? []).map((profile: ProfileRow) => [profile.id, profile]));
+  return new Map(
+    (data ?? []).map((profile: ProfileRow) => [profile.id, profile]),
+  );
 }
 
 function fallbackProfile(userId: string): FriendProfile {
   return {
     id: userId,
     name: `Player ${userId.slice(0, 8)}`,
-    playerId: 'Unavailable',
-    avatarId: 'avatar-1' as AvatarId,
+    playerId: "Unavailable",
+    avatarId: "avatar-1" as AvatarId,
   };
 }
 
-function profileToFriendProfile(profile: ProfileRow | undefined, userId: string): FriendProfile {
+function profileToFriendProfile(
+  profile: ProfileRow | undefined,
+  userId: string,
+): FriendProfile {
   const fallback = fallbackProfile(userId);
 
   return {
@@ -99,25 +104,31 @@ export async function getFriends(): Promise<Friend[]> {
   }
 
   const { data, error } = await supabase
-    .from('friendships')
-    .select('id, requester_id, addressee_id, status, created_at, updated_at, responded_at')
+    .from("friendships")
+    .select(
+      "id, requester_id, addressee_id, status, created_at, updated_at, responded_at",
+    )
     .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-    .eq('status', 'accepted')
-    .order('updated_at', { ascending: false });
+    .eq("status", "accepted")
+    .order("updated_at", { ascending: false });
 
   if (error) throw error;
 
   const rows = (data ?? []) as FriendshipRow[];
 
   const friendIds = rows.map((row) =>
-    row.requester_id === userId ? row.addressee_id : row.requester_id
+    row.requester_id === userId ? row.addressee_id : row.requester_id,
   );
 
   const profilesById = await getProfilesById(friendIds);
 
   return rows.map((row) => {
-    const friendId = row.requester_id === userId ? row.addressee_id : row.requester_id;
-    const profile = profileToFriendProfile(profilesById.get(friendId), friendId);
+    const friendId =
+      row.requester_id === userId ? row.addressee_id : row.requester_id;
+    const profile = profileToFriendProfile(
+      profilesById.get(friendId),
+      friendId,
+    );
 
     return {
       ...profile,
@@ -134,11 +145,13 @@ export async function getFriendRequests(): Promise<FriendRequest[]> {
   }
 
   const { data, error } = await supabase
-    .from('friendships')
-    .select('id, requester_id, addressee_id, status, created_at, updated_at, responded_at')
-    .eq('addressee_id', userId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false });
+    .from("friendships")
+    .select(
+      "id, requester_id, addressee_id, status, created_at, updated_at, responded_at",
+    )
+    .eq("addressee_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
 
@@ -152,7 +165,10 @@ export async function getFriendRequests(): Promise<FriendRequest[]> {
   const profilesById = await getProfilesById(requesterIds);
 
   return rows.map((row) => {
-    const profile = profileToFriendProfile(profilesById.get(row.requester_id), row.requester_id);
+    const profile = profileToFriendProfile(
+      profilesById.get(row.requester_id),
+      row.requester_id,
+    );
 
     return {
       ...profile,
@@ -162,14 +178,16 @@ export async function getFriendRequests(): Promise<FriendRequest[]> {
   });
 }
 
-export async function searchFriendCandidates(query: string): Promise<FriendSearchResult[]> {
+export async function searchFriendCandidates(
+  query: string,
+): Promise<FriendSearchResult[]> {
   const trimmed = query.trim();
 
   if (trimmed.length < 2) {
     return [];
   }
 
-  const { data, error } = await supabase.rpc('search_friend_candidates', {
+  const { data, error } = await supabase.rpc("search_friend_candidates", {
     p_query: trimmed,
     p_limit: 10,
   });
@@ -184,7 +202,7 @@ export async function searchFriendCandidates(query: string): Promise<FriendSearc
 }
 
 export async function sendFriendRequest(addresseeId: string) {
-  const { data, error } = await supabase.rpc('send_friend_request', {
+  const { data, error } = await supabase.rpc("send_friend_request", {
     p_addressee: addresseeId,
   });
 
@@ -193,14 +211,17 @@ export async function sendFriendRequest(addresseeId: string) {
   return data;
 }
 
-export async function respondFriendRequest(friendshipId: string, accept: boolean) {
-  const { data, error } = await supabase.rpc('respond_friend_request', {
+export async function respondFriendRequest(
+  friendshipId: string,
+  accept: boolean,
+) {
+  const { data, error } = await supabase.rpc("respond_friend_request", {
     p_friendship_id: friendshipId,
     p_accept: accept,
   });
 
   if (error) {
-    throw new Error(error.message || 'Unable to update friend request.');
+    throw new Error(error.message || "Unable to update friend request.");
   }
 
   return data;

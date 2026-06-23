@@ -2,13 +2,13 @@ export const POINTS_PER_LEVEL = 150;
 export const MAX_LEVEL = 7;
 
 const RANK_TITLES = [
-  'فێرخواز',
-  'ئەندام',
-  'شارەزا',
-  'لێهاتوو',
-  'ئەستێرە',
-  'پاڵەوان',
-  'ئەفسانە',
+  "فێرخواز",
+  "ئەندام",
+  "شارەزا",
+  "لێهاتوو",
+  "ئەستێرە",
+  "پاڵەوان",
+  "ئەفسانە",
 ] as const;
 
 export function calculateLevelFromPoints(points?: number | null) {

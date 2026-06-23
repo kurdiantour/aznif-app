@@ -1,11 +1,11 @@
-import { KOZEL_BRANCHES } from '@/constants/game';
+import { KOZEL_BRANCHES } from "@/constants/game";
 import {
   BoardBranchState,
   BoardPlacedTile,
   DominoTileData,
   KozelBoardState,
   KozelBranch,
-} from '@/types/game';
+} from "@/types/game";
 
 function normalizeImageKey(a: number, b: number) {
   return a <= b ? `${a}-${b}` : `${b}-${a}`;
@@ -25,10 +25,10 @@ export function createEmptyBoard(): KozelBoardState {
   return {
     centerTile: null,
     branches: {
-      up: { branch: 'up', tiles: [], openValue: null, blocked: false },
-      right: { branch: 'right', tiles: [], openValue: null, blocked: false },
-      down: { branch: 'down', tiles: [], openValue: null, blocked: false },
-      left: { branch: 'left', tiles: [], openValue: null, blocked: false },
+      up: { branch: "up", tiles: [], openValue: null, blocked: false },
+      right: { branch: "right", tiles: [], openValue: null, blocked: false },
+      down: { branch: "down", tiles: [], openValue: null, blocked: false },
+      left: { branch: "left", tiles: [], openValue: null, blocked: false },
     },
   };
 }
@@ -64,9 +64,9 @@ export function createPlacedTile(
   order: number,
 ): BoardPlacedTile {
   const outwardValue = otherSide(tile, connectedValue);
-  const branchIsForward = branch === 'right' || branch === 'down';
-  const left = branchIsForward ? connectedValue : outwardValue ?? tile.left;
-  const right = branchIsForward ? outwardValue ?? tile.right : connectedValue;
+  const branchIsForward = branch === "right" || branch === "down";
+  const left = branchIsForward ? connectedValue : (outwardValue ?? tile.left);
+  const right = branchIsForward ? (outwardValue ?? tile.right) : connectedValue;
 
   return {
     ...tile,
@@ -80,14 +80,16 @@ export function createPlacedTile(
   };
 }
 
-export function getBranchOpenValue(branchState: BoardBranchState): number | null {
+export function getBranchOpenValue(
+  branchState: BoardBranchState,
+): number | null {
   if (branchState.tiles.length === 0) {
     return branchState.openValue;
   }
 
   const lastTile = branchState.tiles[branchState.tiles.length - 1];
 
-  if (branchState.branch === 'right' || branchState.branch === 'down') {
+  if (branchState.branch === "right" || branchState.branch === "down") {
     return lastTile.right;
   }
 
@@ -104,7 +106,7 @@ export function buildBranchPath(
   return tiles.map((tile, index) => {
     const placed = createPlacedTile(tile, branch, currentValue, index);
     currentValue =
-      branch === 'right' || branch === 'down' ? placed.right : placed.left;
+      branch === "right" || branch === "down" ? placed.right : placed.left;
 
     return placed;
   });
@@ -112,7 +114,7 @@ export function buildBranchPath(
 
 export function reanchorBoardForSpinner(
   board: KozelBoardState,
-  spinnerBranch: 'left' | 'right',
+  spinnerBranch: "left" | "right",
   spinnerValue: number,
 ) {
   const nextBoard = cloneBoard(board);
@@ -122,7 +124,7 @@ export function reanchorBoardForSpinner(
     return nextBoard;
   }
 
-  const oppositeBranch = spinnerBranch === 'right' ? 'left' : 'right';
+  const oppositeBranch = spinnerBranch === "right" ? "left" : "right";
   const spinnerTile = spinnerState.tiles[spinnerState.tiles.length - 1];
   const oldSpinnerSideTiles = spinnerState.tiles.slice(0, -1);
   const oldCenterTile = nextBoard.centerTile;
@@ -206,7 +208,7 @@ export function calculateMoveScore(board: KozelBoardState): number {
     if (branch.tiles.length === 0) {
       if (
         isDouble(center) &&
-        (branch.branch === 'up' || branch.branch === 'down')
+        (branch.branch === "up" || branch.branch === "down")
       ) {
         return branch.openValue * 2;
       }
@@ -283,11 +285,11 @@ export function getPlayableBranches(
       }
 
       return tile.left === openingDouble && tile.right === openingDouble
-        ? ['right']
+        ? ["right"]
         : [];
     }
 
-    return ['right'];
+    return ["right"];
   }
 
   const matchingBranches = KOZEL_BRANCHES.filter((branch) => {
@@ -302,7 +304,7 @@ export function getPlayableBranches(
 
   if (spinnerValue === null) {
     return matchingBranches.filter(
-      (branch) => branch === 'left' || branch === 'right',
+      (branch) => branch === "left" || branch === "right",
     );
   }
 
@@ -312,8 +314,9 @@ export function getPlayableBranches(
   return matchingBranches.filter((branch) => {
     // A spinner exposes both horizontal values immediately.  Each branch owns
     // its own open value, so extending one must not make the other unavailable.
-    if (branch === 'right' || branch === 'left') return true;
-    if (branch === 'up' || branch === 'down') return rightStarted && leftStarted;
+    if (branch === "right" || branch === "left") return true;
+    if (branch === "up" || branch === "down")
+      return rightStarted && leftStarted;
 
     return false;
   });
@@ -398,7 +401,7 @@ export function appendTileToBranch(
   if (
     spinnerValue === null &&
     isDouble(tile) &&
-    (branch === 'left' || branch === 'right')
+    (branch === "left" || branch === "right")
   ) {
     const placedSpinner = branchState.tiles[branchState.tiles.length - 1];
 
@@ -476,7 +479,7 @@ export function applyMove(
   const nextSpinnerValue =
     spinnerValue === null && isDouble(tile) ? tile.left : spinnerValue;
 
-  const appliedBranch = branch ?? (isOpeningMove ? 'right' : undefined);
+  const appliedBranch = branch ?? (isOpeningMove ? "right" : undefined);
 
   const nextBoard = isOpeningMove
     ? applyOpeningTile(tile)
@@ -492,7 +495,7 @@ export function applyMove(
   const reanchored =
     spinnerValue === null &&
     isDouble(tile) &&
-    (appliedBranch === 'left' || appliedBranch === 'right');
+    (appliedBranch === "left" || appliedBranch === "right");
 
   return {
     board: nextBoard,

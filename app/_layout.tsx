@@ -1,36 +1,36 @@
-import { ProfileProvider } from '@/lib/profile';
-import { appFontAssets, applyAppFontDefaults } from '@/lib/fonts';
-import '@/lib/rtl';
-import '@/lib/urlPolyfill';
-import { useFonts } from 'expo-font';
-import * as NavigationBar from 'expo-navigation-bar';
-import { Stack } from 'expo-router';
+import { ProfileProvider } from "@/lib/profile";
+import { appFontAssets, applyAppFontDefaults } from "@/lib/fonts";
+import "@/lib/rtl";
+import "@/lib/urlPolyfill";
+import { useFonts } from "expo-font";
+import * as NavigationBar from "expo-navigation-bar";
+import { Stack } from "expo-router";
 import {
   StatusBar,
   setStatusBarBackgroundColor,
   setStatusBarHidden,
   setStatusBarTranslucent,
-} from 'expo-status-bar';
-import { useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+} from "expo-status-bar";
+import { useEffect } from "react";
+import { AppState, Platform } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 async function applyImmersiveFullscreen() {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== "android") return;
 
-  setStatusBarHidden(true, 'none');
+  setStatusBarHidden(true, "none");
   setStatusBarTranslucent(true);
-  setStatusBarBackgroundColor('transparent', false);
+  setStatusBarBackgroundColor("transparent", false);
 
   try {
-    await NavigationBar.setPositionAsync('absolute');
-    await NavigationBar.setBackgroundColorAsync('#00000000');
-    await NavigationBar.setButtonStyleAsync('light');
-    await NavigationBar.setBehaviorAsync('overlay-swipe');
-    await NavigationBar.setStyle('dark');
-    await NavigationBar.setVisibilityAsync('hidden');
+    await NavigationBar.setPositionAsync("absolute");
+    await NavigationBar.setBackgroundColorAsync("#00000000");
+    await NavigationBar.setButtonStyleAsync("light");
+    await NavigationBar.setBehaviorAsync("overlay-swipe");
+    await NavigationBar.setStyle("dark");
+    await NavigationBar.setVisibilityAsync("hidden");
   } catch (error) {
-    console.warn('Unable to enable immersive fullscreen mode', error);
+    console.warn("Unable to enable immersive fullscreen mode", error);
   }
 }
 
@@ -40,11 +40,14 @@ export default function Layout() {
   useEffect(() => {
     void applyImmersiveFullscreen();
 
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void applyImmersiveFullscreen();
-      }
-    });
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") {
+          void applyImmersiveFullscreen();
+        }
+      },
+    );
 
     return () => {
       appStateSubscription.remove();
@@ -60,14 +63,19 @@ export default function Layout() {
   return (
     <SafeAreaProvider>
       <ProfileProvider>
-        <StatusBar hidden translucent backgroundColor="transparent" style="light" />
+        <StatusBar
+          hidden
+          translucent
+          backgroundColor="transparent"
+          style="light"
+        />
         <Stack
           screenOptions={{
             headerShown: false,
-            animation: 'none',
+            animation: "none",
             contentStyle: {
-              backgroundColor: '#050b22',
-              direction: 'rtl',
+              backgroundColor: "#050b22",
+              direction: "rtl",
             },
           }}
         >

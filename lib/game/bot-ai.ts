@@ -2,10 +2,10 @@ import {
   applyMove,
   getPlayableBranches,
   isValidMove,
-} from '@/lib/game/kozel-engine';
-import { DominoTileData, KozelBoardState, KozelBranch } from '@/types/game';
+} from "@/lib/game/kozel-engine";
+import { DominoTileData, KozelBoardState, KozelBranch } from "@/types/game";
 
-const BOT_BRANCH_PRIORITY: KozelBranch[] = ['right', 'left', 'up', 'down'];
+const BOT_BRANCH_PRIORITY: KozelBranch[] = ["right", "left", "up", "down"];
 
 type BotMoveDecision = {
   tile: DominoTileData;

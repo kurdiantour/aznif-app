@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from "react-native";
 
 export default function BuyGoldScreen() {
   return (
@@ -16,32 +16,32 @@ export default function BuyGoldScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 24,
-    backgroundColor: '#090b1d',
+    backgroundColor: "#090b1d",
   },
   card: {
-    width: '100%',
+    width: "100%",
     maxWidth: 420,
     borderRadius: 20,
     padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.35)',
-    backgroundColor: 'rgba(20,16,42,0.92)',
+    borderColor: "rgba(168,85,247,0.35)",
+    backgroundColor: "rgba(20,16,42,0.92)",
   },
   title: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 24,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
   message: {
     marginTop: 10,
-    color: '#c4b5fd',
+    color: "#c4b5fd",
     fontSize: 14,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
     lineHeight: 21,
   },
 });

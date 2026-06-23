@@ -1,24 +1,24 @@
-import 'react-native-url-polyfill/auto';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
-import { Platform } from 'react-native';
+import "react-native-url-polyfill/auto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createClient } from "@supabase/supabase-js";
+import { Platform } from "react-native";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const supabaseConfigError =
   !supabaseUrl || !supabaseAnonKey
-    ? 'Missing Supabase environment variables: EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY must be set.'
+    ? "Missing Supabase environment variables: EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY must be set."
     : null;
 
 export const isSupabaseConfigured = !supabaseConfigError;
 
 if (supabaseConfigError) {
-  console.error('[supabase] ' + supabaseConfigError);
+  console.error("[supabase] " + supabaseConfigError);
 }
 
 const authStorage =
-  Platform.OS === 'web'
+  Platform.OS === "web"
     ? undefined
     : {
         getItem: AsyncStorage.getItem,
@@ -33,7 +33,7 @@ const createMissingConfigClient = () =>
       get() {
         throw new Error(
           supabaseConfigError ??
-            'Supabase is not configured. Please check the app environment variables.',
+            "Supabase is not configured. Please check the app environment variables.",
         );
       },
     },
@@ -45,7 +45,7 @@ export const supabase = isSupabaseConfigured
         storage: authStorage,
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: Platform.OS === 'web',
+        detectSessionInUrl: Platform.OS === "web",
       },
       global: {
         fetch: globalThis.fetch,

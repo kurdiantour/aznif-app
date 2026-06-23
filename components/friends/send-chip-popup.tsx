@@ -1,7 +1,7 @@
-import { getBalance, transferFunds } from '@/lib/wallet';
-import { notifyWalletRefresh } from '@/lib/walletEvents';
-import type { Friend } from '@/lib/friends';
-import { useEffect, useState } from 'react';
+import { getBalance, transferFunds } from "@/lib/wallet";
+import { notifyWalletRefresh } from "@/lib/walletEvents";
+import type { Friend } from "@/lib/friends";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +9,7 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
+} from "react-native";
 
 type SendChipPopupProps = {
   visible: boolean;
@@ -24,7 +24,7 @@ export function SendChipPopup({
   onClose,
   onTransferSuccess,
 }: SendChipPopupProps) {
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState("");
   const [mcBalance, setMcBalance] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -64,20 +64,16 @@ export function SendChipPopup({
 
   if (!visible || !friend) return null;
 
+  const parsedAmount = Number(amount.replace(/[^0-9.]/g, ""));
+  const isSendDisabled = submitting || !parsedAmount || parsedAmount <= 0;
+
   const handleSend = async () => {
-    if (submitting) return;
+    if (isSendDisabled) return;
 
     setError(null);
 
-    const parsedAmount = Number(amount.replace(/[^0-9.]/g, ''));
-
-    if (!parsedAmount || parsedAmount <= 0) {
-      setError('Please enter a valid ئەزنیف amount.');
-      return;
-    }
-
     if (parsedAmount > mcBalance) {
-      setError('Insufficient ئەزنیف balance.');
+      setError("Insufficient ئەزنیف balance.");
       return;
     }
 
@@ -90,12 +86,12 @@ export function SendChipPopup({
       setMcBalance(wallet.balances.mc);
 
       notifyWalletRefresh();
-      setAmount('');
+      setAmount("");
       onTransferSuccess?.();
       onClose();
     } catch (err) {
-      console.error('[SendChipPopup] MC transfer failed:', err);
-      setError('Transfer failed.');
+      console.error("[SendChipPopup] MC transfer failed:", err);
+      setError("Transfer failed.");
     } finally {
       setSubmitting(false);
     }
@@ -103,20 +99,17 @@ export function SendChipPopup({
 
   return (
     <View style={styles.overlay}>
-      <View style={styles.backdrop}>
-        <View style={styles.popup}>
-          <Text style={styles.balance}>
-            Balance: {loadingBalance ? '...' : mcBalance.toFixed(0)} ئەزنیف
-          </Text>
-
-          <Text style={styles.title}>تۆکن بنێرە بۆ {friend.name}</Text>
-          <Text style={styles.playerId}>ناسنامە: {friend.playerId}</Text>
-
-          <View style={styles.divider} />
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.popup} onPress={() => {}}>
+          <Text style={styles.title}>گواستنەوەی ئەزنیف بۆ</Text>
+          <Text style={styles.playerId}>{friend.name}</Text>
 
           <TextInput
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(value) => {
+              setAmount(value);
+              setError(null);
+            }}
             placeholder="0"
             placeholderTextColor="rgba(255,255,255,0.38)"
             keyboardType="numeric"
@@ -126,24 +119,23 @@ export function SendChipPopup({
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           <View style={styles.footer}>
-            <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>پاشگەزبوونەوە</Text>
-            </Pressable>
-
             <Pressable
-              style={[styles.sendButton, submitting && styles.sendButtonDisabled]}
+              style={[
+                styles.sendButton,
+                isSendDisabled && styles.sendButtonDisabled,
+              ]}
               onPress={handleSend}
-              disabled={submitting}
+              disabled={isSendDisabled}
             >
               {submitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.sendText}>تۆکن بنێرە</Text>
+                <Text style={styles.sendText}>ئەزنیف بنێرە</Text>
               )}
             </Pressable>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </View>
   );
 }
@@ -151,125 +143,93 @@ export function SendChipPopup({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 10,
-    elevation: 10,
+    zIndex: 9999,
+    elevation: 9999,
   },
 
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.68)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 18,
   },
 
   popup: {
-    width: '100%',
+    width: "100%",
     maxWidth: 470,
     borderRadius: 12,
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 22,
     borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.45)',
-    backgroundColor: '#0f0b1f',
-  },
-
-  balance: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 13,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
-    marginBottom: 22,
+    borderColor: "rgba(139,92,246,0.45)",
+    backgroundColor: "#0f0b1f",
   },
 
   title: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
-  },
-
-  divider: {
-    width: '72%',
-    height: 1,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    marginTop: 12,
-    marginBottom: 28,
-  },
-
-  input: {
-    width: '84%',
-    height: 44,
-    alignSelf: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    color: '#ffffff',
-    paddingHorizontal: 14,
-    fontSize: 18,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
-  },
-
-  errorText: {
-    color: '#ff8a8a',
+    color: "#ffffff",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-
-  footer: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 24,
-  },
-
-  cancelButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  cancelText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontFamily: 'SpedaBold',
-    textTransform: 'uppercase',
-  },
-
-  sendButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: 8,
-    backgroundColor: '#7c3aed',
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 
   playerId: {
     marginTop: 6,
-    color: '#aaa7bc',
+    marginBottom: 14,
+    color: "#aaa7bc",
+    fontSize: 14,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  input: {
+    width: "84%",
+    height: 40,
+    alignSelf: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.32)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    color: "#ffffff",
+    paddingHorizontal: 14,
+    paddingVertical: 0,
+    fontSize: 16,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  errorText: {
+    color: "#ff8a8a",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
-    textAlign: 'center',
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    marginTop: 12,
+  },
+
+  footer: {
+    marginTop: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sendButton: {
+    width: "50%",
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#7c3aed",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   sendButtonDisabled: {
-    opacity: 0.65,
+    opacity: 0.35,
   },
 
   sendText: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 12,
-    fontFamily: 'SpedaBold',
-    textTransform: 'uppercase',
+    fontFamily: "SpedaBold",
+    textTransform: "uppercase",
   },
 });

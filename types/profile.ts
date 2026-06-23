@@ -1,6 +1,6 @@
-import type { AvatarId } from '@/constants/avatars';
+import type { AvatarId } from "@/constants/avatars";
 
-export type ProfileStatus = 'active' | 'offline' | 'banned';
+export type ProfileStatus = "active" | "offline" | "banned";
 
 export type Profile = {
   id: string;
@@ -18,4 +18,6 @@ export type Profile = {
   updatedAt: string;
 };
 
-export type ProfileUpdate = Partial<Pick<Profile, 'displayName' | 'avatarId' | 'avatarUrl' | 'bio' | 'status'>>;
+export type ProfileUpdate = Partial<
+  Pick<Profile, "displayName" | "avatarId" | "avatarUrl" | "bio" | "status">
+>;
