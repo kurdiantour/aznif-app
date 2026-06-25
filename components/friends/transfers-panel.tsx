@@ -1,5 +1,5 @@
-import { getCurrentUserId, getTransactions } from "@/lib/wallet";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserId, getTransactions } from "@/lib/wallet";
 import { WalletTransaction } from "@/types/wallet";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -70,17 +70,17 @@ export function TransfersPanel() {
       : false;
 
     const profileId = isOutgoing ? item.to_user_id : item.from_user_id;
-
     const player = profileId
-      ? (profileNames[profileId] ?? "یاریزانی نەناسراو")
+      ? (profileNames[profileId] ?? "یارێزانی نەناسراو")
       : "سیستەم";
+    const title = isOutgoing ? "ئەزنیف نێردراو" : "ئەزنیف وەرگیراو";
+    const direction = isOutgoing ? "بۆ" : "لە";
 
     return (
       <View style={styles.transferCard}>
-        <View>
-          <Text style={styles.transferTitle}>
-            {isOutgoing ? "ئەزنیفی نێردراو" : "ئەزنیفی وەرگیراو"}{" "}
-            {isOutgoing ? "بۆ" : "لە"}: {player}
+        <View style={styles.transferInfo}>
+          <Text style={styles.transferTitle} numberOfLines={1}>
+            {title} {direction}: {player}
           </Text>
         </View>
 
@@ -89,6 +89,7 @@ export function TransfersPanel() {
             styles.transferAmount,
             isOutgoing ? styles.outgoingAmount : styles.incomingAmount,
           ]}
+          numberOfLines={1}
         >
           {isOutgoing ? "-" : "+"}
           {item.amount.toFixed(2)} ئەزنیف
@@ -132,31 +133,43 @@ const styles = StyleSheet.create({
   },
 
   listContent: {
-    gap: 12,
-    paddingBottom: 24,
+    gap: 8,
+    paddingBottom: 18,
   },
 
   transferCard: {
-    minHeight: 10,
-    borderRadius: 40,
-    padding: 16,
+    minHeight: 48,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "rgba(168,85,247,0.35)",
-    backgroundColor: "rgba(20,16,42,0.92)",
+    borderColor: "rgba(170,105,255,0.28)",
+    backgroundColor: "transparent",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
+  },
+
+  transferInfo: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
   },
 
   transferTitle: {
     color: "#ffffff",
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "SpedaBold",
+    textAlign: "right",
+    width: "100%",
   },
 
   transferAmount: {
-    fontSize: 13,
+    minWidth: 96,
+    fontSize: 12,
     fontFamily: "SpedaBold",
+    textAlign: "left",
   },
 
   incomingAmount: {
@@ -176,7 +189,7 @@ const styles = StyleSheet.create({
 
   emptyTitle: {
     color: "#ffffff",
-    fontSize: 18,
+    fontSize: 14,
     fontFamily: "SpedaBold",
     marginBottom: 8,
     textAlign: "center",
@@ -184,7 +197,7 @@ const styles = StyleSheet.create({
 
   emptyText: {
     color: "#9ca3af",
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "SpedaBold",
     textAlign: "center",
     lineHeight: 19,

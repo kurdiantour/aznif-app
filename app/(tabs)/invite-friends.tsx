@@ -1,11 +1,12 @@
 import { FriendsPanel } from "@/components/friends/friends-panel";
 import { RequestsPanel } from "@/components/friends/requests-panel";
+import { SendChipPopupContext } from "@/components/friends/send-chip-popup";
 import { TransfersPanel } from "@/components/friends/transfers-panel";
 import { getFriendRequests } from "@/lib/friends";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 type TabKey = "friends" | "requests" | "transfers";
@@ -22,6 +23,8 @@ export default function InviteFriendsScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("friends");
   const [searchQuery, setSearchQuery] = useState("");
   const [requestCount, setRequestCount] = useState(0);
+  const [transferSuccessSignal, setTransferSuccessSignal] = useState(0);
+  const { showSendChipPopup } = useContext(SendChipPopupContext);
 
   const refreshRequestCount = useCallback(async () => {
     const requests = await getFriendRequests();
@@ -132,7 +135,15 @@ export default function InviteFriendsScreen() {
 
         <View style={styles.content}>
           {activeTab === "friends" ? (
-            <FriendsPanel searchQuery={searchQuery} />
+            <FriendsPanel
+              searchQuery={searchQuery}
+              onSendChip={(friend) =>
+                showSendChipPopup(friend, () =>
+                  setTransferSuccessSignal((current) => current + 1),
+                )
+              }
+              transferSuccessSignal={transferSuccessSignal}
+            />
           ) : activeTab === "requests" ? (
             <RequestsPanel onRequestsChanged={setRequestCount} />
           ) : (
@@ -140,6 +151,7 @@ export default function InviteFriendsScreen() {
           )}
         </View>
       </View>
+
     </View>
   );
 }

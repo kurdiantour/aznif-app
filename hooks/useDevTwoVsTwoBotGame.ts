@@ -13,6 +13,8 @@ import { useRoundLifecycle } from './useRoundLifecycle';
 import { createAiPracticeDeal, findAiOpeningDoubleAndStarter } from './aiPracticeLocal';
 import { PLAYER_TURN_DURATION_SECONDS, pickPreferredBranch } from './gameShared';
 
+const BOT_TURN_DELAY_MS = 5_000;
+
 /** Local-only 2v2 test game. It deliberately has no Supabase dependency. */
 export function useDevTwoVsTwoBotGame(): MockGameState {
   const seats = DEV_2V2_BOT_PLAYERS;
@@ -140,7 +142,7 @@ export function useDevTwoVsTwoBotGame(): MockGameState {
     const active = seats[currentIndex]; if (!active || active.kind !== 'bot' || roundWinnerPlayerId || winningTeamId) { botScheduled.current = false; return; }
     if (botScheduled.current) return; botScheduled.current = true;
     const timer = setTimeout(() => { const move = findBestBotMove(hands[currentIndex] ?? [], board, spinnerValue, isOpeningRound, openingDouble);
-      if (move) playForPlayer(move.tile, currentIndex, move.branch); else if (board.centerTile && boneyard.length) drawForBot(currentIndex); else passForPlayer(currentIndex, true); botScheduled.current = false; }, 700);
+      if (move) playForPlayer(move.tile, currentIndex, move.branch); else if (board.centerTile && boneyard.length) drawForBot(currentIndex); else passForPlayer(currentIndex, true); botScheduled.current = false; }, BOT_TURN_DELAY_MS);
     return () => { clearTimeout(timer); botScheduled.current = false; };
   }, [currentIndex, board, hands, boneyard, spinnerValue, isOpeningRound, openingDouble, roundWinnerPlayerId, winningTeamId, seats]);
   const players: Player[] = seats.map((seat, index) => ({ ...seat, isActive: index === currentIndex, timeLeft: index === currentIndex ? timeLeft : PLAYER_TURN_DURATION_SECONDS, tileCount: hands[index]?.length ?? 0, score: teamScores[seat.teamId], isLeader: index === leaderIndex }));

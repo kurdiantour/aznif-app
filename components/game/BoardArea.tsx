@@ -1,14 +1,6 @@
 import BoardBoneyard from "@/components/game/BoardBoneyard";
-import BoardPathRenderer from "@/components/game/BoardPathRenderer";
-import DominoTile from "@/components/game/DominoTile";
-import {
-  BOARD_EDGE_PADDING,
-  calculateBoardTileBounds,
-  estimateHorizontalWidth,
-  estimateVerticalHeight,
-  getBoardTilesZoomScale,
-} from "@/components/game/boardPathLayout";
-import { GameState, KozelBranch, Player } from "@/types/game";
+import DominoBoard, { getDominoBoardPreviewTargets, getDominoBoardTileMetrics } from "@/components/game/DominoBoard";
+import { DominoTileData, GameState, KozelBranch, Player } from "@/types/game";
 import {
   forwardRef,
   useEffect,
@@ -20,7 +12,6 @@ import {
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -30,7 +21,9 @@ type Props = {
   board: GameState["board"];
   players: Player[];
   lastScoringEvent: GameState["lastScoringEvent"];
+  lastPlayedTile?: DominoTileData | null;
   roundWinnerPlayerId?: string | null;
+  selectedTile?: DominoTileData | null;
   selectableBranches?: KozelBranch[];
   onSelectBranch?: (branch: KozelBranch) => void;
   boneyardCount: number;
@@ -39,54 +32,27 @@ type Props = {
   onFinalTileAnimationComplete?: () => void;
 };
 
-const BASE_TILE_WIDTH = 46;
-const BASE_TILE_HEIGHT = 80;
-const BOARD_SCALE_FULL = 1.2;
-const BOARD_SCALE_MEDIUM = 0.78;
-const BOARD_SCALE_SMALL = 0.58;
-
-function getCenterTileRotation(
-  tile: GameState["board"]["centerTile"],
-): 0 | 90 | 270 {
-  if (!tile || tile.left === tile.right) return 0;
-
-  // Domino artwork is stored low-pip first (top-to-bottom). Rotate it so the
-  // board state's logical `left` value is always visibly on the left.
-  return tile.left < tile.right ? 270 : 90;
-}
-
-function BranchDropZone({
-  branch,
-  active,
-  onPress,
-}: {
-  branch: KozelBranch;
-  active: boolean;
-  onPress?: (branch: KozelBranch) => void;
-}) {
-  if (!active) return null;
-
-  return (
-    <Pressable
-      style={[
-        styles.dropZone,
-        branch === "up" && styles.dropZoneUp,
-        branch === "right" && styles.dropZoneRight,
-        branch === "down" && styles.dropZoneDown,
-        branch === "left" && styles.dropZoneLeft,
-      ]}
-      onPress={() => onPress?.(branch)}
-    >
-      <Text style={styles.dropZoneText}>+</Text>
-    </Pressable>
-  );
-}
+const BOARD_BOUNDARY: {
+  edgePadding: number;
+  safeHorizontalPadding: number;
+  safeVerticalPadding: number;
+  outerHorizontalInset: number;
+  outerVerticalInset: number;
+} = {
+  edgePadding: 12,
+  safeHorizontalPadding: 28,
+  safeVerticalPadding: 22,
+  outerHorizontalInset: 40,
+  outerVerticalInset: 10,
+};
 
 export default forwardRef(function BoardArea(
   {
     board,
     players,
     lastScoringEvent,
+    lastPlayedTile = null,
+    selectedTile = null,
     selectableBranches = [],
     onSelectBranch,
     boneyardCount,
@@ -97,6 +63,7 @@ export default forwardRef(function BoardArea(
   ref,
 ) {
   const [surfaceSize, setSurfaceSize] = useState({ width: 1200, height: 700 });
+  const boardSurfaceRef = useRef<View | null>(null);
   const animOpacity = useRef(new Animated.Value(1)).current;
   const animScale = useRef(new Animated.Value(1)).current;
   const animTranslateX = useRef(new Animated.Value(0)).current;
@@ -113,9 +80,30 @@ export default forwardRef(function BoardArea(
     width: number;
     height: number;
   }>(null);
+  const [visibleScoreEventKey, setVisibleScoreEventKey] = useState<string | null>(
+    null,
+  );
+
+  // A room snapshot can be received more than once (for example from both the
+  // action response and Realtime).  Treat the score badge as a brief UI event,
+  // keyed by the tile that earned it, instead of permanently rendering it from
+  // the latest snapshot.
+  const scoreEventKey = lastScoringEvent
+    ? `${lastScoringEvent.playerId}:${lastScoringEvent.points}:${lastPlayedTile?.id ?? ""}`
+    : null;
+
+  useEffect(() => {
+    if (!scoreEventKey) {
+      setVisibleScoreEventKey(null);
+      return;
+    }
+
+    setVisibleScoreEventKey(scoreEventKey);
+    const timer = setTimeout(() => setVisibleScoreEventKey(null), 1600);
+    return () => clearTimeout(timer);
+  }, [scoreEventKey]);
 
   const isCenterFinalTile = board.centerTile?.id === finalTileAnimationTileId;
-  const centerTileRotation = getCenterTileRotation(board.centerTile);
   const scoreBadgePosition = useMemo(() => {
     const scoringPlayer = players.find(
       (player) => player.id === lastScoringEvent?.playerId,
@@ -133,94 +121,77 @@ export default forwardRef(function BoardArea(
         return styles.scoreBadgeTop;
     }
   }, [lastScoringEvent?.playerId, players]);
+  const tileMetrics = useMemo(
+    () => getDominoBoardTileMetrics(board, surfaceSize.width, surfaceSize.height),
+    [board, surfaceSize],
+  );
+  useImperativeHandle(ref, () => ({
+    getDealOrigin: () =>
+      new Promise<{ x: number; y: number } | null>((resolve) => {
+        if (!boardSurfaceRef.current) return resolve(null);
+        boardSurfaceRef.current.measureInWindow((x, y, width, height) => {
+          resolve({ x: x + width / 2, y: y + height / 2 });
+        });
+      }),
+    findDropBranch: (
+      tile: DominoTileData,
+      branches: KozelBranch[],
+      point: { x: number; y: number },
+    ) =>
+      new Promise<KozelBranch | null>((resolve) => {
+        // Before the opening tile exists there is no branch tip to target.
+        // Any drop on the board starts the chain from the center.
+        if (!board.centerTile) {
+          if (!boardSurfaceRef.current) return resolve(null);
+          boardSurfaceRef.current.measureInWindow((surfaceX, surfaceY, width, height) => {
+            const isOnBoard =
+              point.x >= surfaceX &&
+              point.x <= surfaceX + width &&
+              point.y >= surfaceY &&
+              point.y <= surfaceY + height;
+            resolve(isOnBoard ? (branches[0] ?? null) : null);
+          });
+          return;
+        }
 
-  const layout = useMemo(() => {
-    const boardWidth = surfaceSize.width || 1;
-    const boardHeight = surfaceSize.height || 1;
-    const leftNeed = estimateHorizontalWidth(
-      board.branches.left.tiles,
-      BASE_TILE_WIDTH,
-      BASE_TILE_HEIGHT,
-    );
-    const rightNeed = estimateHorizontalWidth(
-      board.branches.right.tiles,
-      BASE_TILE_WIDTH,
-      BASE_TILE_HEIGHT,
-    );
-    const upNeed = estimateVerticalHeight(
-      board.branches.up.tiles,
-      BASE_TILE_WIDTH,
-      BASE_TILE_HEIGHT,
-    );
-    const downNeed = estimateVerticalHeight(
-      board.branches.down.tiles,
-      BASE_TILE_WIDTH,
-      BASE_TILE_HEIGHT,
-    );
-    const horizontalNeed = Math.max(
-      BASE_TILE_HEIGHT * 4,
-      Math.min(leftNeed, BASE_TILE_HEIGHT * 6),
-      Math.min(rightNeed, BASE_TILE_HEIGHT * 6),
-    );
-    const verticalNeed = Math.max(
-      BASE_TILE_HEIGHT * 2,
-      Math.min(upNeed, BASE_TILE_HEIGHT * 5),
-      Math.min(downNeed, BASE_TILE_HEIGHT * 5),
-    );
-    const rawScale = Math.min(
-      Math.max(120, boardWidth / 2 - BASE_TILE_HEIGHT) /
-        Math.max(horizontalNeed, 1),
-      Math.max(90, boardHeight / 2 - BASE_TILE_HEIGHT) /
-        Math.max(verticalNeed, 1),
-    );
-    const scale =
-      rawScale < 0.72
-        ? BOARD_SCALE_SMALL
-        : rawScale < 0.9
-          ? BOARD_SCALE_MEDIUM
-          : BOARD_SCALE_FULL;
-    const tileWidth = Math.round(BASE_TILE_WIDTH * scale);
-    const tileHeight = Math.round(BASE_TILE_HEIGHT * scale);
-    // Non-double center tiles render rotated horizontally, so branches must
-    // start outside their visual footprint rather than the unrotated slot.
-    const centerIsDouble = board.centerTile?.left === board.centerTile?.right;
-
-    return {
-      tileWidth,
-      tileHeight,
-      centerWidth: centerIsDouble ? tileWidth : tileHeight,
-      centerHeight: centerIsDouble ? tileHeight : tileWidth,
-    };
-  }, [board, surfaceSize]);
-
-  const boardTilesScale = useMemo(
-    () =>
-      getBoardTilesZoomScale(
-        calculateBoardTileBounds(
+        const targets = getDominoBoardPreviewTargets(
           board,
-          layout.tileWidth,
-          layout.tileHeight,
-          layout.centerWidth,
-          layout.centerHeight,
+          tile,
+          branches,
           surfaceSize.width,
           surfaceSize.height,
-        ),
-        surfaceSize.width,
-        surfaceSize.height,
-      ),
-    [board, layout, surfaceSize],
-  );
-
-  useImperativeHandle(ref, () => ({
+          BOARD_BOUNDARY,
+        );
+        if (!boardSurfaceRef.current || !targets.length) return resolve(null);
+        boardSurfaceRef.current.measureInWindow((surfaceX, surfaceY) => {
+          const match = targets
+            .map((target) => {
+              const centerX = surfaceX + surfaceSize.width / 2 + target.x * target.scale;
+              const centerY = surfaceY + surfaceSize.height / 2 + target.y * target.scale;
+              // Dropping with a finger is naturally less precise than tapping.
+              // Keep the target comfortably larger than the rendered domino.
+              const halfWidth = Math.max(44, (target.width * target.scale) / 2 + 18);
+              const halfHeight = Math.max(44, (target.height * target.scale) / 2 + 18);
+              return {
+                branch: target.branch,
+                inside: Math.abs(point.x - centerX) <= halfWidth && Math.abs(point.y - centerY) <= halfHeight,
+                distance: Math.hypot(point.x - centerX, point.y - centerY),
+              };
+            })
+            .filter(({ inside }) => inside)
+            .sort((a, b) => a.distance - b.distance)[0];
+          resolve(match?.branch ?? null);
+        });
+      }),
     animateDraw: () =>
       new Promise<void>((resolve) => {
         const count = boneyardCount;
         if (count <= 0 || surfaceSize.height <= 0) return resolve();
         const availableVerticalSpace =
-          surfaceSize.height - BOARD_EDGE_PADDING * 2;
+          surfaceSize.height - BOARD_BOUNDARY.edgePadding * 2;
         const displayHeight = Math.max(
           18,
-          Math.round((layout.tileHeight || 34) * 0.72),
+          Math.round((tileMetrics.tileHeight || 34) * 0.72),
         );
         const displayWidth = Math.max(28, Math.round(displayHeight * 1.75));
         const spacing = Math.max(
@@ -238,10 +209,10 @@ export default forwardRef(function BoardArea(
         const startTop =
           stackHeight <= availableVerticalSpace
             ? Math.max(
-                BOARD_EDGE_PADDING,
+                BOARD_BOUNDARY.edgePadding,
                 Math.round((surfaceSize.height - stackHeight) / 2),
               )
-            : BOARD_EDGE_PADDING;
+            : BOARD_BOUNDARY.edgePadding;
         const startTopForIndex =
           startTop + Math.max(0, count - 1) * (displayHeight + spacing);
         animOpacity.setValue(1);
@@ -387,26 +358,15 @@ export default forwardRef(function BoardArea(
 
   return (
     <View style={styles.container}>
-      {shouldRenderPlayedBoardTiles && lastScoringEvent && (
+      {shouldRenderPlayedBoardTiles &&
+        lastScoringEvent &&
+        visibleScoreEventKey === scoreEventKey && (
         <View style={[styles.scoreBadge, scoreBadgePosition]}>
           <Text style={styles.scoreBadgeText}>+{lastScoringEvent.points}</Text>
         </View>
       )}
-      {shouldRenderPlayedBoardTiles && (
-        <BoardBoneyard
-          count={boneyardCount}
-          boardWidth={surfaceSize.width}
-          boardHeight={surfaceSize.height}
-          tileWidth={layout.tileWidth}
-          tileHeight={layout.tileHeight}
-          animatedSprite={animSprite}
-          animOpacity={animOpacity}
-          animScale={animScale}
-          animTranslateX={animTranslateX}
-          animTranslateY={animTranslateY}
-        />
-      )}
       <Animated.View
+        ref={boardSurfaceRef}
         onLayout={(e) => setSurfaceSize(e.nativeEvent.layout)}
         style={[
           styles.boardSurface,
@@ -414,86 +374,37 @@ export default forwardRef(function BoardArea(
         ]}
       >
         {shouldRenderPlayedBoardTiles && (
+          <BoardBoneyard
+            count={boneyardCount}
+            boardWidth={surfaceSize.width}
+            boardHeight={surfaceSize.height}
+            tileWidth={tileMetrics.tileWidth}
+            tileHeight={tileMetrics.tileHeight}
+            edgePadding={BOARD_BOUNDARY.edgePadding}
+            animatedSprite={animSprite}
+            animOpacity={animOpacity}
+            animScale={animScale}
+            animTranslateX={animTranslateX}
+            animTranslateY={animTranslateY}
+          />
+        )}
+        {shouldRenderPlayedBoardTiles && (
           <>
-            <Animated.View
-              style={[
-                styles.boardTilesLayer,
-                { transform: [{ scale: boardTilesScale }] },
-              ]}
-            >
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.centerTileWrap,
-                  {
-                    width: layout.centerWidth,
-                    height: layout.centerHeight,
-                    marginLeft: -layout.centerWidth / 2,
-                    marginTop: -layout.centerHeight / 2,
-                    opacity: isCenterFinalTile ? 0 : 1,
-                  },
-                ]}
-              >
-                {board.centerTile && (
-                  <DominoTile
-                    tile={board.centerTile}
-                    width={layout.tileWidth}
-                    height={layout.tileHeight}
-                    rotation={centerTileRotation}
-                  />
-                )}
-              </View>
-              {isCenterFinalTile && board.centerTile && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.centerTileWrap,
-                    {
-                      width: layout.centerWidth,
-                      height: layout.centerHeight,
-                      marginLeft: -layout.centerWidth / 2,
-                      marginTop: -layout.centerHeight / 2,
-                      zIndex: 220,
-                      transform: finalTileTransform,
-                    },
-                  ]}
-                >
-                  <DominoTile
-                    tile={board.centerTile}
-                    width={layout.tileWidth}
-                    height={layout.tileHeight}
-                    rotation={centerTileRotation}
-                  />
-                </Animated.View>
-              )}
-              <BoardPathRenderer
-                board={board}
-                selectedTile={null}
-                selectableBranches={[]}
-                tileWidth={layout.tileWidth}
-                tileHeight={layout.tileHeight}
-                centerWidth={layout.centerWidth}
-                centerHeight={layout.centerHeight}
-                boardWidth={surfaceSize.width}
-                boardHeight={surfaceSize.height}
-                winningTileId={
-                  isCenterFinalTile ? null : finalTileAnimationTileId
-                }
-                winningTranslateY={finalTileTranslateY}
-                winningScale={finalTileScale}
-                winningEmphasisOpacity={finalTileEmphasisOpacity}
-              />
-            </Animated.View>
-            {(["up", "right", "down", "left"] as KozelBranch[]).map(
-              (branch) => (
-                <BranchDropZone
-                  key={branch}
-                  branch={branch}
-                  active={selectableBranches.includes(branch)}
-                  onPress={onSelectBranch}
-                />
-              ),
-            )}
+            <DominoBoard
+              board={board}
+              selectedTile={selectedTile}
+              selectableBranches={selectableBranches}
+              onSelectBranch={onSelectBranch}
+              boardWidth={surfaceSize.width}
+              boardHeight={surfaceSize.height}
+              boundary={BOARD_BOUNDARY}
+              winningTileId={isCenterFinalTile ? null : finalTileAnimationTileId}
+              winningTranslateY={finalTileTranslateY}
+              winningScale={finalTileScale}
+              winningEmphasisOpacity={finalTileEmphasisOpacity}
+              isCenterFinalTile={isCenterFinalTile}
+              centerFinalTransform={finalTileTransform}
+            />
           </>
         )}
       </Animated.View>
@@ -509,6 +420,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+    paddingHorizontal: BOARD_BOUNDARY.outerHorizontalInset,
+    paddingVertical: BOARD_BOUNDARY.outerVerticalInset,
   },
   boardSurface: {
     flex: 1,
@@ -529,28 +442,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     zIndex: 30,
   },
-  dropZone: {
-    position: "absolute",
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    borderWidth: 3,
-    borderColor: "#facc15",
-    backgroundColor: "rgba(250, 204, 21, 0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 80,
-  },
-  dropZoneUp: { top: "22%", alignSelf: "center" },
-  dropZoneRight: { right: "28%", top: "50%", transform: [{ translateY: -22 }] },
-  dropZoneDown: { bottom: "22%", alignSelf: "center" },
-  dropZoneLeft: { left: "28%", top: "50%", transform: [{ translateY: -22 }] },
-  dropZoneText: {
-    color: "#facc15",
-    fontSize: 24,
-    fontFamily: "SpedaBold",
-    lineHeight: 26,
-  },
   scoreBadge: {
     position: "absolute",
     paddingHorizontal: 10,
@@ -559,9 +450,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#facc15",
     zIndex: 90,
   },
-  scoreBadgeTop: { top: 4, alignSelf: "center" },
-  scoreBadgeBottom: { bottom: 4, alignSelf: "center" },
-  scoreBadgeLeft: { left: 4, top: "50%", transform: [{ translateY: -14 }] },
-  scoreBadgeRight: { right: 4, top: "50%", transform: [{ translateY: -14 }] },
+scoreBadgeTop: {
+  top: BOARD_BOUNDARY.outerVerticalInset + 12,
+  alignSelf: "center",
+},
+
+scoreBadgeBottom: {
+  bottom: BOARD_BOUNDARY.outerVerticalInset + 12,
+  alignSelf: "center",
+},
+
+scoreBadgeLeft: {
+  left: BOARD_BOUNDARY.outerHorizontalInset + 12,
+  top: "50%",
+  transform: [{ translateY: -14 }],
+},
+
+scoreBadgeRight: {
+  right: BOARD_BOUNDARY.outerHorizontalInset + 12,
+  top: "50%",
+  transform: [{ translateY: -14 }],
+},
   scoreBadgeText: { fontFamily: "SpedaBold", color: "#111827" },
 });

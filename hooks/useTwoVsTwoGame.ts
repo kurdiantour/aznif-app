@@ -484,9 +484,12 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const startNextRound = useCallback(async () => {
     if (!roomId) return;
     try {
-      await supabase.rpc('start_two_vs_two_game', { p_room_id: roomId });
+      const { error } = await supabase.functions.invoke('submit_two_vs_two', {
+        body: { action: 'next_hand', room_id: roomId },
+      });
+      if (error) throw error;
     } catch (err) {
-      console.warn('start_two_vs_two_game failed', err);
+      console.warn('start next 2v2 hand failed', err);
     }
   }, [roomId]);
 
@@ -498,6 +501,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     return buildRoundResult({
       winnerId,
       winnerTeam,
+      endReason: rawState?.roundEndReason,
       awardedPoints: rawState?.lastScoringEvent?.points ?? 0,
       players: playersRows.map((row) => ({
         id: row.user_id ?? `bot-${row.id}`,

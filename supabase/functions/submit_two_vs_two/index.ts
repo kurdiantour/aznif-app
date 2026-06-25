@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import move from "./move.ts";
 import pass from "./pass.ts";
+import nextHand from "./next-hand.ts";
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -25,6 +26,8 @@ serve(async (req) => {
       return move(req);
     case "pass":
       return pass(req);
+    case "next_hand":
+      return nextHand(req);
     default:
       return json({ error: "Invalid action" }, 400);
   }

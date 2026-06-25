@@ -7,18 +7,19 @@ import RoundResultReveal from "@/components/game/RoundResultReveal";
 import ScorePopup from "@/components/game/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import { useDevTwoVsTwoBotGame } from "@/hooks/useDevTwoVsTwoBotGame";
 import { useGame } from "@/hooks/useGame";
 import { useOneVsOneGame } from "@/hooks/useOneVsOneGame";
 import { useRoundPresentation } from "@/hooks/useRoundPresentation";
 import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
-import { useDevTwoVsTwoBotGame } from "@/hooks/useDevTwoVsTwoBotGame";
 import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
 import { ENABLE_DEV_2V2_BOT_TEST } from "@/lib/dev/devBotPlayers";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { DominoTileData, KozelBranch } from "@/types/game";
-import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,15 +30,6 @@ import {
   Text,
   View,
 } from "react-native";
-
-const HUMAN_BRANCH_PRIORITY: KozelBranch[] = ["right", "left", "up", "down"];
-
-function pickHumanBranch(branches: KozelBranch[]) {
-  return (
-    HUMAN_BRANCH_PRIORITY.find((branch) => branches.includes(branch)) ??
-    branches[0]
-  );
-}
 
 function getTeamName(
   players: any[],
@@ -102,11 +94,14 @@ export default function GameScreen() {
   const [passCountdown, setPassCountdown] = useState(15);
   const [isPassingTurn, setIsPassingTurn] = useState(false);
   const [sideSeatHeight, setSideSeatHeight] = useState(0);
+  const [dealOrigin, setDealOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [dealToken, setDealToken] = useState(0);
 
   const gameInitializedRef = useRef(false);
   const practiceRewardSettlementRequestedRef = useRef(false);
   const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
   const boardAreaRef = useRef<any>(null);
+  const previousHandSignatureRef = useRef<string | null>(null);
   const matchMenuTranslateX = useRef(new Animated.Value(420)).current;
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
@@ -203,6 +198,28 @@ export default function GameScreen() {
 
     void initializeGame();
   }, [isLocalGame, gameLoading, roomId, gameMode]);
+
+  useEffect(() => {
+    if (gameLoading || !game.myHand.length) return;
+
+    const handSignature = game.myHand.map((tile) => tile.id).join("|");
+    const previousSignature = previousHandSignatureRef.current;
+    const previousIds = new Set(previousSignature?.split("|").filter(Boolean) ?? []);
+    const sharedTiles = game.myHand.filter((tile) => previousIds.has(tile.id)).length;
+    const isNewRoundHand =
+      previousSignature === null ||
+      (game.myHand.length >= 7 && sharedTiles <= Math.floor(game.myHand.length * 0.35));
+
+    previousHandSignatureRef.current = handSignature;
+    if (!isNewRoundHand) return;
+
+    const captureDealOrigin = async () => {
+      const origin = await boardAreaRef.current?.getDealOrigin?.();
+      if (origin) setDealOrigin(origin);
+      setDealToken((token) => token + 1);
+    };
+    void captureDealOrigin();
+  }, [gameLoading, game.myHand]);
 
   const topPlayer = game.players.find((p) => p.seat === "top");
   const leftPlayer = game.players.find((p) => p.seat === "left");
@@ -371,7 +388,10 @@ export default function GameScreen() {
     setSelectableBranches(branches);
   };
 
-  const handleDropTile = async (tile: DominoTileData) => {
+  const handleDropTile = async (
+    tile: DominoTileData,
+    dropPoint: { x: number; y: number },
+  ) => {
     if (!isMyTurn) return;
     if (!isTileInMyHand(tile)) return;
 
@@ -382,19 +402,35 @@ export default function GameScreen() {
       return;
     }
 
-    const branch = pickHumanBranch(branches);
+    const branch = await boardAreaRef.current?.findDropBranch?.(
+      tile,
+      branches,
+      dropPoint,
+    );
+
+    if (!branch || !branches.includes(branch)) {
+      clearSelection();
+      return;
+    }
+
+    // Remove the translucent placement preview before the board receives the
+    // confirmed move. Otherwise the confirmed tile and its preview overlap
+    // briefly while the multiplayer request resolves.
+    clearSelection();
 
     try {
       const played = await game.playTile(tile, branch);
 
-      if (played) {
-        clearSelection();
-      } else {
+      if (!played) {
         setSelectedTile(tile);
         setSelectableBranches(branches);
       }
     } catch (err) {
       console.warn("play tile failed", err);
+      if (isTileInMyHand(tile)) {
+        setSelectedTile(tile);
+        setSelectableBranches(branches);
+      }
     }
   };
 
@@ -412,12 +448,22 @@ export default function GameScreen() {
       return;
     }
 
-    try {
-      const played = await game.playTile(selectedTile, branch);
+    const tileToPlay = selectedTile;
+    clearSelection();
 
-      if (played) clearSelection();
+    try {
+      const played = await game.playTile(tileToPlay, branch);
+
+      if (!played && isTileInMyHand(tileToPlay)) {
+        setSelectedTile(tileToPlay);
+        setSelectableBranches(branches);
+      }
     } catch (err) {
       console.warn("play tile failed", err);
+      if (isTileInMyHand(tileToPlay)) {
+        setSelectedTile(tileToPlay);
+        setSelectableBranches(branches);
+      }
     }
   };
 
@@ -579,6 +625,10 @@ export default function GameScreen() {
                   player={{ ...topPlayer, isActive: isTurnRingVisible && topPlayer.isActive }}
                   remainingTiles={topPlayer.tileCount}
                   showPass={game.lastPassedPlayerId === topPlayer.id}
+                  dealOrigin={dealOrigin}
+                  dealToken={dealToken}
+                  dealOrder={gameMode === "1v1" ? 0 : 2}
+                  dealPlayerCount={gameMode === "1v1" ? 2 : 4}
                 />
               </View>
             </View>
@@ -600,8 +650,13 @@ export default function GameScreen() {
                 >
                   <PlayerSeat
                     player={{ ...leftPlayer, isActive: isTurnRingVisible && leftPlayer.isActive }}
-                    remainingTiles={leftPlayer.tileCount}
-                    showPass={game.lastPassedPlayerId === leftPlayer.id}
+                  remainingTiles={leftPlayer.tileCount}
+                  showPass={game.lastPassedPlayerId === leftPlayer.id}
+                  dealOrigin={dealOrigin}
+                  dealToken={dealToken}
+                  dealOrder={1}
+                  dealPlayerCount={4}
+                  dealRotation={-90}
                   />
                 </View>
               </View>
@@ -624,8 +679,13 @@ export default function GameScreen() {
                 >
                   <PlayerSeat
                     player={{ ...rightPlayer, isActive: isTurnRingVisible && rightPlayer.isActive }}
-                    remainingTiles={rightPlayer.tileCount}
-                    showPass={game.lastPassedPlayerId === rightPlayer.id}
+                  remainingTiles={rightPlayer.tileCount}
+                  showPass={game.lastPassedPlayerId === rightPlayer.id}
+                  dealOrigin={dealOrigin}
+                  dealToken={dealToken}
+                  dealOrder={3}
+                  dealPlayerCount={4}
+                  dealRotation={90}
                   />
                 </View>
               </View>
@@ -633,14 +693,14 @@ export default function GameScreen() {
           )}
 
           <View style={styles.middleRow}>
-            <View style={styles.sideArea} />
-
             <View style={styles.boardAreaWrap}>
               <BoardArea
                 board={game.board}
                 players={game.players}
                 lastScoringEvent={game.lastScoringEvent}
+                lastPlayedTile={game.lastPlayedTile}
                 roundWinnerPlayerId={game.roundWinnerPlayerId}
+                selectedTile={selectedTile}
                 selectableBranches={selectableBranches}
                 onSelectBranch={handleSelectBranch}
                 boneyardCount={game.boneyardCount}
@@ -650,8 +710,6 @@ export default function GameScreen() {
                 ref={boardAreaRef}
               />
             </View>
-
-            <View style={styles.sideArea} />
           </View>
 
           <RoundResultReveal
@@ -729,6 +787,10 @@ export default function GameScreen() {
               disabled={!isMyTurn || game.canDrawTile}
               selectedTileId={selectedTile?.id ?? null}
               playableTileIds={playableTileIds}
+              dealOrigin={dealOrigin}
+              dealToken={dealToken}
+              dealOrder={gameMode === "1v1" ? 1 : 0}
+              dealPlayerCount={gameMode === "1v1" ? 2 : 4}
             />
           </View>
 
@@ -776,6 +838,12 @@ export default function GameScreen() {
                   { transform: [{ translateX: matchMenuTranslateX }] },
                 ]}
               >
+                <BlurView
+                  intensity={88}
+                  tint="dark"
+                  pointerEvents="none"
+                  style={StyleSheet.absoluteFill}
+                />
                 <View style={styles.matchMenuContent}>
                   <View style={styles.matchMenuPlayersSection}>
                     {(["teamA", "teamB"] as const).map((teamId) => {
@@ -986,23 +1054,19 @@ const styles = StyleSheet.create({
     alignItems: "stretch",
     zIndex: 20,
     width: "100%",
-    paddingHorizontal: 6,
+    paddingHorizontal: 0,
   },
 
-  sideArea: {
-    width: 30,
-    flexShrink: 0,
-  },
 
   boardAreaWrap: {
     flex: 1,
     minWidth: 0,
     alignSelf: "stretch",
-    justifyContent: "center",
-    alignItems: "center",
-    marginHorizontal: 4,
-    transform: [{ translateY: 10 }],
+    // Extend only the playable board behind the hand; bottomArea keeps its
+    // normal layout position and PlayerHand does not move.
+    marginBottom: -32,
   },
+
 
   miniScoreBoard: {
     minWidth: 142,
@@ -1086,11 +1150,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderBottomLeftRadius: 20,
     padding: 18,
-    backgroundColor: "rgba(7, 45, 31, 0.97)",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.52)",
-    shadowColor: "#000",
-    shadowOpacity: 0.42,
+    overflow: "hidden",
+    backgroundColor: "rgba(54, 27, 17, 0.88)",
+    shadowColor: "#160804",
+    shadowOpacity: 0.48,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 25,
@@ -1105,7 +1168,7 @@ const styles = StyleSheet.create({
   },
 
   matchMenuTitle: {
-    color: "#f8f3df",
+    color: "#f8f3ef",
     fontSize: 16,
     fontFamily: "SpedaBold",
   },
@@ -1123,7 +1186,7 @@ const styles = StyleSheet.create({
   },
 
   teamGroupTitle: {
-    color: "rgba(248,243,223,0.67)",
+    color: "rgba(248,243,239,0.68)",
     fontSize: 10,
     fontFamily: "SpedaBold",
     letterSpacing: 0.75,
@@ -1136,9 +1199,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.055)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.18)",
   },
 
   matchMenuAvatar: {
@@ -1160,7 +1223,7 @@ const styles = StyleSheet.create({
 
   matchMenuPlayerName: {
     flexShrink: 1,
-    color: "#f8f3df",
+    color: "#f8f3ef",
     fontSize: 13,
     fontFamily: "SpedaBold",
   },
@@ -1174,7 +1237,7 @@ const styles = StyleSheet.create({
 
   matchMenuPlayerMeta: {
     marginTop: 2,
-    color: "rgba(222,235,220,0.66)",
+    color: "rgba(248,243,239,0.58)",
     fontSize: 9,
     fontFamily: "SpedaBold",
   },
@@ -1292,7 +1355,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 10,
-    zIndex: 50,
+    // The board intentionally extends beneath this area; keep the hand above it.
+    zIndex: 30,
   },
   countdownOverlay: {
     position: "absolute",

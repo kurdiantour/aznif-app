@@ -23,6 +23,7 @@ export default function RoundResultReveal({
   if (!visible || !roundResult) return null;
 
   const winner = players.find((player) => player.id === roundResult.winnerId);
+  const isBlocked = roundResult.endReason === "blocked";
 
   const tilesFor = (player: Player) =>
     roundResult.remainingTilesByPlayer?.[player.id] ?? [];
@@ -30,6 +31,9 @@ export default function RoundResultReveal({
   return (
     <View style={styles.resultOverlay} pointerEvents="none">
       <View style={styles.resultCenter}>
+        {isBlocked && (
+          <Text style={styles.resultReasonText}>یاری پست بوو</Text>
+        )}
         <Text style={styles.resultWinnerText}>
           {winner ? `${winner.name} بردیەوە` : "کۆتایی هاتنی دەور"}
         </Text>
@@ -109,6 +113,12 @@ const styles = StyleSheet.create({
     color: "#f8f3df",
     fontSize: 16,
     fontFamily: "SpedaBold",
+  },
+  resultReasonText: {
+    color: "#fbbf24",
+    fontSize: 18,
+    fontFamily: "SpedaBold",
+    marginBottom: 6,
   },
 
   resultPointsText: {

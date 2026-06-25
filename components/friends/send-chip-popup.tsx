@@ -1,7 +1,8 @@
+import type { Friend } from "@/lib/friends";
 import { getBalance, transferFunds } from "@/lib/wallet";
 import { notifyWalletRefresh } from "@/lib/walletEvents";
-import type { Friend } from "@/lib/friends";
-import { useEffect, useState } from "react";
+import { LinearGradient } from "expo-linear-gradient";
+import { createContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -17,6 +18,17 @@ type SendChipPopupProps = {
   onClose: () => void;
   onTransferSuccess?: () => void;
 };
+
+type SendChipPopupController = {
+  showSendChipPopup: (
+    friend: Friend,
+    onTransferSuccess?: () => void,
+  ) => void;
+};
+
+export const SendChipPopupContext = createContext<SendChipPopupController>({
+  showSendChipPopup: () => {},
+});
 
 export function SendChipPopup({
   visible,
@@ -65,7 +77,8 @@ export function SendChipPopup({
   if (!visible || !friend) return null;
 
   const parsedAmount = Number(amount.replace(/[^0-9.]/g, ""));
-  const isSendDisabled = submitting || !parsedAmount || parsedAmount <= 0;
+  const isSendDisabled =
+    submitting || loadingBalance || !parsedAmount || parsedAmount <= 0;
 
   const handleSend = async () => {
     if (isSendDisabled) return;
@@ -73,7 +86,7 @@ export function SendChipPopup({
     setError(null);
 
     if (parsedAmount > mcBalance) {
-      setError("Insufficient ئەزنیف balance.");
+      setError("ئەزنیفی پێویستت نییە.");
       return;
     }
 
@@ -91,18 +104,22 @@ export function SendChipPopup({
       onClose();
     } catch (err) {
       console.error("[SendChipPopup] MC transfer failed:", err);
-      setError("Transfer failed.");
+      setError("گواستنەوەکە سەرکەوتوو نەبوو.");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <View style={styles.overlay}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.popup} onPress={() => {}}>
+    <View style={styles.backdrop}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+
+      <Pressable style={styles.cardShell} onPress={() => {}}>
+        <LinearGradient colors={["#22114a", "#0b1027"]} style={styles.popup}>
           <Text style={styles.title}>گواستنەوەی ئەزنیف بۆ</Text>
-          <Text style={styles.playerId}>{friend.name}</Text>
+          <Text style={styles.playerId} numberOfLines={1}>
+            {friend.name}
+          </Text>
 
           <TextInput
             value={amount}
@@ -130,41 +147,41 @@ export function SendChipPopup({
               {submitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.sendText}>ئەزنیف بنێرە</Text>
+                <Text style={styles.sendText}>بینێرە</Text>
               )}
             </Pressable>
           </View>
-        </Pressable>
+        </LinearGradient>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  backdrop: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
     elevation: 9999,
-  },
-
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    backgroundColor: "rgba(2, 4, 15, 0.78)",
+    paddingHorizontal: 24,
+  },
+
+  cardShell: {
+    width: "100%",
+    maxWidth: 310,
   },
 
   popup: {
     width: "100%",
-    maxWidth: 470,
-    borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 22,
-    borderWidth: 1,
-    borderColor: "rgba(139,92,246,0.45)",
-    backgroundColor: "#0f0b1f",
+    borderRadius: 10,
+    padding: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 16,
   },
 
   title: {
@@ -175,8 +192,8 @@ const styles = StyleSheet.create({
   },
 
   playerId: {
-    marginTop: 6,
-    marginBottom: 14,
+    marginTop: 8,
+    marginBottom: 16,
     color: "#aaa7bc",
     fontSize: 14,
     fontFamily: "SpedaBold",
@@ -184,9 +201,8 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    width: "84%",
-    height: 40,
-    alignSelf: "center",
+    width: "100%",
+    height: 36,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.32)",
@@ -208,15 +224,16 @@ const styles = StyleSheet.create({
   },
 
   footer: {
-    marginTop: 24,
-    alignItems: "center",
-    justifyContent: "center",
+    width: "100%",
+    marginTop: 18,
   },
 
   sendButton: {
-    width: "50%",
-    height: 40,
-    borderRadius: 8,
+    width: "100%",
+    height: 34,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(221, 214, 254, 0.6)",
     backgroundColor: "#7c3aed",
     alignItems: "center",
     justifyContent: "center",
@@ -230,6 +247,5 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 12,
     fontFamily: "SpedaBold",
-    textTransform: "uppercase",
   },
 });

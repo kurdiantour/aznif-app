@@ -40,15 +40,15 @@ function RequestCard({
         style={styles.requestAvatar}
       />
 
-      <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>
-          {request.name} sent you a friend request
-        </Text>
+<View style={styles.info}>
+  <Text style={styles.playerName} numberOfLines={1}>
+    ({request.name})
+  </Text>
 
-        <Text style={styles.playerId} numberOfLines={1}>
-          ID: {request.playerId}
-        </Text>
-      </View>
+  <Text style={styles.requestText} numberOfLines={1}>
+    داواکاری هاوڕێیەتی بۆ ناردوویت
+  </Text>
+</View>
 
       <View style={styles.requestButtons}>
         <Pressable
@@ -235,6 +235,7 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     justifyContent: "center",
+    alignItems: "flex-start",
     minWidth: 0,
   },
 
@@ -307,6 +308,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 19,
   },
+
+requestText: {
+  color: "#ffffff",
+  fontSize: 12,
+  fontFamily: "SpedaBold",
+},
+
+playerName: {
+  color: "#ffffff",
+  fontSize: 13,
+  fontFamily: "RobotoMedium",
+  marginBottom: 5,
+},
 
   errorText: {
     width: "100%",

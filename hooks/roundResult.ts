@@ -3,12 +3,14 @@ import type { DominoTileData, RoundResult, TeamId } from '@/types/game';
 export function buildRoundResult({
   winnerId,
   winnerTeam,
+  endReason,
   awardedPoints,
   players,
   hands,
 }: {
   winnerId: string;
   winnerTeam?: TeamId;
+  endReason?: "blocked" | "empty_hand";
   awardedPoints: number;
   players: Array<{ id: string; playerIndex: number }>;
   hands: DominoTileData[][];
@@ -28,6 +30,7 @@ export function buildRoundResult({
   return {
     winnerId,
     winnerTeam,
+    endReason,
     awardedPoints,
     remainingTilesByPlayer,
     remainingPipsByPlayer,

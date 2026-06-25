@@ -1,346 +1,127 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
+import { BottomNav } from "@/components/lobby/BottomNav";
 import { supabase } from "@/lib/supabase";
 import { getBalance } from "@/lib/wallet";
 import { Wallet } from "@/types/wallet";
 
-const BET_OPTIONS = [10, 25, 50, 100, 250];
+const BET_OPTIONS = [50, 100];
 
 export default function CreateRoomScreen() {
   const router = useRouter();
-
   const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [selectedBet, setSelectedBet] = useState<number>(25);
+  const [selectedBet, setSelectedBet] = useState(50);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getBalance()
-      .then(setWallet)
-      .catch(() => setError("Unable to load balance."))
-      .finally(() => setLoading(false));
+    getBalance().then(setWallet).catch(() => setError("Unable to load balance.")).finally(() => setLoading(false));
   }, []);
 
-  const handleSelectBet = (amount: number) => {
-    setError(null);
-    setSelectedBet(amount);
-  };
-
-  const handleBackToLobby = () => {
-    router.replace("/(tabs)/lobby");
-  };
-
-  const openPrivateRoom = (roomId: string, code?: string) => {
-    router.replace({
-      pathname: "/matchmaking",
-      params: {
-        mode: "1v1",
-        matchmaking_status: "private",
-        room_id: roomId,
-        room_code: code ?? "",
-        matchType: "private",
-      },
-    });
-  };
-
-  const friendlyRoomError = (reason: unknown, fallback: string) => {
+  const roomError = (reason: unknown, fallback: string) => {
     const message = reason instanceof Error ? reason.message : fallback;
     const normalized = message.toLowerCase();
-    if (normalized.includes("not found"))
-      return "We could not find a room with that code.";
-    if (normalized.includes("not joinable") || normalized.includes("full"))
-      return "This room is no longer available. Ask the host for a new code.";
-    if (normalized.includes("authentication"))
-      return "Please sign in again before joining a room.";
-    return message;
+    if (normalized.includes("not found")) return "We could not find a room with that code.";
+    if (normalized.includes("not joinable") || normalized.includes("full")) return "This room is no longer available. Ask the host for a new code.";
+    return normalized.includes("authentication") ? "Please sign in again before joining a room." : message;
   };
 
-  const handleCreateRoom = async () => {
-    setSubmitting(true);
-    setError(null);
+  const openRoom = (roomId: string, code = "") => router.replace({ pathname: "/matchmaking", params: { mode: "1v1", matchmaking_status: "private", room_id: roomId, room_code: code, matchType: "private" } });
+  const createRoom = async () => {
+    setSubmitting(true); setError(null);
     try {
-      const { data, error: createError } = await supabase.rpc(
-        "create_one_vs_one_room",
-        {
-          p_bet_amount: selectedBet,
-        },
-      );
-      if (createError) throw createError;
+      const { data, error: rpcError } = await supabase.rpc("create_one_vs_one_room", { p_bet_amount: selectedBet });
+      if (rpcError) throw rpcError;
       if (!data?.id) throw new Error("Unable to create a private room.");
-      openPrivateRoom(data.id, data.room_code);
-    } catch (createError) {
-      setError(
-        friendlyRoomError(createError, "Unable to create private room."),
-      );
-    } finally {
-      setSubmitting(false);
-    }
+      openRoom(data.id, data.room_code);
+    } catch (reason) { setError(roomError(reason, "Unable to create private room.")); }
+    finally { setSubmitting(false); }
   };
-
-  const handleJoinRoom = async () => {
+  const joinRoom = async () => {
     const code = roomCode.trim().toUpperCase();
-    if (!code) {
-      setError("Enter a room code.");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
+    if (!code) { setError("Enter a room code."); return; }
+    setSubmitting(true); setError(null);
     try {
-      const { data, error: joinError } = await supabase.rpc(
-        "join_one_vs_one_room",
-        {
-          p_room_code: code,
-        },
-      );
-      if (joinError) throw joinError;
+      const { data, error: rpcError } = await supabase.rpc("join_one_vs_one_room", { p_room_code: code });
+      if (rpcError) throw rpcError;
       if (!data?.room_id) throw new Error("Unable to join this private room.");
-      openPrivateRoom(data.room_id, code);
-    } catch (joinError) {
-      setError(friendlyRoomError(joinError, "Unable to join private room."));
-    } finally {
-      setSubmitting(false);
-    }
+      openRoom(data.room_id, code);
+    } catch (reason) { setError(roomError(reason, "Unable to join private room.")); }
+    finally { setSubmitting(false); }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.screen}>
-        <LobbyHeader />
+  if (loading) return <View style={styles.screen}><LobbyHeader /><View style={styles.loading}><ActivityIndicator size="large" color="#fff" /></View><BottomNav active="home" /></View>;
 
-        <View style={styles.loading}>
-          <ActivityIndicator color="#ffffff" size="large" />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.screen}>
-      <LobbyHeader />
-
-      <View style={styles.content}>
-        {BET_OPTIONS.map((amount) => {
-          const active = selectedBet === amount;
-          const disabled = wallet ? amount > wallet.balances.mc : true;
-
-          return (
-            <Pressable
-              key={amount}
-              style={[
-                styles.card,
-                active && styles.cardActive,
-                disabled && styles.cardDisabled,
-              ]}
-              onPress={() => handleSelectBet(amount)}
-              disabled={disabled}
-            >
-              <Image
-                source={require("@/assets/images/lobby/create-room.webp")}
-                style={styles.cardImageInner}
-                resizeMode="cover"
-              />
-
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.92)"]}
-                style={styles.bottomFade}
-              />
-
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardTitle}>{amount} ئەزنیف</Text>
-
-                <Text style={styles.cardSubtitle}>
-                  Prize pool {amount * 2} ئەزنیف
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={styles.privateActions}>
-        <Pressable
-          style={[
-            styles.actionButton,
-            submitting && styles.actionButtonDisabled,
-          ]}
-          onPress={handleCreateRoom}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.actionButtonText}>Create private room</Text>
-          )}
-        </Pressable>
-        <View style={styles.joinRow}>
-          <TextInput
-            value={roomCode}
-            onChangeText={setRoomCode}
-            placeholder="Room code"
-            placeholderTextColor="#aab4c8"
-            autoCapitalize="characters"
-            editable={!submitting}
-            style={styles.roomCodeInput}
-          />
-          <Pressable
-            style={[
-              styles.joinButton,
-              submitting && styles.actionButtonDisabled,
-            ]}
-            onPress={handleJoinRoom}
-            disabled={submitting}
-          >
-            <Text style={styles.actionButtonText}>Join by code</Text>
+  return <View style={styles.screen}>
+    <LobbyHeader />
+    <View style={styles.cardsRow}>
+      <View style={[styles.card, styles.createCard]}>
+        <Image source={require("@/assets/images/lobby/create-room.webp")} style={styles.cover} resizeMode="cover" />
+        <LinearGradient colors={["transparent", "rgba(8,9,20,0.97)"]} style={styles.createFade} />
+        <View style={styles.createCardBody}>
+          <Text style={styles.heading}>دروستکردنی ژوور</Text>
+          <Text style={styles.description}>مێزێکی تایبەتی ١ بەرامبەر ١ دروست بکە</Text>
+          <Pressable style={[styles.button, styles.createButton, submitting && styles.dim]} onPress={createRoom} disabled={submitting}>
+            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>دروستکردنی ژوور</Text>}
           </Pressable>
         </View>
       </View>
 
-      <Pressable style={styles.backButton} onPress={handleBackToLobby}>
-        <Text style={styles.backButtonText}>گەڕانەوە</Text>
-      </Pressable>
+      <View style={[styles.card, styles.joinCard]}>
+        <LinearGradient colors={["#193656", "#13243b", "#10141e"]} style={StyleSheet.absoluteFillObject} />
+        <View style={styles.cardBody}>
+          <Text style={styles.heading}>چوونە ژوور</Text>
+          <Text style={styles.description}>کۆدی ژووری هاوڕێکەت بنووسە</Text>
+          <TextInput value={roomCode} onChangeText={setRoomCode} placeholder="کۆدی ژوور" placeholderTextColor="#9faec6" autoCapitalize="characters" editable={!submitting} style={styles.input} />
+          <Pressable style={[styles.button, styles.joinButton, submitting && styles.dim]} onPress={joinRoom} disabled={submitting}>
+            <Text style={styles.buttonText}>چوونە ژوور</Text>
+          </Pressable>
+        </View>
+      </View>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {BET_OPTIONS.map((amount) => {
+        const disabled = !wallet || amount > wallet.balances.mc;
+        return <Pressable key={amount} style={[styles.card, styles.matchCard, selectedBet === amount && styles.activeBet, disabled && styles.dim]} onPress={() => { setSelectedBet(amount); setError(null); }} disabled={disabled}>
+          <LinearGradient colors={amount === 50 ? ["#4d320d", "#795011", "#17151b"] : ["#412162", "#7220c3", "#181426"]} locations={[0, 0.67, 1]} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.cardBody}>
+            <Text style={styles.heading}>پێکدادان</Text>
+            <Text style={styles.description}>
+              بەشداری: {amount.toLocaleString("ar-IQ")} ئەزنیف
+            </Text>
+            <View style={[styles.button, styles.searchButton]}><Text style={styles.buttonText}>گەڕان</Text></View>
+          </View>
+        </Pressable>;
+      })}
     </View>
-  );
+    {error ? <Text style={styles.error}>{error}</Text> : null}
+    <BottomNav active="home" />
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#090b1d",
-    paddingHorizontal: 36,
-    paddingTop: 14,
-    paddingBottom: 26,
-  },
-
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  content: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-  },
-
-  privateActions: { marginTop: 14, gap: 8 },
-  actionButton: {
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#2563eb",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionButtonDisabled: { opacity: 0.6 },
-  actionButtonText: { color: "#ffffff", fontSize: 13, fontFamily: "SpedaBold" },
-  joinRow: { flexDirection: "row", gap: 8 },
-  roomCodeInput: {
-    flex: 1,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(180,120,255,0.42)",
-    backgroundColor: "rgba(17,24,39,0.82)",
-    color: "#ffffff",
-    paddingHorizontal: 12,
-    fontFamily: "SpedaBold",
-  },
-  joinButton: {
-    width: 126,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#6d28d9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  card: {
-    flex: 1,
-    height: 226,
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1.2,
-    borderColor: "rgba(180,120,255,0.42)",
-    backgroundColor: "rgba(17,24,39,0.82)",
-  },
-
-  cardActive: {
-    borderColor: "#facc15",
-  },
-
-  cardDisabled: {
-    opacity: 0.42,
-  },
-
-  cardImageInner: {
-    width: "100%",
-    height: "100%",
-  },
-
-  bottomFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 86,
-  },
-
-  cardInfo: {
-    position: "absolute",
-    left: 15,
-    right: 15,
-    bottom: 12,
-  },
-
-  cardTitle: {
-    color: "#ffffff",
-    fontSize: 17,
-    fontFamily: "SpedaBold",
-  },
-
-  cardSubtitle: {
-    marginTop: 2,
-    color: "#f3f4f6",
-    fontSize: 10,
-    fontFamily: "SpedaBold",
-  },
-
-  backButton: {
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#8b5cf6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 18,
-  },
-
-  backButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-  },
-
-  errorText: {
-    marginTop: 10,
-    color: "#ff9a9a",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
+  screen: { flex: 1, backgroundColor: "#151827", paddingHorizontal: 30, paddingTop: 14, paddingBottom: 88 },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center" },
+  cardsRow: { flexDirection: "row", width: "100%", height: "80%", maxHeight: 238, minHeight: 205, marginTop: 0, gap: 8 },
+  card: { flex: 1, borderRadius: 14, overflow: "hidden", backgroundColor: "#172033" },
+  createCard: {},
+  joinCard: {},
+  matchCard: {},
+  activeBet: {},
+  cover: { width: "100%", height: "100%" },
+  createFade: { position: "absolute", left: 0, right: 0, bottom: 0, height: "48%" },
+  cardBody: { flex: 1, justifyContent: "flex-end", padding: 18 },
+  createCardBody: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 18 },
+  heading: { color: "#fff", fontSize: 21, fontFamily: "SpedaBold" },
+  description: { marginTop: 4, color: "#f3f4f6", fontSize: 11, fontFamily: "SpedaBold" },
+  button: { height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 13 },
+  createButton: { backgroundColor: "#8b5be4" }, joinButton: { backgroundColor: "#2853a4" }, searchButton: { backgroundColor: "#cf8f08" },
+  buttonText: { color: "#fff", fontSize: 11, fontFamily: "SpedaBold" },
+  input: { height: 40, marginTop: 13, borderRadius: 11, borderWidth: 1, borderColor: "#426184", backgroundColor: "rgba(10, 17, 31, 0.64)", color: "#fff", paddingHorizontal: 14, fontSize: 11, fontFamily: "SpedaBold" },
+  dim: { opacity: 0.46 }, error: { marginTop: 10, color: "#ff9a9a", textAlign: "center", fontSize: 12, fontFamily: "SpedaBold" },
 });

@@ -1,5 +1,4 @@
 import DominoTile from "@/components/game/DominoTile";
-import { BOARD_EDGE_PADDING } from "@/components/game/boardPathLayout";
 import { DominoTileData } from "@/types/game";
 import { Animated, StyleSheet, View } from "react-native";
 
@@ -23,6 +22,7 @@ type Props = {
   boardHeight: number;
   tileWidth: number;
   tileHeight: number;
+  edgePadding: number;
   animatedSprite: AnimatedSprite | null;
   animOpacity: Animated.Value;
   animScale: Animated.Value;
@@ -36,10 +36,11 @@ function renderBoneyardStack(
   boardHeight: number,
   tileWidth: number,
   tileHeight: number,
+  edgePadding: number,
 ) {
   if (count <= 0 || boardHeight <= 0) return null;
 
-  const availableVerticalSpace = boardHeight - BOARD_EDGE_PADDING * 2;
+  const availableVerticalSpace = boardHeight - edgePadding * 2;
 
   const displayHeight = Math.max(18, Math.round(tileHeight * 0.72));
   const displayWidth = Math.max(36, Math.round(displayHeight * 0.75));
@@ -60,10 +61,10 @@ function renderBoneyardStack(
   const startTop =
     stackHeight <= availableVerticalSpace
       ? Math.max(
-          BOARD_EDGE_PADDING,
+          edgePadding,
           Math.round((boardHeight - stackHeight) / 2),
         )
-      : BOARD_EDGE_PADDING;
+      : edgePadding;
 
   const leftOffset = -displayWidth - 12;
 
@@ -105,6 +106,7 @@ export default function BoardBoneyard({
   boardHeight,
   tileWidth,
   tileHeight,
+  edgePadding,
   animatedSprite,
   animOpacity,
   animScale,
@@ -119,6 +121,7 @@ export default function BoardBoneyard({
         boardHeight,
         tileWidth,
         tileHeight,
+        edgePadding,
       )}
 
       {animatedSprite && (

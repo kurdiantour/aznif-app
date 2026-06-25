@@ -98,6 +98,7 @@ function startNextHand(
       lastPassedPlayerId: null,
       blockedPasses: [],
       canDrawTile: false,
+      roundEndReason: null,
     },
   };
 }
@@ -299,6 +300,7 @@ export default async function handler(req: Request) {
         teamScores: nextScores,
         lastScoringEvent,
         roundWinnerPlayerId,
+        roundEndReason: "empty_hand",
         leaderPlayerId: user.id,
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
@@ -306,17 +308,6 @@ export default async function handler(req: Request) {
       nextTurnPlayerId = user.id;
       if (finished.winningTeamId) {
         nextStatus = "finished";
-      } else {
-        const nextHand = startNextHand(nextState, user.id, players);
-        finalHands = nextHand.hands;
-        finalBoneyard = nextHand.boneyard;
-        nextState = {
-          ...nextHand.publicState,
-          previousRoundWinnerPlayerId: roundWinnerPlayerId,
-          teamScores: nextScores,
-          lastScoringEvent,
-        };
-        nextTurnPlayerId = nextHand.publicState.currentTurnPlayerId;
       }
     } else if (
       !canAnyPlayerMove(nextHands, nextBoard, nextSpinnerValue, false, null)
@@ -354,6 +345,7 @@ export default async function handler(req: Request) {
         teamScores: nextScores,
         lastScoringEvent,
         roundWinnerPlayerId: winner.user_id,
+        roundEndReason: "blocked",
         leaderPlayerId: winner.user_id,
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
@@ -361,17 +353,6 @@ export default async function handler(req: Request) {
       nextTurnPlayerId = winner.user_id;
       if (finished.winningTeamId) {
         nextStatus = "finished";
-      } else {
-        const nextHand = startNextHand(nextState, winner.user_id, players);
-        finalHands = nextHand.hands;
-        finalBoneyard = nextHand.boneyard;
-        nextState = {
-          ...nextHand.publicState,
-          previousRoundWinnerPlayerId: winner.user_id,
-          teamScores: nextScores,
-          lastScoringEvent,
-        };
-        nextTurnPlayerId = nextHand.publicState.currentTurnPlayerId;
       }
     }
 

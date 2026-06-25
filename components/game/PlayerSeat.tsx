@@ -1,6 +1,6 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { Player } from "@/types/game";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
@@ -10,6 +10,11 @@ type Props = {
   player: Player;
   remainingTiles?: number;
   showPass?: boolean;
+  dealOrigin?: { x: number; y: number } | null;
+  dealToken?: number;
+  dealOrder?: number;
+  dealPlayerCount?: number;
+  dealRotation?: -90 | 0 | 90;
 };
 
 const TURN_DURATION_SECONDS = 30;
@@ -97,6 +102,11 @@ export default function PlayerSeat({
   player,
   remainingTiles,
   showPass = false,
+  dealOrigin = null,
+  dealToken = 0,
+  dealOrder = 0,
+  dealPlayerCount = 1,
+  dealRotation = 0,
 }: Props) {
   const tileCount =
     remainingTiles ??
@@ -106,8 +116,56 @@ export default function PlayerSeat({
     (player as any).remainingTiles ??
     7;
 
+  const wrapperRef = useRef<View | null>(null);
+  const [wrapperOrigin, setWrapperOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [visibleDealToken, setVisibleDealToken] = useState<number | null>(null);
+  const dealtTokenRef = useRef(0);
+  const previousTileCountRef = useRef<number | null>(null);
+  const tileAnimationsRef = useRef<Animated.Value[]>([]);
+  const tileAnimations = Array.from({ length: Math.max(0, tileCount) }, (_, index) => {
+    if (!tileAnimationsRef.current[index]) {
+      tileAnimationsRef.current[index] = new Animated.Value(1);
+    }
+    return tileAnimationsRef.current[index];
+  });
+
+  const updateWrapperOrigin = () => {
+    wrapperRef.current?.measureInWindow((x, y) => setWrapperOrigin({ x, y }));
+  };
+
+  useEffect(() => {
+    if (!dealToken || dealtTokenRef.current === dealToken || !dealOrigin || !wrapperOrigin) return;
+    dealtTokenRef.current = dealToken;
+    tileAnimations.forEach((animation) => animation.setValue(0));
+    setVisibleDealToken(dealToken);
+    Animated.sequence([
+      Animated.delay(dealOrder * 95),
+      Animated.stagger(
+        95 * dealPlayerCount,
+        tileAnimations.map((animation) =>
+          Animated.timing(animation, {
+            toValue: 1,
+            duration: 620,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ),
+      ),
+    ]).start();
+  }, [dealOrder, dealOrigin, dealPlayerCount, dealToken, tileAnimations, wrapperOrigin]);
+
+  const isWaitingForNewDeal =
+    tileCount >= 7 &&
+    (previousTileCountRef.current === null ||
+      (previousTileCountRef.current ?? tileCount) < tileCount) &&
+    dealtTokenRef.current === dealToken;
+
+  useEffect(() => {
+    previousTileCountRef.current = tileCount;
+  }, [tileCount]);
+
   return (
-    <View style={styles.wrapper}>
+    <View ref={wrapperRef} onLayout={updateWrapperOrigin} style={styles.wrapper}>
       <View style={styles.card}>
         <View style={styles.avatarWrap}>
           <TurnRing
@@ -129,9 +187,48 @@ export default function PlayerSeat({
           </Text>
 
           <View style={styles.tileRow}>
-            {Array.from({ length: Math.max(0, tileCount) }).map((_, index) => (
-              <View key={index} style={styles.miniTile} />
-            ))}
+            {tileAnimations.map((progress, index) => {
+              const fromX = dealOrigin && wrapperOrigin
+                ? dealOrigin.x - (wrapperOrigin.x + 66 + index * 8)
+                : 0;
+              const fromY = dealOrigin && wrapperOrigin
+                ? dealOrigin.y - (wrapperOrigin.y + 42)
+                : 0;
+              // Side seats are rotated by their parent. Rotate the global
+              // center-to-seat vector back into their local coordinate space
+              // so the visible tile still starts at the table centre.
+              const localFromX =
+                dealRotation === -90
+                  ? -fromY
+                  : dealRotation === 90
+                    ? fromY
+                    : fromX;
+              const localFromY =
+                dealRotation === -90
+                  ? fromX
+                  : dealRotation === 90
+                    ? -fromX
+                    : fromY;
+              return (
+                <Animated.View
+                  key={index}
+                  style={[
+                    styles.miniTile,
+                    {
+                      opacity:
+                        visibleDealToken === dealToken && !isWaitingForNewDeal
+                          ? progress
+                          : 0,
+                      transform: [
+                        { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [localFromX, 0] }) },
+                        { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [localFromY, 0] }) },
+                        { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [2.2, 1] }) },
+                      ],
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
         </View>
       </View>

@@ -18,7 +18,10 @@ import DominoTile from "./DominoTile";
 
 type Props = {
   tiles: DominoTileData[];
-  onPlayTile: (tile: DominoTileData) => void;
+  onPlayTile: (
+    tile: DominoTileData,
+    dropPoint: { x: number; y: number },
+  ) => void;
   onSelectTile?: (tile: DominoTileData) => void;
   disabled?: boolean;
   selectedTileId?: string | null;
@@ -26,6 +29,9 @@ type Props = {
   scale?: number;
   trayWidth?: number;
   dealOrigin?: { x: number; y: number } | null;
+  dealToken?: number;
+  dealOrder?: number;
+  dealPlayerCount?: number;
 };
 
 const TILE_WIDTH = 28;
@@ -38,15 +44,14 @@ const HAND_HEIGHT = 88;
 
 const TILE_TOP = 30;
 const DROP_TO_BOARD_DISTANCE = -10;
-const DEAL_STAGGER_MS = 75;
-const DEAL_DURATION_MS = 450;
+const DEAL_STAGGER_MS = 95;
+const DEAL_DURATION_MS = 620;
 const HIDDEN_DEAL_TILE: DominoTileData = {
   id: "hidden-deal-0-0",
   left: 0,
   right: 0,
   imageKey: "0-0",
 };
-
 export default function PlayerHand({
   tiles,
   onPlayTile,
@@ -57,6 +62,9 @@ export default function PlayerHand({
   scale = 1,
   trayWidth,
   dealOrigin = null,
+  dealToken = 0,
+  dealOrder = 0,
+  dealPlayerCount = 1,
 }: Props) {
   const [localTiles, setLocalTiles] = useState(tiles);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -64,11 +72,13 @@ export default function PlayerHand({
     x: number;
     y: number;
   } | null>(null);
+  const [visibleDealToken, setVisibleDealToken] = useState<number | null>(null);
 
   const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dealProgressRef = useRef(new Map<string, Animated.Value>());
   const previousHandIdsRef = useRef<Set<string> | null>(null);
   const animatedHandSignatureRef = useRef("");
+  const animatedDealTokenRef = useRef(0);
   const dealAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const disabledRef = useRef(disabled);
@@ -163,7 +173,7 @@ export default function PlayerHand({
     [drag, getLeftForIndex, onSelectTile, scale, updateContainerOffset],
   );
 
-  const finishDrag = useCallback(() => {
+  const finishDrag = useCallback((gesture: { moveX?: number; moveY?: number }) => {
     if (disabledRef.current) {
       resetDrag();
       return;
@@ -185,8 +195,11 @@ export default function PlayerHand({
         (tile) => tile.id === draggedLocalTile.id,
       );
 
-      if (realTile) {
-        onPlayTile(realTile);
+      const x = gesture.moveX;
+      const y = gesture.moveY;
+
+      if (realTile && typeof x === "number" && typeof y === "number") {
+        onPlayTile(realTile, { x, y });
       }
 
       resetDrag();
@@ -255,8 +268,8 @@ export default function PlayerHand({
           }
         },
 
-        onPanResponderRelease: finishDrag,
-        onPanResponderTerminate: finishDrag,
+        onPanResponderRelease: (_evt, gesture) => finishDrag(gesture),
+        onPanResponderTerminate: (_evt, gesture) => finishDrag(gesture),
         onShouldBlockNativeResponder: () => true,
       }),
     [clampIndex, drag, finishDrag, scale, startDrag],
@@ -304,8 +317,12 @@ export default function PlayerHand({
   const shouldStartDeal =
     !!dealOrigin &&
     !!trayWindowOrigin &&
+    ((dealToken > 0 && animatedDealTokenRef.current !== dealToken) ||
+      (isNewHand && animatedHandSignatureRef.current !== handSignature));
+  const isWaitingForNewDeal =
     isNewHand &&
-    animatedHandSignatureRef.current !== handSignature;
+    !shouldStartDeal &&
+    animatedDealTokenRef.current === dealToken;
 
   previewTiles.forEach((tile) => {
     if (!dealProgressRef.current.has(tile.id)) {
@@ -320,6 +337,7 @@ export default function PlayerHand({
 
   if (shouldStartDeal) {
     animatedHandSignatureRef.current = handSignature;
+    animatedDealTokenRef.current = dealToken;
   }
 
   useLayoutEffect(() => {
@@ -328,6 +346,7 @@ export default function PlayerHand({
     if (!shouldStartDeal) return;
 
     dealAnimationRef.current?.stop();
+    setVisibleDealToken(dealToken);
 
     const animations = tiles.map((tile) =>
       Animated.timing(dealProgressRef.current.get(tile.id)!, {
@@ -338,14 +357,18 @@ export default function PlayerHand({
       }),
     );
 
-    const dealAnimation = Animated.stagger(DEAL_STAGGER_MS, animations);
+    // Deal one tile to each seat before beginning the next pass around the table.
+    const dealAnimation = Animated.sequence([
+      Animated.delay(dealOrder * DEAL_STAGGER_MS),
+      Animated.stagger(DEAL_STAGGER_MS * dealPlayerCount, animations),
+    ]);
     dealAnimationRef.current = dealAnimation;
     dealAnimation.start(({ finished }) => {
       if (finished && dealAnimationRef.current === dealAnimation) {
         dealAnimationRef.current = null;
       }
     });
-  }, [handSignature, shouldStartDeal, tiles]);
+  }, [dealOrder, dealPlayerCount, dealToken, handSignature, shouldStartDeal, tiles]);
 
   useEffect(() => {
     return () => dealAnimationRef.current?.stop();
@@ -402,11 +425,11 @@ export default function PlayerHand({
         });
         const dealScale = dealProgress.interpolate({
           inputRange: [0, 1],
-          outputRange: [0.92, 1],
+          outputRange: [1.35, 1],
         });
         const dealOpacity = dealProgress.interpolate({
           inputRange: [0, 1],
-          outputRange: [0.7, 1],
+          outputRange: [1, 1],
         });
         const tileBackOpacity = dealProgress.interpolate({
           inputRange: [0, 0.84, 0.94, 1],
@@ -428,10 +451,13 @@ export default function PlayerHand({
                 width: scaledTileWidth,
                 height: scaledTileHeight,
                 zIndex: isDragging || isSelected ? 100 : isPlayable ? 50 : 1,
-                opacity: Animated.multiply(
-                  dealOpacity,
-                  disabled ? 0.45 : isPlayable ? 1 : 0.5,
-                ),
+                opacity:
+                  visibleDealToken === dealToken && !isWaitingForNewDeal
+                    ? Animated.multiply(
+                        dealOpacity,
+                        disabled ? 0.45 : isPlayable ? 1 : 0.5,
+                      )
+                    : 0,
 
                 shadowColor: "#000",
                 shadowOpacity: 0.18,
@@ -462,9 +488,7 @@ export default function PlayerHand({
             ]}
             {...panHandlers}
           >
-            <Animated.View
-              style={[styles.tileFace, { opacity: tileFaceOpacity }]}
-            >
+            <Animated.View style={[styles.tileFace, { opacity: tileFaceOpacity }]}>
               <DominoTile
                 tile={tile}
                 width={scaledTileWidth}

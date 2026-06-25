@@ -17,7 +17,6 @@ import {
 } from "react-native";
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { SendChipPopup } from "./send-chip-popup";
 
 function FriendCard({
   friend,
@@ -33,7 +32,7 @@ function FriendCard({
           style={styles.actionButton}
           onPress={() => onSendChip(friend)}
         >
-          <Text style={styles.buttonText}>تۆکن بنێرە</Text>
+          <Text style={styles.buttonText}>ئەزنیف بنێرە</Text>
         </Pressable>
 
         <Pressable
@@ -120,7 +119,7 @@ function SearchResultRow({
             (isFriend || isPending) && styles.disabledButtonText,
           ]}
         >
-          {isFriend ? "تۆکن بنێرە" : label}
+          {isFriend ? "ئەزنیف بنێرە" : label}
         </Text>
       </Pressable>
     </View>
@@ -129,12 +128,17 @@ function SearchResultRow({
 
 type FriendsPanelProps = {
   searchQuery?: string;
+  onSendChip?: (friend: Friend) => void;
+  transferSuccessSignal?: number;
 };
 
-export function FriendsPanel({ searchQuery = "" }: FriendsPanelProps) {
+export function FriendsPanel({
+  searchQuery = "",
+  onSendChip,
+  transferSuccessSignal = 0,
+}: FriendsPanelProps) {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
-  const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -204,6 +208,13 @@ export function FriendsPanel({ searchQuery = "" }: FriendsPanelProps) {
     };
   }, [searchQuery]);
 
+  useEffect(() => {
+    if (transferSuccessSignal === 0) return;
+
+    handleTransferSuccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh, transferSuccessSignal]);
+
   async function handleAdd(result: FriendSearchResult) {
     setBusyId(result.id);
     setError(null);
@@ -232,7 +243,7 @@ export function FriendsPanel({ searchQuery = "" }: FriendsPanelProps) {
   }
 
   function handleSearchTransfer(result: FriendSearchResult) {
-    setSelectedFriend({
+    onSendChip?.({
       id: result.id,
       name: result.name,
       playerId: result.playerId,
@@ -242,7 +253,7 @@ export function FriendsPanel({ searchQuery = "" }: FriendsPanelProps) {
   }
 
   function handleTransferSuccess() {
-    setSuccessMessage("ئەزنیف sent successfully.");
+    setSuccessMessage("ئەزنیف بە سەرکەوتوویی نێردرا.");
     void refresh();
   }
 
@@ -294,18 +305,12 @@ export function FriendsPanel({ searchQuery = "" }: FriendsPanelProps) {
             <FriendCard
               key={friend.id}
               friend={friend}
-              onSendChip={setSelectedFriend}
+              onSendChip={(nextFriend) => onSendChip?.(nextFriend)}
             />
           ))
         )}
       </ScrollView>
 
-      <SendChipPopup
-        friend={selectedFriend}
-        visible={!!selectedFriend}
-        onClose={() => setSelectedFriend(null)}
-        onTransferSuccess={handleTransferSuccess}
-      />
     </View>
   );
 }
@@ -389,7 +394,7 @@ const styles = StyleSheet.create({
   name: {
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "right",
     width: "100%",
   },
@@ -398,7 +403,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: "#aaa7bc",
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "right",
     width: "100%",
   },

@@ -87,6 +87,7 @@ export type RoundPhase =
 export type RoundResult = {
   winnerId?: string;
   winnerTeam?: TeamId;
+  endReason?: "blocked" | "empty_hand";
   awardedPoints: number;
   remainingTilesByPlayer: Record<string, DominoTileData[]>;
   remainingPipsByPlayer: Record<string, number>;

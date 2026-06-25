@@ -3,12 +3,11 @@ import { StyleSheet, Text, View } from "react-native";
 export default function BuyGoldScreen() {
   return (
     <View style={styles.screen}>
-      <View style={styles.card}>
-        <Text style={styles.title}>گەوهەر بکڕە</Text>
-        <Text style={styles.message}>
-          بەزوویی کڕینی گەوهەر لێرە بەردەست دەبێت.
-        </Text>
-      </View>
+      <Text style={styles.title}>فڕۆشتگای گەوهەر</Text>
+
+      <Text style={styles.message}>
+       ئەم بەشە لە وەشانی داهاتوودا چالاک دەکرێت.
+      </Text>
     </View>
   );
 }
@@ -20,26 +19,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
     backgroundColor: "#090b1d",
+      paddingBottom: 90,
+
   },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "rgba(168,85,247,0.35)",
-    backgroundColor: "rgba(20,16,42,0.92)",
-  },
+
   title: {
     color: "#ffffff",
-    fontSize: 24,
+    fontSize: 18,
     fontFamily: "SpedaBold",
     textAlign: "center",
   },
+
   message: {
     marginTop: 10,
-    color: "#c4b5fd",
-    fontSize: 14,
+    color: "#ffffff",
+    fontSize: 12,
     fontFamily: "SpedaBold",
     textAlign: "center",
     lineHeight: 21,
