@@ -471,5 +471,5 @@ scoreBadgeRight: {
   top: "50%",
   transform: [{ translateY: -14 }],
 },
-  scoreBadgeText: { fontFamily: "SpedaBold", color: "#111827" },
+  scoreBadgeText: { fontFamily: "RobotoMedium", color: "#111827" },
 });

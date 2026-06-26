@@ -1,12 +1,30 @@
 import { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { BlurView } from "expo-blur";
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import Svg, { Circle } from "react-native-svg";
+
+import DominoTile from "@/components/game/DominoTile";
+import { DominoTileData } from "@/types/game";
 
 const PASS_AUTO_SECONDS = 10;
 const TIMER_SIZE = 68;
 const TIMER_STROKE = 5;
 const TIMER_RADIUS = (TIMER_SIZE - TIMER_STROKE) / 2;
 const TIMER_CIRCUMFERENCE = 2 * Math.PI * TIMER_RADIUS;
+
+const HIDDEN_BONEYARD_TILE: DominoTileData = {
+  id: "draw-prompt-hidden-boneyard",
+  left: 0,
+  right: 0,
+  imageKey: "0-0",
+};
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -29,6 +47,7 @@ export default function DrawPilePrompt({
   passCountdown,
   passing = false,
 }: DrawPilePromptProps) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const progressValue = useRef(new Animated.Value(0)).current;
   const onPassRef = useRef(onPass);
 
@@ -36,7 +55,22 @@ export default function DrawPilePrompt({
 
   const isTwoVsTwoGame = gameMode === "2v2";
   const hasTiles = boneyardCount > 0;
+  const isCompact = screenWidth < 700 || screenHeight < 380;
+  const boneyardTiles = Array.from({ length: Math.max(0, boneyardCount) });
+  const boneyardColumns = isCompact ? 4 : 5;
+  const boneyardRows = boneyardTiles.reduce<number[][]>(
+    (rows, _, index) => {
+      const rowIndex = Math.floor(index / boneyardColumns);
 
+      if (!rows[rowIndex]) {
+        rows[rowIndex] = [];
+      }
+
+      rows[rowIndex].push(index);
+      return rows;
+    },
+    [],
+  );
   useEffect(() => {
     if (
       !visible ||
@@ -138,25 +172,55 @@ export default function DrawPilePrompt({
   }
 
   return (
-    <View style={styles.wrap} pointerEvents="box-none">
-      <View style={styles.card}>
-        <Text style={styles.title}>هیچ خشتێکی یاریکردن نییە</Text>
+    <View style={styles.boneyardOverlay} pointerEvents="box-none">
+      <View style={styles.scrim} pointerEvents="none" />
 
-        <Text style={styles.subtitle}>
-          {hasTiles
-            ? "Draw a hidden domino from the pile to continue."
-            : "You have no legal move. Pass the turn to continue."}
-        </Text>
-
-        {hasTiles ? (
-          <Pressable style={styles.drawButton} onPress={onDraw}>
-            <Text style={styles.drawButtonText}>خشت وەربگرە</Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.emptyText}>کۆمەڵەکە بەتاڵە.</Text>
-        )}
-
-        <Text style={styles.countText}>{boneyardCount} tiles left</Text>
+      <BlurView
+        intensity={35}
+        tint="dark"
+        style={[
+          styles.boneyardPanel,
+          isCompact && styles.boneyardPanelCompact,
+        ]}
+      >
+        <View
+          style={[
+            styles.boneyardGrid,
+            isCompact && styles.boneyardGridCompact,
+          ]}
+        >
+          {hasTiles ? (
+            boneyardRows.map((row, rowIndex) => (
+              <View
+                key={`draw-pile-row-${rowIndex}`}
+                style={styles.boneyardTileRow}
+              >
+                {row.map((index) => (
+                  <Pressable
+                    key={`draw-pile-tile-${index}`}
+                    onPress={onDraw}
+                    style={[
+                      styles.boneyardTileButton,
+                      {
+                        transform: [
+                          { rotate: `${index % 2 === 0 ? -2 : 2}deg` },
+                        ],
+                      },
+                    ]}
+                  >
+                    <DominoTile
+                      tile={HIDDEN_BONEYARD_TILE}
+                      width={isCompact ? 26 : 32}
+                      height={isCompact ? 54 : 66}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>کۆمەڵەکە بەتاڵە.</Text>
+          )}
+        </View>
 
         {!hasTiles && onPass && (
           <Pressable
@@ -165,7 +229,7 @@ export default function DrawPilePrompt({
             disabled={passing}
           >
             <Text style={styles.passButtonText}>
-              {passing ? "Passing..." : "Pass Turn"}
+              {passing ? "..." : "پاس"}
             </Text>
           </Pressable>
         )}
@@ -175,81 +239,88 @@ export default function DrawPilePrompt({
             Auto-pass in {passCountdown}s
           </Text>
         )}
-      </View>
+      </BlurView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  boneyardOverlay: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 76,
+    top: 0,
+    bottom: 0,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 120,
+    zIndex: 130,
   },
 
-  card: {
-    width: 292,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingTop: 15,
-    paddingBottom: 14,
-    alignItems: "center",
-    backgroundColor: "rgba(3, 17, 11, 0.97)",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.4)",
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(9, 3, 18, 0.24)",
   },
 
-  title: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
+boneyardPanel: {
+  position: "absolute",
+  top: "46%",
+  width: "86%",
+  maxWidth: 400,
+  minHeight: 180,
+  borderRadius: 6,
+  overflow: "hidden",
+  paddingHorizontal: 14,
+  paddingBottom: 20,
+  alignItems: "center",
+  backgroundColor: "rgba(58, 25, 92, 0.18)",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.14)",
+  shadowColor: "#000",
+  shadowOpacity: 0.28,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 20,
+},
 
-  subtitle: {
-    marginTop: 5,
-    color: "rgba(255, 255, 255, 0.72)",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    lineHeight: 16,
-    textAlign: "center",
-  },
+boneyardPanelCompact: {
+  width: "84%",
+  minHeight: 104,
+  top: "42%",
+  paddingHorizontal: 12,
+  paddingBottom: 8,
+},
 
-  drawButton: {
-    width: 184,
-    marginTop: 18,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#8b5cf6",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
+boneyardGrid: {
+  width: "100%",
+  minHeight: 78,
+  paddingTop: 20,
+  alignItems: "center",
+  justifyContent: "center",
+},
 
-  drawButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-    letterSpacing: 0.4,
-  },
+boneyardGridCompact: {
+  minHeight: 68,
+  paddingTop: 6,
+},
 
-  countText: {
-    marginTop: 10,
-    color: "#facc15",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
+boneyardTileRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+boneyardTileButton: {
+  width: 32,
+  height: 66,
+  marginHorizontal: 3,
+  marginVertical: 3,
+  borderRadius: 8,
+  shadowColor: "#000",
+  shadowOpacity: 0.24,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 8,
+},
 
   emptyText: {
     marginTop: 14,
@@ -261,8 +332,8 @@ const styles = StyleSheet.create({
 
   passButton: {
     marginTop: 12,
-    minWidth: 132,
-    height: 40,
+    width: 58,
+    height: 58,
     paddingHorizontal: 18,
     borderRadius: 999,
     alignItems: "center",
@@ -274,10 +345,9 @@ const styles = StyleSheet.create({
 
   passButtonText: {
     color: "#ffffff",
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: "SpedaBold",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
+    textAlign: "center",
   },
 
   buttonDisabled: {

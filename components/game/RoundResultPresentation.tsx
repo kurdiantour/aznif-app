@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: "#facc15",
     fontSize: 30,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
   playerResults: {
     alignSelf: "stretch",
@@ -63,11 +63,11 @@ const styles = StyleSheet.create({
   playerName: {
     color: "#e5e7eb",
     fontSize: 14,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
   pipsText: {
     color: "#c4b5fd",
     fontSize: 14,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 });

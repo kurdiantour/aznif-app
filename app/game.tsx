@@ -6,8 +6,10 @@ import PlayerSeat from "@/components/game/PlayerSeat";
 import RoundResultReveal from "@/components/game/RoundResultReveal";
 import ScorePopup from "@/components/game/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
-import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
+import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import { useDevTwoVsTwoBotGame } from "@/hooks/useDevTwoVsTwoBotGame";
+import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { useGame } from "@/hooks/useGame";
 import { useOneVsOneGame } from "@/hooks/useOneVsOneGame";
 import { useRoundPresentation } from "@/hooks/useRoundPresentation";
@@ -16,15 +18,11 @@ import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
 import { ENABLE_DEV_2V2_BOT_TEST } from "@/lib/dev/devBotPlayers";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { DominoTileData, KozelBranch } from "@/types/game";
+import { DominoTileData, KozelBranch, TeamId } from "@/types/game";
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Animated,
-  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -82,10 +80,15 @@ export default function GameScreen() {
 
   const { refreshProfile } = useProfile();
 
+  const {
+  showMatchMenu,
+  matchMenuTranslateX,
+  openMatchMenu,
+  closeMatchMenu,
+} = useMatchMenu();
+
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [showMatchMenu, setShowMatchMenu] = useState(false);
-  const [isMatchMenuOpen, setIsMatchMenuOpen] = useState(false);
   const [isLeavingMatch, setIsLeavingMatch] = useState(false);
   const [selectedTile, setSelectedTile] = useState<DominoTileData | null>(null);
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>(
@@ -102,7 +105,6 @@ export default function GameScreen() {
   const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
   const boardAreaRef = useRef<any>(null);
   const previousHandSignatureRef = useRef<string | null>(null);
-  const matchMenuTranslateX = useRef(new Animated.Value(420)).current;
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
   passTurnRef.current = game.passTurn;
@@ -135,19 +137,6 @@ export default function GameScreen() {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (!showMatchMenu) return;
-
-    Animated.timing(matchMenuTranslateX, {
-      toValue: isMatchMenuOpen ? 0 : 420,
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished && !isMatchMenuOpen) setShowMatchMenu(false);
-    });
-  }, [isMatchMenuOpen, matchMenuTranslateX, showMatchMenu]);
 
   useEffect(() => {
     if (isLocalGame) return;
@@ -507,6 +496,19 @@ export default function GameScreen() {
 
   const scoreTeamAName = getTeamName(game.players, "teamA", "Team A");
   const scoreTeamBName = getTeamName(game.players, "teamB", "Team B");
+  const primaryScoreTeamId: TeamId =
+    game.mode === "1v1" ? humanPlayer?.teamId ?? "teamA" : "teamA";
+  const secondaryScoreTeamId: TeamId =
+    primaryScoreTeamId === "teamA" ? "teamB" : "teamA";
+  const scoreNameByTeam: Record<TeamId, string> = {
+    teamA: scoreTeamAName,
+    teamB: scoreTeamBName,
+  };
+
+  const miniScoreTeamAName =
+    game.mode === "1v1" ? scoreNameByTeam[primaryScoreTeamId] : "Team A";
+  const miniScoreTeamBName =
+    game.mode === "1v1" ? scoreNameByTeam[secondaryScoreTeamId] : "Team B";
 
   const didWinMatch = humanPlayer?.teamId
     ? game.winningTeamId === humanPlayer.teamId
@@ -587,15 +589,6 @@ export default function GameScreen() {
     (game as any).phase === "next_round_countdown" &&
     !isFinalTileAnimationRunning;
 
-  const openMatchMenu = () => {
-    matchMenuTranslateX.setValue(420);
-    setShowMatchMenu(true);
-    setIsMatchMenuOpen(true);
-  };
-
-  const closeMatchMenu = () => {
-    setIsMatchMenuOpen(false);
-  };
 
   if (gameLoading) {
     return (
@@ -740,8 +733,8 @@ export default function GameScreen() {
               onPress={() => setShowScorePopup(true)}
             >
               <View style={styles.miniScoreItem}>
-                <Text style={styles.miniScoreLabel}>
-                  {game.mode === "1v1" ? "تۆ" : "تیمی A"}
+                <Text numberOfLines={1} style={styles.miniScoreLabel}>
+                  {miniScoreTeamAName}
                 </Text>
                 <Text style={styles.miniScoreValue}>
                   {game.teamScores?.teamA ?? 0}
@@ -751,7 +744,9 @@ export default function GameScreen() {
               <View style={styles.miniScoreDivider} />
 
               <View style={styles.miniScoreItem}>
-                <Text style={styles.miniScoreLabel}>تیمی B</Text>
+                <Text numberOfLines={1} style={styles.miniScoreLabel}>
+                  {miniScoreTeamBName}
+                </Text>
                 <Text style={styles.miniScoreValue}>
                   {game.teamScores?.teamB ?? 0}
                 </Text>
@@ -807,155 +802,49 @@ export default function GameScreen() {
             teamBName={scoreTeamBName}
           />
 
-          <GameOverPopup
-            visible={showGameOverPopup && !isFinalTileAnimationRunning}
-            didWin={didWinMatch}
-            reward={practiceWinReward ?? game.matchReward}
-            onClose={() => {
-              setShowGameOverPopup(false);
-              router.replace("/(tabs)/lobby");
-            }}
-            onPlayAgain={() => {
-              if (isPracticeMode) {
-                router.replace("/play-ai");
-                return;
-              }
+<GameOverPopup
+  visible={showGameOverPopup && !isFinalTileAnimationRunning}
+  didWin={didWinMatch}
+  reward={practiceWinReward ?? game.matchReward}
+  teamScores={{
+    teamA: game.teamScores?.teamA ?? 0,
+    teamB: game.teamScores?.teamB ?? 0,
+  }}
+  onClose={() => {
+    setShowGameOverPopup(false);
+    router.replace("/(tabs)/lobby");
+  }}
+  onPlayAgain={() => {
+    if (isPracticeMode) {
+      router.replace("/play-ai");
+      return;
+    }
 
-              router.replace("/(tabs)/lobby");
-            }}
-          />
+    router.replace("/(tabs)/lobby");
+  }}
+/>
 
-          {showMatchMenu ? (
-            <View style={styles.matchMenuOverlay}>
-              <Pressable
-                accessibilityLabel="Close match settings"
-                style={styles.matchMenuBackdrop}
-                onPress={closeMatchMenu}
-              />
-              <Animated.View
-                style={[
-                  styles.matchMenuPanel,
-                  { transform: [{ translateX: matchMenuTranslateX }] },
-                ]}
-              >
-                <BlurView
-                  intensity={88}
-                  tint="dark"
-                  pointerEvents="none"
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.matchMenuContent}>
-                  <View style={styles.matchMenuPlayersSection}>
-                    {(["teamA", "teamB"] as const).map((teamId) => {
-                      const isMyTeam = humanPlayer?.teamId === teamId;
-                      const players = game.players.filter(
-                        (player) => player.teamId === teamId,
-                      );
-                      return (
-                        <View key={teamId} style={styles.teamGroup}>
-                          <Text style={styles.teamGroupTitle}>
-                            {teamId === "teamA" ? "TEAM A" : "TEAM B"}
-                            {isMyTeam ? " · MY TEAM" : " · OPPONENTS"}
-                          </Text>
-                          {players.map((player) => (
-                            <View
-                              key={player.id}
-                              style={styles.matchMenuPlayerRow}
-                            >
-                              <PlayerAvatar
-                                avatarId={player.avatarId}
-                                size={34}
-                                style={styles.matchMenuAvatar}
-                              />
-                              <View style={styles.matchMenuPlayerInfo}>
-                                <View style={styles.matchMenuPlayerNameRow}>
-                                  <Text
-                                    numberOfLines={1}
-                                    style={styles.matchMenuPlayerName}
-                                  >
-                                    {player.name}
-                                  </Text>
-                                  {game.currentTurnPlayerId === player.id ? (
-                                    <View style={styles.activeTurnDot} />
-                                  ) : null}
-                                </View>
-                                <Text style={styles.matchMenuPlayerMeta}>
-                                  {player.kind === "bot" ? "BOT" : "HUMAN"} ·{" "}
-                                  {player.tileCount} tiles left
-                                </Text>
-                              </View>
-                              {game.currentTurnPlayerId === player.id ? (
-                                <Text style={styles.activeTurnLabel}>TURN</Text>
-                              ) : null}
-                            </View>
-                          ))}
-                        </View>
-                      );
-                    })}
-                  </View>
+<MatchMenuDrawer
+  visible={showMatchMenu}
+  players={game.players}
+  humanPlayer={humanPlayer}
+  currentTurnPlayerId={game.currentTurnPlayerId}
+  translateX={matchMenuTranslateX}
+  onClose={closeMatchMenu}
+  onLeavePress={() => {
+    closeMatchMenu();
+    setShowLeaveConfirm(true);
+  }}
+/>
 
-                  <Pressable
-                    style={styles.matchMenuLeaveButton}
-                    onPress={() => {
-                      closeMatchMenu();
-                      setShowLeaveConfirm(true);
-                    }}
-                  >
-                    <Ionicons
-                      name="log-out-outline"
-                      size={19}
-                      color="#ffffff"
-                    />
-                    <Text style={styles.matchMenuLeaveText}>Leave Match</Text>
-                  </Pressable>
-                </View>
-              </Animated.View>
-            </View>
-          ) : null}
+<LeaveMatchConfirmPopup
+  visible={showLeaveConfirm}
+  loading={isLeavingMatch}
+  onCancel={() => setShowLeaveConfirm(false)}
+  onConfirm={handleConfirmLeaveGame}
+/>
 
-          {showLeaveConfirm ? (
-            <View style={styles.leaveOverlay}>
-              <View style={styles.leaveModalBackdrop}>
-                <View style={styles.leaveModal}>
-                  <Text style={styles.leaveModalTitle}>
-                    لە یارییەکە دەچیتە دەرەوە؟
-                  </Text>
-                  <Text style={styles.leaveModalBody}>
-                    If you leave now, a bot will continue playing for you. If
-                    you do not return before the current round ends, the match
-                    will be counted as a loss.
-                  </Text>
 
-                  <View style={styles.leaveModalActions}>
-                    <Pressable
-                      style={styles.leaveCancelButton}
-                      onPress={() => setShowLeaveConfirm(false)}
-                      disabled={isLeavingMatch}
-                    >
-                      <Text style={styles.leaveCancelText}>پاشگەزبوونەوە</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.leaveConfirmButton,
-                        isLeavingMatch && styles.leaveButtonDisabled,
-                      ]}
-                      onPress={handleConfirmLeaveGame}
-                      disabled={isLeavingMatch}
-                    >
-                      {isLeavingMatch ? (
-                        <ActivityIndicator color="#ffffff" size="small" />
-                      ) : (
-                        <Text style={styles.leaveConfirmText}>
-                          دەرچوون لە یاری
-                        </Text>
-                      )}
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </View>
-          ) : null}
         </TableBackground>
       </View>
     </View>
@@ -1070,6 +959,7 @@ const styles = StyleSheet.create({
 
   miniScoreBoard: {
     minWidth: 142,
+    maxWidth: 178,
     height: 42,
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -1094,6 +984,7 @@ const styles = StyleSheet.create({
 
   miniScoreItem: {
     minWidth: 46,
+    maxWidth: 78,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1101,15 +992,16 @@ const styles = StyleSheet.create({
   miniScoreLabel: {
     color: "#f8f3df",
     fontSize: 9,
-    fontFamily: "SpedaBold",
-    letterSpacing: 0.4,
+    fontFamily: "RobotoMedium",
+    letterSpacing: 0,
+    maxWidth: "100%",
   },
 
   miniScoreValue: {
     marginTop: 1,
     color: "#facc15",
     fontSize: 10,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   miniScoreDivider: {
@@ -1130,226 +1022,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(248, 243, 223, 0.22)",
   },
 
-  matchMenuOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 950,
-    elevation: 950,
-    alignItems: "flex-end",
-    justifyContent: "flex-start",
-  },
-
-  matchMenuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(1, 10, 6, 0.55)",
-  },
-
-  matchMenuPanel: {
-    width: 300,
-    maxWidth: "100%",
-    height: "100%",
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-    padding: 18,
-    overflow: "hidden",
-    backgroundColor: "rgba(54, 27, 17, 0.88)",
-    shadowColor: "#160804",
-    shadowOpacity: 0.48,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 25,
-  },
-
-  matchMenuHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingBottom: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(248,243,223,0.13)",
-  },
-
-  matchMenuTitle: {
-    color: "#f8f3ef",
-    fontSize: 16,
-    fontFamily: "SpedaBold",
-  },
-
-  matchMenuContent: {
-    paddingTop: 15,
-  },
-
-  matchMenuPlayersSection: {
-    gap: 12,
-  },
-
-  teamGroup: {
-    gap: 6,
-  },
-
-  teamGroupTitle: {
-    color: "rgba(248,243,239,0.68)",
-    fontSize: 10,
-    fontFamily: "SpedaBold",
-    letterSpacing: 0.75,
-  },
-
-  matchMenuPlayerRow: {
-    minHeight: 48,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.055)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-  },
-
-  matchMenuAvatar: {
-    borderWidth: 1.5,
-    borderColor: "rgba(250,204,21,0.75)",
-  },
-
-  matchMenuPlayerInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 9,
-  },
-
-  matchMenuPlayerNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  matchMenuPlayerName: {
-    flexShrink: 1,
-    color: "#f8f3ef",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-  },
-
-  activeTurnDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#55e58a",
-  },
-
-  matchMenuPlayerMeta: {
-    marginTop: 2,
-    color: "rgba(248,243,239,0.58)",
-    fontSize: 9,
-    fontFamily: "SpedaBold",
-  },
-
-  activeTurnLabel: {
-    color: "#55e58a",
-    fontSize: 9,
-    fontFamily: "SpedaBold",
-    letterSpacing: 0.4,
-  },
-
-  matchMenuLeaveButton: {
-    height: 42,
-    marginTop: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: "#c92d35",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-  },
-
-  matchMenuLeaveText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-  },
-
-  leaveModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.68)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-
-  leaveOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
-    elevation: 1000,
-  },
-
-  leaveModal: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 8,
-    padding: 20,
-    backgroundColor: "#082016",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.45)",
-  },
-
-  leaveModalTitle: {
-    color: "#f8f3df",
-    fontSize: 18,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
-
-  leaveModalBody: {
-    marginTop: 12,
-    color: "#d7e2d2",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-    lineHeight: 19,
-    textAlign: "center",
-  },
-
-  leaveModalActions: {
-    marginTop: 18,
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 12,
-  },
-
-  leaveCancelButton: {
-    minWidth: 112,
-    height: 38,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-  },
-
-  leaveConfirmButton: {
-    minWidth: 128,
-    height: 38,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#dc2626",
-  },
-
-  leaveButtonDisabled: {
-    opacity: 0.65,
-  },
-
-  leaveCancelText: {
-    color: "#f8f3df",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-  },
-
-  leaveConfirmText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-  },
 
   bottomArea: {
     alignItems: "center",
@@ -1378,6 +1050,6 @@ const styles = StyleSheet.create({
   countdownNumber: {
     color: "#facc15",
     fontSize: 56,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 });

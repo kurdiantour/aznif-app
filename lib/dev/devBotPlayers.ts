@@ -27,7 +27,7 @@ export const DEV_2V2_BOT_PLAYERS: readonly DevBotSeat[] = [
   },
   {
     id: "dev-opponent-1",
-    name: "Bot One",
+    name: "Shikha",
     avatarId: "avatar-1",
     seat: "left",
     kind: "bot",
@@ -35,7 +35,7 @@ export const DEV_2V2_BOT_PLAYERS: readonly DevBotSeat[] = [
   },
   {
     id: "dev-teammate",
-    name: "Bot Teammate",
+    name: "KurdishPlayer",
     avatarId: "bot-avatar",
     seat: "top",
     kind: "bot",
@@ -43,7 +43,7 @@ export const DEV_2V2_BOT_PLAYERS: readonly DevBotSeat[] = [
   },
   {
     id: "dev-opponent-2",
-    name: "Bot Two",
+    name: "ballerina",
     avatarId: "avatar-4",
     seat: "right",
     kind: "bot",

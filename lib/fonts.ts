@@ -4,6 +4,7 @@ import type { TextStyle } from "react-native";
 export const appFonts = {
   regular: "SpedaRegular",
   bold: "SpedaBold",
+  latinMedium: "RobotoMedium",
 } as const;
 
 export const appFontAssets = {
@@ -18,7 +19,10 @@ export const typography = {
   bold: {
     fontFamily: "SpedaBold",
   },
-} satisfies Record<"regular" | "bold", TextStyle>;
+  latinMedium: {
+    fontFamily: "RobotoMedium",
+  },
+} satisfies Record<"regular" | "bold" | "latinMedium", TextStyle>;
 
 let defaultsApplied = false;
 
@@ -59,6 +63,9 @@ export const fontStyles = {
   } satisfies TextStyle,
   bold: {
     ...typography.bold,
+  } satisfies TextStyle,
+  latinMedium: {
+    ...typography.latinMedium,
   } satisfies TextStyle,
   regularRtl: {
     ...typography.regular,

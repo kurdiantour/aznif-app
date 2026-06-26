@@ -189,11 +189,11 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    width: 310,
-    height: 250,
+    width: 290,
+    height: 270,
     borderRadius: 10,
-    paddingHorizontal: 26,
-    paddingTop: 16,
+    paddingHorizontal: 30,
+    paddingTop: 18,
     paddingBottom: 12,
     backgroundColor: "rgba(223, 223, 223, 0.95)",
     zIndex: 1000,
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
 
   scoreBoard: {
     flexDirection: "row",
-    height: 190,
+    height: 210,
   },
 
   teamSide: {
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
 
   verticalDivider: {
     width: 1.5,
-    height: 164,
+    height: 180,
     borderRadius: 999,
     backgroundColor: "rgba(0, 0, 0, 0.55)",
     marginHorizontal: 10,
@@ -252,8 +252,8 @@ const styles = StyleSheet.create({
     width: 15,
     color: "#000000",
     fontSize: 16,
-    fontFamily: "SpedaBold",
-    lineHeight: 16,
+    fontFamily: "RobotoMedium",
+    lineHeight: 14,
     textAlign: "center",
     textShadowColor: "rgba(0, 0, 0, 0.35)",
     textShadowOffset: { width: 0, height: 0 },
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     width: 15,
     color: "#000000",
     fontSize: 14,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     lineHeight: 14,
     textAlign: "center",
     textShadowColor: "rgba(0, 0, 0, 0.3)",
@@ -277,10 +277,10 @@ const styles = StyleSheet.create({
   },
 
   numericScore: {
-    marginTop: 8,
+    marginTop: 30,
     color: "#000000",
     fontSize: 16,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   winnerText: {
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: "#000000",
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   bottomDivider: {

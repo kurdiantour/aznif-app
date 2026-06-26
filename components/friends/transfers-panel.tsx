@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   transferAmount: {
     minWidth: 96,
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "left",
   },
 

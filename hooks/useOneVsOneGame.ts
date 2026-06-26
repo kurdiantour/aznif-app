@@ -468,29 +468,19 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     const awardedPoints = rawState?.lastScoringEvent?.points ?? 0;
 
     if (
-      Array.isArray(rawState?.revealedFinalHands) &&
-      rawState.revealedFinalHands.length >= 2
+      !Array.isArray(rawState?.revealedFinalHands) ||
+      rawState.revealedFinalHands.length < 2
     ) {
-      return buildRoundResult({
-        winnerId,
-        winnerTeam,
-        awardedPoints,
-        players,
-        hands: rawState.revealedFinalHands,
-      });
+      return null;
     }
 
-    return {
+    return buildRoundResult({
       winnerId,
       winnerTeam,
       awardedPoints,
-      remainingTilesByPlayer: Object.fromEntries(
-        players.map((player) => [player.id, []]),
-      ),
-      remainingPipsByPlayer: Object.fromEntries(
-        players.map((player) => [player.id, 0]),
-      ),
-    };
+      players,
+      hands: rawState.revealedFinalHands,
+    });
   }, [playersRows, rawState]);
 
   const { phase, roundResult, nextRoundCountdown, resetRoundPresentation } =

@@ -13,7 +13,7 @@ import { useRoundLifecycle } from './useRoundLifecycle';
 import { createAiPracticeDeal, findAiOpeningDoubleAndStarter } from './aiPracticeLocal';
 import { PLAYER_TURN_DURATION_SECONDS, pickPreferredBranch } from './gameShared';
 
-const BOT_TURN_DELAY_MS = 5_000;
+const BOT_TURN_DELAY_MS = 1_000;
 
 /** Local-only 2v2 test game. It deliberately has no Supabase dependency. */
 export function useDevTwoVsTwoBotGame(): MockGameState {

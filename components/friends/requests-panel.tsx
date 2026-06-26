@@ -242,14 +242,14 @@ const styles = StyleSheet.create({
   name: {
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   playerId: {
     marginTop: 5,
     color: "#aaa7bc",
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   requestButtons: {

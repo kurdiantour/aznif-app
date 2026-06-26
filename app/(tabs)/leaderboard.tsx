@@ -260,6 +260,7 @@ const styles = StyleSheet.create({
   rankText: {
     color: "#f8fafc",
     fontSize: 11,
+    fontFamily: "RobotoMedium",
     fontWeight: "900",
     textAlign: "center",
   },
@@ -276,6 +277,7 @@ const styles = StyleSheet.create({
   playerName: {
     color: "#ffffff",
     fontSize: 11,
+    fontFamily: "RobotoMedium",
     fontWeight: "900",
     letterSpacing: 0.7,
   },
@@ -288,6 +290,7 @@ const styles = StyleSheet.create({
   levelText: {
     color: "#cbd5e1",
     fontSize: 11,
+    fontFamily: "RobotoMedium",
     fontWeight: "900",
   },
 
@@ -299,6 +302,7 @@ const styles = StyleSheet.create({
   pointsText: {
     color: "#f97316",
     fontSize: 11,
+    fontFamily: "RobotoMedium",
     fontWeight: "900",
   },
 
@@ -310,6 +314,7 @@ const styles = StyleSheet.create({
   goldText: {
     color: "#d6d3d1",
     fontSize: 11,
+    fontFamily: "RobotoMedium",
     fontWeight: "900",
   },
 });

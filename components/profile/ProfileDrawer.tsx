@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     maxWidth: 176,
     color: "#ffffff",
     fontSize: 16,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "center",
   },
 
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     paddingHorizontal: 10,
     fontSize: 15,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "center",
   },
 
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     letterSpacing: 0.4,
     textAlign: "right",
     writingDirection: "rtl",
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   pointsText: {
     color: "#fff",
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     writingDirection: "rtl",
     textAlign: "right",
   },

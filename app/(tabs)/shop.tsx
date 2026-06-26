@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(230,238,255,0.34)",
     backgroundColor: "rgba(7,9,19,0.76)",
   },
-  priceText: { color: "#f7d979", fontSize: 10, fontFamily: "SpedaBold" },
+  priceText: { color: "#f7d979", fontSize: 10, fontFamily: "RobotoMedium" },
   equippedBadge: {
     flexDirection: "row-reverse",
     alignItems: "center",

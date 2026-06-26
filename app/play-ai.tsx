@@ -1,6 +1,10 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
 import { useProfile } from "@/lib/profile";
+import {
+  calculateLevelFromPoints,
+  getRankTitleFromLevel,
+} from "@/lib/progression";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
@@ -25,7 +29,7 @@ function createPracticeMatchId() {
 
 type PlayerCardProps = {
   name: string;
-  rating?: string;
+  level?: number;
   filled?: boolean;
   delay?: number;
   avatarId?: AvatarId;
@@ -33,7 +37,7 @@ type PlayerCardProps = {
 
 function PlayerCard({
   name,
-  rating,
+  level,
   filled,
   delay = 0,
   avatarId,
@@ -99,7 +103,7 @@ function PlayerCard({
         </Text>
 
         <Text style={styles.playerRating}>
-          {filled ? `پلە: ${rating ?? "0"}` : "بەرامبەرە زیرەکە"}
+          {filled ? getRankTitleFromLevel(level) : "بەرامبەرە زیرەکە"}
         </Text>
       </LinearGradient>
     </Animated.View>
@@ -172,7 +176,8 @@ export default function PlayAIModeScreen() {
   });
 
   const playerName = profile?.displayName ?? profile?.username ?? "یاریزان";
-  const playerRating = String(profile?.points ?? 0);
+  const playerLevel =
+    profile?.level ?? calculateLevelFromPoints(profile?.points);
   const playerAvatarId = profile?.avatarId as AvatarId | undefined;
 
   return (
@@ -188,7 +193,7 @@ export default function PlayAIModeScreen() {
           <View style={styles.sidePlayers}>
             <PlayerCard
               name={playerName}
-              rating={playerRating}
+              level={playerLevel}
               filled
               avatarId={playerAvatarId}
             />
@@ -213,7 +218,7 @@ export default function PlayAIModeScreen() {
           <View style={styles.sidePlayers}>
             <PlayerCard
               name="AI Bot"
-              rating="Practice"
+              level={1}
               filled
               avatarId="bot-avatar"
             />
@@ -297,7 +302,7 @@ const styles = StyleSheet.create({
   emptyAvatarText: {
     color: "#ffffff",
     fontSize: 24,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   onlineDot: {
@@ -313,7 +318,7 @@ const styles = StyleSheet.create({
   playerName: {
     color: "#ffffff",
     fontSize: 15,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     marginBottom: 5,
     maxWidth: 88,
   },
@@ -321,7 +326,7 @@ const styles = StyleSheet.create({
   playerRating: {
     color: "#d7c9ef",
     fontSize: 10,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   centerColumn: {

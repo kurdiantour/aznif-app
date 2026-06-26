@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     maxWidth: 105,
     color: "#ffffff",
     fontSize: 14,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "right",
   },
 
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
   balanceText: {
     color: "#ffffff",
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     letterSpacing: 0.2,
     flexShrink: 0,
   },

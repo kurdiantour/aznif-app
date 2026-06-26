@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   timerText: {
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   avatar: {
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: "#5a3b22",
     fontSize: 18,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   info: {
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   name: {
     color: "#f5e4c7",
     fontSize: 14,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     maxWidth: 82,
   },
 

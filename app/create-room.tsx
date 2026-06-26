@@ -9,14 +9,16 @@ import { supabase } from "@/lib/supabase";
 import { getBalance } from "@/lib/wallet";
 import { Wallet } from "@/types/wallet";
 
-const BET_OPTIONS = [50, 100];
+const BET_OPTIONS = [1, 5];
+const PRIVATE_ROOM_BET_AMOUNT = 10;
 
 export default function CreateRoomScreen() {
   const router = useRouter();
   const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [selectedBet, setSelectedBet] = useState(50);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [privateSubmitting, setPrivateSubmitting] = useState(false);
+  const [publicSubmitting, setPublicSubmitting] = useState(false);
+  const [joinSubmitting, setJoinSubmitting] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -34,29 +36,42 @@ export default function CreateRoomScreen() {
 
   const openRoom = (roomId: string, code = "") => router.replace({ pathname: "/matchmaking", params: { mode: "1v1", matchmaking_status: "private", room_id: roomId, room_code: code, matchType: "private" } });
   const createRoom = async () => {
-    setSubmitting(true); setError(null);
+    setPrivateSubmitting(true); setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc("create_one_vs_one_room", { p_bet_amount: selectedBet });
+      const { data, error: rpcError } = await supabase.rpc("create_one_vs_one_room", { p_bet_amount: PRIVATE_ROOM_BET_AMOUNT });
       if (rpcError) throw rpcError;
       if (!data?.id) throw new Error("Unable to create a private room.");
       openRoom(data.id, data.room_code);
     } catch (reason) { setError(roomError(reason, "Unable to create private room.")); }
-    finally { setSubmitting(false); }
+    finally { setPrivateSubmitting(false); }
   };
   const joinRoom = async () => {
     const code = roomCode.trim().toUpperCase();
     if (!code) { setError("Enter a room code."); return; }
-    setSubmitting(true); setError(null);
+    setJoinSubmitting(true); setError(null);
     try {
       const { data, error: rpcError } = await supabase.rpc("join_one_vs_one_room", { p_room_code: code });
       if (rpcError) throw rpcError;
       if (!data?.room_id) throw new Error("Unable to join this private room.");
       openRoom(data.room_id, code);
     } catch (reason) { setError(roomError(reason, "Unable to join private room.")); }
-    finally { setSubmitting(false); }
+    finally { setJoinSubmitting(false); }
+  };
+  const startPublicMatch = async () => {
+    setPublicSubmitting(true); setError(null);
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc("find_one_vs_one_opponent");
+      if (rpcError) throw rpcError;
+      if (!result?.room_id) throw new Error("Unable to start matchmaking.");
+      router.replace({ pathname: "/matchmaking", params: { mode: "1v1", matchmaking_status: result.status, room_id: result.room_id, matchType: "duo" } });
+    } catch (reason) { setError(roomError(reason, "Unable to start matchmaking.")); }
+    finally { setPublicSubmitting(false); }
   };
 
   if (loading) return <View style={styles.screen}><LobbyHeader /><View style={styles.loading}><ActivityIndicator size="large" color="#fff" /></View><BottomNav active="home" /></View>;
+
+  const submitting = privateSubmitting || publicSubmitting || joinSubmitting;
+  const privateRoomDisabled = !wallet || wallet.balances.mc < PRIVATE_ROOM_BET_AMOUNT;
 
   return <View style={styles.screen}>
     <LobbyHeader />
@@ -65,10 +80,10 @@ export default function CreateRoomScreen() {
         <Image source={require("@/assets/images/lobby/create-room.webp")} style={styles.cover} resizeMode="cover" />
         <LinearGradient colors={["transparent", "rgba(8,9,20,0.97)"]} style={styles.createFade} />
         <View style={styles.createCardBody}>
-          <Text style={styles.heading}>دروستکردنی ژوور</Text>
-          <Text style={styles.description}>مێزێکی تایبەتی ١ بەرامبەر ١ دروست بکە</Text>
-          <Pressable style={[styles.button, styles.createButton, submitting && styles.dim]} onPress={createRoom} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>دروستکردنی ژوور</Text>}
+          <Text style={styles.description}>دروستکردنی مێزێکی تایبەت</Text>
+          <Text style={styles.description}>بەشداری: ( {PRIVATE_ROOM_BET_AMOUNT.toLocaleString("en-US")} ) ئەزنیف</Text>
+          <Pressable style={[styles.button, styles.createButton, (privateRoomDisabled || submitting) && styles.dim]} onPress={createRoom} disabled={privateRoomDisabled || submitting}>
+            {privateSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>دروستکردنی ژوور</Text>}
           </Pressable>
         </View>
       </View>
@@ -76,23 +91,21 @@ export default function CreateRoomScreen() {
       <View style={[styles.card, styles.joinCard]}>
         <LinearGradient colors={["#193656", "#13243b", "#10141e"]} style={StyleSheet.absoluteFillObject} />
         <View style={styles.cardBody}>
-          <Text style={styles.heading}>چوونە ژوور</Text>
-          <Text style={styles.description}>کۆدی ژووری هاوڕێکەت بنووسە</Text>
-          <TextInput value={roomCode} onChangeText={setRoomCode} placeholder="کۆدی ژوور" placeholderTextColor="#9faec6" autoCapitalize="characters" editable={!submitting} style={styles.input} />
+          <TextInput value={roomCode} onChangeText={setRoomCode} placeholder="کۆدی ژوورەوە" placeholderTextColor="#9faec6" autoCapitalize="characters" editable={!submitting} style={styles.input} />
           <Pressable style={[styles.button, styles.joinButton, submitting && styles.dim]} onPress={joinRoom} disabled={submitting}>
-            <Text style={styles.buttonText}>چوونە ژوور</Text>
+            <Text style={styles.buttonText}>چوونە ژوورەوە</Text>
           </Pressable>
         </View>
       </View>
 
       {BET_OPTIONS.map((amount) => {
         const disabled = !wallet || amount > wallet.balances.mc;
-        return <Pressable key={amount} style={[styles.card, styles.matchCard, selectedBet === amount && styles.activeBet, disabled && styles.dim]} onPress={() => { setSelectedBet(amount); setError(null); }} disabled={disabled}>
-          <LinearGradient colors={amount === 50 ? ["#4d320d", "#795011", "#17151b"] : ["#412162", "#7220c3", "#181426"]} locations={[0, 0.67, 1]} style={StyleSheet.absoluteFillObject} />
+        return <Pressable key={amount} style={[styles.card, styles.matchCard, disabled && styles.dim]} onPress={startPublicMatch} disabled={disabled || submitting}>
+          <LinearGradient colors={amount === 1 ? ["#4d320d", "#795011", "#17151b"] : ["#412162", "#7220c3", "#181426"]} locations={[0, 0.67, 1]} style={StyleSheet.absoluteFillObject} />
           <View style={styles.cardBody}>
             <Text style={styles.heading}>پێکدادان</Text>
             <Text style={styles.description}>
-              بەشداری: {amount.toLocaleString("ar-IQ")} ئەزنیف
+              بەشداری: ( {amount.toLocaleString("en-US")} ) ئەزنیف
             </Text>
             <View style={[styles.button, styles.searchButton]}><Text style={styles.buttonText}>گەڕان</Text></View>
           </View>
@@ -115,13 +128,13 @@ const styles = StyleSheet.create({
   activeBet: {},
   cover: { width: "100%", height: "100%" },
   createFade: { position: "absolute", left: 0, right: 0, bottom: 0, height: "48%" },
-  cardBody: { flex: 1, justifyContent: "flex-end", padding: 18 },
-  createCardBody: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 18 },
-  heading: { color: "#fff", fontSize: 21, fontFamily: "SpedaBold" },
-  description: { marginTop: 4, color: "#f3f4f6", fontSize: 11, fontFamily: "SpedaBold" },
-  button: { height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 13 },
+  cardBody: { flex: 1, justifyContent: "flex-end", alignItems: "center", padding: 18 },
+  createCardBody: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", padding: 18 },
+  heading: { color: "#fff", fontSize: 17, fontFamily: "SpedaBold", textAlign: "center" },
+  description: { marginTop: 4, color: "#f3f4f6", fontSize: 11, fontFamily: "SpedaBold", textAlign: "center" },
+  button: { width: "100%", height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 13 },
   createButton: { backgroundColor: "#8b5be4" }, joinButton: { backgroundColor: "#2853a4" }, searchButton: { backgroundColor: "#cf8f08" },
-  buttonText: { color: "#fff", fontSize: 11, fontFamily: "SpedaBold" },
-  input: { height: 40, marginTop: 13, borderRadius: 11, borderWidth: 1, borderColor: "#426184", backgroundColor: "rgba(10, 17, 31, 0.64)", color: "#fff", paddingHorizontal: 14, fontSize: 11, fontFamily: "SpedaBold" },
+  buttonText: { color: "#fff", fontSize: 11, fontFamily: "SpedaBold", textAlign: "center" },
+  input: { width: "100%", height: 40, marginTop: 13, borderRadius: 11, borderWidth: 1, borderColor: "#426184", backgroundColor: "rgba(10, 17, 31, 0.64)", color: "#fff", paddingHorizontal: 14, fontSize: 11, fontFamily: "SpedaBold", textAlign: "center" },
   dim: { opacity: 0.46 }, error: { marginTop: 10, color: "#ff9a9a", textAlign: "center", fontSize: 12, fontFamily: "SpedaBold" },
 });

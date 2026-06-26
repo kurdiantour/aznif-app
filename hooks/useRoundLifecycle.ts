@@ -42,8 +42,14 @@ export function useRoundLifecycle({
       return;
     }
 
-    if (winningTeamId || scheduledWinnerRef.current === roundWinnerPlayerId) return;
+if (winningTeamId) {
+  clearRoundPhaseTimers(phaseTimerRef, countdownIntervalRef);
+  scheduledWinnerRef.current = null;
+  setPhase('playing');
+  return;
+}
 
+if (scheduledWinnerRef.current === roundWinnerPlayerId) return;
     const result = buildRoundResult(roundWinnerPlayerId);
     if (!result) return;
 

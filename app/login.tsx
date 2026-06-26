@@ -230,11 +230,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(33, 65, 111, 0.65)",
     fontSize: 13,
+    fontFamily: "RobotoMedium",
   },
 
   messageText: {
     color: "#fca5a5",
     fontSize: 12,
+    fontFamily: "RobotoMedium",
     marginBottom: 10,
     textAlign: "center",
   },
@@ -258,7 +260,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#ffffff",
     fontSize: 14,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   switchButton: {
@@ -269,6 +271,6 @@ const styles = StyleSheet.create({
   switchButtonText: {
     color: "#9fc2ff",
     fontSize: 12,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 });

@@ -15,7 +15,7 @@ type WinningContext = { tileId: string | null; translateY: Animated.Value; scale
 const TILE_GAP = 1;
 const BASE_TILE_WIDTH = 46;
 const BASE_TILE_HEIGHT = 80;
-const ZOOM_LEVELS = [1, 0.84, 0.76] as const;
+const ZOOM_LEVELS = [1, 0.9, 0.86] as const;
 const WinningTileAnimationContext = createContext<WinningContext | null>(null);
 
 function isHorizontal(direction: Direction) { return direction === "left" || direction === "right"; }

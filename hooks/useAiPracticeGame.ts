@@ -67,6 +67,8 @@ export function useAiPracticeGame(): AiPracticeGameState {
   const [roundWinnerPlayerId, setRoundWinnerPlayerId] = useState<string | null>(null);
   const [lastPlayedTile, setLastPlayedTile] = useState<DominoTileData | null>(null);
   const [lastPassedPlayerId, setLastPassedPlayerId] = useState<string | null>(null);
+  const [roundEndReason, setRoundEndReason] =
+    useState<"blocked" | "empty_hand" | null>(null);
   const [lastScoringEvent, setLastScoringEvent] =
     useState<GameState['lastScoringEvent']>(null);
 
@@ -90,6 +92,13 @@ export function useAiPracticeGame(): AiPracticeGameState {
     isOpeningRound,
     openingDouble,
   );
+  const boneyardHasPlayableTile = canHandMove(
+    boneyard,
+    board,
+    spinnerValue,
+    isOpeningRound,
+    openingDouble,
+  );
 
   const canDrawTile =
     currentIndex === 0 &&
@@ -98,6 +107,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     !winningTeamId &&
     !hasPlayableTile &&
     boneyard.length > 0 &&
+    boneyardHasPlayableTile &&
     humanDrawsThisTurn < MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN;
 
   const setHumanDrawCount = (count: number) => {
@@ -191,6 +201,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }
 
     setRoundWinnerPlayerId(winner.id);
+    setRoundEndReason("blocked");
     setLeaderIndex(winnerIndex);
     return true;
   };
@@ -208,6 +219,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     setIsOpeningRound(NEXT_HAND_OPENING_STATE.isOpeningRound);
     setOpeningDouble(NEXT_HAND_OPENING_STATE.openingDouble);
     setRoundWinnerPlayerId(null);
+    setRoundEndReason(null);
     setLastPlayedTile(null);
     setLastPassedPlayerId(null);
     setLastScoringEvent(null);
@@ -223,11 +235,12 @@ export function useAiPracticeGame(): AiPracticeGameState {
     return buildRoundResult({
       winnerId,
       winnerTeam: winnerIndex >= 0 ? seats[winnerIndex].teamId : undefined,
+      endReason: roundEndReason ?? undefined,
       awardedPoints: lastScoringEvent?.points ?? 0,
       players: seats.map((seat, playerIndex) => ({ id: seat.id, playerIndex })),
       hands,
     });
-  }, [hands, lastScoringEvent?.points, seats]);
+  }, [hands, lastScoringEvent?.points, roundEndReason, seats]);
 
   const { phase, roundResult, nextRoundCountdown } = useRoundLifecycle({
     roundWinnerPlayerId,
@@ -239,6 +252,34 @@ export function useAiPracticeGame(): AiPracticeGameState {
   const playabilityContext = { board, spinnerValue, isOpeningRound, openingDouble };
   const availableBranchesForTile = (tile: DominoTileData) =>
     getAvailableBranches(tile, playabilityContext);
+
+  const isRoundBlocked = useCallback((
+    candidateHands: DominoTileData[][] = hands,
+    candidateBoard: KozelBoardState = board,
+    candidateSpinnerValue: number | null = spinnerValue,
+    candidateIsOpeningRound: boolean = isOpeningRound,
+    candidateOpeningDouble: number | null = openingDouble,
+    candidateBoneyard: DominoTileData[] = boneyard,
+  ) => {
+    if (!candidateBoard.centerTile) return false;
+
+    return (
+      !canAnyPlayerMove(
+        candidateHands,
+        candidateBoard,
+        candidateSpinnerValue,
+        candidateIsOpeningRound,
+        candidateOpeningDouble,
+      ) &&
+      !canHandMove(
+        candidateBoneyard,
+        candidateBoard,
+        candidateSpinnerValue,
+        candidateIsOpeningRound,
+        candidateOpeningDouble,
+      )
+    );
+  }, [board, boneyard, hands, isOpeningRound, openingDouble, spinnerValue]);
 
   const passTurnInternal = (playerIndex: number, force = false) => {
     if (roundWinnerPlayerId) return false;
@@ -345,16 +386,13 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
     if (nextHands[playerIndex].length === 0) {
       awardEndOfHandPoints(player.teamId, player.id, nextHands);
+      setRoundEndReason("empty_hand");
       setRoundWinnerPlayerId(player.id);
       setLeaderIndex(playerIndex);
       return true;
     }
 
-    const blocked =
-      !canAnyPlayerMove(nextHands, nextBoard, nextSpinnerValue, false, null) &&
-      boneyard.length === 0;
-
-    if (blocked) {
+    if (isRoundBlocked(nextHands, nextBoard, nextSpinnerValue, false, null)) {
       resolveBlockedRound(nextHands, playerIndex);
       return true;
     }
@@ -388,6 +426,12 @@ export function useAiPracticeGame(): AiPracticeGameState {
     );
 
     if (playerHasPlayableTile) return false;
+
+    if (isRoundBlocked()) {
+      const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
+      resolveBlockedRound(hands, blockerIndex);
+      return false;
+    }
 
     const drawnTile = boneyard[0];
     const nextBoneyard = boneyard.slice(1);
@@ -443,6 +487,12 @@ export function useAiPracticeGame(): AiPracticeGameState {
     const currentHand = hands[playerIndex] ?? [];
 
     if (canHandMove(currentHand, board, spinnerValue, isOpeningRound, openingDouble)) {
+      return false;
+    }
+
+    if (isRoundBlocked()) {
+      const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
+      resolveBlockedRound(hands, blockerIndex);
       return false;
     }
 
@@ -511,11 +561,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     const timer = setTimeout(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          if (
-            board.centerTile &&
-            !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) &&
-            boneyard.length === 0
-          ) {
+          if (isRoundBlocked()) {
             const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
             resolveBlockedRound(hands, blockerIndex);
             return PLAYER_TURN_DURATION_SECONDS;
@@ -542,6 +588,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     openingDouble,
     currentIndex,
     humanDrawsThisTurn,
+    isRoundBlocked,
   ]);
 
   useEffect(() => {
@@ -572,15 +619,11 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
       if (botMove) {
         playTileForPlayer(botMove.tile, currentIndex, botMove.branch);
-      } else if (board.centerTile && boneyard.length > 0) {
-        drawUntilPlayableForBot(currentIndex);
-      } else if (
-        board.centerTile &&
-        !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) &&
-        boneyard.length === 0
-      ) {
+      } else if (isRoundBlocked()) {
         const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
         resolveBlockedRound(hands, blockerIndex);
+      } else if (board.centerTile && boneyard.length > 0) {
+        drawUntilPlayableForBot(currentIndex);
       } else {
         passTurnInternal(currentIndex);
       }
@@ -603,6 +646,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     spinnerValue,
     isOpeningRound,
     openingDouble,
+    isRoundBlocked,
   ]);
 
   const players: Player[] = seats.map((seat, index) => ({

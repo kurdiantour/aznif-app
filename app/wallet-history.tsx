@@ -154,17 +154,19 @@ const styles = StyleSheet.create({
   transactionLabel: {
     color: "#cbd5e1",
     fontSize: 13,
+    fontFamily: "RobotoMedium",
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   transactionAmount: {
     color: "#ffffff",
     fontSize: 18,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
   transactionDetail: {
     color: "#b7c5ff",
     fontSize: 13,
+    fontFamily: "RobotoMedium",
     marginTop: 4,
   },
 });

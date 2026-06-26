@@ -1,6 +1,10 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentProfile } from "@/lib/profile";
+import {
+  calculateLevelFromPoints,
+  getRankTitleFromLevel,
+} from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,7 +26,7 @@ type MatchPlayer = {
   id: string;
   userId: string | null;
   name: string;
-  rating?: string;
+  level?: number;
   avatarId?: AvatarId;
   playerIndex: number;
   seat?: string | null;
@@ -32,7 +36,7 @@ type MatchPlayer = {
 
 type PlayerCardProps = {
   name: string;
-  rating?: string;
+  level?: number;
   filled?: boolean;
   delay?: number;
   avatarId?: AvatarId;
@@ -40,7 +44,7 @@ type PlayerCardProps = {
 
 function PlayerCard({
   name,
-  rating,
+  level,
   filled,
   delay = 0,
   avatarId,
@@ -101,10 +105,16 @@ function PlayerCard({
           {filled && <View style={styles.onlineDot} />}
         </View>
 
-        <Text style={styles.playerName}>{name}</Text>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={styles.playerName}
+        >
+          {name}
+        </Text>
 
         <Text style={styles.playerRating}>
-          {filled ? `پلە: ${rating ?? "0"}` : "گەڕان..."}
+          {filled ? getRankTitleFromLevel(level) : "گەڕان..."}
         </Text>
       </LinearGradient>
     </Animated.View>
@@ -130,7 +140,7 @@ function renderPlayerSlot(
     <PlayerCard
       key={player.id}
       name={player.name}
-      rating={player.rating ?? "0"}
+      level={player.level}
       filled
       avatarId={player.avatarId}
     />
@@ -199,7 +209,7 @@ export default function MatchmakingScreen() {
             id: profile.id,
             userId: profile.id,
             name: profile.displayName ?? profile.id,
-            rating: String(profile.points ?? 0),
+            level: profile.level ?? calculateLevelFromPoints(profile.points),
             avatarId: profile.avatarId as AvatarId | undefined,
             playerIndex: 0,
           });
@@ -307,7 +317,7 @@ export default function MatchmakingScreen() {
             id: String(row.id ?? row.user_id ?? `player-${index}`),
             userId: row.user_id ?? null,
             name: profile?.username ?? `یاریزان ${index + 1}`,
-            rating: String(profile?.points ?? 0),
+            level: profile?.level ?? calculateLevelFromPoints(profile?.points),
             avatarId: profile?.avatar_id as AvatarId | undefined,
             playerIndex:
               typeof row.player_index === "number" ? row.player_index : index,
@@ -727,7 +737,7 @@ const styles = StyleSheet.create({
   emptyAvatarText: {
     color: "#ffffff",
     fontSize: 24,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   onlineDot: {
@@ -743,14 +753,16 @@ const styles = StyleSheet.create({
   playerName: {
     color: "#ffffff",
     fontSize: 15,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     marginBottom: 5,
+    maxWidth: 88,
+    textAlign: "center",
   },
 
   playerRating: {
     color: "#d7c9ef",
     fontSize: 10,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
   },
 
   centerColumn: {
@@ -810,15 +822,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#a855f7",
   },
-  roomCodeLabel: { color: "#d8b4fe", fontFamily: "SpedaBold", fontSize: 12 },
+  roomCodeLabel: { color: "#d8b4fe", fontFamily: "RobotoMedium", fontSize: 12 },
   roomCodeValue: {
     color: "#ffffff",
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     fontSize: 24,
     letterSpacing: 3,
     marginTop: 3,
   },
-  roomCodeHint: { color: "#b7c8e8", fontSize: 11, marginTop: 3 },
+  roomCodeHint: {
+    color: "#b7c8e8",
+    fontFamily: "RobotoMedium",
+    fontSize: 11,
+    marginTop: 3,
+  },
 
   timer: {
     color: "#ffffff",
