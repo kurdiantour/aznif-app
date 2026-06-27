@@ -136,7 +136,7 @@ export function shouldRefusePassBecauseDrawAvailable1v1(
 
 export function resolveBlockedRound1v1(
   blockedHands: DominoTileData[][],
-  _blockerIndex: number,
+  blockerIndex: number,
   seats: SeatDefinition[],
   addTeamPoints: (
     teamId: TeamId,
@@ -163,15 +163,15 @@ export function resolveBlockedRound1v1(
   }
 
   setRoundWinnerPlayerId(scoreWinner.id);
-  setLeaderIndex(playerIndex);
-  setNextRoundLeaderIndex(playerIndex);
+  setLeaderIndex(blockerIndex);
+  setNextRoundLeaderIndex(blockerIndex);
 
   return true;
 }
 
 export function resolveBlockedRound2v2(
   blockedHands: DominoTileData[][],
-  _blockerIndex: number,
+  blockerIndex: number,
   seats: SeatDefinition[],
   teamScoresRef: MutableRefObject<Record<TeamId, number>>,
   addTeamPoints: (
@@ -216,8 +216,8 @@ export function resolveBlockedRound2v2(
   }
 
   setRoundWinnerPlayerId(scoreWinner.id);
-  setLeaderIndex(lowestIndex);
-  setNextRoundLeaderIndex(lowestIndex);
+  setLeaderIndex(blockerIndex);
+  setNextRoundLeaderIndex(blockerIndex);
 
   return true;
 }

@@ -54,6 +54,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const roomChannelRef = useRef<any>(null);
   const playersChannelRef = useRef<any>(null);
+  const pollInFlightRef = useRef(false);
   const botTurnInFlightRef = useRef(false);
   const latestVersionRef = useRef(-1);
   const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
@@ -182,6 +183,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
           )
           .subscribe((status, err) => {
             if (!mounted) return;
+            if (status === 'SUBSCRIBED') void loadRoom();
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setError(err?.message ?? 'Realtime sync failed');
             }
@@ -204,6 +206,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
           )
           .subscribe((status, err) => {
             if (!mounted) return;
+            if (status === 'SUBSCRIBED') void loadPlayers();
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setError(err?.message ?? 'Realtime player sync failed');
             }
@@ -233,6 +236,28 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       }
     };
   }, [roomId, applySnapshot, refreshSnapshot]);
+
+  useEffect(() => {
+    if (!roomId || rawState?.status === 'finished' || rawState?.winningTeamId) return;
+
+    const pollSnapshot = async () => {
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      try {
+        await refreshSnapshot();
+      } catch (err) {
+        console.warn('2v2 snapshot polling failed', err);
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+
+    const interval = setInterval(() => void pollSnapshot(), 2000);
+    return () => {
+      clearInterval(interval);
+      pollInFlightRef.current = false;
+    };
+  }, [roomId, rawState?.status, rawState?.winningTeamId, refreshSnapshot]);
 
   useEffect(() => {
     if (!roomId || !currentUserId) return;

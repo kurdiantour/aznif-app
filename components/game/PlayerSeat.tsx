@@ -258,20 +258,7 @@ const styles = StyleSheet.create({
 
     paddingLeft: 6,
     paddingRight: 12,
-
-    borderRadius: 10,
-
-    backgroundColor: "rgba(255,255,255,0.12)",
-
-    borderWidth: 1,
-    borderColor: "rgba(248, 243, 223, 0.22)",
-
-    shadowColor: "#000",
-    shadowOpacity: 0.28,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-
-    elevation: 6,
+    marginTop: 10,
   },
 
   avatarWrap: {
@@ -330,7 +317,7 @@ const styles = StyleSheet.create({
     color: "#f5e4c7",
     fontSize: 14,
     fontFamily: "RobotoMedium",
-    maxWidth: 82,
+    minWidth: 190,
   },
 
   tileRow: {

@@ -346,11 +346,13 @@ export default async function handler(req: Request) {
         lastScoringEvent,
         roundWinnerPlayerId: winner.user_id,
         roundEndReason: "blocked",
-        leaderPlayerId: winner.user_id,
+        // The player whose tile closed the board is king next hand. Scoring
+        // still belongs to the lowest-pip player/team above.
+        leaderPlayerId: user.id,
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
       };
-      nextTurnPlayerId = winner.user_id;
+      nextTurnPlayerId = user.id;
       if (finished.winningTeamId) {
         nextStatus = "finished";
       }

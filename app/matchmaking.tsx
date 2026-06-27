@@ -6,6 +6,7 @@ import {
   getRankTitleFromLevel,
 } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
+import { prepareMultiplayerGameLaunch } from "@/lib/game/gameLaunchPreload";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -194,6 +195,7 @@ export default function MatchmakingScreen() {
   );
   const countdownSecondsRef = useRef<number | null>(null);
   const navigationStartedRef = useRef(false);
+  const gamePreparationRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -268,6 +270,7 @@ export default function MatchmakingScreen() {
 
   useEffect(() => {
     let mounted = true;
+    let playersLoadInFlight = false;
 
     const loadPlayers = async () => {
       if (!currentRoomId) {
@@ -275,16 +278,20 @@ export default function MatchmakingScreen() {
         return;
       }
 
-      const { data: playerRows, error: playersError } = await supabase
-        .from(isOneVsOne ? "one_vs_one_players" : "two_vs_two_players")
-        .select("id, user_id, player_index, seat, team_id, kind, connected")
-        .eq("room_id", currentRoomId)
-        .order("player_index", { ascending: true });
+      if (playersLoadInFlight) return;
+      playersLoadInFlight = true;
 
-      if (playersError) {
-        console.warn("Unable to load matchmaking players", playersError);
-        return;
-      }
+      try {
+        const { data: playerRows, error: playersError } = await supabase
+          .from(isOneVsOne ? "one_vs_one_players" : "two_vs_two_players")
+          .select("id, user_id, player_index, seat, team_id, kind, connected")
+          .eq("room_id", currentRoomId)
+          .order("player_index", { ascending: true });
+
+        if (playersError) {
+          console.warn("Unable to load matchmaking players", playersError);
+          return;
+        }
 
       const userIds = (playerRows ?? [])
         .map((row: any) => row.user_id)
@@ -328,7 +335,10 @@ export default function MatchmakingScreen() {
         },
       );
 
-      setPlayers(mappedPlayers);
+        setPlayers(mappedPlayers);
+      } finally {
+        playersLoadInFlight = false;
+      }
     };
 
     void loadPlayers();
@@ -349,10 +359,25 @@ export default function MatchmakingScreen() {
           void loadPlayers();
         },
       )
-      .subscribe();
+      .subscribe((status, error) => {
+        if (!mounted) return;
+
+        // Close the read-before-subscribe race and recover after reconnects.
+        if (status === "SUBSCRIBED") void loadPlayers();
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("Matchmaking realtime sync failed", error);
+        }
+      });
+
+    // Realtime is the fast path; polling guarantees that a dropped event does
+    // not leave one player waiting forever (especially in private rooms).
+    const playersFallbackInterval = setInterval(() => {
+      void loadPlayers();
+    }, 2000);
 
     return () => {
       mounted = false;
+      clearInterval(playersFallbackInterval);
       void supabase.removeChannel(channel);
     };
   }, [currentRoomId, isOneVsOne]);
@@ -550,6 +575,12 @@ export default function MatchmakingScreen() {
     const startValue = 5;
     countdownSecondsRef.current = startValue;
     setCountdownSeconds(startValue);
+    gamePreparationRef.current = prepareMultiplayerGameLaunch(
+      currentRoomId,
+      gameMode,
+    ).catch((error) => {
+      console.warn("Unable to fully preload game launch", error);
+    });
 
     countdownIntervalRef.current = setInterval(() => {
       const previous = countdownSecondsRef.current ?? 0;
@@ -566,14 +597,17 @@ export default function MatchmakingScreen() {
 
         if (!navigationStartedRef.current) {
           navigationStartedRef.current = true;
-          router.replace({
-            pathname: "/game",
-            params: {
-              mode: gameMode,
-              room_id: currentRoomId,
-              matchType: currentMatchType,
-            },
-          });
+          void (async () => {
+            await gamePreparationRef.current;
+            router.replace({
+              pathname: "/game",
+              params: {
+                mode: gameMode,
+                room_id: currentRoomId,
+                matchType: currentMatchType,
+              },
+            });
+          })();
         }
       }
     }, 1000);

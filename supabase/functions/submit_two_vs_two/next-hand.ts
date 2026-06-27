@@ -65,7 +65,10 @@ export default async function handler(req: Request) {
     if (!players?.some((player) => player.user_id === userData.user.id)) return json({ error: "You are not a player in this room" }, 403);
 
     const hands = dealHands();
-    const leaderIndex = getNextHandKingIndex(players, state.roundWinnerPlayerId);
+    const leaderIndex = getNextHandKingIndex(
+      players,
+      state.leaderPlayerId ?? state.roundWinnerPlayerId,
+    );
     const leaderPlayerId = players[leaderIndex]?.user_id ?? players[0]?.user_id;
     const nextState = {
       ...state,

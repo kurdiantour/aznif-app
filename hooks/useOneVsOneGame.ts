@@ -250,6 +250,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
           )
           .subscribe((status, err) => {
             if (!mounted) return;
+            if (status === 'SUBSCRIBED') void loadRoom();
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setError(err?.message ?? 'Realtime sync failed');
             }
@@ -269,6 +270,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
           )
           .subscribe((status, err) => {
             if (!mounted) return;
+            if (status === 'SUBSCRIBED') void loadPlayers();
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setError(err?.message ?? 'Realtime player sync failed');
             }
@@ -291,6 +293,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
           )
           .subscribe((status, err) => {
             if (!mounted) return;
+            if (status === 'SUBSCRIBED') void loadRoom();
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setError(err?.message ?? 'Realtime move sync failed');
             }

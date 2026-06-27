@@ -163,8 +163,19 @@ export default forwardRef(function BoardArea(
           BOARD_BOUNDARY,
         );
         if (!boardSurfaceRef.current || !targets.length) return resolve(null);
-        boardSurfaceRef.current.measureInWindow((surfaceX, surfaceY) => {
-          const match = targets
+        boardSurfaceRef.current.measureInWindow((surfaceX, surfaceY, width, height) => {
+          const isInsideBoard =
+            point.x >= surfaceX &&
+            point.x <= surfaceX + width &&
+            point.y >= surfaceY &&
+            point.y <= surfaceY + height;
+
+          if (!isInsideBoard) {
+            resolve(null);
+            return;
+          }
+
+          const rankedTargets = targets
             .map((target) => {
               const centerX = surfaceX + surfaceSize.width / 2 + target.x * target.scale;
               const centerY = surfaceY + surfaceSize.height / 2 + target.y * target.scale;
@@ -178,9 +189,14 @@ export default forwardRef(function BoardArea(
                 distance: Math.hypot(point.x - centerX, point.y - centerY),
               };
             })
-            .filter(({ inside }) => inside)
-            .sort((a, b) => a.distance - b.distance)[0];
-          resolve(match?.branch ?? null);
+            .sort((a, b) => {
+              // Prefer a directly hit branch. When the user releases elsewhere
+              // on the board, fall back to the nearest valid branch.
+              if (a.inside !== b.inside) return a.inside ? -1 : 1;
+              return a.distance - b.distance;
+            });
+
+          resolve(rankedTargets[0]?.branch ?? null);
         });
       }),
     animateDraw: () =>

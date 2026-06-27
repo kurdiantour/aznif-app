@@ -16,10 +16,12 @@ import { useRoundPresentation } from "@/hooks/useRoundPresentation";
 import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
 import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
 import { ENABLE_DEV_2V2_BOT_TEST } from "@/lib/dev/devBotPlayers";
+import { calculateMoveScore } from "@/lib/game/kozel-engine";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { DominoTileData, KozelBranch, TeamId } from "@/types/game";
+import { DominoTileData, KozelBranch, ScoringEvent, TeamId } from "@/types/game";
 import { Ionicons } from "@expo/vector-icons";
+import { useKeepAwake } from "expo-keep-awake";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -43,6 +45,8 @@ function getTeamName(
 }
 
 export default function GameScreen() {
+  useKeepAwake();
+
   const { room_id, mode, practice, dev_bot_2v2 } = useLocalSearchParams();
   const router = useRouter();
 
@@ -588,13 +592,34 @@ export default function GameScreen() {
   const shouldShowNextRoundCountdown =
     (game as any).phase === "next_round_countdown" &&
     !isFinalTileAnimationRunning;
+  const roundResult = (game as any).roundResult;
+  const lastTilePoints = game.roundWinnerPlayerId
+    ? calculateMoveScore(game.board)
+    : 0;
+  const roundWinner = game.players.find(
+    (player) => player.id === game.roundWinnerPlayerId,
+  );
+  const boardScoringEvent: ScoringEvent | null = !game.roundWinnerPlayerId
+    ? game.lastScoringEvent
+    : lastTilePoints > 0 &&
+        roundResult?.endReason === "empty_hand" &&
+        roundWinner
+      ? {
+          playerId: roundWinner.id,
+          teamId: roundWinner.teamId,
+          points: lastTilePoints,
+          openEndsTotal: lastTilePoints,
+        }
+      : null;
 
 
   if (gameLoading) {
     return (
-      <View style={styles.centerScreen}>
+      <TableBackground>
+        <View style={styles.loadingOverlay}>
         <Text style={styles.statusText}>یاری بار دەکرێت...</Text>
-      </View>
+        </View>
+      </TableBackground>
     );
   }
 
@@ -690,7 +715,7 @@ export default function GameScreen() {
               <BoardArea
                 board={game.board}
                 players={game.players}
-                lastScoringEvent={game.lastScoringEvent}
+                lastScoringEvent={boardScoringEvent}
                 lastPlayedTile={game.lastPlayedTile}
                 roundWinnerPlayerId={game.roundWinnerPlayerId}
                 selectedTile={selectedTile}
@@ -707,7 +732,8 @@ export default function GameScreen() {
 
           <RoundResultReveal
             visible={shouldShowRoundResultReveal}
-            roundResult={(game as any).roundResult}
+            roundResult={roundResult}
+            lastTilePoints={lastTilePoints}
             players={game.players}
             topPlayer={topPlayer}
             leftPlayer={leftPlayer}
@@ -777,6 +803,7 @@ export default function GameScreen() {
           <View style={styles.bottomArea}>
             <PlayerHand
               tiles={game.myHand}
+              scale={1.1}
               onPlayTile={handleDropTile}
               onSelectTile={handlePreviewTile}
               disabled={!isMyTurn || game.canDrawTile}
@@ -870,6 +897,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
+  },
+
+  loadingOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   statusText: {

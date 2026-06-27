@@ -178,6 +178,7 @@ export default async function handler(req: Request) {
       const winnerIndex =
         pipTotal(hands[0] ?? []) <= pipTotal(hands[1] ?? []) ? 0 : 1;
       const winner = players[winnerIndex];
+      const blockerPlayerId = state.lastMovePlayerId ?? winner.user_id;
       const opponentPips = pipTotal(hands[(winnerIndex + 1) % 2] ?? []);
       const blockScore = roundToNearestFive(opponentPips);
 
@@ -200,7 +201,9 @@ export default async function handler(req: Request) {
         ...nextState,
         teamScores: nextScores,
         roundWinnerPlayerId: winner.user_id,
-        leaderPlayerId: winner.user_id,
+        // The last player who placed a tile is king; scoring remains based on
+        // the lowest-pip hand calculated above.
+        leaderPlayerId: blockerPlayerId,
         lastScoringEvent,
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
@@ -211,7 +214,7 @@ export default async function handler(req: Request) {
         nextStatus = "finished";
         nextState.currentTurnPlayerId = nextTurnPlayerId;
       } else {
-        nextTurnPlayerId = winner.user_id;
+        nextTurnPlayerId = blockerPlayerId;
         nextState.currentTurnPlayerId = nextTurnPlayerId;
       }
     } else {

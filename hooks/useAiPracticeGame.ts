@@ -185,7 +185,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }
   };
 
-  const resolveBlockedRound = (blockedHands: DominoTileData[][], _blockerIndex: number) => {
+  const resolveBlockedRound = (blockedHands: DominoTileData[][], blockerIndex: number) => {
     const winnerIndex = getBlockedRoundWinnerIndex1v1(blockedHands);
     const winner = seats[winnerIndex];
 
@@ -202,14 +202,14 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
     setRoundWinnerPlayerId(winner.id);
     setRoundEndReason("blocked");
-    setLeaderIndex(winnerIndex);
+    setLeaderIndex(blockerIndex);
     return true;
   };
 
   const startNextRound = useCallback(() => {
     if (!roundWinnerPlayerId) return;
     const nextDeal = createAiPracticeDeal(seats.length);
-    const nextKingIndex = getNextHandKingIndex(seats, roundWinnerPlayerId);
+    const nextKingIndex = leaderIndex;
     lastTilePlayerIndexRef.current = null;
     botMoveScheduledRef.current = false;
     setBoard(createEmptyBoard());
@@ -228,7 +228,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     setLeaderIndex(nextKingIndex);
     setCurrentIndex(nextKingIndex);
     setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
-  }, [roundWinnerPlayerId, seats]);
+  }, [leaderIndex, roundWinnerPlayerId, seats]);
 
   const createRoundResult = useCallback((winnerId: string) => {
     const winnerIndex = seats.findIndex((seat) => seat.id === winnerId);

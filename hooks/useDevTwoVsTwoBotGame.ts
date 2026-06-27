@@ -56,7 +56,7 @@ export function useDevTwoVsTwoBotGame(): MockGameState {
     if (winner) setWinningTeamId(winner);
   }, [roundWinnerPlayerId, teamScores, winningTeamId]);
 
-  const resolveBlocked = (blockedHands: DominoTileData[][]) => {
+  const resolveBlocked = (blockedHands: DominoTileData[][], blockerIndex: number) => {
     let winnerIndex = 0;
     let lowest = (blockedHands[0] ?? []).reduce((sum, tile) => sum + tile.left + tile.right, 0);
     for (let index = 1; index < seats.length; index += 1) {
@@ -67,18 +67,18 @@ export function useDevTwoVsTwoBotGame(): MockGameState {
     const opponentPips = blockedHands.reduce((sum, hand, index) =>
       seats[index].teamId === winner.teamId ? sum : sum + hand.reduce((pips, tile) => pips + tile.left + tile.right, 0), 0);
     addPoints(winner.teamId, roundToNearestFive(opponentPips), winner.id, opponentPips);
-    setRoundWinnerPlayerId(winner.id); setLeaderIndex(winnerIndex);
+    setRoundWinnerPlayerId(winner.id); setLeaderIndex(blockerIndex);
   };
   const startNextRound = useCallback(() => {
     if (!roundWinnerPlayerId) return;
     const nextDeal = createAiPracticeDeal(seats.length);
-    const nextLeader = getNextHandKingIndex([...seats], roundWinnerPlayerId);
+    const nextLeader = leaderIndex;
     botScheduled.current = false; lastTilePlayerIndex.current = null;
     setBoard(createEmptyBoard()); setHands(nextDeal.hands); setBoneyard(nextDeal.boneyard);
     setSpinnerValue(null); setIsOpeningRound(NEXT_HAND_OPENING_STATE.isOpeningRound); setOpeningDouble(NEXT_HAND_OPENING_STATE.openingDouble);
     setRoundWinnerPlayerId(null); setLastPlayedTile(null); setLastPassedPlayerId(null); setLastScoringEvent(null);
     setLeaderIndex(nextLeader); setCurrentIndex(nextLeader); setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
-  }, [roundWinnerPlayerId, seats]);
+  }, [leaderIndex, roundWinnerPlayerId, seats]);
   const createRoundResult = useCallback((winnerId: string) => {
     const winner = seats.find((seat) => seat.id === winnerId);
     return buildRoundResult({ winnerId, winnerTeam: winner?.teamId, awardedPoints: lastScoringEvent?.points ?? 0,
@@ -111,7 +111,7 @@ export function useDevTwoVsTwoBotGame(): MockGameState {
       const opponentPips = nextHands.reduce((sum, hand, index) => seats[index].teamId === player.teamId ? sum : sum + hand.reduce((pips, item) => pips + item.left + item.right, 0), 0);
       addPoints(player.teamId, roundToNearestFive(opponentPips), player.id, opponentPips); setRoundWinnerPlayerId(player.id); setLeaderIndex(playerIndex); return true;
     }
-    if (!canAnyPlayerMove(nextHands, result.board, result.spinnerValue, false, null) && !boneyard.length) { resolveBlocked(nextHands); return true; }
+    if (!canAnyPlayerMove(nextHands, result.board, result.spinnerValue, false, null) && !boneyard.length) { resolveBlocked(nextHands, playerIndex); return true; }
     const nextPlayer = getNextClockwisePlayer([...seats], seats[playerIndex]);
     const nextPlayerIndex = nextPlayer ? seats.indexOf(nextPlayer) : -1;
     if (nextPlayerIndex < 0) return false;
@@ -134,7 +134,7 @@ export function useDevTwoVsTwoBotGame(): MockGameState {
     if (roundWinnerPlayerId || winningTeamId) return;
     const timer = setTimeout(() => setTimeLeft((previous) => {
       if (previous > 1) return previous - 1;
-      if (board.centerTile && !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) && !boneyard.length) resolveBlocked(hands); else passForPlayer(currentIndex, true);
+      if (board.centerTile && !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) && !boneyard.length) resolveBlocked(hands, lastTilePlayerIndex.current ?? currentIndex); else passForPlayer(currentIndex, true);
       return PLAYER_TURN_DURATION_SECONDS;
     }), 1000); return () => clearTimeout(timer);
   }, [timeLeft, currentIndex, board, hands, boneyard, spinnerValue, isOpeningRound, openingDouble, roundWinnerPlayerId, winningTeamId]);

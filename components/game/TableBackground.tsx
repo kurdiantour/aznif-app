@@ -9,6 +9,7 @@ import {
   type TableId,
 } from "@/constants/catalog/tables";
 import { supabase } from "@/lib/supabase";
+import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 
 type Props = {
   children: ReactNode;
@@ -17,11 +18,9 @@ type Props = {
 
 export default function TableBackground({ children, tableId }: Props) {
   const [activeTableId, setActiveTableId] = useState<TableId | null>(
-    tableId ?? null,
+    tableId ?? getPreloadedTableId(),
   );
-  const [tableBackgroundReady, setTableBackgroundReady] = useState(
-    tableId !== undefined,
-  );
+  const [tableBackgroundReady, setTableBackgroundReady] = useState(true);
 
   useEffect(() => {
     if (tableId) {
@@ -32,7 +31,6 @@ export default function TableBackground({ children, tableId }: Props) {
 
     let mounted = true;
 
-    setTableBackgroundReady(false);
     void supabase
       .from("user_equipped_shop_items")
       .select("item_id")

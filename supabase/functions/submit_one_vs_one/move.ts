@@ -305,6 +305,7 @@ export default async function handler(req: Request) {
       openingDouble: null,
       openingTileId: null,
       lastPlayedTile: tile,
+      lastMovePlayerId: user.id,
       lastMoveBranch: branch ?? null,
       lastScoringEvent,
       teamScores: nextScores,
