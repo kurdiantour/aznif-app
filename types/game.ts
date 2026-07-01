@@ -105,6 +105,8 @@ export type GameState = {
   roundWinnerPlayerId: string | null;
   lastPlayedTile: DominoTileData | null;
   lastScoringEvent: ScoringEvent | null;
+  /** Points awarded for tiles left in the opponents' hands. */
+  endOfHandScoringEvent?: ScoringEvent | null;
 
   teamScores: Record<TeamId, number>;
   winningTeamId: TeamId | null;

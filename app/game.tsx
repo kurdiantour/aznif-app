@@ -3,14 +3,17 @@ import DrawPilePrompt from "@/components/game/DrawPilePrompt";
 import GameOverPopup from "@/components/game/GameOverPopup";
 import PlayerHand from "@/components/game/PlayerHand";
 import PlayerSeat from "@/components/game/PlayerSeat";
+import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import RoundResultReveal from "@/components/game/RoundResultReveal";
 import ScorePopup from "@/components/game/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
+import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import { useDevTwoVsTwoBotGame } from "@/hooks/useDevTwoVsTwoBotGame";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { useGame } from "@/hooks/useGame";
+import { useGameSounds } from "@/hooks/useGameSounds";
 import { useOneVsOneGame } from "@/hooks/useOneVsOneGame";
 import { useRoundPresentation } from "@/hooks/useRoundPresentation";
 import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
@@ -19,7 +22,7 @@ import { ENABLE_DEV_2V2_BOT_TEST } from "@/lib/dev/devBotPlayers";
 import { calculateMoveScore } from "@/lib/game/kozel-engine";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { DominoTileData, KozelBranch, ScoringEvent, TeamId } from "@/types/game";
+import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/types/game";
 import { Ionicons } from "@expo/vector-icons";
 import { useKeepAwake } from "expo-keep-awake";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -79,6 +82,19 @@ export default function GameScreen() {
         ? oneVsOneGame
         : twoVsTwoGame;
 
+  useGameSounds({
+    board: game.board,
+    boneyardCount: game.boneyardCount,
+    lastPassedPlayerId: (game as any).lastPassedPlayerId ?? null,
+    currentTurnPlayerId: game.currentTurnPlayerId,
+  });
+
+  // Keep the authoritative board for all game logic, scoring, turns, and
+  // round lifecycle. Only the rendered board uses the pending local move so
+  // the player sees their tile immediately while the backend confirms it.
+  const displayBoard =
+    (game as any).pendingMove?.visualBoard ?? game.board;
+
   const gameLoading = !isLocalGame && (game as any).loading;
   const gameError = !isLocalGame ? (game as any).error : null;
 
@@ -103,6 +119,7 @@ export default function GameScreen() {
   const [sideSeatHeight, setSideSeatHeight] = useState(0);
   const [dealOrigin, setDealOrigin] = useState<{ x: number; y: number } | null>(null);
   const [dealToken, setDealToken] = useState(0);
+  const [profilePlayer, setProfilePlayer] = useState<Player | null>(null);
 
   const gameInitializedRef = useRef(false);
   const practiceRewardSettlementRequestedRef = useRef(false);
@@ -513,6 +530,12 @@ export default function GameScreen() {
     game.mode === "1v1" ? scoreNameByTeam[primaryScoreTeamId] : "Team A";
   const miniScoreTeamBName =
     game.mode === "1v1" ? scoreNameByTeam[secondaryScoreTeamId] : "Team B";
+  const scoreByTeam: Record<TeamId, number> = {
+    teamA: game.teamScores?.teamA ?? 0,
+    teamB: game.teamScores?.teamB ?? 0,
+  };
+  const miniScoreTeamAScore = scoreByTeam[primaryScoreTeamId];
+  const miniScoreTeamBScore = scoreByTeam[secondaryScoreTeamId];
 
   const didWinMatch = humanPlayer?.teamId
     ? game.winningTeamId === humanPlayer.teamId
@@ -602,8 +625,7 @@ export default function GameScreen() {
   const boardScoringEvent: ScoringEvent | null = !game.roundWinnerPlayerId
     ? game.lastScoringEvent
     : lastTilePoints > 0 &&
-        roundResult?.endReason === "empty_hand" &&
-        roundWinner
+        roundWinner?.tileCount === 0
       ? {
           playerId: roundWinner.id,
           teamId: roundWinner.teamId,
@@ -615,7 +637,7 @@ export default function GameScreen() {
 
   if (gameLoading) {
     return (
-      <TableBackground>
+      <TableBackground tableId={!isLocalGame ? getPreloadedTableId() : undefined}>
         <View style={styles.loadingOverlay}>
         <Text style={styles.statusText}>یاری بار دەکرێت...</Text>
         </View>
@@ -635,7 +657,7 @@ export default function GameScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.stage}>
-        <TableBackground>
+        <TableBackground tableId={!isLocalGame ? getPreloadedTableId() : undefined}>
           {topPlayer && (
             <View style={styles.topOpponentArea}>
               <View style={styles.avatarSlot}>
@@ -647,6 +669,7 @@ export default function GameScreen() {
                   dealToken={dealToken}
                   dealOrder={gameMode === "1v1" ? 0 : 2}
                   dealPlayerCount={gameMode === "1v1" ? 2 : 4}
+                  onPress={topPlayer.kind === "human" ? () => setProfilePlayer(topPlayer) : undefined}
                 />
               </View>
             </View>
@@ -675,6 +698,7 @@ export default function GameScreen() {
                   dealOrder={1}
                   dealPlayerCount={4}
                   dealRotation={-90}
+                  onPress={leftPlayer.kind === "human" ? () => setProfilePlayer(leftPlayer) : undefined}
                   />
                 </View>
               </View>
@@ -704,6 +728,7 @@ export default function GameScreen() {
                   dealOrder={3}
                   dealPlayerCount={4}
                   dealRotation={90}
+                  onPress={rightPlayer.kind === "human" ? () => setProfilePlayer(rightPlayer) : undefined}
                   />
                 </View>
               </View>
@@ -713,7 +738,7 @@ export default function GameScreen() {
           <View style={styles.middleRow}>
             <View style={styles.boardAreaWrap}>
               <BoardArea
-                board={game.board}
+                board={displayBoard}
                 players={game.players}
                 lastScoringEvent={boardScoringEvent}
                 lastPlayedTile={game.lastPlayedTile}
@@ -733,12 +758,17 @@ export default function GameScreen() {
           <RoundResultReveal
             visible={shouldShowRoundResultReveal}
             roundResult={roundResult}
-            lastTilePoints={lastTilePoints}
             players={game.players}
             topPlayer={topPlayer}
             leftPlayer={leftPlayer}
             rightPlayer={rightPlayer}
             humanPlayer={humanPlayer}
+            qapatPlayerId={game.leaderPlayerId}
+          />
+
+          <PlayerProfilePopup
+            player={profilePlayer}
+            onDismiss={() => setProfilePlayer(null)}
           />
 
           {/* Next round countdown */}
@@ -763,7 +793,7 @@ export default function GameScreen() {
                   {miniScoreTeamAName}
                 </Text>
                 <Text style={styles.miniScoreValue}>
-                  {game.teamScores?.teamA ?? 0}
+                  {miniScoreTeamAScore}
                 </Text>
               </View>
 
@@ -774,7 +804,7 @@ export default function GameScreen() {
                   {miniScoreTeamBName}
                 </Text>
                 <Text style={styles.miniScoreValue}>
-                  {game.teamScores?.teamB ?? 0}
+                  {miniScoreTeamBScore}
                 </Text>
               </View>
             </Pressable>
@@ -833,6 +863,7 @@ export default function GameScreen() {
   visible={showGameOverPopup && !isFinalTileAnimationRunning}
   didWin={didWinMatch}
   reward={practiceWinReward ?? game.matchReward}
+  finishReason={(game as any).rawState?.finishReason ?? null}
   teamScores={{
     teamA: game.teamScores?.teamA ?? 0,
     teamB: game.teamScores?.teamB ?? 0,

@@ -21,6 +21,7 @@ import type {
     TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handHasPlayableTile } from './gameRuleQueries';
 import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
@@ -56,6 +57,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const playersChannelRef = useRef<any>(null);
   const pollInFlightRef = useRef(false);
   const botTurnInFlightRef = useRef(false);
+  const takeoverWatchdogInFlightRef = useRef(false);
   const latestVersionRef = useRef(-1);
   const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
   const timeoutPassInFlightRef = useRef(false);
@@ -274,6 +276,43 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     return () => clearInterval(interval);
   }, [roomId, currentUserId]);
 
+  useEffect(() => {
+    if (!roomId || !currentUserId) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') return;
+      void supabase.rpc('mark_two_vs_two_player_disconnected', {
+        p_room_id: roomId,
+        p_user_id: currentUserId,
+      });
+    });
+    return () => subscription.remove();
+  }, [roomId, currentUserId]);
+
+  useEffect(() => {
+    if (!roomId || loading || rawState?.winningTeamId) return;
+
+    const runTakeoverWatchdog = async () => {
+      if (takeoverWatchdogInFlightRef.current) return;
+      takeoverWatchdogInFlightRef.current = true;
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          'process_bot_turns',
+          { body: { mode: '2v2', room_id: roomId } },
+        );
+        if (error) throw error;
+        if (data?.processed) await refreshSnapshot();
+      } catch (watchdogError) {
+        console.warn('2v2 takeover watchdog failed', watchdogError);
+      } finally {
+        takeoverWatchdogInFlightRef.current = false;
+      }
+    };
+
+    void runTakeoverWatchdog();
+    const interval = setInterval(() => void runTakeoverWatchdog(), 10_000);
+    return () => clearInterval(interval);
+  }, [roomId, loading, rawState?.winningTeamId, refreshSnapshot]);
+
   const myPlayerIndex = useMemo(() => {
     if (!currentUserId) return -1;
     return getPlayerIndex(playersRows, (row) => row.user_id === currentUserId);
@@ -291,7 +330,9 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
       return {
         id: playerId,
-        name: profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
+        name: row.bot_takeover
+          ? 'رۆبوتی کاتی'
+          : profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
         seat: getRelativeSeat(playerIndex, myPlayerIndex, 4),
         kind: row.kind,
         teamId: row.team_id,
@@ -527,7 +568,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       winnerId,
       winnerTeam,
       endReason: rawState?.roundEndReason,
-      awardedPoints: rawState?.lastScoringEvent?.points ?? 0,
+      awardedPoints: rawState?.endOfHandScoringEvent?.points ?? 0,
       players: playersRows.map((row) => ({
         id: row.user_id ?? `bot-${row.id}`,
         playerIndex: typeof row.player_index === 'number' ? row.player_index : -1,

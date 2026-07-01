@@ -19,7 +19,11 @@ import { MutableRefObject } from 'react';
 export { calculateMatchReward };
 
 export const NEXT_ROUND_COUNTDOWN_SECONDS = 2;
-export const ROUND_RESULT_REVEAL_MS = 8000;
+// This timer starts as soon as the round winner is known, while the final tile
+// presentation is still on screen (1.34s landing animation + 3s hold).
+// Keep the round-result phase alive for exactly another 5s so the revealed
+// hands remain visible before the next-round countdown begins.
+export const ROUND_RESULT_REVEAL_MS = 9_340;
 export const ROUND_TRANSITION_SYNC_MS = 1000;
 export const MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN = 3;
 export const PLAYER_TURN_DURATION_SECONDS = 20;

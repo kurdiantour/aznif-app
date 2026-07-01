@@ -4,6 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   applyMove,
+  canAnyPlayerMove,
   canHandMove,
   createEmptyBoard,
   getPlayableBranches,
@@ -60,6 +61,17 @@ function isOpeningRound(state: any) {
 
 function openingDouble(state: any) {
   return typeof state.openingDouble === "number" ? state.openingDouble : null;
+}
+
+function scoreOpponentPips(
+  hands: any[][],
+  players: any[],
+  winnerTeamId: string,
+) {
+  return hands.reduce((sum, playerHand, index) => {
+    if (players[index]?.team_id === winnerTeamId) return sum;
+    return sum + pipTotal(playerHand ?? []);
+  }, 0);
 }
 
 const MAX_ONE_VS_ONE_DRAWS_PER_TURN = 3;
@@ -131,10 +143,11 @@ serve(async (req) => {
 
     const takeoverFunction =
       mode === "1v1"
-        ? "process_one_vs_one_takeovers"
-        : "process_two_vs_two_takeovers";
+        ? "process_one_vs_one_room_takeovers"
+        : "process_two_vs_two_room_takeovers";
     const { error: takeoverError } = await svc.rpc(takeoverFunction, {
-      p_grace_seconds: 30,
+      p_room_id: room_id,
+      p_grace_seconds: 60,
     });
     if (takeoverError) throw takeoverError;
 
@@ -270,6 +283,8 @@ serve(async (req) => {
         openingTileId: null,
         lastPlayedTile: botMove.tile,
         lastMoveBranch: botMove.branch,
+        lastScoringEvent: null,
+        endOfHandScoringEvent: null,
         lastPassedPlayerId: null,
         blockedPasses: [],
         canDrawTile: false,
@@ -282,6 +297,7 @@ serve(async (req) => {
           teamB: Number(state.teamScores?.teamB ?? 0),
         };
         let lastScoringEvent = null;
+        let endOfHandScoringEvent = null;
 
         if (result.moveScore > 0) {
           nextScores[currentPlayer.team_id] += Number(result.moveScore);
@@ -298,7 +314,7 @@ serve(async (req) => {
           const endScore = roundToNearestFive(opponentPips);
           if (endScore > 0) {
             nextScores[currentPlayer.team_id] += endScore;
-            lastScoringEvent = {
+            endOfHandScoringEvent = {
               playerId: currentTurnPlayerId,
               teamId: currentPlayer.team_id,
               points: endScore,
@@ -315,7 +331,96 @@ serve(async (req) => {
             leaderPlayerId: currentTurnPlayerId,
             teamScores: nextScores,
             lastScoringEvent,
+            endOfHandScoringEvent,
             roundWinnerPlayerId: currentTurnPlayerId,
+            winningTeamId: finished.winningTeamId,
+            matchReward: finished.matchReward,
+          };
+        } else {
+          nextState = {
+            ...nextState,
+            teamScores: nextScores,
+            lastScoringEvent,
+          };
+        }
+      } else {
+        const currentPlayer = players[playerIndex];
+        const nextScores = {
+          teamA: Number(state.teamScores?.teamA ?? 0),
+          teamB: Number(state.teamScores?.teamB ?? 0),
+        };
+        let lastScoringEvent = null;
+        let endOfHandScoringEvent = null;
+
+        if (result.moveScore > 0) {
+          nextScores[currentPlayer.team_id] += Number(result.moveScore);
+          lastScoringEvent = {
+            playerId: currentTurnPlayerId,
+            teamId: currentPlayer.team_id,
+            points: result.moveScore,
+            openEndsTotal: result.moveScore,
+          };
+        }
+
+        let roundWinner = null;
+        let roundEndReason = null;
+        let leaderPlayerId = state.leaderPlayerId ?? currentTurnPlayerId;
+
+        if ((nextHands[playerIndex] ?? []).length === 0) {
+          roundWinner = currentPlayer;
+          roundEndReason = "empty_hand";
+          leaderPlayerId = currentTurnPlayerId;
+        } else if (
+          !canAnyPlayerMove(
+            nextHands,
+            result.board,
+            result.spinnerValue,
+            false,
+            null,
+          )
+        ) {
+          const lowest = players.reduce(
+            (best, candidate, index) => {
+              const total = pipTotal(nextHands[index] ?? []);
+              return total < best.total ? { player: candidate, total } : best;
+            },
+            { player: players[0], total: pipTotal(nextHands[0] ?? []) },
+          );
+          roundWinner = lowest.player;
+          roundEndReason = "blocked";
+          // The player whose tile closed the board remains king next hand.
+          leaderPlayerId = currentTurnPlayerId;
+        }
+
+        if (roundWinner) {
+          const opponentPips = scoreOpponentPips(
+            nextHands,
+            players,
+            roundWinner.team_id,
+          );
+          const endScore = roundToNearestFive(opponentPips);
+          if (endScore > 0) {
+            nextScores[roundWinner.team_id] += endScore;
+            endOfHandScoringEvent = {
+              playerId: roundWinner.user_id,
+              teamId: roundWinner.team_id,
+              points: endScore,
+              openEndsTotal: opponentPips,
+            };
+          }
+          const finished = resolveMatchOutcome(
+            nextScores,
+            state.matchReward ?? null,
+          );
+          nextState = {
+            ...nextState,
+            currentTurnPlayerId: currentTurnPlayerId,
+            leaderPlayerId,
+            teamScores: nextScores,
+            lastScoringEvent,
+            endOfHandScoringEvent,
+            roundWinnerPlayerId: roundWinner.user_id,
+            roundEndReason,
             winningTeamId: finished.winningTeamId,
             matchReward: finished.matchReward,
           };
@@ -413,7 +518,7 @@ serve(async (req) => {
             teamA: Number(state.teamScores?.teamA ?? 0),
             teamB: Number(state.teamScores?.teamB ?? 0),
           };
-          const lastScoringEvent =
+          const endOfHandScoringEvent =
             blockScore > 0
               ? {
                   playerId: winner.user_id,
@@ -432,7 +537,8 @@ serve(async (req) => {
             currentTurnPlayerId: winner.user_id,
             leaderPlayerId: winner.user_id,
             teamScores: nextScores,
-            lastScoringEvent,
+            lastScoringEvent: null,
+            endOfHandScoringEvent,
             roundWinnerPlayerId: winner.user_id,
             winningTeamId: finished.winningTeamId,
             matchReward: finished.matchReward,
@@ -441,8 +547,6 @@ serve(async (req) => {
       }
     }
 
-    const botStatus =
-      mode === "2v2" && nextState.winningTeamId ? "finished" : null;
     const { error: commitError } = await svc.rpc("commit_multiplayer_action", {
       p_mode: mode,
       p_room_id: room_id,
@@ -451,7 +555,9 @@ serve(async (req) => {
       p_hands: nextHands,
       p_boneyard: nextBoneyard,
       p_current_turn_player_id: nextState.currentTurnPlayerId ?? nextPlayerId,
-      p_status: botStatus,
+      // Keep a completed 2v2 round active until the leave-forfeit resolver has
+      // had the chance to override a normal score win.
+      p_status: mode === "2v2" && nextState.roundWinnerPlayerId ? "active" : null,
       p_player_id: currentTurnPlayerId,
       p_action: action,
       p_payload: payload,
@@ -481,6 +587,28 @@ serve(async (req) => {
             p_mode: "1v1",
             p_room_id: room_id,
           },
+        );
+        if (rewardErr) throw rewardErr;
+      }
+    }
+
+    if (mode === "2v2" && nextState.roundWinnerPlayerId) {
+      const { data: forfeit, error: forfeitErr } = await svc.rpc(
+        names.resolveForfeits,
+        { p_room_id: room_id },
+      );
+      if (forfeitErr) throw forfeitErr;
+
+      if (!forfeit?.forfeit && nextState.winningTeamId) {
+        const { error: finishErr } = await svc
+          .from(names.rooms)
+          .update({ status: "finished", current_turn_player_id: null })
+          .eq("id", room_id)
+          .eq("status", "active");
+        if (finishErr) throw finishErr;
+        const { error: rewardErr } = await svc.rpc(
+          "settle_finished_match_rewards",
+          { p_mode: "2v2", p_room_id: room_id },
         );
         if (rewardErr) throw rewardErr;
       }

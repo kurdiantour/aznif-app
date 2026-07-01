@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "dominoapp",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.behzadhakeem.dominoapp",
@@ -15,7 +14,6 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#050b22",
@@ -26,7 +24,6 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.behzadhakeem.dominoapp"
     },
-
     "plugins": [
       "expo-router",
       "expo-web-browser",
@@ -45,14 +42,19 @@
             "backgroundColor": "#050b22"
           }
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
-
     "extra": {
       "router": {},
       "eas": {

@@ -10,7 +10,7 @@ type Boundary = { edgePadding: number; safeHorizontalPadding: number; safeVertic
 type Position = { tile: BoardTile; x: number; y: number; direction: Direction };
 export type BoardPreviewTarget = { branch: KozelBranch; x: number; y: number; width: number; height: number; scale: number };
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
-type WinningContext = { tileId: string | null; translateY: Animated.Value; scale: Animated.Value; emphasisOpacity: Animated.Value };
+type WinningContext = { tileId: string | null; translateY: Animated.Value; scale: Animated.Value; emphasisOpacity: Animated.Value; centerProgress: Animated.Value; rotation: Animated.Value };
 
 const TILE_GAP = 1;
 const BASE_TILE_WIDTH = 46;
@@ -145,11 +145,11 @@ function BranchTile({ position, tileWidth, tileHeight, zIndex = 20 }: { position
   useEffect(() => { if (winning?.tileId === position.tile.id) console.log("[winning tile beat] board tile found", { tileId: position.tile.id }); }, [position.tile.id, winning?.tileId]);
   return <Pressable pointerEvents={preview ? "auto" : "none"} onPress={previewTile.__previewBranch ? () => previewTile.__onPreviewPress?.(previewTile.__previewBranch!) : undefined} style={[styles.tile, preview && styles.preview, { width: size.width, height: size.height, left: "50%", top: "50%", marginLeft: position.x - size.width / 2, marginTop: position.y - size.height / 2, zIndex }]}>
     <DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} />
-    {winning?.tileId === position.tile.id && <Animated.View pointerEvents="none" style={[styles.winner, { width: size.width, height: size.height, opacity: winning.emphasisOpacity, transform: [{ translateY: winning.translateY }, { scale: winning.scale }] }]}><DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} /></Animated.View>}
+    {winning?.tileId === position.tile.id && <Animated.View pointerEvents="none" style={[styles.winner, { width: size.width, height: size.height, opacity: winning.emphasisOpacity, transform: [{ translateX: Animated.multiply(winning.centerProgress, -position.x) }, { translateY: Animated.add(Animated.multiply(winning.centerProgress, -position.y), winning.translateY) }, { rotate: winning.rotation.interpolate({ inputRange: [0, 1080], outputRange: ["0deg", "1080deg"] }) }, { scale: winning.scale }] }]}><DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} /></Animated.View>}
   </Pressable>;
 }
 
-type Props = { board: GameState["board"]; selectedTile: DominoTileData | null; selectableBranches: KozelBranch[]; onSelectBranch?: (branch: KozelBranch) => void; boardWidth: number; boardHeight: number; boundary: Boundary; winningTileId: string | null; winningTranslateY: Animated.Value; winningScale: Animated.Value; winningEmphasisOpacity: Animated.Value; isCenterFinalTile: boolean; centerFinalTransform: any };
+type Props = { board: GameState["board"]; selectedTile: DominoTileData | null; selectableBranches: KozelBranch[]; onSelectBranch?: (branch: KozelBranch) => void; boardWidth: number; boardHeight: number; boundary: Boundary; winningTileId: string | null; winningTranslateY: Animated.Value; winningScale: Animated.Value; winningEmphasisOpacity: Animated.Value; winningCenterProgress: Animated.Value; winningRotation: Animated.Value; isCenterFinalTile: boolean; centerFinalTransform: any };
 export function getDominoBoardTileMetrics(board: GameState["board"], boardWidth: number, boardHeight: number) {
   const estimate = (tiles: BoardTile[], direction: Direction) => tiles.reduce((total, tile) => {
     const size = slotSize(tile, direction, BASE_TILE_WIDTH, BASE_TILE_HEIGHT);
@@ -201,6 +201,8 @@ export default function DominoBoard(props: Props) {
   const pathBoardWidth = boardWidth / zoom;
   const pathBoardHeight = boardHeight / zoom;
   const openingBranch = props.selectableBranches[0];
+  const emptyOpeningTargetWidth = layout.tileHeight * 1.2;
+  const emptyOpeningTargetHeight = layout.tileWidth * 1.2;
   const preview = (branch: KozelBranch) => {
     if (!props.selectedTile || board.branches[branch].openValue === null) return null;
     const tile = { ...createPlacedTile(props.selectedTile, branch, board.branches[branch].openValue!, board.branches[branch].tiles.length), __placementPreview: true, __previewBranch: branch, __onPreviewPress: props.onSelectBranch } as unknown as BoardTile;
@@ -208,15 +210,15 @@ export default function DominoBoard(props: Props) {
     const position = path[path.length - 1];
     return position ? <BranchTile key={`preview-${branch}-${tile.id}`} position={position} tileWidth={layout.tileWidth} tileHeight={layout.tileHeight} zIndex={80} /> : null;
   };
-  return <Animated.View style={[StyleSheet.absoluteFillObject, { transform: [{ scale: zoom }] }]}><WinningTileAnimationContext.Provider value={{ tileId: props.winningTileId, translateY: props.winningTranslateY, scale: props.winningScale, emphasisOpacity: props.winningEmphasisOpacity }}>
+  return <Animated.View style={[StyleSheet.absoluteFillObject, { transform: [{ scale: zoom }] }]}><WinningTileAnimationContext.Provider value={{ tileId: props.winningTileId, translateY: props.winningTranslateY, scale: props.winningScale, emphasisOpacity: props.winningEmphasisOpacity, centerProgress: props.winningCenterProgress, rotation: props.winningRotation }}>
     {!board.centerTile && <Pressable
       disabled={!props.selectedTile || !openingBranch}
       onPress={() => openingBranch && props.onSelectBranch?.(openingBranch)}
       style={[styles.openingTarget, {
-        width: props.selectedTile ? layout.centerWidth : layout.tileHeight,
-        height: props.selectedTile ? layout.centerHeight : layout.tileWidth,
-        marginLeft: -(props.selectedTile ? layout.centerWidth : layout.tileHeight) / 2,
-        marginTop: -(props.selectedTile ? layout.centerHeight : layout.tileWidth) / 2,
+        width: props.selectedTile ? layout.centerWidth : emptyOpeningTargetWidth,
+        height: props.selectedTile ? layout.centerHeight : emptyOpeningTargetHeight,
+        marginLeft: -(props.selectedTile ? layout.centerWidth : emptyOpeningTargetWidth) / 2,
+        marginTop: -(props.selectedTile ? layout.centerHeight : emptyOpeningTargetHeight) / 2,
       }]}
     >
       {props.selectedTile ? <View style={styles.openingPreview}>
@@ -226,9 +228,9 @@ export default function DominoBoard(props: Props) {
       </>}
     </Pressable>}
     <View pointerEvents="none" style={[styles.center, { width: layout.centerWidth, height: layout.centerHeight, marginLeft: -layout.centerWidth / 2, marginTop: -layout.centerHeight / 2, opacity: props.isCenterFinalTile ? 0 : 1 }]}>{board.centerTile && <DominoTile tile={board.centerTile} width={layout.tileWidth} height={layout.tileHeight} rotation={centerRotation(board.centerTile)} />}</View>
-    {props.isCenterFinalTile && board.centerTile && <Animated.View pointerEvents="none" style={[styles.center, { width: layout.centerWidth, height: layout.centerHeight, marginLeft: -layout.centerWidth / 2, marginTop: -layout.centerHeight / 2, zIndex: 220, transform: props.centerFinalTransform }]}><DominoTile tile={board.centerTile} width={layout.tileWidth} height={layout.tileHeight} rotation={centerRotation(board.centerTile)} /></Animated.View>}
+    {props.isCenterFinalTile && board.centerTile && <Animated.View pointerEvents="none" style={[styles.center, styles.centerWinner, { width: layout.centerWidth, height: layout.centerHeight, marginLeft: -layout.centerWidth / 2, marginTop: -layout.centerHeight / 2, zIndex: 220, transform: props.centerFinalTransform }]}><DominoTile tile={board.centerTile} width={layout.tileWidth} height={layout.tileHeight} rotation={centerRotation(board.centerTile)} /></Animated.View>}
     {(["left", "right", "up", "down"] as const).flatMap((branch) => buildPath(branch, board.branches[branch].tiles, layout.tileWidth, layout.tileHeight, layout.centerWidth, layout.centerHeight, pathBoardWidth, pathBoardHeight, boundary.edgePadding).map((position, index) => <BranchTile key={`${branch}-${position.tile.order}-${position.tile.id}`} position={position} tileWidth={layout.tileWidth} tileHeight={layout.tileHeight} zIndex={20 + index} />))}
     {props.selectedTile && props.selectableBranches.map(preview)}
   </WinningTileAnimationContext.Provider></Animated.View>;
 }
-const styles = StyleSheet.create({ tile: { position: "absolute", alignItems: "center", justifyContent: "center" }, preview: { opacity: 0.5 }, center: { position: "absolute", left: "50%", top: "50%", alignItems: "center", justifyContent: "center", zIndex: 30 }, openingTarget: { position: "absolute", left: "50%", top: "50%", alignItems: "center", justifyContent: "center", zIndex: 70, borderWidth: 2, borderStyle: "dashed", borderColor: "rgba(246,201,69,0.9)", borderRadius: 8, backgroundColor: "rgba(246,201,69,0.12)" }, openingPreview: { opacity: 0.55 }, openingPlus: { color: "#f6c945", fontSize: 25, lineHeight: 26, fontFamily: "RobotoMedium" }, openingHint: { position: "absolute", top: "100%", width: 120, marginTop: 7, textAlign: "center", color: "rgba(255,255,255,0.78)", fontSize: 12, fontFamily: "RobotoMedium" }, winner: { position: "absolute", left: 0, top: 0, alignItems: "center", justifyContent: "center", zIndex: 300, elevation: 14, borderWidth: 3, borderColor: "#f6c945", borderRadius: 7, backgroundColor: "rgba(246,201,69,0.18)", shadowColor: "#f6c945", shadowOpacity: 0.9, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } } });
+const styles = StyleSheet.create({ tile: { position: "absolute", alignItems: "center", justifyContent: "center" }, preview: { opacity: 0.5 }, center: { position: "absolute", left: "50%", top: "50%", alignItems: "center", justifyContent: "center", zIndex: 30 }, centerWinner: { elevation: 14, borderWidth: 3, borderColor: "#f6c945", borderRadius: 7, backgroundColor: "rgba(246,201,69,0.18)", shadowColor: "#f6c945", shadowOpacity: 0.9, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }, openingTarget: { position: "absolute", left: "50%", top: "50%", alignItems: "center", justifyContent: "center", zIndex: 70, borderWidth: 2, borderStyle: "dashed", borderColor: "rgba(246,201,69,0.9)", borderRadius: 8, backgroundColor: "rgba(246,201,69,0.12)" }, openingPreview: { opacity: 0.55 }, openingPlus: { color: "#f6c945", fontSize: 25, lineHeight: 26, fontFamily: "RobotoMedium" }, openingHint: { position: "absolute", top: "100%", width: 120, marginTop: 7, textAlign: "center", color: "rgba(255,255,255,0.78)", fontSize: 12, fontFamily: "RobotoMedium" }, winner: { position: "absolute", left: 0, top: 0, alignItems: "center", justifyContent: "center", zIndex: 300, elevation: 14, borderWidth: 3, borderColor: "#f6c945", borderRadius: 7, backgroundColor: "rgba(246,201,69,0.18)", shadowColor: "#f6c945", shadowOpacity: 0.9, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } } });

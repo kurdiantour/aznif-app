@@ -1,7 +1,7 @@
 import type { DominoTileData, Player, TeamId } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-const FINAL_TILE_REVEAL_DELAY_MS = 900;
+const FINAL_TILE_REVEAL_DELAY_MS = 3_000;
 
 export function useRoundPresentation({
   players,

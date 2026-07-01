@@ -7,6 +7,7 @@ import {
   updateMyProfile,
 } from "@/lib/supabaseAuth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -66,17 +67,17 @@ export default function LoginScreen() {
     };
   }, [router]);
 
-  const handleAuth = async () => {
+  const handleAuth = async (authMode = mode) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanUsername = username.trim();
 
     if (!cleanEmail || !password) {
-      setMessage("Please enter email and password.");
+      setMessage("تکایە ئیمەیڵ و وشەی نهێنی بنووسە.");
       return;
     }
 
-    if (mode === "signup" && cleanUsername.length < 3) {
-      setMessage("Username must be at least 3 characters.");
+    if (authMode === "signup" && cleanUsername.length < 3) {
+      setMessage("ناوی بەکارهێنەر دەبێت لانیکەم ٣ پیت بێت.");
       return;
     }
 
@@ -85,12 +86,16 @@ export default function LoginScreen() {
 
     try {
       const result =
-        mode === "signup"
+        authMode === "signup"
           ? await signUpWithEmail(cleanEmail, password)
           : await signInWithEmail(cleanEmail, password);
 
       if (result.error) {
-        setMessage(result.error.message);
+        setMessage(
+          authMode === "signup"
+            ? "نەتوانرا هەژمارەکە دروست بکرێت. تکایە زانیارییەکان بپشکنە و دووبارە هەوڵ بدەوە."
+            : "ئیمەیڵ یان وشەی نهێنی هەڵەیە.",
+        );
         return;
       }
 
@@ -98,12 +103,12 @@ export default function LoginScreen() {
 
       if (!profile) {
         setMessage(
-          "Unable to sign in. Please verify your email and try again.",
+          "نەتوانرا بچیتە ژوورەوە. تکایە ئیمەیڵەکەت پشتڕاست بکەرەوە و دووبارە هەوڵ بدەوە.",
         );
         return;
       }
 
-      if (mode === "signup") {
+      if (authMode === "signup") {
         await updateMyProfile({ username: cleanUsername });
         await refreshProfile();
       }
@@ -113,11 +118,7 @@ export default function LoginScreen() {
     } catch (error) {
       console.warn("[auth] login failed", error);
 
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again.",
-      );
+      setMessage("هەڵەیەک ڕوویدا. تکایە دووبارە هەوڵ بدەوە.");
     } finally {
       setIsLoading(false);
     }
@@ -133,12 +134,22 @@ export default function LoginScreen() {
 
   const isSignup = mode === "signup";
 
+  const chooseAuthMode = (nextMode: "signin" | "signup") => {
+    if (mode !== nextMode) {
+      setMode(nextMode);
+      setMessage(null);
+      return;
+    }
+
+    void handleAuth(nextMode);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.formCard}>
         {isSignup ? (
           <TextInput
-            placeholder="Username"
+            placeholder="ناوی بەکارهێنەر"
             placeholderTextColor="#7f8fb2"
             style={styles.input}
             autoCapitalize="none"
@@ -149,7 +160,7 @@ export default function LoginScreen() {
         ) : null}
 
         <TextInput
-          placeholder="Email"
+          placeholder="ئیمەیڵ"
           placeholderTextColor="#7f8fb2"
           style={styles.input}
           autoCapitalize="none"
@@ -160,7 +171,7 @@ export default function LoginScreen() {
         />
 
         <TextInput
-          placeholder="Password"
+          placeholder="وشەی نهێنی"
           placeholderTextColor="#7f8fb2"
           style={styles.input}
           secureTextEntry
@@ -171,35 +182,41 @@ export default function LoginScreen() {
 
         {message ? <Text style={styles.messageText}>{message}</Text> : null}
 
-        <Pressable
-          style={[styles.primaryButton, isLoading && styles.disabledButton]}
-          onPress={handleAuth}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              {isSignup ? "Create Account" : "Sign In"}
+        <View style={styles.authButtons}>
+          <Pressable
+            style={[styles.primaryButton, isSignup && styles.secondaryButton, isLoading && styles.disabledButton]}
+            onPress={() => chooseAuthMode("signin")}
+            disabled={isLoading}
+          >
+            {isLoading && !isSignup ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>چوونەژوورەوە</Text>}
+          </Pressable>
+          <Pressable
+            style={[styles.primaryButton, !isSignup && styles.secondaryButton, isLoading && styles.disabledButton]}
+            onPress={() => chooseAuthMode("signup")}
+            disabled={isLoading}
+          >
+            {isLoading && isSignup ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>دروستکردنی هەژمار</Text>}
+          </Pressable>
+        </View>
+
+        {isSignup ? (
+          <View style={styles.privacyRow}>
+            <Text style={styles.privacyText}>
+              بە دروستکردنی هەژمار، ڕازی دەبیت بە
             </Text>
-          )}
-        </Pressable>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="Privacy Policy"
+              hitSlop={8}
+              onPress={() =>
+                void Linking.openURL("https://playaznif.com/privacy-policy")
+              }
+            >
+              <Text style={styles.privacyLink}>سیاسەتی پاراستنی نهێنی</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-        <Pressable
-          style={styles.switchButton}
-          onPress={() => {
-            setMode((current) => (current === "signin" ? "signup" : "signin"));
-
-            setMessage(null);
-          }}
-          disabled={isLoading}
-        >
-          <Text style={styles.switchButtonText}>
-            {isSignup
-              ? "Already have an account? Sign in"
-              : "New player? Create account"}
-          </Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -220,30 +237,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
 
-  input: {
-    height: 40,
-    borderRadius: 6,
-    backgroundColor: "rgba(7, 26, 54, 0.78)",
-    color: "#ffffff",
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "rgba(33, 65, 111, 0.65)",
-    fontSize: 13,
-    fontFamily: "RobotoMedium",
-  },
+input: {
+  height: 40,
+  borderRadius: 6,
+  backgroundColor: "rgba(7, 26, 54, 0.78)",
+  color: "#ffffff",
+  paddingHorizontal: 14,
+  marginBottom: 12,
+  borderWidth: 1,
+  borderColor: "rgba(33, 65, 111, 0.65)",
+  fontSize: 13,
+},
 
   messageText: {
     color: "#fca5a5",
     fontSize: 12,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaRegular",
     marginBottom: 10,
     textAlign: "center",
   },
 
   primaryButton: {
-    alignSelf: "center",
-    minWidth: 145,
+    flex: 1,
     height: 40,
     paddingHorizontal: 20,
     borderRadius: 6,
@@ -253,6 +268,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
+  authButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  secondaryButton: {
+    backgroundColor: "#334155",
+  },
+
   disabledButton: {
     opacity: 0.65,
   },
@@ -260,17 +284,38 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#ffffff",
     fontSize: 14,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaRegular",
   },
 
-  switchButton: {
-    marginTop: 16,
+  privacyRow: {
+    marginTop: 12,
     alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
   },
 
-  switchButtonText: {
-    color: "#9fc2ff",
+  privacyText: {
+    color: "#a8b7d5",
     fontSize: 12,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaRegular",
+    textAlign: "center",
+    writingDirection: "rtl",
   },
+
+  kurdishInput: {
+  fontFamily: "SpedaBold",
+},
+
+latinInput: {
+  fontFamily: "RobotoMedium",
+},
+
+  privacyLink: {
+    color: "#7dd3fc",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    textDecorationLine: "underline",
+  },
+
 });

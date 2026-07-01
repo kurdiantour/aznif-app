@@ -25,15 +25,16 @@ export async function prepareMultiplayerGameLaunch(
   const snapshotRpc = mode === "1v1" ? "get_one_vs_one_snapshot" : "get_two_vs_two_snapshot";
 
   const tablePreparation = (async () => {
-    const { data } = await supabase
-      .from("user_equipped_shop_items")
-      .select("item_id")
-      .eq("category", "tables")
-      .maybeSingle();
+    const { data, error } = await supabase.rpc("get_multiplayer_room_table", {
+      p_room_id: roomId,
+      p_mode: mode,
+    });
+
+    if (error) throw error;
 
     preloadedTableId =
-      data?.item_id && isTableId(data.item_id)
-        ? data.item_id
+      typeof data === "string" && isTableId(data)
+        ? data
         : DEFAULT_TABLE_ID;
 
     const source = Image.resolveAssetSource(

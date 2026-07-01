@@ -1,77 +1,70 @@
 import type { Player, RoundResult } from "@/types/game";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
-  LayoutChangeEvent,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import DominoTile from "./DominoTile";
 
-const POINTS_APPEAR_DELAY_MS = 900;
-const POINTS_HOLD_MS = 850;
-const POINTS_FLY_MS = 700;
+const POINTS_APPEAR_DELAY_MS = 0;
+const POINTS_HOLD_MS = 4_300;
+const POINTS_FLY_MS = 300;
 const HAND_REVEAL_MS = 350;
 
 type Props = {
   visible: boolean;
   roundResult: RoundResult | null | undefined;
-  lastTilePoints?: number;
   players: Player[];
   topPlayer?: Player;
   leftPlayer?: Player;
   rightPlayer?: Player;
   humanPlayer?: Player;
+  qapatPlayerId?: string | null;
 };
 
 export default function RoundResultReveal({
   visible,
   roundResult,
-  lastTilePoints = 0,
   players,
   topPlayer,
   leftPlayer,
   rightPlayer,
+  qapatPlayerId = null,
 }: Props) {
-  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
-  const lastTileProgress = useRef(new Animated.Value(0)).current;
   const handPointsProgress = useRef(new Animated.Value(0)).current;
   const handRevealProgress = useRef(new Animated.Value(1)).current;
   const handPoints = roundResult?.awardedPoints ?? 0;
   const roundAnimationKey = visible && roundResult
-    ? `${roundResult.winnerId ?? "round"}:${lastTilePoints}:${handPoints}`
+    ? `${roundResult.winnerId ?? "round"}:${handPoints}`
     : null;
 
   useEffect(() => {
-    lastTileProgress.stopAnimation();
     handPointsProgress.stopAnimation();
     handRevealProgress.stopAnimation();
-    lastTileProgress.setValue(0);
     handPointsProgress.setValue(0);
-    handRevealProgress.setValue(lastTilePoints > 0 ? 0 : 1);
+    handRevealProgress.setValue(0);
     if (!roundAnimationKey) return;
 
     const animatePoints = (progress: Animated.Value, delay: number) =>
       Animated.sequence([
         Animated.delay(delay),
-        Animated.spring(progress, {
+        Animated.timing(progress, {
           toValue: 1,
-          speed: 16,
-          bounciness: 8,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.delay(POINTS_HOLD_MS),
         Animated.timing(progress, {
           toValue: 2,
           duration: POINTS_FLY_MS,
-          easing: Easing.in(Easing.cubic),
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]);
-
-    if (lastTilePoints <= 0 && handPoints <= 0) return;
 
     const revealHands = Animated.timing(handRevealProgress, {
       toValue: 1,
@@ -80,27 +73,16 @@ export default function RoundResultReveal({
       useNativeDriver: true,
     });
 
-    const animation = lastTilePoints > 0 && handPoints > 0
-      ? Animated.sequence([
-        animatePoints(lastTileProgress, POINTS_APPEAR_DELAY_MS),
-        Animated.parallel([
+    const animation = handPoints > 0
+      ? Animated.parallel([
           revealHands,
-          animatePoints(handPointsProgress, HAND_REVEAL_MS + 250),
-        ]),
-      ])
-      : lastTilePoints > 0
-        ? Animated.sequence([
-          animatePoints(lastTileProgress, POINTS_APPEAR_DELAY_MS),
-          revealHands,
+          animatePoints(handPointsProgress, POINTS_APPEAR_DELAY_MS),
         ])
-      : animatePoints(
-        handPointsProgress,
-        POINTS_APPEAR_DELAY_MS,
-      );
+      : revealHands;
 
     animation.start();
     return () => animation.stop();
-  }, [handPoints, handPointsProgress, handRevealProgress, lastTilePoints, lastTileProgress, roundAnimationKey]);
+  }, [handPoints, handPointsProgress, handRevealProgress, roundAnimationKey]);
 
   const pointAnimationStyle = (progress: Animated.Value) => ({
     opacity: progress.interpolate({
@@ -109,21 +91,9 @@ export default function RoundResultReveal({
     }),
     transform: [
       {
-        translateX: progress.interpolate({
-          inputRange: [0, 1, 2],
-          outputRange: [0, 0, Math.max(0, overlaySize.width / 2 - 143)],
-        }),
-      },
-      {
-        translateY: progress.interpolate({
-          inputRange: [0, 1, 2],
-          outputRange: [8, 0, Math.max(0, overlaySize.height / 2 - 43)],
-        }),
-      },
-      {
         scale: progress.interpolate({
-          inputRange: [0, 1, 1.72, 2],
-          outputRange: [0.4, 1, 1, 0.42],
+          inputRange: [0, 1, 2],
+          outputRange: [0.4, 1, 1],
         }),
       },
     ],
@@ -132,15 +102,17 @@ export default function RoundResultReveal({
     opacity: handRevealProgress,
   };
 
-  const handleOverlayLayout = (event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    setOverlaySize({ width, height });
-  };
-
   if (!visible || !roundResult) return null;
 
   const winner = players.find((player) => player.id === roundResult.winnerId);
-  const isBlocked = roundResult.endReason === "blocked";
+  const winnerRemainingTiles = roundResult.winnerId
+    ? roundResult.remainingTilesByPlayer?.[roundResult.winnerId] ?? []
+    : [];
+  const isBlocked =
+    roundResult.endReason === "blocked" || winnerRemainingTiles.length > 0;
+  const resultPlayer = isBlocked
+    ? players.find((player) => player.id === qapatPlayerId) ?? winner
+    : winner;
 
   const tilesFor = (player: Player) =>
     roundResult.remainingTilesByPlayer?.[player.id] ?? [];
@@ -149,25 +121,16 @@ export default function RoundResultReveal({
     <View
       style={styles.resultOverlay}
       pointerEvents="none"
-      onLayout={handleOverlayLayout}
     >
       <View style={styles.resultCenter}>
-        {isBlocked && (
-          <Text style={styles.resultReasonText}>یاری پست بوو</Text>
-        )}
+        <Text style={styles.resultAznifText}>
+          {isBlocked ? "( قەپات )" : "( ئەزنیف )"}
+        </Text>
         <Text style={styles.resultWinnerText}>
-          {winner ? `${winner.name} بردیەوە` : "کۆتایی هاتنی دەور"}
+          {resultPlayer?.name ?? "کۆتایی هاتنی دەور"}
         </Text>
 
         <View style={styles.pointsAnimationSlot}>
-          {lastTilePoints > 0 && (
-            <Animated.View
-              style={[styles.resultPointsBadge, pointAnimationStyle(lastTileProgress)]}
-            >
-              <Text style={styles.pointsLabel}>آخرین تایل</Text>
-              <Text style={styles.resultPointsText}>+{lastTilePoints}</Text>
-            </Animated.View>
-          )}
           {handPoints > 0 && (
             <Animated.View
               style={[
@@ -252,14 +215,15 @@ const styles = StyleSheet.create({
     color: "#f8f3df",
     fontSize: 16,
     fontFamily: "SpedaBold",
+    textAlign: "center",
   },
-  resultReasonText: {
-    color: "#fbbf24",
+  resultAznifText: {
+    marginBottom: 4,
+    color: "#ffffff",
     fontSize: 18,
     fontFamily: "SpedaBold",
-    marginBottom: 6,
+    textAlign: "center",
   },
-
   resultPointsText: {
     color: "#facc15",
     fontSize: 30,
@@ -292,12 +256,6 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderWidth: 0,
   },
-  pointsLabel: {
-    color: "#f8f3df",
-    fontSize: 10,
-    fontFamily: "SpedaBold",
-  },
-
   revealTilesTop: {
     position: "absolute",
     top: 82,
@@ -309,18 +267,20 @@ const styles = StyleSheet.create({
   revealTilesLeft: {
     position: "absolute",
     left: 74,
-    top: "50%",
-    transform: [{ translateY: -10 }],
+    top: 0,
+    bottom: 0,
     alignItems: "center",
+    justifyContent: "center",
     zIndex: 210,
   },
 
   revealTilesRight: {
     position: "absolute",
     right: 74,
-    top: "50%",
-    transform: [{ translateY: -10 }],
+    top: 0,
+    bottom: 0,
     alignItems: "center",
+    justifyContent: "center",
     zIndex: 210,
   },
 

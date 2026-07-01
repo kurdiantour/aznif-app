@@ -164,8 +164,94 @@ if (sharedGameUtils.includes("@ts-nocheck")) {
 
 const privateRoomScreen = read("app/create-room.tsx");
 const matchmakingScreen = read("app/matchmaking.tsx");
-if (!matches(privateRoomScreen, /rpc\(\s*["']join_one_vs_one_room["']/)) {
-  failures.push("Private room join-by-code flow is missing.");
+const localAiRewardHardening = read(
+  "supabase/migrations/20260630000300_harden_local_ai_practice_reward_claims.sql",
+);
+for (const required of [
+  "char_length(v_match_id) <> 36",
+  "pg_try_advisory_xact_lock",
+  "ON CONFLICT (practice_match_id, user_id) DO NOTHING",
+  "SET points = COALESCE(points, 0) + 1",
+  "REVOKE ALL ON FUNCTION public.award_ai_practice_win",
+  "TO authenticated",
+]) {
+  if (!localAiRewardHardening.includes(required)) {
+    failures.push(`Missing local AI reward hardening invariant: ${required}`);
+  }
+}
+
+const disconnectTakeoverHardening = read(
+  "supabase/migrations/20260630000500_reliable_disconnect_bot_takeover.sql",
+);
+for (const required of [
+  "GREATEST(p_grace_seconds, 60)",
+  "COALESCE(player.last_seen_at, player.joined_at, player.updated_at) < v_cutoff",
+  "SET connected = false",
+  "FOR UPDATE OF player SKIP LOCKED",
+  "'reason', 'heartbeat_timeout'",
+  "takeover_expires_at = now() + interval '60 seconds'",
+  "process_one_vs_one_takeovers",
+  "process_two_vs_two_takeovers",
+]) {
+  if (!disconnectTakeoverHardening.includes(required)) {
+    failures.push(`Missing disconnect takeover invariant: ${required}`);
+  }
+}
+const scopedTakeover = read(
+  "supabase/migrations/20260630000600_scope_disconnect_takeover_to_room.sql",
+);
+for (const required of [
+  "process_one_vs_one_room_takeovers",
+  "process_two_vs_two_room_takeovers",
+  "player.room_id=p_room_id",
+  "pg_advisory_xact_lock",
+  "max(move.sequence)",
+]) {
+  if (!scopedTakeover.includes(required)) {
+    failures.push(`Missing room-scoped takeover invariant: ${required}`);
+  }
+}
+const twoVsTwoHook = read("hooks/useTwoVsTwoGame.ts");
+for (const [label, source] of [
+  ["1v1", oneVsOneHook],
+  ["2v2", twoVsTwoHook],
+]) {
+  if (!source.includes("takeoverWatchdogInFlightRef")) {
+    failures.push(`${label} active matches have no takeover watchdog.`);
+  }
+  if (!source.includes("AppState.addEventListener('change'")) {
+    failures.push(`${label} active matches do not publish AppState disconnects.`);
+  }
+  if (!matches(source, /setInterval\(\(\) => void runTakeoverWatchdog\(\), 10_000\)/)) {
+    failures.push(`${label} takeover watchdog is not scheduled.`);
+  }
+}
+for (const forbidden of ["created_at >", "count(*)", "interval '1 day'"]) {
+  if (localAiRewardHardening.includes(forbidden)) {
+    failures.push(`Local AI rewards must not impose a win cap: ${forbidden}`);
+  }
+}
+if (!matches(privateRoomScreen, /rpc\(\s*["']create_private_10_aznif_room["']/)) {
+  failures.push("Fixed-price private room creation flow is missing.");
+}
+if (!matches(privateRoomScreen, /rpc\(\s*["']join_private_10_aznif_room["']/)) {
+  failures.push("Rate-limited private room join-by-code flow is missing.");
+}
+
+const gameInvitesMigration = read(
+  "supabase/migrations/20260627000200_presence_and_game_invites.sql",
+);
+for (const required of [
+  "CREATE TABLE IF NOT EXISTS public.user_presence",
+  "CREATE TABLE IF NOT EXISTS public.game_invites",
+  "public.are_friends(auth.uid(), p_recipient_id)",
+  "Player is not available",
+  "FOR UPDATE",
+  "REVOKE ALL ON public.game_invites FROM anon, authenticated",
+  "REVOKE ALL ON FUNCTION public.respond_game_invite(uuid, boolean)",
+]) {
+  if (!gameInvitesMigration.includes(required))
+    failures.push(`Missing secure game-invite invariant: ${required}`);
 }
 if (!matches(matchmakingScreen, /currentMatchType\s*===\s*["']private["']/)) {
   failures.push(

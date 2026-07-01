@@ -1,4 +1,6 @@
 import { ProfileProvider } from "@/lib/profile";
+import { PresenceProvider } from "@/lib/presence";
+import { GameInvitesProvider } from "@/lib/gameInvitesProvider";
 import { appFontAssets, applyAppFontDefaults } from "@/lib/fonts";
 import "@/lib/rtl";
 import "@/lib/urlPolyfill";
@@ -63,36 +65,40 @@ export default function Layout() {
   return (
     <SafeAreaProvider>
       <ProfileProvider>
-        <StatusBar
-          hidden
-          translucent
-          backgroundColor="transparent"
-          style="light"
-        />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: "none",
-            contentStyle: {
-              backgroundColor: "#050b22",
-              direction: "rtl",
-            },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="forgot-password" />
-          <Stack.Screen name="verify-email" />
-          <Stack.Screen name="auth-callback" />
-          <Stack.Screen name="reset-password" />
-          <Stack.Screen name="delete-account" />
-          <Stack.Screen name="game" />
-          <Stack.Screen name="create-room" />
-          <Stack.Screen name="matchmaking" />
-          <Stack.Screen name="play-ai" />
-          <Stack.Screen name="wallet-history" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
+        <PresenceProvider>
+          <GameInvitesProvider>
+            <StatusBar
+              hidden
+              translucent
+              backgroundColor="transparent"
+              style="light"
+            />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: "none",
+                contentStyle: {
+                  backgroundColor: "#050b22",
+                  direction: "rtl",
+                },
+              }}
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="forgot-password" />
+              <Stack.Screen name="verify-email" />
+              <Stack.Screen name="auth-callback" />
+              <Stack.Screen name="reset-password" />
+              <Stack.Screen name="delete-account" />
+              <Stack.Screen name="game" />
+              <Stack.Screen name="create-room" />
+              <Stack.Screen name="matchmaking" />
+              <Stack.Screen name="play-ai" />
+              <Stack.Screen name="wallet-history" />
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+          </GameInvitesProvider>
+        </PresenceProvider>
       </ProfileProvider>
     </SafeAreaProvider>
   );

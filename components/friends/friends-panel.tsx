@@ -5,6 +5,9 @@ import {
   type Friend,
   type FriendSearchResult,
 } from "@/lib/friends";
+import { sendGameInvite } from "@/lib/gameInvites";
+import { usePresence } from "@/lib/presence";
+import { supabase } from "@/lib/supabase";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -21,9 +24,15 @@ import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 function FriendCard({
   friend,
   onSendChip,
+  onlineAvailable,
+  inviteBusy,
+  onInvite,
 }: {
   friend: Friend;
   onSendChip: (friend: Friend) => void;
+  onlineAvailable: boolean;
+  inviteBusy: boolean;
+  onInvite: (friend: Friend) => void;
 }) {
   return (
     <View style={styles.friendCard}>
@@ -36,10 +45,11 @@ function FriendCard({
         </Pressable>
 
         <Pressable
-          style={[styles.actionButton, styles.disabledButton]}
-          disabled
+          style={[styles.actionButton, !onlineAvailable && styles.disabledButton]}
+          disabled={!onlineAvailable || inviteBusy}
+          onPress={() => onInvite(friend)}
         >
-          <Text style={[styles.buttonText, styles.disabledButtonText]}>
+          <Text style={[styles.buttonText, !onlineAvailable && styles.disabledButtonText]}>
             بانگهێشت
           </Text>
         </Pressable>
@@ -55,7 +65,7 @@ function FriendCard({
         </Text>
       </View>
 
-      <View style={styles.avatarWrap}>
+      <View style={[styles.avatarWrap, onlineAvailable && styles.onlineAvatarWrap]}>
         <PlayerAvatar
           avatarId={friend.avatarId}
           size={58}
@@ -137,11 +147,13 @@ export function FriendsPanel({
   onSendChip,
   transferSuccessSignal = 0,
 }: FriendsPanelProps) {
+  const { statuses, refreshPresence } = usePresence();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -176,6 +188,25 @@ export function FriendsPanel({
       void refresh();
     }, [refresh]),
   );
+
+  useEffect(() => {
+    const ids = friends.map((friend) => friend.id);
+    if (ids.length === 0) return;
+    void refreshPresence(ids);
+    const channel = supabase
+      .channel(`friends-presence:${ids.slice().sort().join(":")}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_presence" },
+        () => void refreshPresence(ids),
+      )
+      .subscribe();
+    const fallback = setInterval(() => void refreshPresence(ids), 15_000);
+    return () => {
+      clearInterval(fallback);
+      void supabase.removeChannel(channel);
+    };
+  }, [friends, refreshPresence]);
 
   useEffect(() => {
     let mounted = true;
@@ -257,6 +288,21 @@ export function FriendsPanel({
     void refresh();
   }
 
+  async function handleInvite(friend: Friend) {
+    setInviteBusyId(friend.id);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await sendGameInvite(friend.id);
+      setSuccessMessage(`بانگهێشت بۆ ${friend.name} نێردرا.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to send game invitation.");
+      void refreshPresence([friend.id]);
+    } finally {
+      setInviteBusyId(null);
+    }
+  }
+
   return (
     <View style={styles.panel}>
       <ScrollView
@@ -306,6 +352,9 @@ export function FriendsPanel({
               key={friend.id}
               friend={friend}
               onSendChip={(nextFriend) => onSendChip?.(nextFriend)}
+              onlineAvailable={statuses[friend.id] === "online_available"}
+              inviteBusy={inviteBusyId === friend.id}
+              onInvite={(nextFriend) => void handleInvite(nextFriend)}
             />
           ))
         )}
@@ -376,6 +425,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(180,180,200,0.45)",
     padding: 2,
+  },
+
+  onlineAvatarWrap: {
+    borderColor: "#22c55e",
+    borderWidth: 3,
   },
 
   avatar: {

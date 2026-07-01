@@ -71,7 +71,11 @@ export default forwardRef(function BoardArea(
   const finalTileScale = useRef(new Animated.Value(1)).current;
   const finalTileTranslateX = useRef(new Animated.Value(0)).current;
   const finalTileTranslateY = useRef(new Animated.Value(0)).current;
+  const finalTileCenterProgress = useRef(new Animated.Value(0)).current;
+  const finalTileRotation = useRef(new Animated.Value(0)).current;
   const finalTileEmphasisOpacity = useRef(new Animated.Value(1)).current;
+  const aznifOpacity = useRef(new Animated.Value(0)).current;
+  const aznifScale = useRef(new Animated.Value(0.35)).current;
   const boardShake = useRef(new Animated.Value(0)).current;
   const lastCompletedFinalTileIdRef = useRef<string | null>(null);
   const [animSprite, setAnimSprite] = useState<null | {
@@ -104,6 +108,43 @@ export default forwardRef(function BoardArea(
   }, [scoreEventKey]);
 
   const isCenterFinalTile = board.centerTile?.id === finalTileAnimationTileId;
+  const shouldShowAznif = !!finalTileAnimationTileId;
+
+  useEffect(() => {
+    aznifOpacity.stopAnimation();
+    aznifScale.stopAnimation();
+    aznifOpacity.setValue(0);
+    aznifScale.setValue(0.35);
+    if (!shouldShowAznif) return;
+
+    const animation = Animated.sequence([
+      Animated.delay(280),
+      Animated.parallel([
+        Animated.timing(aznifOpacity, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.spring(aznifScale, {
+          toValue: 1,
+          speed: 14,
+          bounciness: 10,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.delay(3000),
+      Animated.timing(aznifOpacity, {
+        toValue: 0,
+        duration: 320,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [aznifOpacity, aznifScale, shouldShowAznif]);
+
   const scoreBadgePosition = useMemo(() => {
     const scoringPlayer = players.find(
       (player) => player.id === lastScoringEvent?.playerId,
@@ -281,81 +322,39 @@ export default forwardRef(function BoardArea(
     if (lastCompletedFinalTileIdRef.current === finalTileAnimationTileId)
       return;
     lastCompletedFinalTileIdRef.current = finalTileAnimationTileId;
-    finalTileScale.setValue(2.45);
+    finalTileScale.setValue(1);
     finalTileTranslateX.setValue(0);
-    finalTileTranslateY.setValue(-92);
+    finalTileTranslateY.setValue(0);
+    finalTileCenterProgress.setValue(0);
+    finalTileRotation.setValue(0);
     finalTileEmphasisOpacity.setValue(1);
     boardShake.setValue(0);
     Animated.sequence([
       Animated.parallel([
-        Animated.timing(finalTileScale, {
-          toValue: 2.15,
-          duration: 90,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(finalTileTranslateY, {
-          toValue: -112,
-          duration: 90,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
+        Animated.timing(finalTileScale, { toValue: 1.65, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       ]),
       Animated.parallel([
-        Animated.timing(finalTileScale, {
-          toValue: 1,
-          duration: 190,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(finalTileTranslateY, {
-          toValue: 0,
-          duration: 190,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
+        Animated.timing(finalTileTranslateY, { toValue: -96, duration: 780, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(finalTileRotation, { toValue: 1080, duration: 780, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(finalTileScale, { toValue: 2.05, duration: 780, easing: Easing.out(Easing.quad), useNativeDriver: true }),
       ]),
       Animated.parallel([
+        Animated.timing(finalTileTranslateY, { toValue: 0, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(finalTileScale, { toValue: 1.5, duration: 240, easing: Easing.in(Easing.quad), useNativeDriver: true }),
         Animated.sequence([
-          Animated.timing(finalTileScale, {
-            toValue: 0.92,
-            duration: 48,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.spring(finalTileScale, {
-            toValue: 1,
-            friction: 4,
-            tension: 180,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.timing(boardShake, {
-            toValue: 1,
-            duration: 28,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-          Animated.timing(boardShake, {
-            toValue: -1,
-            duration: 44,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-          Animated.timing(boardShake, {
-            toValue: 0,
-            duration: 48,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
+          Animated.delay(190),
+          Animated.timing(boardShake, { toValue: 1, duration: 20, easing: Easing.linear, useNativeDriver: true }),
+          Animated.timing(boardShake, { toValue: -1, duration: 35, easing: Easing.linear, useNativeDriver: true }),
+          Animated.timing(boardShake, { toValue: 0, duration: 35, easing: Easing.out(Easing.quad), useNativeDriver: true }),
         ]),
       ]),
     ]).start(() => onFinalTileAnimationComplete?.());
   }, [
     boardShake,
+    finalTileCenterProgress,
     finalTileAnimationTileId,
     finalTileEmphasisOpacity,
+    finalTileRotation,
     finalTileScale,
     finalTileTranslateX,
     finalTileTranslateY,
@@ -369,11 +368,23 @@ export default forwardRef(function BoardArea(
   const finalTileTransform = [
     { translateX: finalTileTranslateX },
     { translateY: finalTileTranslateY },
+    { rotate: finalTileRotation.interpolate({ inputRange: [0, 1080], outputRange: ["0deg", "1080deg"] }) },
     { scale: finalTileScale },
   ];
 
   return (
     <View style={styles.container}>
+      {shouldShowAznif && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.aznifBanner,
+            { opacity: aznifOpacity, transform: [{ scale: aznifScale }] },
+          ]}
+        >
+          <Text style={styles.aznifText}>ئەزنیف!</Text>
+        </Animated.View>
+      )}
       {shouldRenderPlayedBoardTiles &&
         lastScoringEvent &&
         visibleScoreEventKey === scoreEventKey && (
@@ -418,6 +429,8 @@ export default forwardRef(function BoardArea(
               winningTranslateY={finalTileTranslateY}
               winningScale={finalTileScale}
               winningEmphasisOpacity={finalTileEmphasisOpacity}
+              winningCenterProgress={finalTileCenterProgress}
+              winningRotation={finalTileRotation}
               isCenterFinalTile={isCenterFinalTile}
               centerFinalTransform={finalTileTransform}
             />
@@ -449,6 +462,22 @@ const styles = StyleSheet.create({
   boardTilesLayer: {
     ...StyleSheet.absoluteFillObject,
     transformOrigin: "center",
+  },
+  aznifBanner: {
+    position: "absolute",
+    alignSelf: "center",
+    top: "50%",
+    marginTop: -46,
+    zIndex: 250,
+  },
+  aznifText: {
+    color: "#facc15",
+    fontSize: 64,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    textShadowColor: "rgba(250, 204, 21, 0.9)",
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 16,
   },
   centerTileWrap: {
     position: "absolute",

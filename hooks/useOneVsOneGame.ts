@@ -21,6 +21,7 @@ import type {
     TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handContainsTile, handHasPlayableTile } from './gameRuleQueries';
 import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
@@ -65,6 +66,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   const startGameInFlightRef = useRef(false);
   const pollInFlightRef = useRef(false);
   const botTurnInFlightRef = useRef(false);
+  const takeoverWatchdogInFlightRef = useRef(false);
   const roundTransitionSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roundTransitionStartedAtRef = useRef<number | null>(null);
   const latestVersionRef = useRef(-1);
@@ -87,7 +89,10 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       ...(snapshot ?? {}),
       ...(snapshot?.state ?? {}),
       mode: '1v1',
-      currentTurnPlayerId: snapshot?.state?.currentTurnPlayerId ?? null,
+      currentTurnPlayerId:
+        snapshot?.state?.currentTurnPlayerId ??
+        snapshot?.current_turn_player_id ??
+        null,
     };
 
     setRawState(nextRawState);
@@ -115,6 +120,38 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     applySnapshot(data);
     return data;
   }, [roomId, applySnapshot]);
+
+  const refreshPlayers = useCallback(async (includeProfiles = true) => {
+    if (!roomId) throw new Error('No 1v1 room id');
+
+    const { data, error } = await supabase
+      .from('one_vs_one_players')
+      .select('id, user_id, player_index, seat, team_id, kind, connected, bot_takeover, abandoned')
+      .eq('room_id', roomId)
+      .order('player_index', { ascending: true });
+
+    if (error) throw error;
+
+    const rows = data ?? [];
+    setPlayersRows(rows);
+
+    if (!includeProfiles) return rows;
+
+    const userIds = rows.map((row: any) => row.user_id).filter(Boolean);
+    if (!userIds.length) {
+      setProfileById(new Map());
+      return rows;
+    }
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_id, level, points')
+      .in('id', userIds);
+
+    if (profilesError) throw profilesError;
+    setProfileById(new Map((profiles ?? []).map((profile: any) => [profile.id, profile])));
+    return rows;
+  }, [roomId]);
 
   const applySuccessfulAction = useCallback(async (result: any) => {
     if (!result?.ok) return false;
@@ -185,35 +222,6 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       }
     };
 
-    const loadPlayers = async () => {
-      const { data, error } = await supabase
-        .from('one_vs_one_players')
-        .select('id, user_id, player_index, seat, team_id, kind, connected, bot_takeover, abandoned')
-        .eq('room_id', roomId)
-        .order('player_index', { ascending: true });
-
-      if (error) throw error;
-      if (!mounted) return;
-
-      const rows = data ?? [];
-      setPlayersRows(rows);
-
-      const userIds = rows.map((row: any) => row.user_id).filter(Boolean);
-
-      if (userIds.length) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, username, avatar_id, level, points')
-          .in('id', userIds);
-
-        if (mounted) {
-          setProfileById(new Map((profiles ?? []).map((p: any) => [p.id, p])));
-        }
-      } else {
-        setProfileById(new Map());
-      }
-    };
-
     const boot = async () => {
       try {
         setLoading(true);
@@ -231,7 +239,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
           });
         }
 
-        await Promise.all([loadRoom(), loadPlayers()]);
+        await Promise.all([loadRoom(), refreshPlayers()]);
 
         roomChannelRef.current = supabase
           .channel(`one_vs_one_rooms:${roomId}`)
@@ -266,11 +274,11 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
               table: 'one_vs_one_players',
               filter: `room_id=eq.${roomId}`,
             },
-            () => void loadPlayers(),
+            () => void refreshPlayers(),
           )
           .subscribe((status, err) => {
             if (!mounted) return;
-            if (status === 'SUBSCRIBED') void loadPlayers();
+            if (status === 'SUBSCRIBED') void refreshPlayers();
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
               setError(err?.message ?? 'Realtime player sync failed');
             }
@@ -286,9 +294,12 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
               table: 'one_vs_one_moves',
               filter: `room_id=eq.${roomId}`,
             },
-            () => {
+            (payload) => {
               if (!mounted) return;
               void loadRoom();
+              if ((payload.new as any)?.action === 'manual_leave_takeover') {
+                void refreshPlayers();
+              }
             },
           )
           .subscribe((status, err) => {
@@ -328,7 +339,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       }
 
     };
-  }, [roomId, applySnapshot, refreshSnapshot]);
+  }, [roomId, applySnapshot, refreshSnapshot, refreshPlayers]);
 
   useEffect(() => {
     if (!roomId || !currentUserId) return;
@@ -346,6 +357,51 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   }, [roomId, currentUserId]);
 
   useEffect(() => {
+    if (!roomId || !currentUserId) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') return;
+      void supabase.rpc('mark_one_vs_one_player_disconnected', {
+        p_room_id: roomId,
+        p_user_id: currentUserId,
+      });
+    });
+    return () => subscription.remove();
+  }, [roomId, currentUserId]);
+
+  useEffect(() => {
+    if (!roomId || loading || rawState?.winningTeamId) return;
+
+    const runTakeoverWatchdog = async () => {
+      if (takeoverWatchdogInFlightRef.current) return;
+      takeoverWatchdogInFlightRef.current = true;
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          'process_bot_turns',
+          { body: { mode: '1v1', room_id: roomId } },
+        );
+        if (error) throw error;
+        if (data?.processed) {
+          await Promise.all([refreshSnapshot(), refreshPlayers(false)]);
+        }
+      } catch (watchdogError) {
+        console.warn('1v1 takeover watchdog failed', watchdogError);
+      } finally {
+        takeoverWatchdogInFlightRef.current = false;
+      }
+    };
+
+    void runTakeoverWatchdog();
+    const interval = setInterval(() => void runTakeoverWatchdog(), 10_000);
+    return () => clearInterval(interval);
+  }, [
+    roomId,
+    loading,
+    rawState?.winningTeamId,
+    refreshSnapshot,
+    refreshPlayers,
+  ]);
+
+  useEffect(() => {
     if (
       !roomId ||
       rawState?.roundWinnerPlayerId ||
@@ -358,7 +414,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
       pollInFlightRef.current = true;
       try {
-        await refreshSnapshot();
+        await Promise.all([refreshSnapshot(), refreshPlayers(false)]);
       } catch (err) {
         console.warn('1v1 snapshot polling failed', err);
       } finally {
@@ -380,6 +436,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     rawState?.roundWinnerPlayerId,
     rawState?.winningTeamId,
     refreshSnapshot,
+    refreshPlayers,
   ]);
 
   const currentTurnPlayerId = rawState?.currentTurnPlayerId ?? '';
@@ -435,21 +492,45 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     if (botTurnInFlightRef.current) return;
     botTurnInFlightRef.current = true;
 
-    void supabase.functions
-      .invoke('process_bot_turns', {
-        body: {
-          mode: '1v1',
-          room_id: roomId,
-        },
-      })
-      .then(({ error }) => {
-        if (error) {
-          console.warn('process_bot_turns 1v1 failed', error);
+    const finishBotTurn = async () => {
+      try {
+        // A 1v1 bot may need to draw several times before it can play or pass.
+        // Keep processing in this invocation cycle until control leaves the bot
+        // or the current round ends, rather than waiting for a turn-id change.
+        for (let actionCount = 0; actionCount < 5; actionCount += 1) {
+          const { data, error } = await supabase.functions.invoke(
+            'process_bot_turns',
+            {
+              body: {
+                mode: '1v1',
+                room_id: roomId,
+              },
+            },
+          );
+
+          if (error) throw error;
+          if (!data?.processed) break;
+
+          const nextState = data.state ?? {};
+          if (
+            nextState.roundWinnerPlayerId ||
+            nextState.winningTeamId ||
+            nextState.currentTurnPlayerId !== currentTurnPlayerId
+          ) {
+            break;
+          }
         }
-      })
-      .finally(() => {
+      } catch (error) {
+        console.warn('process_bot_turns 1v1 failed', error);
+      } finally {
         botTurnInFlightRef.current = false;
-      });
+        void refreshSnapshot().catch((error) => {
+          console.warn('1v1 bot turn refresh failed', error);
+        });
+      }
+    };
+
+    void finishBotTurn();
   }, [
     roomId,
     loading,
@@ -457,6 +538,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     rawState?.winningTeamId,
     rawState?.roundWinnerPlayerId,
     playersRows,
+    refreshSnapshot,
   ]);
 
   const createRoundResult = useCallback((winnerId: string) => {
@@ -468,7 +550,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       id: row.user_id ?? `bot-${row.id}`,
       playerIndex: typeof row.player_index === 'number' ? row.player_index : -1,
     }));
-    const awardedPoints = rawState?.lastScoringEvent?.points ?? 0;
+    const awardedPoints = rawState?.endOfHandScoringEvent?.points ?? 0;
 
     if (
       !Array.isArray(rawState?.revealedFinalHands) ||
@@ -538,7 +620,9 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
       return {
         id: playerId,
-        name: profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
+        name: row.bot_takeover
+          ? 'رۆبوتی کاتی'
+          : profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
         seat: getRelativeSeat(playerIndex, myPlayerIndex, 2),
         kind: row.kind,
         teamId: row.team_id,

@@ -246,6 +246,7 @@ export default async function handler(req: Request) {
     };
 
     let lastScoringEvent = null;
+    let endOfHandScoringEvent = null;
     if (moveScore > 0) {
       nextScores[currentPlayer.team_id] =
         Number(nextScores[currentPlayer.team_id] ?? 0) + Number(moveScore);
@@ -273,7 +274,7 @@ export default async function handler(req: Request) {
       if (endOfHandScore > 0) {
         nextScores[currentPlayer.team_id] =
           Number(nextScores[currentPlayer.team_id] ?? 0) + endOfHandScore;
-        lastScoringEvent = {
+        endOfHandScoringEvent = {
           playerId: user.id,
           teamId: currentPlayer.team_id,
           points: endOfHandScore,
@@ -308,6 +309,7 @@ export default async function handler(req: Request) {
       lastMovePlayerId: user.id,
       lastMoveBranch: branch ?? null,
       lastScoringEvent,
+      endOfHandScoringEvent,
       teamScores: nextScores,
       roundWinnerPlayerId,
       winningTeamId,

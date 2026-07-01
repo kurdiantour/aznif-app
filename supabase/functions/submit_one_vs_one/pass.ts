@@ -158,7 +158,7 @@ export default async function handler(req: Request) {
     const finalBoneyard = boneyard;
     let nextTurnPlayerId = nextPlayerId;
     let nextStatus = "active";
-    let lastScoringEvent = null;
+    let endOfHandScoringEvent = null;
 
     let nextState = {
       ...state,
@@ -169,6 +169,7 @@ export default async function handler(req: Request) {
       lastPassedPlayerId: currentTurnPlayerId,
       turnStartedAt: new Date().toISOString(),
       lastScoringEvent: null,
+      endOfHandScoringEvent: null,
       blockedPasses,
     };
 
@@ -185,7 +186,7 @@ export default async function handler(req: Request) {
       if (blockScore > 0) {
         nextScores[winner.team_id] =
           Number(nextScores[winner.team_id] ?? 0) + blockScore;
-        lastScoringEvent = {
+        endOfHandScoringEvent = {
           playerId: winner.user_id,
           teamId: winner.team_id,
           points: blockScore,
@@ -204,7 +205,7 @@ export default async function handler(req: Request) {
         // The last player who placed a tile is king; scoring remains based on
         // the lowest-pip hand calculated above.
         leaderPlayerId: blockerPlayerId,
-        lastScoringEvent,
+        endOfHandScoringEvent,
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
       };

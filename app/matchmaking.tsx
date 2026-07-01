@@ -234,6 +234,20 @@ export default function MatchmakingScreen() {
   }, [initialMatchmakingStatus, initialRoomId]);
 
   useEffect(() => {
+    if (currentMatchType !== "private" || !currentRoomId) return;
+
+    const heartbeat = () => {
+      void supabase.rpc("heartbeat_private_10_aznif_room", {
+        p_room_id: currentRoomId,
+      });
+    };
+
+    heartbeat();
+    const interval = setInterval(heartbeat, 15_000);
+    return () => clearInterval(interval);
+  }, [currentMatchType, currentRoomId]);
+
+  useEffect(() => {
     if (currentMatchType === "private") return;
     if (matchmakingStatus !== "searching") return;
 
@@ -542,7 +556,7 @@ export default function MatchmakingScreen() {
         : "گەڕان";
 
   const centerSubtitle = isPrivateWaiting
-    ? "Share the room code below to begin."
+    ? ""
     : isSearching
       ? ""
       : isMatchFound
@@ -674,7 +688,6 @@ export default function MatchmakingScreen() {
                 style={styles.roomCodeCard}
                 onPress={() => void copyPrivateRoomCode()}
               >
-                <Text style={styles.roomCodeLabel}>Private room code</Text>
                 <Text style={styles.roomCodeValue}>{privateRoomCode}</Text>
                 <Text style={styles.roomCodeHint}>
                   {copyMessage || "Tap to copy"}
@@ -860,14 +873,14 @@ const styles = StyleSheet.create({
   roomCodeValue: {
     color: "#ffffff",
     fontFamily: "RobotoMedium",
-    fontSize: 24,
+    fontSize: 20,
     letterSpacing: 3,
     marginTop: 3,
   },
   roomCodeHint: {
     color: "#b7c8e8",
     fontFamily: "RobotoMedium",
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 3,
   },
 

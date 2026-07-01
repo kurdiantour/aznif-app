@@ -234,6 +234,7 @@ export default async function handler(req: Request) {
       teamB: Number(state.teamScores?.teamB ?? 0),
     };
     let lastScoringEvent = null;
+    let endOfHandScoringEvent = null;
     if (moveScore > 0) {
       nextScores[currentPlayer.team_id] =
         Number(nextScores[currentPlayer.team_id] ?? 0) + Number(moveScore);
@@ -266,6 +267,7 @@ export default async function handler(req: Request) {
       lastPlayedTile: tile,
       lastMoveBranch: branch ?? null,
       lastScoringEvent,
+      endOfHandScoringEvent,
       teamScores: nextScores,
       lastPassedPlayerId: null,
       blockedPasses: [],
@@ -284,7 +286,7 @@ export default async function handler(req: Request) {
       if (endScore > 0) {
         nextScores[currentPlayer.team_id] =
           Number(nextScores[currentPlayer.team_id] ?? 0) + endScore;
-        lastScoringEvent = {
+        endOfHandScoringEvent = {
           playerId: user.id,
           teamId: currentPlayer.team_id,
           points: endScore,
@@ -299,6 +301,7 @@ export default async function handler(req: Request) {
         ...nextState,
         teamScores: nextScores,
         lastScoringEvent,
+        endOfHandScoringEvent,
         roundWinnerPlayerId,
         roundEndReason: "empty_hand",
         leaderPlayerId: user.id,
@@ -306,9 +309,6 @@ export default async function handler(req: Request) {
         matchReward: finished.matchReward,
       };
       nextTurnPlayerId = user.id;
-      if (finished.winningTeamId) {
-        nextStatus = "finished";
-      }
     } else if (
       !canAnyPlayerMove(nextHands, nextBoard, nextSpinnerValue, false, null)
     ) {
@@ -329,7 +329,7 @@ export default async function handler(req: Request) {
       if (blockScore > 0) {
         nextScores[winner.team_id] =
           Number(nextScores[winner.team_id] ?? 0) + blockScore;
-        lastScoringEvent = {
+        endOfHandScoringEvent = {
           playerId: winner.user_id,
           teamId: winner.team_id,
           points: blockScore,
@@ -344,6 +344,7 @@ export default async function handler(req: Request) {
         ...nextState,
         teamScores: nextScores,
         lastScoringEvent,
+        endOfHandScoringEvent,
         roundWinnerPlayerId: winner.user_id,
         roundEndReason: "blocked",
         // The player whose tile closed the board is king next hand. Scoring
@@ -353,9 +354,6 @@ export default async function handler(req: Request) {
         matchReward: finished.matchReward,
       };
       nextTurnPlayerId = user.id;
-      if (finished.winningTeamId) {
-        nextStatus = "finished";
-      }
     }
 
     const { data: updatedRoom, error: commitError } = await svc.rpc(
@@ -385,14 +383,28 @@ export default async function handler(req: Request) {
       throw commitError;
     }
 
-    if (roundWinnerPlayerId && nextStatus !== "finished") {
-      const { error: forfeitErr } = await svc.rpc(
+    if (roundWinnerPlayerId) {
+      const { data: forfeit, error: forfeitErr } = await svc.rpc(
         "resolve_two_vs_two_round_leave_forfeits",
         {
           p_room_id: room_id,
         },
       );
       if (forfeitErr) throw forfeitErr;
+
+      if (!forfeit?.forfeit && nextState.winningTeamId) {
+        const { error: finishError } = await svc
+          .from("two_vs_two_rooms")
+          .update({ status: "finished", current_turn_player_id: null })
+          .eq("id", room_id)
+          .eq("status", "active");
+        if (finishError) throw finishError;
+        const { error: rewardError } = await svc.rpc(
+          "settle_finished_match_rewards",
+          { p_mode: "2v2", p_room_id: room_id },
+        );
+        if (rewardError) throw rewardError;
+      }
     }
 
     return json(

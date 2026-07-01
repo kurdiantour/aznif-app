@@ -64,6 +64,17 @@ export default async function handler(req: Request) {
     if (playersError) throw playersError;
     if (!players?.some((player) => player.user_id === userData.user.id)) return json({ error: "You are not a player in this room" }, 403);
 
+    // Resolve a whole-team manual leave before dealing. This also closes the
+    // animation/countdown race where next_hand arrives just after round end.
+    const { data: forfeit, error: forfeitError } = await svc.rpc(
+      "resolve_two_vs_two_round_leave_forfeits",
+      { p_room_id: room_id },
+    );
+    if (forfeitError) throw forfeitError;
+    if (forfeit?.forfeit) {
+      return json({ error: "Match finished because a team left" }, 409);
+    }
+
     const hands = dealHands();
     const leaderIndex = getNextHandKingIndex(
       players,
@@ -83,6 +94,8 @@ export default async function handler(req: Request) {
       roundWinnerPlayerId: null,
       roundEndReason: null,
       lastPlayedTile: null,
+      lastScoringEvent: null,
+      endOfHandScoringEvent: null,
       lastPassedPlayerId: null,
       blockedPasses: [],
       canDrawTile: false,

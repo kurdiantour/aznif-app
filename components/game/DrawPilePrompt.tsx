@@ -115,13 +115,6 @@ export default function DrawPilePrompt({
     return (
       <View style={styles.humanPassWrap} pointerEvents="box-none">
         <View style={styles.humanPassCard}>
-          <View style={styles.humanPassTextBox}>
-            <Text style={styles.humanPassTitle}>پاس</Text>
-            <Text style={styles.humanPassSubtitle}>
-              هیچ خشتێکی گونجاوت نییە.
-            </Text>
-          </View>
-
           <Pressable
             style={[styles.humanPassButton, passing && styles.buttonDisabled]}
             onPress={onPass}
@@ -373,43 +366,10 @@ boneyardTileButton: {
   },
 
   humanPassCard: {
-    width: 300,
-    minHeight: 76,
-    borderRadius: 18,
-    paddingLeft: 18,
-    paddingRight: 10,
-    paddingVertical: 10,
-    flexDirection: "row",
+    width: 68,
+    height: 68,
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(62, 35, 18, 0.94)",
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.38)",
-    shadowColor: "#000",
-    shadowOpacity: 0.38,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 16,
-  },
-
-  humanPassTextBox: {
-    flex: 1,
-    paddingRight: 12,
-  },
-
-  humanPassTitle: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontFamily: "SpedaBold",
-    textAlign: "left",
-  },
-
-  humanPassSubtitle: {
-    marginTop: 4,
-    color: "rgba(255, 255, 255, 0.72)",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    textAlign: "left",
+    justifyContent: "center",
   },
 
   humanPassButton: {

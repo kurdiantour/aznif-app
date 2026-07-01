@@ -428,8 +428,8 @@ export default function PlayerHand({
           outputRange: [1.35, 1],
         });
         const dealOpacity = dealProgress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1],
+          inputRange: [0, 0.08, 1],
+          outputRange: [0, 1, 1],
         });
         const tileBackOpacity = dealProgress.interpolate({
           inputRange: [0, 0.84, 0.94, 1],

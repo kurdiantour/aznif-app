@@ -1,7 +1,7 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { Player } from "@/types/game";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -15,6 +15,7 @@ type Props = {
   dealOrder?: number;
   dealPlayerCount?: number;
   dealRotation?: -90 | 0 | 90;
+  onPress?: () => void;
 };
 
 const TURN_DURATION_SECONDS = 30;
@@ -107,6 +108,7 @@ export default function PlayerSeat({
   dealOrder = 0,
   dealPlayerCount = 1,
   dealRotation = 0,
+  onPress,
 }: Props) {
   const tileCount =
     remainingTiles ??
@@ -166,7 +168,7 @@ export default function PlayerSeat({
 
   return (
     <View ref={wrapperRef} onLayout={updateWrapperOrigin} style={styles.wrapper}>
-      <View style={styles.card}>
+      <Pressable style={styles.card} onPress={onPress} disabled={!onPress}>
         <View style={styles.avatarWrap}>
           <TurnRing
             secondsLeft={player.timeLeft}
@@ -231,7 +233,7 @@ export default function PlayerSeat({
             })}
           </View>
         </View>
-      </View>
+      </Pressable>
 
       {showPass && (
         <View style={styles.passBadge}>

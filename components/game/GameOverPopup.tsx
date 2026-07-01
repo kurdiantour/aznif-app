@@ -10,6 +10,7 @@ type GameOverPopupProps = {
     teamA: number;
     teamB: number;
   };
+  finishReason?: string | null;
   onClose: () => void;
   onPlayAgain: () => void;
 };
@@ -19,6 +20,7 @@ export default function GameOverPopup({
   didWin,
   reward,
   teamScores,
+  finishReason,
   onClose,
   onPlayAgain,
 }: GameOverPopupProps) {
@@ -29,7 +31,9 @@ export default function GameOverPopup({
       <View style={styles.backdrop}>
         <BlurView intensity={45} tint="dark" style={styles.card}>
           <Text style={styles.eyebrow}>
-            {didWin
+            {didWin && finishReason === "opponent_manual_leave"
+              ? "بەرامبەرەکەت لە یارییەکە دەرچوو تۆ براوە بویت."
+              : didWin
               ? "یارییەکە تەواو بوو • تۆ براوە بویت!"
               : "یارییەکە تەواو بوو • تۆ دۆڕایت"}
           </Text>
@@ -175,7 +179,7 @@ const styles = StyleSheet.create({
 
   rewardLabel: {
     color: "#f8f3df",
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: "SpedaBold",
     opacity: 0.82,
   },

@@ -259,7 +259,6 @@ export function useAiPracticeGame(): AiPracticeGameState {
     candidateSpinnerValue: number | null = spinnerValue,
     candidateIsOpeningRound: boolean = isOpeningRound,
     candidateOpeningDouble: number | null = openingDouble,
-    candidateBoneyard: DominoTileData[] = boneyard,
   ) => {
     if (!candidateBoard.centerTile) return false;
 
@@ -270,16 +269,9 @@ export function useAiPracticeGame(): AiPracticeGameState {
         candidateSpinnerValue,
         candidateIsOpeningRound,
         candidateOpeningDouble,
-      ) &&
-      !canHandMove(
-        candidateBoneyard,
-        candidateBoard,
-        candidateSpinnerValue,
-        candidateIsOpeningRound,
-        candidateOpeningDouble,
       )
     );
-  }, [board, boneyard, hands, isOpeningRound, openingDouble, spinnerValue]);
+  }, [board, hands, isOpeningRound, openingDouble, spinnerValue]);
 
   const passTurnInternal = (playerIndex: number, force = false) => {
     if (roundWinnerPlayerId) return false;

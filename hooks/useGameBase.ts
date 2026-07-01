@@ -585,8 +585,7 @@ export function useGameBase(config: GameConfig): MockGameState {
     }
 
     const blocked =
-      !canAnyPlayerMove(nextHands, nextBoard, nextSpinnerValue, false, null) &&
-      boneyard.length === 0;
+      !canAnyPlayerMove(nextHands, nextBoard, nextSpinnerValue, false, null);
 
     if (blocked) {
       resolveBlockedRound(nextHands, playerIndex);
@@ -620,8 +619,7 @@ export function useGameBase(config: GameConfig): MockGameState {
         if (prev <= 1) {
           if (
             board.centerTile &&
-            !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble) &&
-            boneyard.length === 0
+            !canAnyPlayerMove(hands, board, spinnerValue, isOpeningRound, openingDouble)
           ) {
             const blockerIndex = lastTilePlayerIndexRef.current ?? currentIndex;
             resolveBlockedRound(hands, blockerIndex);
