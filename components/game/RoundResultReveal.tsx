@@ -110,9 +110,15 @@ export default function RoundResultReveal({
     : [];
   const isBlocked =
     roundResult.endReason === "blocked" || winnerRemainingTiles.length > 0;
-  const resultPlayer = isBlocked
+  const qapatPlayer = isBlocked
     ? players.find((player) => player.id === qapatPlayerId) ?? winner
     : winner;
+  const scoreRecipient = winner;
+  const shouldShowScoreRecipient =
+    isBlocked &&
+    !!scoreRecipient &&
+    !!qapatPlayer &&
+    scoreRecipient.id !== qapatPlayer.id;
 
   const tilesFor = (player: Player) =>
     roundResult.remainingTilesByPlayer?.[player.id] ?? [];
@@ -127,8 +133,13 @@ export default function RoundResultReveal({
           {isBlocked ? "( قەپات )" : "( ئەزنیف )"}
         </Text>
         <Text style={styles.resultWinnerText}>
-          {resultPlayer?.name ?? "کۆتایی هاتنی دەور"}
+          {qapatPlayer?.name ?? "کۆتایی هاتنی دەور"}
         </Text>
+        {shouldShowScoreRecipient ? (
+          <Text style={styles.scoreRecipientText}>
+            خاڵ بۆ {scoreRecipient.name}
+          </Text>
+        ) : null}
 
         <View style={styles.pointsAnimationSlot}>
           {handPoints > 0 && (
@@ -214,6 +225,13 @@ const styles = StyleSheet.create({
   resultWinnerText: {
     color: "#f8f3df",
     fontSize: 16,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+  scoreRecipientText: {
+    marginTop: 4,
+    color: "rgba(248, 243, 223, 0.82)",
+    fontSize: 12,
     fontFamily: "SpedaBold",
     textAlign: "center",
   },

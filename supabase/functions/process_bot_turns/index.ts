@@ -332,7 +332,10 @@ serve(async (req) => {
             teamScores: nextScores,
             lastScoringEvent,
             endOfHandScoringEvent,
+            endOfHandScoreApplied: true,
             roundWinnerPlayerId: currentTurnPlayerId,
+            roundEndReason: "empty_hand",
+            revealedFinalHands: nextHands,
             winningTeamId: finished.winningTeamId,
             matchReward: finished.matchReward,
           };
@@ -512,6 +515,7 @@ serve(async (req) => {
           const winnerIndex =
             pipTotal(hands[0] ?? []) <= pipTotal(hands[1] ?? []) ? 0 : 1;
           const winner = players[winnerIndex];
+          const blockerPlayerId = state.lastMovePlayerId ?? winner.user_id;
           const opponentPips = pipTotal(hands[(winnerIndex + 1) % 2] ?? []);
           const blockScore = roundToNearestFive(opponentPips);
           const nextScores = {
@@ -534,12 +538,14 @@ serve(async (req) => {
           );
           nextState = {
             ...nextState,
-            currentTurnPlayerId: winner.user_id,
-            leaderPlayerId: winner.user_id,
+            currentTurnPlayerId: blockerPlayerId,
+            leaderPlayerId: blockerPlayerId,
             teamScores: nextScores,
             lastScoringEvent: null,
             endOfHandScoringEvent,
+            endOfHandScoreApplied: true,
             roundWinnerPlayerId: winner.user_id,
+            roundEndReason: "blocked",
             winningTeamId: finished.winningTeamId,
             matchReward: finished.matchReward,
           };

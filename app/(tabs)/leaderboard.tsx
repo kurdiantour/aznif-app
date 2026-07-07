@@ -186,8 +186,8 @@ const styles = StyleSheet.create({
 
   headerText: {
     color: "#cbd5e1",
-    fontSize: 10,
-    fontWeight: "900",
+    fontSize: 13,
+    fontWeight: "700",
     letterSpacing: 0.7,
   },
 
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
 
   levelText: {
     color: "#cbd5e1",
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: "RobotoMedium",
     fontWeight: "400",
   },

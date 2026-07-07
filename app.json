@@ -22,7 +22,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.behzadhakeem.dominoapp"
+      "package": "com.behzadhakeem.dominoapp",
+      "permissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -60,6 +64,12 @@
       "eas": {
         "projectId": "64d23121-61ba-4fe2-8fff-39d7589ce82e"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/64d23121-61ba-4fe2-8fff-39d7589ce82e"
     }
   }
 }

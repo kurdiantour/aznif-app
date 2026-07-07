@@ -24,6 +24,8 @@ export const NEXT_ROUND_COUNTDOWN_SECONDS = 2;
 // Keep the round-result phase alive for exactly another 5s so the revealed
 // hands remain visible before the next-round countdown begins.
 export const ROUND_RESULT_REVEAL_MS = 9_340;
+// 5s for the large Qapat announcement, then 5s for revealed hands.
+export const BLOCKED_RESULT_REVEAL_MS = 10_000;
 export const ROUND_TRANSITION_SYNC_MS = 1000;
 export const MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN = 3;
 export const PLAYER_TURN_DURATION_SECONDS = 20;

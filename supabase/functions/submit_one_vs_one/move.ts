@@ -58,6 +58,14 @@ function currentCanDraw(
 
   if (boneyard.length === 0) return false;
 
+  if (!canHandMove(
+    boneyard,
+    state.board,
+    state.spinnerValue ?? null,
+    state.isOpeningRound ?? state.isFirstRound ?? true,
+    typeof state.openingDouble === "number" ? state.openingDouble : null,
+  )) return false;
+
   return !canHandMove(
     hands[nextIndex] ?? [],
     state.board,
@@ -282,12 +290,12 @@ export default async function handler(req: Request) {
         };
       }
 
-      const matchEnd = resolveMatchOutcome(
+      const finished = resolveMatchOutcome(
         nextScores,
         state.matchReward ?? null,
       );
-      winningTeamId = matchEnd.winningTeamId;
-      reward = matchEnd.matchReward;
+      winningTeamId = finished.winningTeamId;
+      reward = finished.matchReward;
     }
 
     let nextState = {
@@ -310,8 +318,11 @@ export default async function handler(req: Request) {
       lastMoveBranch: branch ?? null,
       lastScoringEvent,
       endOfHandScoringEvent,
+      endOfHandScoreApplied: Boolean(roundWinnerPlayerId),
       teamScores: nextScores,
       roundWinnerPlayerId,
+      roundEndReason: roundWinnerPlayerId ? "empty_hand" : null,
+      revealedFinalHands: roundWinnerPlayerId ? finalHands : null,
       winningTeamId,
       matchReward: reward,
       lastPassedPlayerId: null,
@@ -369,7 +380,11 @@ export default async function handler(req: Request) {
     return json(
       {
         ok: true,
-        state: { ...nextState, myHand: finalHands[playerIndex] ?? [] },
+        state: {
+          ...nextState,
+          myHand: finalHands[playerIndex] ?? [],
+          revealedFinalHands: roundWinnerPlayerId ? finalHands : null,
+        },
         room: updatedRoom,
       },
       200,

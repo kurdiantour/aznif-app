@@ -598,6 +598,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
     lastPlayedTile: rawState?.lastPlayedTile ?? null,
     lastScoringEvent: rawState?.lastScoringEvent as ScoringEvent | null,
+    endOfHandScoringEvent: rawState?.endOfHandScoringEvent as ScoringEvent | null,
     teamScores,
     winningTeamId: rawState?.winningTeamId ?? null,
     matchReward: rawState?.matchReward as MatchReward | null,

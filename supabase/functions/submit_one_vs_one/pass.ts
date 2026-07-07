@@ -33,6 +33,16 @@ function hasPlayable(playerIndex: number, hands: any[][], state: any) {
   );
 }
 
+function boneyardHasPlayable(boneyard: any[], state: any) {
+  return canHandMove(
+    boneyard,
+    state.board,
+    state.spinnerValue ?? null,
+    state.isOpeningRound ?? state.isFirstRound ?? true,
+    typeof state.openingDouble === "number" ? state.openingDouble : null,
+  );
+}
+
 export default async function handler(req: Request) {
   try {
     if (req.method !== "POST")
@@ -138,7 +148,7 @@ export default async function handler(req: Request) {
       return json({ error: "You have a playable tile" }, 400);
     if (
       !timedOut &&
-      boneyard.length > 0 &&
+      boneyardHasPlayable(boneyard, state) &&
       currentTurnDrawCount < MAX_ONE_VS_ONE_DRAWS_PER_TURN
     ) {
       return json({ error: "You must draw before passing" }, 400);
@@ -198,6 +208,7 @@ export default async function handler(req: Request) {
         nextScores,
         state.matchReward ?? null,
       );
+
       nextState = {
         ...nextState,
         teamScores: nextScores,
@@ -206,21 +217,20 @@ export default async function handler(req: Request) {
         // the lowest-pip hand calculated above.
         leaderPlayerId: blockerPlayerId,
         endOfHandScoringEvent,
+        roundEndReason: "blocked",
+        revealedFinalHands: finalHands,
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
+        endOfHandScoreApplied: true,
       };
 
-      if (finished.winningTeamId) {
-        nextTurnPlayerId = winner.user_id;
-        nextStatus = "finished";
-        nextState.currentTurnPlayerId = nextTurnPlayerId;
-      } else {
-        nextTurnPlayerId = blockerPlayerId;
-        nextState.currentTurnPlayerId = nextTurnPlayerId;
-      }
+      nextTurnPlayerId = blockerPlayerId;
+      nextState.currentTurnPlayerId = nextTurnPlayerId;
+      nextStatus = finished.winningTeamId ? "finished" : "active";
     } else {
       nextState.canDrawTile = nextPlayerId
-        ? !hasPlayable(nextPlayerIndex, hands, state)
+        ? !hasPlayable(nextPlayerIndex, hands, state) &&
+          boneyardHasPlayable(boneyard, state)
         : false;
     }
 
@@ -272,6 +282,7 @@ export default async function handler(req: Request) {
           ...nextState,
           myHand: finalHands[requestPlayerIndex] ?? [],
           myHandOwnerId: user.id,
+          revealedFinalHands: nextState.roundWinnerPlayerId ? finalHands : null,
         },
         room: updatedRoom,
       },

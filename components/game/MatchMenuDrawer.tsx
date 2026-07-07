@@ -27,7 +27,7 @@ export default function MatchMenuDrawer({
   return (
     <View style={styles.matchMenuOverlay}>
       <Pressable
-        accessibilityLabel="Close match settings"
+        accessibilityLabel="داخستنی ڕێکخستنەکانی یاری"
         style={styles.matchMenuBackdrop}
         onPress={onClose}
       />
@@ -100,7 +100,7 @@ export default function MatchMenuDrawer({
 
           <Pressable style={styles.matchMenuLeaveButton} onPress={onLeavePress}>
             <Ionicons name="log-out-outline" size={19} color="#ffffff" />
-            <Text style={styles.matchMenuLeaveText}>Leave Match</Text>
+            <Text style={styles.matchMenuLeaveText}>دەرچوون لە یاری</Text>
           </Pressable>
         </View>
       </Animated.View>
@@ -232,6 +232,6 @@ const styles = StyleSheet.create({
   matchMenuLeaveText: {
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
   },
 });

@@ -10,6 +10,22 @@ import {
   View,
 } from "react-native";
 
+function getPasswordResetErrorMessage(error: unknown) {
+  const fallback = "نەتوانرا ئیمەیلی نوێکردنەوە بنێردرێت.";
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("invalid") && normalized.includes("email")) {
+    return "ئیمەیلەکە دروست نییە.";
+  }
+
+  if (normalized.includes("email")) {
+    return fallback;
+  }
+
+  return message || fallback;
+}
+
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -21,7 +37,7 @@ export default function ForgotPasswordScreen() {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       setStatus("error");
-      setMessage("Enter the email address for your account.");
+      setMessage("ئیمەیلی هەژمارەکەت بنووسە.");
       return;
     }
 
@@ -32,15 +48,11 @@ export default function ForgotPasswordScreen() {
       if (error) throw error;
       setStatus("success");
       setMessage(
-        "If an account exists for this email, a password reset link has been sent.",
+        "ئەگەر هەژمارێک بەم ئیمەیلە هەبێت، بەستەری نوێکردنەوەی وشەی نهێنی نێردرا.",
       );
     } catch (error) {
       setStatus("error");
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to send the reset email.",
-      );
+      setMessage(getPasswordResetErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -48,14 +60,14 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthScreen
-      title="Reset your password"
-      subtitle="We will email you a secure reset link."
+      title="نوێکردنەوەی وشەی نهێنی"
+      subtitle="بەستەرێکی پارێزراو بۆ ئیمەیلەکەت دەنێرین."
     >
       <TextInput
         style={styles.input}
         value={email}
         onChangeText={setEmail}
-        placeholder="Email"
+        placeholder="ئیمەیل"
         placeholderTextColor="#7f8fb2"
         autoCapitalize="none"
         keyboardType="email-address"
@@ -75,11 +87,15 @@ export default function ForgotPasswordScreen() {
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.primaryText}>Send reset email</Text>
+          <Text style={styles.primaryText}>ناردنی ئیمەیلی نوێکردنەوە</Text>
         )}
       </Pressable>
-      <Pressable onPress={() => router.replace("/login")} disabled={loading}>
-        <Text style={styles.link}>Back to sign in</Text>
+      <Pressable
+        style={[styles.secondaryButton, loading && styles.disabled]}
+        onPress={() => router.replace("/login")}
+        disabled={loading}
+      >
+        <Text style={styles.secondaryText}>گەڕانەوە</Text>
       </Pressable>
     </AuthScreen>
   );
@@ -119,19 +135,17 @@ export const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 16,
     backgroundColor: "rgba(7, 26, 54, 0.9)",
-    borderWidth: 1,
-    borderColor: "rgba(73, 112, 176, 0.55)",
   },
   title: {
     color: "#fff",
     fontSize: 24,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
     textAlign: "center",
   },
   subtitle: {
     color: "#b7c8e8",
     fontSize: 14,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
     lineHeight: 21,
     textAlign: "center",
     marginTop: 10,
@@ -146,7 +160,7 @@ export const styles = StyleSheet.create({
     color: "#fff",
     paddingHorizontal: 14,
     marginBottom: 12,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
   },
   primaryButton: {
     height: 46,
@@ -156,25 +170,38 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 4,
   },
-  primaryText: { color: "#fff", fontFamily: "RobotoMedium", fontSize: 14 },
+  primaryText: { color: "#fff", fontFamily: "SpedaBold", fontSize: 14 },
+  secondaryButton: {
+    height: 46,
+    borderRadius: 8,
+    backgroundColor: "#4b5563",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  secondaryText: {
+    color: "#ffffff",
+    fontFamily: "SpedaBold",
+    fontSize: 14,
+  },
   disabled: { opacity: 0.6 },
   link: {
     color: "#9fc2ff",
     textAlign: "center",
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
     marginTop: 20,
   },
   error: {
     color: "#fca5a5",
     fontSize: 13,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
     textAlign: "center",
     marginBottom: 12,
   },
   success: {
     color: "#86efac",
     fontSize: 13,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
     lineHeight: 20,
     textAlign: "center",
     marginBottom: 12,

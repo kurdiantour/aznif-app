@@ -142,11 +142,29 @@ type FriendsPanelProps = {
   transferSuccessSignal?: number;
 };
 
+function getMeaningfulSearchQuery(query: string) {
+  const trimmed = query.trim();
+  const playerCodeMatch = trimmed.match(/^dv-?(\d*)$/i);
+
+  if (trimmed.length < 2) {
+    return "";
+  }
+
+  if (playerCodeMatch && playerCodeMatch[1].length < 4) {
+    return "";
+  }
+
+  return trimmed;
+}
+
 export function FriendsPanel({
   searchQuery = "",
   onSendChip,
   transferSuccessSignal = 0,
 }: FriendsPanelProps) {
+  const meaningfulSearchQuery = getMeaningfulSearchQuery(searchQuery);
+  const isSearchActive = searchQuery.trim().length >= 2;
+  const canRunSearch = meaningfulSearchQuery.length > 0;
   const { statuses, refreshPresence } = usePresence();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
@@ -211,16 +229,14 @@ export function FriendsPanel({
   useEffect(() => {
     let mounted = true;
     const handle = setTimeout(() => {
-      const trimmed = searchQuery.trim();
-
-      if (trimmed.length < 2) {
+      if (!canRunSearch) {
         setSearchResults([]);
         setSearching(false);
         return;
       }
 
       setSearching(true);
-      searchFriendCandidates(trimmed)
+      searchFriendCandidates(meaningfulSearchQuery)
         .then((results) => {
           if (mounted) setSearchResults(results);
         })
@@ -237,7 +253,7 @@ export function FriendsPanel({
       mounted = false;
       clearTimeout(handle);
     };
-  }, [searchQuery]);
+  }, [canRunSearch, meaningfulSearchQuery]);
 
   useEffect(() => {
     if (transferSuccessSignal === 0) return;
@@ -310,21 +326,25 @@ export function FriendsPanel({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {searching || searchResults.length > 0 ? (
+        {isSearchActive ? (
           <View style={styles.fullWidthSection}>
             {searching ? (
               <ActivityIndicator color="#a855f7" style={styles.inlineLoader} />
             ) : null}
 
-            {searchResults.map((result) => (
-              <SearchResultRow
-                key={result.id}
-                result={result}
-                busy={busyId === result.id}
-                onAdd={handleAdd}
-                onSendChip={handleSearchTransfer}
-              />
-            ))}
+            {!canRunSearch ? null : !searching && searchResults.length === 0 ? (
+              <Text style={styles.emptySearchText}>هیچ یاریزانێک نەدۆزرایەوە</Text>
+            ) : (
+              searchResults.map((result) => (
+                <SearchResultRow
+                  key={result.id}
+                  result={result}
+                  busy={busyId === result.id}
+                  onAdd={handleAdd}
+                  onSendChip={handleSearchTransfer}
+                />
+              ))
+            )}
           </View>
         ) : null}
 
@@ -333,20 +353,20 @@ export function FriendsPanel({
           <Text style={styles.successText}>{successMessage}</Text>
         ) : null}
 
-        {loading ? (
+        {!isSearchActive && loading ? (
           <ActivityIndicator
             color="#a855f7"
             size="large"
             style={styles.loader}
           />
-        ) : friends.length === 0 ? (
+        ) : !isSearchActive && friends.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>هێشتا هیچ هاوڕێیەک نییە</Text>
             <Text style={styles.emptyText}>
               بە ناوی یاریزان یان ناسنامە بگەڕێ بۆ ناردنی داواکاری هاوڕێیەتی.
             </Text>
           </View>
-        ) : (
+        ) : !isSearchActive ? (
           friends.map((friend) => (
             <FriendCard
               key={friend.id}
@@ -357,7 +377,7 @@ export function FriendsPanel({
               onInvite={(nextFriend) => void handleInvite(nextFriend)}
             />
           ))
-        )}
+        ) : null}
       </ScrollView>
 
     </View>
@@ -535,6 +555,15 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     textAlign: "center",
     lineHeight: 19,
+  },
+
+  emptySearchText: {
+    width: "100%",
+    color: "#9ca3af",
+    fontSize: 13,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    marginTop: 14,
   },
 
   errorText: {

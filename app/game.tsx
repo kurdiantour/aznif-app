@@ -114,12 +114,13 @@ export default function GameScreen() {
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>(
     [],
   );
-  const [passCountdown, setPassCountdown] = useState(15);
+  const [passCountdown, setPassCountdown] = useState(10);
   const [isPassingTurn, setIsPassingTurn] = useState(false);
   const [sideSeatHeight, setSideSeatHeight] = useState(0);
   const [dealOrigin, setDealOrigin] = useState<{ x: number; y: number } | null>(null);
   const [dealToken, setDealToken] = useState(0);
   const [profilePlayer, setProfilePlayer] = useState<Player | null>(null);
+  const [blockedIntroComplete, setBlockedIntroComplete] = useState(false);
 
   const gameInitializedRef = useRef(false);
   const practiceRewardSettlementRequestedRef = useRef(false);
@@ -254,6 +255,22 @@ export default function GameScreen() {
     lastPlayedTile: game.lastPlayedTile,
     winningTeamId: game.winningTeamId,
   });
+  const gamePhase = (game as any).phase;
+  const roundResult = (game as any).roundResult;
+  const isRoundResultReveal = gamePhase === "round_result_reveal";
+  const isBlockedResult = roundResult?.endReason === "blocked";
+  const endOfHandScoringEvent: ScoringEvent | null =
+    game.roundWinnerPlayerId
+      ? (game as any).endOfHandScoringEvent ?? null
+      : null;
+  const isHandRevealVisible =
+    isRoundResultReveal &&
+    !isFinalTileAnimationRunning &&
+    (!isBlockedResult || blockedIntroComplete);
+  const shouldShowEndOfHandScore =
+    !!game.roundWinnerPlayerId &&
+    !!endOfHandScoringEvent &&
+    isHandRevealVisible;
 
   const isMyTurn =
     !isLocalGame && gameMode === "1v1"
@@ -334,13 +351,13 @@ export default function GameScreen() {
 
   useEffect(() => {
     if (!shouldShowPassPrompt) {
-      setPassCountdown(15);
+      setPassCountdown(10);
       setIsPassingTurn(false);
       passRequestedRef.current = false;
       return;
     }
 
-    setPassCountdown(15);
+    setPassCountdown(10);
     const interval = setInterval(() => {
       setPassCountdown((previous) => {
         if (previous <= 1) {
@@ -534,8 +551,36 @@ export default function GameScreen() {
     teamA: game.teamScores?.teamA ?? 0,
     teamB: game.teamScores?.teamB ?? 0,
   };
-  const miniScoreTeamAScore = scoreByTeam[primaryScoreTeamId];
-  const miniScoreTeamBScore = scoreByTeam[secondaryScoreTeamId];
+  const rawState = (game as any).rawState;
+  const isEndOfHandScorePending =
+    game.mode === "1v1" &&
+    !!rawState &&
+    rawState?.endOfHandScoreApplied !== true;
+  const hasAppliedEndOfHandScore =
+    !!endOfHandScoringEvent &&
+    !isEndOfHandScorePending;
+  const shouldHideAppliedEndOfHandScore =
+    hasAppliedEndOfHandScore && !shouldShowEndOfHandScore;
+  const shouldAddPendingEndOfHandScore =
+    shouldShowEndOfHandScore && !!endOfHandScoringEvent && isEndOfHandScorePending;
+  const visibleScoreByTeam: Record<TeamId, number> = shouldAddPendingEndOfHandScore
+    ? {
+        ...scoreByTeam,
+        [endOfHandScoringEvent.teamId]:
+          scoreByTeam[endOfHandScoringEvent.teamId] + endOfHandScoringEvent.points,
+      }
+    : shouldHideAppliedEndOfHandScore
+      ? {
+          ...scoreByTeam,
+          [endOfHandScoringEvent.teamId]: Math.max(
+            0,
+            scoreByTeam[endOfHandScoringEvent.teamId] -
+              endOfHandScoringEvent.points,
+          ),
+        }
+    : scoreByTeam;
+  const miniScoreTeamAScore = visibleScoreByTeam[primaryScoreTeamId];
+  const miniScoreTeamBScore = visibleScoreByTeam[secondaryScoreTeamId];
 
   const didWinMatch = humanPlayer?.teamId
     ? game.winningTeamId === humanPlayer.teamId
@@ -607,15 +652,22 @@ export default function GameScreen() {
     refreshProfile,
   ]);
 
+  useEffect(() => {
+    setBlockedIntroComplete(false);
+    if (!isRoundResultReveal || !isBlockedResult) return;
+    const timer = setTimeout(() => setBlockedIntroComplete(true), 5_000);
+    return () => clearTimeout(timer);
+  }, [isBlockedResult, isRoundResultReveal, roundResult?.winnerId]);
+
   const shouldRenderPlayedBoardTiles =
-    (game as any).phase === "playing" || isFinalTileAnimationRunning;
-  const isRoundResultReveal = (game as any).phase === "round_result_reveal";
-  const shouldShowRoundResultReveal =
-    isRoundResultReveal && !isFinalTileAnimationRunning;
+    gamePhase === "playing" ||
+    isFinalTileAnimationRunning ||
+    (isRoundResultReveal && isBlockedResult && !blockedIntroComplete);
+
+  const shouldShowRoundResultReveal = isHandRevealVisible;
   const shouldShowNextRoundCountdown =
-    (game as any).phase === "next_round_countdown" &&
+    gamePhase === "next_round_countdown" &&
     !isFinalTileAnimationRunning;
-  const roundResult = (game as any).roundResult;
   const lastTilePoints = game.roundWinnerPlayerId
     ? calculateMoveScore(game.board)
     : 0;
@@ -624,15 +676,14 @@ export default function GameScreen() {
   );
   const boardScoringEvent: ScoringEvent | null = !game.roundWinnerPlayerId
     ? game.lastScoringEvent
-    : lastTilePoints > 0 &&
-        roundWinner?.tileCount === 0
-      ? {
-          playerId: roundWinner.id,
-          teamId: roundWinner.teamId,
-          points: lastTilePoints,
-          openEndsTotal: lastTilePoints,
-        }
-      : null;
+    : lastTilePoints > 0 && roundWinner?.tileCount === 0
+        ? {
+            playerId: roundWinner.id,
+            teamId: roundWinner.teamId,
+            points: lastTilePoints,
+            openEndsTotal: lastTilePoints,
+          }
+        : null;
 
 
   if (gameLoading) {
@@ -766,6 +817,12 @@ export default function GameScreen() {
             qapatPlayerId={game.leaderPlayerId}
           />
 
+          {isRoundResultReveal && isBlockedResult && !blockedIntroComplete && (
+            <View style={styles.qapatIntroOverlay} pointerEvents="none">
+              <Text style={styles.qapatIntroText}>قەپات!</Text>
+            </View>
+          )}
+
           <PlayerProfilePopup
             player={profilePlayer}
             onDismiss={() => setProfilePlayer(null)}
@@ -811,7 +868,7 @@ export default function GameScreen() {
 
             {!showMatchMenu ? (
               <Pressable
-                accessibilityLabel="Open match settings"
+                accessibilityLabel="کردنەوەی ڕێکخستنەکانی یاری"
                 style={styles.matchMenuButton}
                 onPress={openMatchMenu}
               >
@@ -851,8 +908,8 @@ export default function GameScreen() {
           <ScorePopup
             visible={showScorePopup}
             onClose={() => setShowScorePopup(false)}
-            teamAScore={game.teamScores?.teamA ?? 0}
-            teamBScore={game.teamScores?.teamB ?? 0}
+            teamAScore={visibleScoreByTeam.teamA}
+            teamBScore={visibleScoreByTeam.teamB}
             winnerTeamId={game.winningTeamId}
             matchReward={game.matchReward}
             teamAName={scoreTeamAName}
@@ -860,7 +917,12 @@ export default function GameScreen() {
           />
 
 <GameOverPopup
-  visible={showGameOverPopup && !isFinalTileAnimationRunning}
+  visible={
+    showGameOverPopup &&
+    !isFinalTileAnimationRunning &&
+    !isRoundResultReveal &&
+    !shouldShowRoundResultReveal
+  }
   didWin={didWinMatch}
   reward={practiceWinReward ?? game.matchReward}
   finishReason={(game as any).rawState?.finishReason ?? null}
@@ -1103,6 +1165,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 300,
+  },
+  qapatIntroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 290,
+  },
+  qapatIntroText: {
+    color: "#facc15",
+    fontSize: 64,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    textShadowColor: "rgba(250, 204, 21, 0.9)",
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 16,
   },
   countdownLabel: {
     color: "#f8f3df",

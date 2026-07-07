@@ -74,7 +74,6 @@ export default function DrawPilePrompt({
   useEffect(() => {
     if (
       !visible ||
-      !isTwoVsTwoGame ||
       hasTiles ||
       passing ||
       !onPassRef.current
@@ -102,7 +101,7 @@ export default function DrawPilePrompt({
     return () => {
       animation.stop();
     };
-  }, [visible, isTwoVsTwoGame, hasTiles, passing, progressValue]);
+  }, [visible, hasTiles, passing, progressValue]);
 
   const strokeDashoffset = progressValue.interpolate({
     inputRange: [0, 1],
@@ -217,20 +216,20 @@ export default function DrawPilePrompt({
 
         {!hasTiles && onPass && (
           <Pressable
-            style={[styles.passButton, passing && styles.buttonDisabled]}
+            style={[styles.humanPassButton, styles.oneVsOnePassButton, passing && styles.buttonDisabled]}
             onPress={onPass}
             disabled={passing}
           >
-            <Text style={styles.passButtonText}>
-              {passing ? "..." : "پاس"}
-            </Text>
+            <View style={styles.timerCircle}>
+              <Svg width={TIMER_SIZE} height={TIMER_SIZE} viewBox={`0 0 ${TIMER_SIZE} ${TIMER_SIZE}`} style={styles.timerSvg}>
+                <Circle cx={TIMER_SIZE / 2} cy={TIMER_SIZE / 2} r={TIMER_RADIUS} stroke="rgba(250, 204, 21, 0.22)" strokeWidth={TIMER_STROKE} fill="transparent" />
+                <AnimatedCircle cx={TIMER_SIZE / 2} cy={TIMER_SIZE / 2} r={TIMER_RADIUS} stroke="#facc15" strokeWidth={TIMER_STROKE} fill="transparent" strokeLinecap="round" strokeDasharray={`${TIMER_CIRCUMFERENCE} ${TIMER_CIRCUMFERENCE}`} strokeDashoffset={strokeDashoffset} rotation="-90" originX={TIMER_SIZE / 2} originY={TIMER_SIZE / 2} />
+              </Svg>
+              <View style={styles.humanPassRing}>
+                <Text style={styles.humanPassButtonText}>{passing ? "..." : "پاس"}</Text>
+              </View>
+            </View>
           </Pressable>
-        )}
-
-        {!hasTiles && typeof passCountdown === "number" && (
-          <Text style={styles.passCountdown}>
-            Auto-pass in {passCountdown}s
-          </Text>
         )}
       </BlurView>
     </View>
@@ -378,6 +377,9 @@ boneyardTileButton: {
     borderRadius: 34,
     alignItems: "center",
     justifyContent: "center",
+  },
+  oneVsOnePassButton: {
+    marginTop: 12,
   },
 
   timerCircle: {

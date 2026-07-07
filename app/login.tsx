@@ -195,7 +195,7 @@ export default function LoginScreen() {
             onPress={() => chooseAuthMode("signup")}
             disabled={isLoading}
           >
-            {isLoading && isSignup ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>دروستکردنی هەژمار</Text>}
+            {isLoading && isSignup ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}> دروستکردنی هەژمار</Text>}
           </Pressable>
         </View>
 
@@ -209,7 +209,7 @@ export default function LoginScreen() {
               accessibilityLabel="Privacy Policy"
               hitSlop={8}
               onPress={() =>
-                void Linking.openURL("https://playaznif.com/privacy-policy")
+                void Linking.openURL("https://playaznif.vercel.app/privacy")
               }
             >
               <Text style={styles.privacyLink}>سیاسەتی پاراستنی نهێنی</Text>

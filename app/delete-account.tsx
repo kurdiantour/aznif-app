@@ -3,16 +3,13 @@ import { supabase } from "@/lib/supabase";
 import { signOut } from "@/lib/supabaseAuth";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
-  const [confirmation, setConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const removeAccount = async () => {
-    if (confirmation.trim() !== "DELETE")
-      return setMessage("Type DELETE exactly to confirm.");
     setLoading(true);
     setMessage("");
     try {
@@ -24,7 +21,7 @@ export default function DeleteAccountScreen() {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Unable to delete your account.",
+          : "نەتوانرا هەژمارەکەت بسڕدرێتەوە.",
       );
     } finally {
       setLoading(false);
@@ -32,19 +29,9 @@ export default function DeleteAccountScreen() {
   };
   return (
     <AuthScreen
-      title="Delete account"
-      subtitle="This permanently deletes your account and its data. Leave or cancel active matches first."
+      title="سڕینەوەی هەژمار"
+      subtitle="ئەم کارە هەژمارەکەت و زانیارییەکانت بە تەواوی دەسڕێتەوە. ."
     >
-      <Text style={styles.error}>This action cannot be undone.</Text>
-      <TextInput
-        style={styles.input}
-        value={confirmation}
-        onChangeText={setConfirmation}
-        placeholder="Type DELETE to confirm"
-        placeholderTextColor="#7f8fb2"
-        autoCapitalize="characters"
-        editable={!loading}
-      />
       {!!message && <Text style={styles.error}>{message}</Text>}
       <Pressable
         style={[
@@ -58,12 +45,32 @@ export default function DeleteAccountScreen() {
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.primaryText}>Permanently delete account</Text>
+          <Text style={styles.primaryText}>سڕینەوەی هەژمار بە تەواوی</Text>
         )}
       </Pressable>
-      <Pressable onPress={() => router.back()} disabled={loading}>
-        <Text style={styles.link}>Cancel</Text>
+      <Pressable
+        style={[deleteStyles.cancelButton, loading && styles.disabled]}
+        onPress={() => router.back()}
+        disabled={loading}
+      >
+        <Text style={deleteStyles.cancelButtonText}>هەڵوەشاندنەوە</Text>
       </Pressable>
     </AuthScreen>
   );
 }
+
+const deleteStyles = StyleSheet.create({
+  cancelButton: {
+    height: 46,
+    borderRadius: 8,
+    backgroundColor: "#4b5563",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  cancelButtonText: {
+    color: "#ffffff",
+    fontFamily: "SpedaBold",
+    fontSize: 14,
+  },
+});
