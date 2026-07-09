@@ -3,9 +3,11 @@ import { RequestsPanel } from "@/components/friends/requests-panel";
 import { SendChipPopupContext } from "@/components/friends/send-chip-popup";
 import { TransfersPanel } from "@/components/friends/transfers-panel";
 import { getFriendRequests } from "@/lib/friends";
+import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "@react-navigation/native";
+import { Redirect } from "expo-router";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -20,6 +22,7 @@ const tabs: { key: TabKey; label: string }[] = [
 let friendRequestChannelSequence = 0;
 
 export default function InviteFriendsScreen() {
+  const { profile } = useProfile();
   const [activeTab, setActiveTab] = useState<TabKey>("friends");
   const [searchQuery, setSearchQuery] = useState("");
   const [requestCount, setRequestCount] = useState(0);
@@ -27,9 +30,11 @@ export default function InviteFriendsScreen() {
   const { showSendChipPopup } = useContext(SendChipPopupContext);
 
   const refreshRequestCount = useCallback(async () => {
+    if (!profile) return;
+
     const requests = await getFriendRequests();
     setRequestCount(requests.length);
-  }, []);
+  }, [profile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -43,6 +48,8 @@ export default function InviteFriendsScreen() {
     const channelId = ++friendRequestChannelSequence;
 
     async function subscribeToFriendRequestCount() {
+      if (!profile) return;
+
       const user = await getCurrentUser();
       if (!mounted || !user) return;
 
@@ -86,7 +93,11 @@ export default function InviteFriendsScreen() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [refreshRequestCount]);
+  }, [profile, refreshRequestCount]);
+
+  if (!profile) {
+    return <Redirect href="/login" />;
+  }
 
   return (
     <View style={styles.container}>

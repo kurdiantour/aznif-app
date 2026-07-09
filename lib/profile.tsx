@@ -67,6 +67,7 @@ export type LeaderboardProfile = Pick<
   "id" | "displayName" | "avatarId" | "level" | "points"
 > & {
   rank: number;
+  aznif: number;
   gold: number;
 };
 
@@ -91,6 +92,7 @@ export async function getLeaderboardProfiles(
       level: calculateLevelFromPoints(points),
       points,
       rank: Number(profile.rank ?? 0),
+      aznif: Number(profile.aznif ?? profile.mc ?? 0),
       gold: Number(profile.gold ?? 0),
     };
   });

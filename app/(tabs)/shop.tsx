@@ -7,10 +7,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import { Redirect } from "expo-router";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getMyShopState, purchaseOrEquipShopItem } from "@/lib/shop";
+import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 import { getBalance } from "@/lib/wallet";
 import { notifyWalletRefresh } from "@/lib/walletEvents";
 import { ShopPopupContext } from "@/components/shop/InsufficientGemsPopup";
@@ -90,7 +92,7 @@ function ItemPreview({ item }: { item: MockShopItem }) {
   );
 }
 
-export default function ShopScreen() {
+function ShopContent() {
   const [category, setCategory] = useState<ShopCategory>("tables");
   const [ownedItemIds, setOwnedItemIds] = useState<Set<string>>(
     () => new Set(),
@@ -230,6 +232,14 @@ export default function ShopScreen() {
 
     </View>
   );
+}
+
+export default function ShopScreen() {
+  if (!ENABLE_SHOP_FEATURES) {
+    return <Redirect href="/(tabs)/lobby" />;
+  }
+
+  return <ShopContent />;
 }
 
 const styles = StyleSheet.create({

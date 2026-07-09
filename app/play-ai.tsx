@@ -6,7 +6,7 @@ import {
   getRankTitleFromLevel,
 } from "@/lib/progression";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -112,7 +112,7 @@ function PlayerCard({
 
 export default function PlayAIModeScreen() {
   const router = useRouter();
-  const { profile } = useProfile();
+  const { profile, loading: profileLoading } = useProfile();
   const practiceMatchIdRef = useRef(createPracticeMatchId());
 
   const pulse = useRef(new Animated.Value(1)).current;
@@ -152,6 +152,8 @@ export default function PlayAIModeScreen() {
     pulseLoop.start();
     rotateLoop.start();
 
+    if (!profile) return;
+
     const timeout = setTimeout(() => {
       router.replace({
         pathname: "/game",
@@ -168,7 +170,7 @@ export default function PlayAIModeScreen() {
       pulseLoop.stop();
       rotateLoop.stop();
     };
-  }, [pulse, rotate, router]);
+  }, [profile, pulse, rotate, router]);
 
   const spin = rotate.interpolate({
     inputRange: [0, 1],
@@ -179,6 +181,14 @@ export default function PlayAIModeScreen() {
   const playerLevel =
     profile?.level ?? calculateLevelFromPoints(profile?.points);
   const playerAvatarId = profile?.avatarId as AvatarId | undefined;
+
+  if (profileLoading) {
+    return <View style={styles.loadingScreen} />;
+  }
+
+  if (!profile) {
+    return <Redirect href="/login" />;
+  }
 
   return (
     <ImageBackground
@@ -231,6 +241,11 @@ export default function PlayAIModeScreen() {
 
 const styles = StyleSheet.create({
   background: {
+    flex: 1,
+    backgroundColor: "#050214",
+  },
+
+  loadingScreen: {
     flex: 1,
     backgroundColor: "#050214",
   },

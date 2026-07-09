@@ -1,4 +1,4 @@
-import { Slot } from "expo-router";
+import { Redirect, Slot } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 
@@ -18,8 +18,11 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import type { Friend } from "@/lib/friends";
+import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
+import { useProfile } from "@/lib/profile";
 
 export default function TabsLayout() {
+  const { profile, loading: profileLoading } = useProfile();
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
   const [sendChipFriend, setSendChipFriend] = useState<Friend | null>(null);
   const [sendChipSuccessHandler, setSendChipSuccessHandler] = useState<
@@ -34,11 +37,23 @@ export default function TabsLayout() {
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
 
+  if (profileLoading) {
+    return <View style={styles.container} />;
+  }
+
+  if (!profile) {
+    return <Redirect href="/login" />;
+  }
+
   return (
     <ShopPopupContext.Provider
       value={{
-        showInsufficientGems: () => setShowInsufficientGemsPopup(true),
-        showPurchaseConfirmation: setPurchaseConfirmation,
+        showInsufficientGems: () => {
+          if (ENABLE_SHOP_FEATURES) setShowInsufficientGemsPopup(true);
+        },
+        showPurchaseConfirmation: (confirmation) => {
+          if (ENABLE_SHOP_FEATURES) setPurchaseConfirmation(confirmation);
+        },
       }}
     >
       <SendChipPopupContext.Provider
@@ -69,14 +84,18 @@ export default function TabsLayout() {
 
           {!isProfileDrawerOpen ? <BottomNav /> : null}
 
-          <InsufficientGemsPopup
-            visible={showInsufficientGemsPopup}
-            onClose={() => setShowInsufficientGemsPopup(false)}
-          />
-          <PurchaseConfirmationPopup
-            confirmation={purchaseConfirmation}
-            onClose={() => setPurchaseConfirmation(null)}
-          />
+          {ENABLE_SHOP_FEATURES ? (
+            <>
+              <InsufficientGemsPopup
+                visible={showInsufficientGemsPopup}
+                onClose={() => setShowInsufficientGemsPopup(false)}
+              />
+              <PurchaseConfirmationPopup
+                confirmation={purchaseConfirmation}
+                onClose={() => setPurchaseConfirmation(null)}
+              />
+            </>
+          ) : null}
           <SendChipPopup
             friend={sendChipFriend}
             visible={!!sendChipFriend}

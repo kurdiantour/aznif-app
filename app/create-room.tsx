@@ -1,10 +1,11 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BottomNav } from "@/components/lobby/BottomNav";
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
+import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { getBalance } from "@/lib/wallet";
 import { Wallet } from "@/types/wallet";
@@ -14,6 +15,7 @@ const PRIVATE_ROOM_BET_AMOUNT = 10;
 
 export default function CreateRoomScreen() {
   const router = useRouter();
+  const { profile, loading: profileLoading } = useProfile();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [privateSubmitting, setPrivateSubmitting] = useState(false);
@@ -24,8 +26,10 @@ export default function CreateRoomScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (profileLoading || !profile) return;
+
     getBalance().then(setWallet).catch(() => setError("Unable to load balance.")).finally(() => setLoading(false));
-  }, []);
+  }, [profile, profileLoading]);
 
   const roomError = (reason: unknown, fallback: string) => {
     const message = reason instanceof Error ? reason.message : fallback;
@@ -90,7 +94,8 @@ export default function CreateRoomScreen() {
     finally { setPublicSubmitting(false); }
   };
 
-  if (loading) return <View style={styles.screen}><LobbyHeader /><View style={styles.loading}><ActivityIndicator size="large" color="#fff" /></View><BottomNav active="home" /></View>;
+  if (!profileLoading && !profile) return <Redirect href="/login" />;
+  if (loading || profileLoading) return <View style={styles.screen}><LobbyHeader /><View style={styles.loading}><ActivityIndicator size="large" color="#fff" /></View><BottomNav active="home" /></View>;
 
   const submitting = privateSubmitting || publicSubmitting || joinSubmitting;
   const privateRoomDisabled = !wallet || wallet.balances.mc < PRIVATE_ROOM_BET_AMOUNT;

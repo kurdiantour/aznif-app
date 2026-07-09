@@ -1,6 +1,13 @@
 import { StyleSheet, Text, View } from "react-native";
+import { Redirect } from "expo-router";
+
+import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 
 export default function BuyGoldScreen() {
+  if (!ENABLE_SHOP_FEATURES) {
+    return <Redirect href="/(tabs)/lobby" />;
+  }
+
   return (
     <View style={styles.screen}>
       <Text style={styles.title}>فڕۆشتگای گەوهەر</Text>

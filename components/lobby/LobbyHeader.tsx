@@ -1,13 +1,14 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
 import { SettingsDrawer } from "@/components/settings/SettingsDrawer";
+import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 import { useProfile } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { getBalance } from "@/lib/wallet";
 import { subscribeWalletRefresh } from "@/lib/walletEvents";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -27,7 +28,11 @@ export function LobbyHeader({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const loadBalance = useCallback(async () => {
-    if (loading || !profile?.id) return;
+    if (loading) return;
+
+    if (!profile?.id) {
+      return;
+    }
 
     try {
       const wallet = await getBalance();
@@ -72,10 +77,12 @@ export function LobbyHeader({
 
             <View style={styles.userText}>
               <Text style={styles.username} numberOfLines={1}>
-                {profile?.displayName ?? "Player"}
+                {profile?.displayName}
               </Text>
 
-              <Text style={styles.level}>{rankTitle}</Text>
+              <Text style={styles.level}>
+                {rankTitle}
+              </Text>
             </View>
           </Pressable>
 
@@ -88,13 +95,32 @@ export function LobbyHeader({
                 style={styles.balancePill}
               >
                 <View style={styles.balanceIconCircle}>
-                  <Ionicons name="wallet" size={14} color="#F5C542" />
+                  <FontAwesome name="circle" size={13} color="#F5C542" />
                 </View>
 
                 <Text style={styles.balanceText}>{mcBalance} ئەزنیف</Text>
               </LinearGradient>
 
-              <Pressable onPress={() => router.push("/buy-gold")}>
+              {ENABLE_SHOP_FEATURES ? (
+                <Pressable onPress={() => router.push("/buy-gold")}>
+                  <LinearGradient
+                    colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.balancePillSecondary}
+                  >
+                    <View style={styles.balanceIconCircleGold}>
+                      <Ionicons name="diamond" size={14} color="#C084FC" />
+                    </View>
+
+                    <Text style={styles.balanceText}>{goldBalance} گەوهەر</Text>
+
+                    <View style={styles.plusButton}>
+                      <Ionicons name="add" size={15} color="#ffffff" />
+                    </View>
+                  </LinearGradient>
+                </Pressable>
+              ) : (
                 <LinearGradient
                   colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
                   start={{ x: 0, y: 0 }}
@@ -106,12 +132,8 @@ export function LobbyHeader({
                   </View>
 
                   <Text style={styles.balanceText}>{goldBalance} گەوهەر</Text>
-
-                  <View style={styles.plusButton}>
-                    <Ionicons name="add" size={15} color="#ffffff" />
-                  </View>
                 </LinearGradient>
-              </Pressable>
+              )}
             </View>
 
             <Pressable
@@ -137,7 +159,7 @@ export function LobbyHeader({
       </View>
 
       <ProfileDrawer
-        visible={isProfileOpen}
+        visible={!!profile && isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
       />
 

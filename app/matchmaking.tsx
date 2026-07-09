@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { prepareMultiplayerGameLaunch } from "@/lib/game/gameLaunchPreload";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -177,6 +177,7 @@ export default function MatchmakingScreen() {
   const initialMatchmakingStatus = String(initialStatus ?? "searching");
 
   const [localPlayer, setLocalPlayer] = useState<MatchPlayer | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
   const [matchmakingStatus, setMatchmakingStatus] = useState(
@@ -216,8 +217,10 @@ export default function MatchmakingScreen() {
             playerIndex: 0,
           });
         }
+        setAuthChecked(true);
       } catch (err) {
         console.warn("Failed to load local profile", err);
+        if (mounted) setAuthChecked(true);
       }
     })();
 
@@ -634,6 +637,14 @@ export default function MatchmakingScreen() {
     };
   }, [isMatchFound, currentRoomId, currentMatchType, gameMode, router]);
 
+  if (authChecked && !localPlayer) {
+    return <Redirect href="/login" />;
+  }
+
+  if (!authChecked) {
+    return <View style={styles.loadingScreen} />;
+  }
+
   return (
     <ImageBackground
       source={require("@/assets/images/lobby/lobby-bg.webp")}
@@ -713,6 +724,11 @@ export default function MatchmakingScreen() {
 
 const styles = StyleSheet.create({
   background: {
+    flex: 1,
+    backgroundColor: "#050214",
+  },
+
+  loadingScreen: {
     flex: 1,
     backgroundColor: "#050214",
   },

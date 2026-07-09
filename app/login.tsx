@@ -7,7 +7,6 @@ import {
   updateMyProfile,
 } from "@/lib/supabaseAuth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -148,10 +147,10 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <View style={styles.formCard}>
         {isSignup ? (
-          <TextInput
-            placeholder="ناوی بەکارهێنەر"
-            placeholderTextColor="#7f8fb2"
-            style={styles.input}
+        <TextInput
+          placeholder="ناوی بەکارهێنەر"
+          placeholderTextColor="#7f8fb2"
+          style={styles.input}
             autoCapitalize="none"
             value={username}
             onChangeText={setUsername}
@@ -162,7 +161,11 @@ export default function LoginScreen() {
         <TextInput
           placeholder="ئیمەیڵ"
           placeholderTextColor="#7f8fb2"
-          style={styles.input}
+          style={[
+            styles.input,
+            email.trim() ? styles.latinInput : null,
+            email.trim() ? styles.ltrInput : null,
+          ]}
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
@@ -188,14 +191,36 @@ export default function LoginScreen() {
             onPress={() => chooseAuthMode("signin")}
             disabled={isLoading}
           >
-            {isLoading && !isSignup ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>چوونەژوورەوە</Text>}
+            {isLoading && !isSignup ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text
+                style={styles.primaryButtonText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                چوونەژوورەوە
+              </Text>
+            )}
           </Pressable>
           <Pressable
             style={[styles.primaryButton, !isSignup && styles.secondaryButton, isLoading && styles.disabledButton]}
             onPress={() => chooseAuthMode("signup")}
             disabled={isLoading}
           >
-            {isLoading && isSignup ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}> دروستکردنی هەژمار</Text>}
+            {isLoading && isSignup ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text
+                style={styles.primaryButtonText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                دروستکردنی هەژمار
+              </Text>
+            )}
           </Pressable>
         </View>
 
@@ -208,9 +233,7 @@ export default function LoginScreen() {
               accessibilityRole="link"
               accessibilityLabel="Privacy Policy"
               hitSlop={8}
-              onPress={() =>
-                void Linking.openURL("https://playaznif.vercel.app/privacy")
-              }
+              onPress={() => router.push("/privacy")}
             >
               <Text style={styles.privacyLink}>سیاسەتی پاراستنی نهێنی</Text>
             </Pressable>
@@ -242,6 +265,9 @@ input: {
   borderRadius: 6,
   backgroundColor: "rgba(7, 26, 54, 0.78)",
   color: "#ffffff",
+  fontFamily: "SpedaRegular",
+  textAlign: "right",
+  writingDirection: "rtl",
   paddingHorizontal: 14,
   marginBottom: 12,
   borderWidth: 1,
@@ -260,7 +286,7 @@ input: {
   primaryButton: {
     flex: 1,
     height: 40,
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     borderRadius: 6,
     backgroundColor: "#2563eb",
     alignItems: "center",
@@ -283,8 +309,11 @@ input: {
 
   primaryButtonText: {
     color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaRegular",
+    fontSize: 13,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    writingDirection: "rtl",
+    includeFontPadding: false,
   },
 
   privacyRow: {
@@ -310,11 +339,17 @@ latinInput: {
   fontFamily: "RobotoMedium",
 },
 
+ltrInput: {
+  textAlign: "left",
+  writingDirection: "ltr",
+},
+
   privacyLink: {
     color: "#7dd3fc",
     fontSize: 12,
     fontFamily: "SpedaBold",
     textAlign: "center",
+    writingDirection: "rtl",
     textDecorationLine: "underline",
   },
 

@@ -90,6 +90,7 @@ export default function Layout() {
               <Stack.Screen name="auth-callback" />
               <Stack.Screen name="reset-password" />
               <Stack.Screen name="delete-account" />
+              <Stack.Screen name="privacy" />
               <Stack.Screen name="game" />
               <Stack.Screen name="create-room" />
               <Stack.Screen name="matchmaking" />

@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Redirect } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -10,6 +11,7 @@ type LeaderboardPlayer = {
   name: string;
   level: number;
   points: number;
+  aznif?: number;
   gold?: number;
 };
 
@@ -24,6 +26,8 @@ export default function LeaderboardScreen() {
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
 
   useEffect(() => {
+    if (!profile) return;
+
     let isMounted = true;
 
     const loadPlayers = async () => {
@@ -38,6 +42,7 @@ export default function LeaderboardScreen() {
             name: player.displayName,
             level: player.level,
             points: player.points,
+            aznif: player.aznif,
             gold: player.gold,
           })),
         );
@@ -55,7 +60,7 @@ export default function LeaderboardScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [profile]);
 
   const sortedPlayers = useMemo(
     () => [...players].sort((a, b) => b.points - a.points),
@@ -76,6 +81,10 @@ export default function LeaderboardScreen() {
     );
   };
 
+  if (!profile) {
+    return <Redirect href="/login" />;
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.tableHeader}>
@@ -83,6 +92,7 @@ export default function LeaderboardScreen() {
         <Text style={[styles.headerText, styles.playersHeader]}>یاریزانان</Text>
         <Text style={[styles.headerText, styles.levelHeader]}>ئاست</Text>
         <Text style={[styles.headerText, styles.pointsHeader]}>خاڵ</Text>
+        <Text style={[styles.headerText, styles.aznifHeader]}>ئەزنیف</Text>
         <Text style={[styles.headerText, styles.goldHeader]}>گەوهەر</Text>
       </View>
 
@@ -145,6 +155,17 @@ export default function LeaderboardScreen() {
                 </Text>
               </View>
 
+              <View style={styles.aznifColumn}>
+                <Text
+                  style={[
+                    styles.aznifText,
+                    isCurrentUser && styles.currentUserText,
+                  ]}
+                >
+                  {(player.aznif ?? 0).toLocaleString()}
+                </Text>
+              </View>
+
               <View style={styles.goldColumn}>
                 <Text
                   style={[
@@ -203,12 +224,17 @@ const styles = StyleSheet.create({
   },
 
   levelHeader: {
-    width: 64,
+    width: 58,
     textAlign: "right",
   },
 
   pointsHeader: {
-    width: 82,
+    width: 68,
+    textAlign: "right",
+  },
+
+  aznifHeader: {
+    width: 64,
     textAlign: "right",
   },
 
@@ -283,7 +309,7 @@ const styles = StyleSheet.create({
   },
 
   levelColumn: {
-    width: 64,
+    width: 58,
     alignItems: "flex-end",
   },
 
@@ -295,12 +321,24 @@ const styles = StyleSheet.create({
   },
 
   pointsColumn: {
-    width: 82,
+    width: 68,
     alignItems: "flex-end",
   },
 
   pointsText: {
     color: "#f97316",
+    fontSize: 13,
+    fontFamily: "RobotoMedium",
+    fontWeight: "500",
+  },
+
+  aznifColumn: {
+    width: 64,
+    alignItems: "flex-end",
+  },
+
+  aznifText: {
+    color: "#d6d3d1",
     fontSize: 13,
     fontFamily: "RobotoMedium",
     fontWeight: "500",

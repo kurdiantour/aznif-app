@@ -2,6 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
+
 export type BottomNavKey = "home" | "leaderboard" | "shop" | "friends";
 
 type BottomNavProps = {
@@ -9,7 +11,7 @@ type BottomNavProps = {
   onChange?: (key: BottomNavKey) => void;
 };
 
-const items = [
+const allItems = [
   {
     key: "home",
     label: "سەرەکی",
@@ -36,6 +38,10 @@ const items = [
   },
 ] as const;
 
+const items = allItems.filter(
+  (item) => ENABLE_SHOP_FEATURES || item.key !== "shop",
+);
+
 export function BottomNav({
   active: controlledActive,
   onChange,
@@ -44,7 +50,7 @@ export function BottomNav({
 
   const routeActive: BottomNavKey = pathname.includes("leaderboard")
     ? "leaderboard"
-    : pathname.includes("shop")
+    : ENABLE_SHOP_FEATURES && pathname.includes("shop")
       ? "shop"
       : pathname.includes("invite")
         ? "friends"

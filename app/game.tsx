@@ -25,7 +25,7 @@ import { supabase } from "@/lib/supabase";
 import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/types/game";
 import { Ionicons } from "@expo/vector-icons";
 import { useKeepAwake } from "expo-keep-awake";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
@@ -98,7 +98,7 @@ export default function GameScreen() {
   const gameLoading = !isLocalGame && (game as any).loading;
   const gameError = !isLocalGame ? (game as any).error : null;
 
-  const { refreshProfile } = useProfile();
+  const { profile, loading: profileLoading, refreshProfile } = useProfile();
 
   const {
   showMatchMenu,
@@ -588,10 +588,10 @@ export default function GameScreen() {
 
   const practiceWinReward = useMemo(
     () =>
-      isPracticeMode && didWinMatch && game.winningTeamId
+      profile && isPracticeMode && didWinMatch && game.winningTeamId
         ? { tier: "close" as const, gold: 0, points: 1 }
         : null,
-    [didWinMatch, game.winningTeamId, isPracticeMode],
+    [didWinMatch, game.winningTeamId, isPracticeMode, profile],
   );
 
   useEffect(() => {
@@ -605,6 +605,7 @@ export default function GameScreen() {
       hasPracticeWinReward: !!practiceWinReward,
       alreadyRequested: practiceRewardSettlementRequestedRef.current,
       practiceMatchId: practiceMatchIdRef.current,
+      hasProfile: !!profile,
     });
 
     if (!practiceWinReward) return;
@@ -648,6 +649,7 @@ export default function GameScreen() {
     humanPlayer?.teamId,
     isPracticeMode,
     practiceWinReward,
+    profile,
     showGameOverPopup,
     refreshProfile,
   ]);
@@ -694,6 +696,10 @@ export default function GameScreen() {
         </View>
       </TableBackground>
     );
+  }
+
+  if (!profileLoading && !profile) {
+    return <Redirect href="/login" />;
   }
 
   if (gameError) {
