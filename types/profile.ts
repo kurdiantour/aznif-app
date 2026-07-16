@@ -14,6 +14,10 @@ export type Profile = {
   status: ProfileStatus;
   level: number;
   points: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  gamesLost: number;
+  isAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -21,3 +25,4 @@ export type Profile = {
 export type ProfileUpdate = Partial<
   Pick<Profile, "displayName" | "avatarId" | "avatarUrl" | "bio" | "status">
 >;
+

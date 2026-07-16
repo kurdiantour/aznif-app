@@ -1,4 +1,4 @@
-import { Redirect, Slot } from "expo-router";
+import { Redirect, Slot, usePathname } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 
@@ -23,7 +23,7 @@ import { useProfile } from "@/lib/profile";
 
 export default function TabsLayout() {
   const { profile, loading: profileLoading } = useProfile();
-  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const pathname = usePathname();
   const [sendChipFriend, setSendChipFriend] = useState<Friend | null>(null);
   const [sendChipSuccessHandler, setSendChipSuccessHandler] = useState<
     (() => void) | undefined
@@ -41,7 +41,9 @@ export default function TabsLayout() {
     return <View style={styles.container} />;
   }
 
-  if (!profile) {
+  const isGuestAllowedRoute = pathname.includes("/lobby");
+
+  if (!profile && !isGuestAllowedRoute) {
     return <Redirect href="/login" />;
   }
 
@@ -65,9 +67,7 @@ export default function TabsLayout() {
         }}
       >
         <View style={styles.container}>
-          <LobbyHeader
-            onProfileDrawerVisibilityChange={setIsProfileDrawerOpen}
-          />
+          <LobbyHeader />
 
           <View
             style={[
@@ -82,7 +82,7 @@ export default function TabsLayout() {
             <Slot />
           </View>
 
-          {!isProfileDrawerOpen ? <BottomNav /> : null}
+          <BottomNav requireAuth={!profile} />
 
           {ENABLE_SHOP_FEATURES ? (
             <>

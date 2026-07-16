@@ -10,7 +10,6 @@ import TableBackground from "@/components/game/TableBackground";
 import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
-import { useDevTwoVsTwoBotGame } from "@/hooks/useDevTwoVsTwoBotGame";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { useGame } from "@/hooks/useGame";
 import { useGameSounds } from "@/hooks/useGameSounds";
@@ -18,7 +17,6 @@ import { useOneVsOneGame } from "@/hooks/useOneVsOneGame";
 import { useRoundPresentation } from "@/hooks/useRoundPresentation";
 import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
 import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
-import { ENABLE_DEV_2V2_BOT_TEST } from "@/lib/dev/devBotPlayers";
 import { calculateMoveScore } from "@/lib/game/kozel-engine";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
@@ -50,7 +48,7 @@ function getTeamName(
 export default function GameScreen() {
   useKeepAwake();
 
-  const { room_id, mode, practice, dev_bot_2v2 } = useLocalSearchParams();
+  const { room_id, mode, practice } = useLocalSearchParams();
   const router = useRouter();
 
   const roomId = String(room_id ?? "");
@@ -60,11 +58,9 @@ export default function GameScreen() {
   const gameMode: "1v1" | "2v2" = rawMode === "2v2" ? "2v2" : "1v1";
 
   const isPracticeMode = practice === "true";
-  const isDevBotTwoVsTwo = ENABLE_DEV_2V2_BOT_TEST && dev_bot_2v2 === "true";
-  const isLocalGame = isPracticeMode || isDevBotTwoVsTwo;
+  const isLocalGame = isPracticeMode;
 
   const practiceGame = useGame(gameMode, true);
-  const devBotTwoVsTwoGame = useDevTwoVsTwoBotGame();
 
   const oneVsOneGame = useOneVsOneGame(
     !isLocalGame && gameMode === "1v1" ? roomId : undefined,
@@ -76,11 +72,9 @@ export default function GameScreen() {
 
   const game = isPracticeMode
     ? practiceGame
-    : isDevBotTwoVsTwo
-      ? devBotTwoVsTwoGame
-      : gameMode === "1v1"
-        ? oneVsOneGame
-        : twoVsTwoGame;
+    : gameMode === "1v1"
+      ? oneVsOneGame
+      : twoVsTwoGame;
 
   useGameSounds({
     board: game.board,
@@ -698,7 +692,7 @@ export default function GameScreen() {
     );
   }
 
-  if (!profileLoading && !profile) {
+  if (!isLocalGame && !profileLoading && !profile) {
     return <Redirect href="/login" />;
   }
 

@@ -1,4 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import {
+  getCurrentLeaderboardVisibility,
+  setCurrentLeaderboardVisibility,
+} from "@/lib/leaderboardVisibility";
+import { useProfile } from "@/lib/profile";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -18,9 +23,35 @@ const DRAWER_WIDTH = Math.min(282, Dimensions.get("window").width * 0.66);
 
 export function SettingsDrawer({ visible, onClose }: SettingsDrawerProps) {
   const router = useRouter();
+  const { profile } = useProfile();
   const slideX = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const fade = useRef(new Animated.Value(0)).current;
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
+  const [leaderboardVisible, setLeaderboardVisible] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadLeaderboardVisibility() {
+      if (!visible || !profile) return;
+
+      try {
+        const nextVisible = await getCurrentLeaderboardVisibility();
+
+        if (isMounted) {
+          setLeaderboardVisible(nextVisible);
+        }
+      } catch (error) {
+        console.warn("Failed to load leaderboard visibility:", error);
+      }
+    }
+
+    void loadLeaderboardVisibility();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, profile]);
 
   useEffect(() => {
     if (!visible) return;
@@ -60,6 +91,17 @@ export function SettingsDrawer({ visible, onClose }: SettingsDrawerProps) {
     requestAnimationFrame(() => router.push(path));
   }
 
+  async function handleLeaderboardVisibleChange(value: boolean) {
+    setLeaderboardVisible(value);
+
+    try {
+      await setCurrentLeaderboardVisibility(value);
+    } catch (error) {
+      console.warn("Failed to update leaderboard visibility:", error);
+      setLeaderboardVisible((current) => !current);
+    }
+  }
+
   if (!visible) return null;
 
   return (
@@ -89,11 +131,14 @@ export function SettingsDrawer({ visible, onClose }: SettingsDrawerProps) {
               onValueChange={setSoundEffectsEnabled}
               
   />
-  <SettingRow
-    icon="language-outline"
-    label="زمان"
-    value="کوردی"
-  />
+  {profile ? (
+    <SettingSwitch
+      icon="trophy-outline"
+      label="خشتەی پێشبرکێ"
+      value={leaderboardVisible}
+      onValueChange={handleLeaderboardVisibleChange}
+    />
+  ) : null}
 </View>
 
           <View style={styles.section}>
@@ -219,7 +264,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontFamily: "SpedaBold",
-    textAlign: "left",
+    textAlign: "right",
   },
   divider: {
     marginTop: 14,
@@ -230,23 +275,20 @@ const styles = StyleSheet.create({
   settingItem: {
     minHeight: 50,
     borderRadius: 11,
-    paddingLeft: 10,
-    paddingRight: 52,
+    paddingHorizontal: 8,
     backgroundColor: "#0d0920",
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     direction: "rtl",
     alignItems: "center",
+    gap: 8,
   },
   pressed: { opacity: 0.82 },
   iconBox: {
-    position: "absolute",
-    right: 10,
     width: 32,
     height: 32,
-    borderRadius: 9,
+    borderRadius: 11,
     backgroundColor: "#251748",
-    borderWidth: 1,
-    borderColor: "rgba(167, 139, 250, 0.32)",
+    borderColor: "rgba(167,139,250,0.3)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -255,24 +297,20 @@ const styles = StyleSheet.create({
     borderColor: "rgba(251, 113, 133, 0.34)",
   },
 settingLabel: {
-  position: "absolute",
-  top: 15,
-  right: 52,
-  left: 52,
-  color: "#fff",
-  fontSize: 12,
-  fontFamily: "SpedaBold",
-  textAlign: "left",
-},
+    flex: 1,
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
+    writingDirection: "rtl",
+    textAlign: "right",
+  },
   dangerLabel: { color: "#fca5a5" },
   settingValue: {
-    position: "absolute",
-    left: 10,
     color: "#c5b4ed",
     fontSize: 11,
     fontFamily: "SpedaBold",
     writingDirection: "rtl",
     textAlign: "right",
   },
-  settingSwitch: { position: "absolute", left: 7 },
+  settingSwitch: { marginLeft: 0 },
 });

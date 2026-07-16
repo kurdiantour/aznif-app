@@ -1,8 +1,13 @@
 import { sendPasswordReset } from "@/lib/supabaseAuth";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   ActivityIndicator,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,12 +16,12 @@ import {
 } from "react-native";
 
 function getPasswordResetErrorMessage(error: unknown) {
-  const fallback = "نەتوانرا ئیمەیلی نوێکردنەوە بنێردرێت.";
+  const fallback = "نەتوانرا ئیمەیڵی نوێکردنەوە بنێردرێت.";
   const message = error instanceof Error ? error.message : "";
   const normalized = message.toLowerCase();
 
   if (normalized.includes("invalid") && normalized.includes("email")) {
-    return "ئیمەیلەکە دروست نییە.";
+    return "ئیمەیڵەکە دروست نییە.";
   }
 
   if (normalized.includes("email")) {
@@ -37,7 +42,7 @@ export default function ForgotPasswordScreen() {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       setStatus("error");
-      setMessage("ئیمەیلی هەژمارەکەت بنووسە.");
+      setMessage("ئیمەیڵی هەژمارەکەت بنووسە.");
       return;
     }
 
@@ -48,7 +53,7 @@ export default function ForgotPasswordScreen() {
       if (error) throw error;
       setStatus("success");
       setMessage(
-        "ئەگەر هەژمارێک بەم ئیمەیلە هەبێت، بەستەری نوێکردنەوەی وشەی نهێنی نێردرا.",
+        "ئەگەر هەژمارێک بەم ئیمەیڵە هەبێت، بەستەری نوێکردنەوەی وشەی نهێنی نێردرا.",
       );
     } catch (error) {
       setStatus("error");
@@ -60,25 +65,30 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthScreen
-      title="نوێکردنەوەی وشەی نهێنی"
-      subtitle="بەستەرێکی پارێزراو بۆ ئیمەیلەکەت دەنێرین."
+      title="وشەی نهێنیت لەبیرکردووە؟"
+      subtitle="ئیمەیڵەکەت بنووسە، بەستەری نوێکردنەوەت بۆ دەنێرین."
     >
-      <TextInput
-        style={styles.input}
-        value={email}
-        onChangeText={setEmail}
-        placeholder="ئیمەیل"
-        placeholderTextColor="#7f8fb2"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        autoComplete="email"
-        editable={!loading}
-      />
+      <View style={styles.inputWrap}>
+        <Ionicons name="mail-outline" size={18} color="#9ca3af" />
+        <TextInput
+          style={[styles.input, styles.ltrInput]}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="ئیمەیڵ"
+          placeholderTextColor="#8fa1bf"
+          autoCapitalize="none"
+          keyboardType="email-address"
+          autoComplete="email"
+          editable={!loading}
+        />
+      </View>
+
       {status !== "idle" && (
         <Text style={status === "success" ? styles.success : styles.error}>
           {message}
         </Text>
       )}
+
       <Pressable
         style={[styles.primaryButton, loading && styles.disabled]}
         onPress={handleSend}
@@ -87,14 +97,16 @@ export default function ForgotPasswordScreen() {
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.primaryText}>ناردنی ئیمەیلی نوێکردنەوە</Text>
+          <Text style={styles.primaryText}>ناردنی بەستەر</Text>
         )}
       </Pressable>
+
       <Pressable
         style={[styles.secondaryButton, loading && styles.disabled]}
-        onPress={() => router.replace("/login")}
+        onPress={() => router.back()}
         disabled={loading}
       >
+        <Ionicons name="arrow-forward" size={18} color="#f8d774" />
         <Text style={styles.secondaryText}>گەڕانەوە</Text>
       </Pressable>
     </AuthScreen>
@@ -108,83 +120,155 @@ export function AuthScreen({
 }: {
   title: string;
   subtitle: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <View style={styles.screen}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
-        {children}
-      </View>
-    </View>
+    <ImageBackground
+      source={require("@/assets/images/lobby/lobby-bg.webp")}
+      resizeMode="cover"
+      style={styles.background}
+    >
+      <LinearGradient
+        colors={["rgba(2, 6, 23, 0.92)", "rgba(9, 18, 40, 0.86)"]}
+        style={styles.overlay}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.keyboardView}
+        >
+          <View style={styles.fixedContent}>
+            <View style={styles.card}>
+              <View style={styles.headerPanel}>
+                <Ionicons name="key-outline" size={26} color="#f8d774" />
+                <Text style={styles.title}>{title}</Text>
+                <Text style={styles.subtitle}>{subtitle}</Text>
+              </View>
+              <View style={styles.form}>{children}</View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+    </ImageBackground>
   );
 }
 
 export const styles = StyleSheet.create({
-  screen: {
+  background: {
     flex: 1,
-    backgroundColor: "#050b22",
+    backgroundColor: "#020617",
+  },
+  overlay: {
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  fixedContent: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
   card: {
     width: "100%",
-    maxWidth: 380,
-    padding: 24,
-    borderRadius: 16,
-    backgroundColor: "rgba(7, 26, 54, 0.9)",
+    maxWidth: 390,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(4, 10, 25, 0.86)",
+    padding: 12,
+  },
+  headerPanel: {
+    alignItems: "center",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.22)",
+    backgroundColor: "rgba(15, 23, 42, 0.66)",
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    marginBottom: 12,
+  },
+  form: {
+    gap: 9,
   },
   title: {
-    color: "#fff",
-    fontSize: 24,
+    color: "#ffffff",
+    fontSize: 19,
     fontFamily: "SpedaBold",
     textAlign: "center",
+    writingDirection: "rtl",
+    marginTop: 10,
   },
   subtitle: {
-    color: "#b7c8e8",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-    lineHeight: 21,
+    color: "#b6c2d8",
+    fontSize: 12,
+    fontFamily: "SpedaRegular",
+    lineHeight: 22,
     textAlign: "center",
-    marginTop: 10,
-    marginBottom: 24,
+    writingDirection: "rtl",
+    marginTop: 8,
+  },
+  inputWrap: {
+    minHeight: 48,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(148, 163, 184, 0.24)",
+    backgroundColor: "rgba(15, 23, 42, 0.74)",
+    paddingHorizontal: 13,
   },
   input: {
-    height: 46,
-    borderRadius: 8,
-    backgroundColor: "#081936",
-    borderWidth: 1,
-    borderColor: "rgba(73, 112, 176, 0.65)",
-    color: "#fff",
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    fontFamily: "SpedaBold",
+    flex: 1,
+    minHeight: 46,
+    color: "#ffffff",
+    fontFamily: "SpedaRegular",
+    fontSize: 14,
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+  ltrInput: {
+    fontFamily: "RobotoMedium",
+    textAlign: "left",
+    writingDirection: "ltr",
   },
   primaryButton: {
-    height: 46,
-    borderRadius: 8,
-    backgroundColor: "#2563eb",
+    minHeight: 48,
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 6,
+    backgroundColor: "#2563eb",
     marginTop: 4,
   },
-  primaryText: { color: "#fff", fontFamily: "SpedaBold", fontSize: 14 },
+  primaryText: {
+    color: "#ffffff",
+    fontFamily: "SpedaBold",
+    fontSize: 15,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
   secondaryButton: {
-    height: 46,
-    borderRadius: 8,
-    backgroundColor: "#4b5563",
+    minHeight: 46,
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 12,
+    gap: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.34)",
+    backgroundColor: "rgba(248, 215, 116, 0.1)",
   },
   secondaryText: {
     color: "#ffffff",
     fontFamily: "SpedaBold",
-    fontSize: 14,
+    fontSize: 13,
+    textAlign: "center",
+    writingDirection: "rtl",
   },
-  disabled: { opacity: 0.6 },
+  disabled: { opacity: 0.65 },
   link: {
     color: "#9fc2ff",
     textAlign: "center",
@@ -192,18 +276,19 @@ export const styles = StyleSheet.create({
     marginTop: 20,
   },
   error: {
-    color: "#fca5a5",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
+    color: "#fecaca",
+    fontSize: 12,
+    fontFamily: "SpedaRegular",
+    lineHeight: 20,
     textAlign: "center",
-    marginBottom: 12,
+    writingDirection: "rtl",
   },
   success: {
     color: "#86efac",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontSize: 12,
+    fontFamily: "SpedaRegular",
     lineHeight: 20,
     textAlign: "center",
-    marginBottom: 12,
+    writingDirection: "rtl",
   },
 });

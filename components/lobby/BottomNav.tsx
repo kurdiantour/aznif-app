@@ -7,8 +7,9 @@ import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 export type BottomNavKey = "home" | "leaderboard" | "shop" | "friends";
 
 type BottomNavProps = {
-  active?: BottomNavKey;
+  active?: BottomNavKey | null;
   onChange?: (key: BottomNavKey) => void;
+  requireAuth?: boolean;
 };
 
 const allItems = [
@@ -45,6 +46,7 @@ const items = allItems.filter(
 export function BottomNav({
   active: controlledActive,
   onChange,
+  requireAuth = false,
 }: BottomNavProps) {
   const pathname = usePathname();
 
@@ -56,7 +58,7 @@ export function BottomNav({
         ? "friends"
         : "home";
 
-  const active = controlledActive ?? routeActive;
+  const active = controlledActive === undefined ? routeActive : controlledActive;
 
   const handlePress = (
     key: BottomNavKey,
@@ -64,6 +66,11 @@ export function BottomNav({
   ) => {
     if (onChange) {
       onChange(key);
+      return;
+    }
+
+    if (requireAuth && key !== "home") {
+      router.push("/login");
       return;
     }
 

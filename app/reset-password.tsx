@@ -1,8 +1,9 @@
 import { AuthScreen, styles } from "./forgot-password";
 import { updatePassword } from "@/lib/supabaseAuth";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -37,26 +38,32 @@ export default function ResetPasswordScreen() {
       title="Choose a new password"
       subtitle="Use a password with at least 6 characters."
     >
-      <TextInput
-        style={styles.input}
-        value={password}
-        onChangeText={setPassword}
-        placeholder="New password"
-        placeholderTextColor="#7f8fb2"
-        secureTextEntry
-        autoComplete="new-password"
-        editable={!loading && !success}
-      />
-      <TextInput
-        style={styles.input}
-        value={confirmation}
-        onChangeText={setConfirmation}
-        placeholder="Confirm new password"
-        placeholderTextColor="#7f8fb2"
-        secureTextEntry
-        autoComplete="new-password"
-        editable={!loading && !success}
-      />
+      <View style={styles.inputWrap}>
+        <Ionicons name="lock-closed-outline" size={18} color="#9ca3af" />
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="New password"
+          placeholderTextColor="#8fa1bf"
+          secureTextEntry
+          autoComplete="new-password"
+          editable={!loading && !success}
+        />
+      </View>
+      <View style={styles.inputWrap}>
+        <Ionicons name="shield-checkmark-outline" size={18} color="#9ca3af" />
+        <TextInput
+          style={styles.input}
+          value={confirmation}
+          onChangeText={setConfirmation}
+          placeholder="Confirm new password"
+          placeholderTextColor="#8fa1bf"
+          secureTextEntry
+          autoComplete="new-password"
+          editable={!loading && !success}
+        />
+      </View>
       {!!message && (
         <Text style={success ? styles.success : styles.error}>{message}</Text>
       )}

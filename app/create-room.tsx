@@ -1,9 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 import { BottomNav } from "@/components/lobby/BottomNav";
+import { MOBILE_HORIZONTAL_INSET, TABLET_HORIZONTAL_INSET } from "@/constants/layout";
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
@@ -21,6 +22,8 @@ export default function CreateRoomScreen() {
   const [privateSubmitting, setPrivateSubmitting] = useState(false);
   const [publicSubmitting, setPublicSubmitting] = useState(false);
   const [joinSubmitting, setJoinSubmitting] = useState(false);
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
   const [roomCode, setRoomCode] = useState("");
   const [roomCodeError, setRoomCodeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,14 +98,24 @@ export default function CreateRoomScreen() {
   };
 
   if (!profileLoading && !profile) return <Redirect href="/login" />;
-  if (loading || profileLoading) return <View style={styles.screen}><LobbyHeader /><View style={styles.loading}><ActivityIndicator size="large" color="#fff" /></View><BottomNav active="home" /></View>;
+  if (loading || profileLoading) return <View style={styles.screen}><LobbyHeader /><View style={styles.loading}><ActivityIndicator size="large" color="#fff" /></View><BottomNav active={null} /></View>;
 
   const submitting = privateSubmitting || publicSubmitting || joinSubmitting;
   const privateRoomDisabled = !wallet || wallet.balances.mc < PRIVATE_ROOM_BET_AMOUNT;
 
   return <View style={styles.screen}>
     <LobbyHeader />
-    <View style={styles.cardsRow}>
+    <View
+      style={[
+        styles.contentFrame,
+        {
+          paddingHorizontal: isTablet
+            ? TABLET_HORIZONTAL_INSET
+            : MOBILE_HORIZONTAL_INSET,
+        },
+      ]}
+    >
+      <View style={[styles.cardsRow, isTablet && styles.cardsRowTablet]}>
       <View style={[styles.card, styles.createCard]}>
         <Image source={require("@/assets/images/lobby/create-room.webp")} style={styles.cover} resizeMode="cover" />
         <LinearGradient colors={["transparent", "rgba(8,9,20,0.97)"]} style={styles.createFade} />
@@ -144,15 +157,18 @@ export default function CreateRoomScreen() {
         </Pressable>;
       })}
     </View>
-    {error ? <Text style={styles.error}>{error}</Text> : null}
-    <BottomNav active="home" />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </View>
+    <BottomNav active={null} />
   </View>;
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#151827", paddingHorizontal: 30, paddingTop: 14, paddingBottom: 88 },
+  screen: { flex: 1, backgroundColor: "#090b1d", paddingTop: 14, paddingBottom: 18 },
+  contentFrame: { flex: 1 },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  cardsRow: { flexDirection: "row", width: "100%", height: "80%", maxHeight: 238, minHeight: 205, marginTop: 0, gap: 8 },
+  cardsRow: { flexDirection: "row", alignSelf: "center", width: "100%", height: "80%", maxHeight: 238, minHeight: 205, marginTop: 0, gap: 8 },
+  cardsRowTablet: { width: "100%", height: "72%", maxHeight: 520, minHeight: 390, gap: 18, marginTop: 12 },
   card: { flex: 1, borderRadius: 14, overflow: "hidden", backgroundColor: "#172033" },
   createCard: {},
   joinCard: {},

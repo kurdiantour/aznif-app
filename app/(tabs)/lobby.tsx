@@ -1,8 +1,9 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +13,12 @@ import {
 } from "react-native";
 
 import { supabase } from "@/lib/supabase";
-import { ENABLE_DEV_2V2_BOT_TEST } from "@/lib/dev/devBotPlayers";
+import {
+  consumePendingLeaderboardConsent,
+  hasPendingLeaderboardConsent,
+  setCurrentLeaderboardVisibility,
+} from "@/lib/leaderboardVisibility";
+import { useProfile } from "@/lib/profile";
 import { rtlStyles } from "@/lib/rtl";
 
 type GameMode = "1v1" | "2v2";
@@ -131,20 +137,66 @@ function ModeCard({
 
 export default function LobbyScreen() {
   const router = useRouter();
+  const { profile } = useProfile();
   const [isSearching, setIsSearching] = useState(false);
+  const [showLeaderboardConsent, setShowLeaderboardConsent] = useState(false);
+  const [isSavingLeaderboardConsent, setIsSavingLeaderboardConsent] =
+    useState(false);
   const { width, height } = useWindowDimensions();
 
   const shortestSide = Math.min(width, height);
   const isTablet = shortestSide >= 600;
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkPendingConsent() {
+      if (!profile) {
+        setShowLeaderboardConsent(false);
+        return;
+      }
+
+      try {
+        const pendingConsent = await hasPendingLeaderboardConsent();
+
+        if (isMounted) {
+          setShowLeaderboardConsent(pendingConsent);
+        }
+      } catch {
+        if (isMounted) {
+          setShowLeaderboardConsent(false);
+        }
+      }
+    }
+
+    void checkPendingConsent();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile]);
+
+  async function saveLeaderboardConsent(value: boolean) {
+    if (isSavingLeaderboardConsent) return;
+
+    setIsSavingLeaderboardConsent(true);
+
+    try {
+      await setCurrentLeaderboardVisibility(value);
+      await consumePendingLeaderboardConsent();
+      setShowLeaderboardConsent(false);
+    } catch (error) {
+      console.warn("Failed to save leaderboard consent:", error);
+    } finally {
+      setIsSavingLeaderboardConsent(false);
+    }
+  }
+
   const startPublicMatch = async (mode: GameMode, matchType: MatchType) => {
     if (isSearching) return;
 
-    if (mode === "2v2" && ENABLE_DEV_2V2_BOT_TEST) {
-      router.push({
-        pathname: "/game",
-        params: { mode: "2v2", dev_bot_2v2: "true" },
-      });
+    if (!profile) {
+      router.push("/login");
       return;
     }
 
@@ -229,15 +281,49 @@ export default function LobbyScreen() {
           image={require("@/assets/images/lobby/create-room.webp")}
           disabled={isSearching}
           onPress={() =>
-            router.push({
+            profile
+              ? router.push({
               pathname: "/create-room",
               params: {
                 matchType: "private",
               },
             })
+              : router.push("/login")
           }
         />
       </View>
+
+      {showLeaderboardConsent ? (
+        <View style={styles.consentBackdrop} pointerEvents="auto">
+          <View style={styles.consentDialog}>
+            <Text style={styles.consentText}>
+              ڕازیت بە نیشاندانی ناو، پلە و خاڵەکانت لە خشتەی پێشبڕکێ؟
+            </Text>
+
+            <View style={styles.consentActions}>
+              <Pressable
+                style={[styles.consentButton, styles.consentPrimaryButton]}
+                onPress={() => saveLeaderboardConsent(true)}
+                disabled={isSavingLeaderboardConsent}
+              >
+                {isSavingLeaderboardConsent ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.consentPrimaryButtonText}>ڕازیم</Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                style={[styles.consentButton, styles.consentSecondaryButton]}
+                onPress={() => saveLeaderboardConsent(false)}
+                disabled={isSavingLeaderboardConsent}
+              >
+                <Text style={styles.consentSecondaryButtonText}>نەخێر</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -260,6 +346,80 @@ const styles = StyleSheet.create({
     minHeight: 390,
     gap: 18,
     marginTop: 12,
+  },
+
+  consentBackdrop: {
+    position: "absolute",
+    top: -14,
+    right: 0,
+    bottom: -18,
+    left: 0,
+    zIndex: 1000,
+    elevation: 1000,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 22,
+    backgroundColor: "rgba(0,0,0,0.64)",
+  },
+
+  consentDialog: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.34)",
+    backgroundColor: "#0b1024",
+    padding: 18,
+  },
+
+  consentText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontFamily: "SpedaBold",
+    lineHeight: 28,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  consentActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+  },
+
+  consentButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+
+  consentPrimaryButton: {
+    backgroundColor: "#2563eb",
+  },
+
+  consentSecondaryButton: {
+    borderWidth: 1,
+    borderColor: "rgba(148, 163, 184, 0.32)",
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
+  },
+
+  consentPrimaryButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  consentSecondaryButtonText: {
+    color: "#e5e7eb",
+    fontSize: 14,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    writingDirection: "rtl",
   },
 
   leftCards: {

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Redirect } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { Redirect, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { getLeaderboardProfiles, useProfile } from "@/lib/profile";
@@ -25,12 +25,15 @@ export default function LeaderboardScreen() {
   const { profile } = useProfile();
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
 
-  useEffect(() => {
-    if (!profile) return;
-
+  const loadPlayers = useCallback(() => {
     let isMounted = true;
 
-    const loadPlayers = async () => {
+    const refreshPlayers = async () => {
+      if (!profile) {
+        setPlayers([]);
+        return;
+      }
+
       try {
         const leaderboard = await getLeaderboardProfiles(50);
 
@@ -55,12 +58,14 @@ export default function LeaderboardScreen() {
       }
     };
 
-    void loadPlayers();
+    void refreshPlayers();
 
     return () => {
       isMounted = false;
     };
   }, [profile]);
+
+  useFocusEffect(loadPlayers);
 
   const sortedPlayers = useMemo(
     () => [...players].sort((a, b) => b.points - a.points),

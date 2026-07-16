@@ -1,10 +1,13 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 
-import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
+import {
+  ENABLE_GOLD_PURCHASES,
+  ENABLE_SHOP_FEATURES,
+} from "@/lib/platformFeatures";
 
 export default function BuyGoldScreen() {
-  if (!ENABLE_SHOP_FEATURES) {
+  if (!ENABLE_SHOP_FEATURES || !ENABLE_GOLD_PURCHASES) {
     return <Redirect href="/(tabs)/lobby" />;
   }
 

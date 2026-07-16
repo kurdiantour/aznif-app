@@ -1,7 +1,8 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
-import { SettingsDrawer } from "@/components/settings/SettingsDrawer";
-import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
+import {
+  ENABLE_GOLD_PURCHASES,
+  ENABLE_SHOP_FEATURES,
+} from "@/lib/platformFeatures";
 import { useProfile } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { getBalance } from "@/lib/wallet";
@@ -12,20 +13,12 @@ import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-type LobbyHeaderProps = {
-  onProfileDrawerVisibilityChange?: (visible: boolean) => void;
-};
-
-export function LobbyHeader({
-  onProfileDrawerVisibilityChange,
-}: LobbyHeaderProps) {
+export function LobbyHeader() {
   const { profile, loading } = useProfile();
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
   const [mcBalance, setMcBalance] = useState<string>("...");
   const [goldBalance, setGoldBalance] = useState<string>("...");
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const loadBalance = useCallback(async () => {
     if (loading) return;
@@ -57,17 +50,12 @@ export function LobbyHeader({
     return () => unsubscribe();
   }, [loadBalance]);
 
-  useEffect(() => {
-    onProfileDrawerVisibilityChange?.(isProfileOpen);
-  }, [isProfileOpen, onProfileDrawerVisibilityChange]);
-
   return (
-    <>
       <View>
         <View style={styles.topBar}>
           <Pressable
             style={styles.userBox}
-            onPress={() => setIsProfileOpen(true)}
+            onPress={() => router.push(profile ? "/profile" : "/login")}
           >
             <PlayerAvatar
               avatarId={profile?.avatarId}
@@ -77,7 +65,7 @@ export function LobbyHeader({
 
             <View style={styles.userText}>
               <Text style={styles.username} numberOfLines={1}>
-                {profile?.displayName}
+                {profile?.displayName ?? "Guest"}
               </Text>
 
               <Text style={styles.level}>
@@ -87,6 +75,7 @@ export function LobbyHeader({
           </Pressable>
 
           <View style={styles.topRight}>
+            {profile ? (
             <View style={styles.balanceGroup}>
               <LinearGradient
                 colors={["rgba(255,183,59,0.22)", "rgba(255,255,255,0.07)"]}
@@ -101,7 +90,7 @@ export function LobbyHeader({
                 <Text style={styles.balanceText}>{mcBalance} ئەزنیف</Text>
               </LinearGradient>
 
-              {ENABLE_SHOP_FEATURES ? (
+              {ENABLE_SHOP_FEATURES && ENABLE_GOLD_PURCHASES ? (
                 <Pressable onPress={() => router.push("/buy-gold")}>
                   <LinearGradient
                     colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
@@ -135,10 +124,20 @@ export function LobbyHeader({
                 </LinearGradient>
               )}
             </View>
+            ) : loading ? (
+              <View style={styles.authPlaceholder} />
+            ) : (
+              <Pressable
+                style={styles.signInButton}
+                onPress={() => router.push("/login")}
+              >
+                <Text style={styles.signInText}>چوونەژوورەوە</Text>
+              </Pressable>
+            )}
 
             <Pressable
               style={styles.topIcon}
-              onPress={() => setIsSettingsOpen(true)}
+              onPress={() => router.push("/settings")}
             >
               <Ionicons name="settings-outline" size={19} color="#ffffff" />
             </Pressable>
@@ -157,17 +156,6 @@ export function LobbyHeader({
           style={styles.headerGradientLine}
         />
       </View>
-
-      <ProfileDrawer
-        visible={!!profile && isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-      />
-
-      <SettingsDrawer
-        visible={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-    </>
   );
 }
 
@@ -314,6 +302,29 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  signInButton: {
+    height: 36,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.34)",
+    backgroundColor: "rgba(248, 215, 116, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  signInText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
+    writingDirection: "rtl",
+  },
+
+  authPlaceholder: {
+    width: 96,
+    height: 36,
   },
 
   headerGradientLine: {

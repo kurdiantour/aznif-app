@@ -1,4 +1,4 @@
-﻿import type { Profile, ProfileUpdate } from "@/types/profile";
+import type { Profile, ProfileUpdate } from "@/types/profile";
 import {
   createContext,
   useCallback,
@@ -22,9 +22,29 @@ type DbProfile = {
   avatar_id: string;
   level?: number;
   points?: number;
+  games_played?: number;
+  games_won?: number;
+  games_lost?: number;
+  is_admin?: boolean;
   created_at: string;
   updated_at: string;
 };
+
+const PROFILE_SELECT =
+  "id, player_id, username, avatar_id, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+const PROFILE_LOAD_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error("Profile load timed out."));
+    }, timeoutMs);
+
+    promise
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timeoutId));
+  });
+}
 
 function mapDbProfile(profile: DbProfile, email?: string): Profile {
   const points = Number(profile.points ?? 0);
@@ -41,6 +61,10 @@ function mapDbProfile(profile: DbProfile, email?: string): Profile {
     status: "active",
     level: calculateLevelFromPoints(points),
     points,
+    gamesPlayed: Number(profile.games_played ?? 0),
+    gamesWon: Number(profile.games_won ?? 0),
+    gamesLost: Number(profile.games_lost ?? 0),
+    isAdmin: Boolean(profile.is_admin),
     createdAt: profile.created_at,
     updatedAt: profile.updated_at,
   };
@@ -98,12 +122,33 @@ export async function getLeaderboardProfiles(
   });
 }
 
+export async function getCurrentLeaderboardRank(
+  userId?: string,
+): Promise<number | null> {
+  const { data, error } = await supabase.rpc("get_my_leaderboard_rank");
+
+  if (!error && typeof data === "number") {
+    return data;
+  }
+
+  if (!userId) {
+    if (error) {
+      console.warn("[profile] get_my_leaderboard_rank failed:", error);
+    }
+
+    return null;
+  }
+
+  const leaderboard = await getLeaderboardProfiles(100);
+  const currentPlayer = leaderboard.find((player) => player.id === userId);
+
+  return currentPlayer?.rank ?? null;
+}
+
 export async function getProfileById(id: string): Promise<Profile> {
   const { data, error } = await supabase
     .from("profiles")
-    .select(
-      "id, player_id, username, avatar_id, level, points, created_at, updated_at",
-    )
+    .select(PROFILE_SELECT)
     .eq("id", id)
     .maybeSingle<DbProfile>();
 
@@ -127,7 +172,10 @@ export async function updateCurrentProfile(
     throw new Error("User is not authenticated");
   }
 
-  const payload: { username?: string; avatar_id?: string } = {};
+  const payload: {
+    username?: string;
+    avatar_id?: string;
+  } = {};
 
   if (typeof changes.displayName === "string") {
     const trimmedName = changes.displayName.trim();
@@ -171,6 +219,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    let profileLoadTimer: ReturnType<typeof setTimeout> | null = null;
 
     if (!isSupabaseConfigured) {
       setProfile(null);
@@ -182,7 +231,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       try {
         setLoading(true);
 
-        const nextProfile = await getCurrentProfile();
+        const nextProfile = await withTimeout(
+          getCurrentProfile(),
+          PROFILE_LOAD_TIMEOUT_MS,
+        );
 
         if (isMounted) {
           setProfile(nextProfile);
@@ -200,7 +252,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    loadProfile();
+    function scheduleProfileLoad() {
+      if (profileLoadTimer) {
+        clearTimeout(profileLoadTimer);
+      }
+
+      profileLoadTimer = setTimeout(() => {
+        profileLoadTimer = null;
+        void loadProfile();
+      }, 0);
+    }
+
+    void loadProfile();
 
     const {
       data: { subscription },
@@ -215,11 +278,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      loadProfile();
+      scheduleProfileLoad();
     });
 
     return () => {
       isMounted = false;
+      if (profileLoadTimer) {
+        clearTimeout(profileLoadTimer);
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -263,3 +329,4 @@ export function useProfile() {
 
   return context;
 }
+

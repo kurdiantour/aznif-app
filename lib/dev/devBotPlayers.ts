@@ -5,7 +5,7 @@ import type { Player, TeamId } from "@/types/game";
  * Temporary, local-only 2v2 test switch. Set false (or delete this module)
  * to restore the normal 2v2 matchmaking path immediately.
  */
-export const ENABLE_DEV_2V2_BOT_TEST = true;
+export const ENABLE_DEV_2V2_BOT_TEST = false;
 
 export type DevBotSeat = {
   id: string;

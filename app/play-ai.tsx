@@ -6,7 +6,7 @@ import {
   getRankTitleFromLevel,
 } from "@/lib/progression";
 import { LinearGradient } from "expo-linear-gradient";
-import { Redirect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -152,8 +152,6 @@ export default function PlayAIModeScreen() {
     pulseLoop.start();
     rotateLoop.start();
 
-    if (!profile) return;
-
     const timeout = setTimeout(() => {
       router.replace({
         pathname: "/game",
@@ -170,24 +168,20 @@ export default function PlayAIModeScreen() {
       pulseLoop.stop();
       rotateLoop.stop();
     };
-  }, [profile, pulse, rotate, router]);
+  }, [pulse, rotate, router]);
 
   const spin = rotate.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
   });
 
-  const playerName = profile?.displayName ?? profile?.username ?? "یاریزان";
+  const playerName = profile?.displayName ?? profile?.username ?? "Guest";
   const playerLevel =
     profile?.level ?? calculateLevelFromPoints(profile?.points);
   const playerAvatarId = profile?.avatarId as AvatarId | undefined;
 
   if (profileLoading) {
     return <View style={styles.loadingScreen} />;
-  }
-
-  if (!profile) {
-    return <Redirect href="/login" />;
   }
 
   return (

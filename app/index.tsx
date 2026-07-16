@@ -21,7 +21,7 @@ const KEYFRAMES = [
 
 export default function IndexScreen() {
   const router = useRouter();
-  const { profile, loading: startupLoading } = useProfile();
+  const { loading: startupLoading } = useProfile();
   const progress = useRef(new Animated.Value(0)).current;
   const [minimumDurationElapsed, setMinimumDurationElapsed] = useState(false);
 
@@ -52,8 +52,8 @@ export default function IndexScreen() {
   useEffect(() => {
     if (!minimumDurationElapsed || startupLoading) return;
 
-    router.replace(profile ? "/(tabs)/lobby" : "/login");
-  }, [minimumDurationElapsed, profile, router, startupLoading]);
+    router.replace("/(tabs)/lobby");
+  }, [minimumDurationElapsed, router, startupLoading]);
 
   return (
     <View style={styles.container}>
