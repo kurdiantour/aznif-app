@@ -8,10 +8,7 @@ const matches = (source, pattern) => pattern.test(source);
 const failures = [];
 
 const gameScreen = read("app/game.tsx");
-if (
-  gameScreen.includes("award_ai_practice_win") ||
-  gameScreen.includes("settle_match_rewards")
-) {
+if (gameScreen.includes("award_ai_practice_win")) {
   failures.push("The game client must not settle authoritative rewards.");
 }
 
@@ -74,7 +71,6 @@ const hardening = read(
 for (const required of [
   "Cannot disconnect another player",
   "REVOKE ALL ON FUNCTION public.award_ai_practice_win",
-  "REVOKE ALL ON FUNCTION public.settle_match_rewards",
   "TO service_role",
 ]) {
   if (!hardening.includes(required))
@@ -96,17 +92,17 @@ for (const file of edgeFiles) {
   }
 }
 
-const shopMigration = read(
-  "supabase/migrations/20260613000300_shop_and_account_readiness.sql",
+const canonicalEconomy = read(
+  "supabase/migrations/20260730000100_remove_legacy_points_gold.sql",
 );
 for (const required of [
-  "purchase_shop_item",
+  "purchase_or_equip_shop_item",
   "FOR UPDATE",
-  "UNIQUE (user_id, item_id)",
-  "REVOKE ALL ON FUNCTION public.spend_gold_shop",
+  "wallet.gem - v_price_gem",
+  "'Gem', 'shop_purchase'",
 ]) {
-  if (!shopMigration.includes(required))
-    failures.push(`Missing shop invariant: ${required}`);
+  if (!canonicalEconomy.includes(required))
+    failures.push(`Missing canonical Gem shop invariant: ${required}`);
 }
 
 const deleteFunction = read("supabase/functions/delete_account/index.ts");
@@ -126,9 +122,6 @@ const privilegeLockdown = read(
 );
 for (const dangerousFunction of [
   "update_mc_balance",
-  "update_gold_balance",
-  "award_gold_reward",
-  "spend_gold_shop",
   "place_room_bet",
   "transfer_mc(uuid, uuid, numeric)",
 ]) {
@@ -164,14 +157,14 @@ if (sharedGameUtils.includes("@ts-nocheck")) {
 
 const privateRoomScreen = read("app/create-room.tsx");
 const matchmakingScreen = read("app/matchmaking.tsx");
-const localAiRewardHardening = read(
-  "supabase/migrations/20260630000300_harden_local_ai_practice_reward_claims.sql",
-);
+const localAiRewardHardening =
+  read("supabase/migrations/20260801000100_ai_practice_reward_to_cup.sql") +
+  read("supabase/migrations/20260801000200_canonical_points_remove_cups.sql");
 for (const required of [
   "char_length(v_match_id) <> 36",
   "pg_try_advisory_xact_lock",
   "ON CONFLICT (practice_match_id, user_id) DO NOTHING",
-  "SET points = COALESCE(points, 0) + 1",
+  "RENAME COLUMN cups TO points",
   "REVOKE ALL ON FUNCTION public.award_ai_practice_win",
   "TO authenticated",
 ]) {

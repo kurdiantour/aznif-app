@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { AdminPlayer } from "@/lib/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -90,7 +90,7 @@ export default function AddAznifForm() {
       <header className="header">
         <div>
           <h2>Add Aznif</h2>
-          <p className="muted">Credit Aznif from the Treasury to a selected player. Points and Gold cannot be edited here.</p>
+          <p className="muted">Credit Aznif from the Treasury to a selected player. Coin, Gem and Points cannot be edited here.</p>
         </div>
         <form className="tools" onSubmit={(event) => { event.preventDefault(); void loadPlayers(search); }}>
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, or Player ID" />
@@ -139,7 +139,8 @@ export default function AddAznifForm() {
               <dl>
                 <div><dt>Email</dt><dd>{selectedPlayer.email ?? "-"}</dd></div>
                 <div><dt>Current Aznif</dt><dd>{Number(selectedPlayer.aznif ?? 0).toLocaleString()}</dd></div>
-                <div><dt>Gold</dt><dd>{Number(selectedPlayer.gold ?? 0).toLocaleString()}</dd></div>
+                <div><dt>Gem</dt><dd>{Number(selectedPlayer.gem ?? 0).toLocaleString()}</dd></div>
+                <div><dt>Coin</dt><dd>{Number(selectedPlayer.coin ?? 0).toLocaleString()}</dd></div>
                 <div><dt>Points</dt><dd>{Number(selectedPlayer.points ?? 0).toLocaleString()}</dd></div>
               </dl>
             </div>

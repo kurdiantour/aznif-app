@@ -1,8 +1,9 @@
-export type CurrencyType = "MC" | "Gold";
+export type CurrencyType = "MC" | "Coin" | "Gem";
 
 export type WalletBalances = {
   mc: number;
-  gold: number;
+  coin: number;
+  gem: number;
 };
 
 export type Wallet = {

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 
-export type BottomNavKey = "home" | "leaderboard" | "shop" | "friends";
+export type BottomNavKey = "home" | "leaderboard" | "shop";
 
 type BottomNavProps = {
   active?: BottomNavKey | null;
@@ -16,8 +16,8 @@ const allItems = [
   {
     key: "home",
     label: "سەرەکی",
-    icon: "home",
-    href: "/lobby",
+    icon: "game-controller",
+    href: "/play",
   },
   {
     key: "leaderboard",
@@ -31,12 +31,7 @@ const allItems = [
     icon: "storefront",
     href: "/shop",
   },
-  {
-    key: "friends",
-    label: "هاوڕێکان",
-    icon: "people",
-    href: "/invite-friends",
-  },
+
 ] as const;
 
 const items = allItems.filter(
@@ -54,9 +49,7 @@ export function BottomNav({
     ? "leaderboard"
     : ENABLE_SHOP_FEATURES && pathname.includes("shop")
       ? "shop"
-      : pathname.includes("invite")
-        ? "friends"
-        : "home";
+      : "home";
 
   const active = controlledActive === undefined ? routeActive : controlledActive;
 

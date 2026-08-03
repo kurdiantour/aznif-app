@@ -42,7 +42,7 @@ export async function awardAiPracticeWin(
   const mappedClaim: AiPracticeRewardClaim = {
     claim_id: claim.claim_id ?? null,
     user_id: claim.rewarded_user_id ?? claim.user_id,
-    points: Number(claim.awarded_points ?? claim.points ?? 0),
+    points: Number(claim.awarded_cup ?? claim.points ?? 0),
     already_claimed: Boolean(claim.already_claimed),
   };
 

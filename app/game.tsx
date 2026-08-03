@@ -1,6 +1,7 @@
 import BoardArea from "@/components/game/BoardArea";
 import DrawPilePrompt from "@/components/game/DrawPilePrompt";
 import GameOverPopup from "@/components/game/GameOverPopup";
+import GameChatDrawer from "@/components/game/GameChatDrawer";
 import PlayerHand from "@/components/game/PlayerHand";
 import PlayerSeat from "@/components/game/PlayerSeat";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
@@ -8,9 +9,11 @@ import RoundResultReveal from "@/components/game/RoundResultReveal";
 import ScorePopup from "@/components/game/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
+import type { GameChatMessage } from "@/lib/gameChat";
 import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
+import { PLAYER_TURN_DURATION_SECONDS } from "@/hooks/gameShared";
 import { useGame } from "@/hooks/useGame";
 import { useGameSounds } from "@/hooks/useGameSounds";
 import { useOneVsOneGame } from "@/hooks/useOneVsOneGame";
@@ -18,6 +21,7 @@ import { useRoundPresentation } from "@/hooks/useRoundPresentation";
 import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
 import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
 import { calculateMoveScore } from "@/lib/game/kozel-engine";
+import { FREE_MATCH_LOSS_REWARD, FREE_MATCH_WIN_REWARD } from "@/lib/game/match-rules";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/types/game";
@@ -103,6 +107,8 @@ export default function GameScreen() {
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showGameChat, setShowGameChat] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [isLeavingMatch, setIsLeavingMatch] = useState(false);
   const [selectedTile, setSelectedTile] = useState<DominoTileData | null>(null);
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>(
@@ -203,6 +209,37 @@ export default function GameScreen() {
 
     void initializeGame();
   }, [isLocalGame, gameLoading, roomId, gameMode]);
+  useEffect(() => {
+    if (isLocalGame || !roomId) return;
+
+    const channel = supabase
+      .channel(`game_chat_unread:${gameMode}:${roomId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "game_chat_messages",
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const message = payload.new as GameChatMessage;
+          if (message.mode !== gameMode) return;
+          if (message.sender_user_id === (profile?.id ?? localCurrentUserId)) return;
+
+          setUnreadChatCount((count) => (showGameChat ? 0 : Math.min(count + 1, 99)));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [gameMode, isLocalGame, localCurrentUserId, profile?.id, roomId, showGameChat]);
+
+  useEffect(() => {
+    if (showGameChat) setUnreadChatCount(0);
+  }, [showGameChat]);
 
   useEffect(() => {
     if (gameLoading || !game.myHand.length) return;
@@ -234,6 +271,13 @@ export default function GameScreen() {
   const humanPlayer = isLocalGame
     ? game.players.find((p) => p.kind === "human")
     : game.players.find((p) => p.id === localCurrentUserId);
+  const shouldShowHumanTurnProgress =
+    !!humanPlayer &&
+    isTurnRingVisible &&
+    (game as any).phase === "playing";
+  const humanTurnProgressWidth = humanPlayer?.isActive
+    ? 450 * Math.max(0, Math.min(1, humanPlayer.timeLeft / PLAYER_TURN_DURATION_SECONDS))
+    : 450;
 
   const {
     finalTileAnimationTileId,
@@ -580,10 +624,19 @@ export default function GameScreen() {
     ? game.winningTeamId === humanPlayer.teamId
     : game.winningTeamId === "teamA";
 
+  const isFreeOnlineMatch =
+    !isPracticeMode &&
+    (gameMode === "2v2" || rawState?.freeEconomyEligible === true);
+  const freeMatchResultReward = isFreeOnlineMatch
+    ? didWinMatch
+      ? FREE_MATCH_WIN_REWARD
+      : FREE_MATCH_LOSS_REWARD
+    : null;
+
   const practiceWinReward = useMemo(
     () =>
       profile && isPracticeMode && didWinMatch && game.winningTeamId
-        ? { tier: "close" as const, gold: 0, points: 1 }
+        ? { coin: 0, gem: 0, points: 1 }
         : null,
     [didWinMatch, game.winningTeamId, isPracticeMode, profile],
   );
@@ -627,7 +680,7 @@ export default function GameScreen() {
 
         console.log("[AI practice reward] after refreshProfile", {
           profileId: refreshedProfile?.id ?? null,
-          profilePoints: refreshedProfile?.points ?? null,
+          profileCoin: refreshedProfile?.coin ?? null,
         });
       } catch (error) {
         practiceRewardSettlementRequestedRef.current = false;
@@ -686,7 +739,7 @@ export default function GameScreen() {
     return (
       <TableBackground tableId={!isLocalGame ? getPreloadedTableId() : undefined}>
         <View style={styles.loadingOverlay}>
-        <Text style={styles.statusText}>یاری بار دەکرێت...</Text>
+        <Text style={styles.statusText}>{"\u06cc\u0627\u0631\u06cc \u0628\u0627\u0631 \u062f\u06d5\u06a9\u0631\u06ce\u062a..."}</Text>
         </View>
       </TableBackground>
     );
@@ -699,7 +752,7 @@ export default function GameScreen() {
   if (gameError) {
     return (
       <View style={styles.centerScreen}>
-        <Text style={styles.statusText}>نەتوانرا یارییەکە باربکرێت</Text>
+        <Text style={styles.statusText}>{"\u0646\u06d5\u062a\u0648\u0627\u0646\u0631\u0627 \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06a9\u06d5 \u0628\u0627\u0631\u0628\u06a9\u0631\u06ce\u062a"}</Text>
         <Text style={styles.errorText}>{gameError}</Text>
       </View>
     );
@@ -819,7 +872,7 @@ export default function GameScreen() {
 
           {isRoundResultReveal && isBlockedResult && !blockedIntroComplete && (
             <View style={styles.qapatIntroOverlay} pointerEvents="none">
-              <Text style={styles.qapatIntroText}>قەپات!</Text>
+              <Text style={styles.qapatIntroText}>{"\u0642\u06d5\u067e\u0627\u062a!"}</Text>
             </View>
           )}
 
@@ -832,7 +885,7 @@ export default function GameScreen() {
           {shouldShowNextRoundCountdown && (
             <View style={styles.countdownOverlay} pointerEvents="none">
               <Text style={styles.countdownLabel}>
-                دەوری نوێ دەست پێدەکات لە
+                {"\u062f\u06d5\u0648\u0631\u06cc \u0646\u0648\u06ce \u062f\u06d5\u0633\u062a \u067e\u06ce\u062f\u06d5\u06a9\u0627\u062a \u0644\u06d5"}
               </Text>
               <Text style={styles.countdownNumber}>
                 {(game as any).nextRoundCountdown ?? 3}
@@ -840,6 +893,39 @@ export default function GameScreen() {
             </View>
           )}
 
+          {!showMatchMenu ? (
+            <View style={styles.topRightActions}>
+              <Pressable
+                accessibilityLabel="Open game chat"
+                style={styles.topRightActionButton}
+                onPress={() => {
+                  setUnreadChatCount(0);
+                  setShowGameChat(true);
+                }}
+              >
+                <Ionicons
+                  name="chatbubble-ellipses-outline"
+                  size={22}
+                  color="#f8f3df"
+                />
+                {unreadChatCount > 0 ? (
+                  <View style={styles.chatUnreadBadge}>
+                    <Text style={styles.chatUnreadText}>
+                      {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="Open game settings"
+                style={styles.topRightActionButton}
+                onPress={openMatchMenu}
+              >
+                <Ionicons name="menu-outline" size={22} color="#f8f3df" />
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.bottomHudRow}>
             <Pressable
               style={styles.miniScoreBoard}
@@ -865,16 +951,6 @@ export default function GameScreen() {
                 </Text>
               </View>
             </Pressable>
-
-            {!showMatchMenu ? (
-              <Pressable
-                accessibilityLabel="کردنەوەی ڕێکخستنەکانی یاری"
-                style={styles.matchMenuButton}
-                onPress={openMatchMenu}
-              >
-                <Ionicons name="settings-outline" size={22} color="#f8f3df" />
-              </Pressable>
-            ) : null}
           </View>
 
           <DrawPilePrompt
@@ -886,6 +962,7 @@ export default function GameScreen() {
             passCountdown={shouldShowPassPrompt ? passCountdown : undefined}
             passing={isPassingTurn}
           />
+
 
           <View style={styles.bottomArea}>
             <PlayerHand
@@ -901,9 +978,19 @@ export default function GameScreen() {
               dealOrder={gameMode === "1v1" ? 1 : 0}
               dealPlayerCount={gameMode === "1v1" ? 2 : 4}
             />
-          </View>
 
-          {/* WinnerPopup removed — replaced by round result overlay driven by game.phase */}
+            {shouldShowHumanTurnProgress && (
+              <View style={styles.humanTurnProgressTrack}>
+                <View
+                  style={[
+                    styles.humanTurnProgressFill,
+                    { width: humanTurnProgressWidth },
+                  ]}
+                />
+              </View>
+            )}
+          </View>
+          {/* WinnerPopup removed - replaced by round result overlay driven by game.phase */}
 
           <ScorePopup
             visible={showScorePopup}
@@ -911,7 +998,7 @@ export default function GameScreen() {
             teamAScore={visibleScoreByTeam.teamA}
             teamBScore={visibleScoreByTeam.teamB}
             winnerTeamId={game.winningTeamId}
-            matchReward={game.matchReward}
+            matchReward={isFreeOnlineMatch && game.winningTeamId ? FREE_MATCH_WIN_REWARD : null}
             teamAName={scoreTeamAName}
             teamBName={scoreTeamBName}
           />
@@ -924,7 +1011,7 @@ export default function GameScreen() {
     !shouldShowRoundResultReveal
   }
   didWin={didWinMatch}
-  reward={practiceWinReward ?? game.matchReward}
+  reward={practiceWinReward ?? freeMatchResultReward}
   finishReason={(game as any).rawState?.finishReason ?? null}
   teamScores={{
     teamA: game.teamScores?.teamA ?? 0,
@@ -944,11 +1031,19 @@ export default function GameScreen() {
   }}
 />
 
+
+<GameChatDrawer
+  visible={showGameChat}
+  mode={gameMode}
+  roomId={roomId}
+  currentUserId={profile?.id ?? localCurrentUserId}
+  enabled={!isLocalGame && !!roomId}
+  onClose={() => setShowGameChat(false)}
+/>
 <MatchMenuDrawer
   visible={showMatchMenu}
   players={game.players}
   humanPlayer={humanPlayer}
-  currentTurnPlayerId={game.currentTurnPlayerId}
   translateX={matchMenuTranslateX}
   onClose={closeMatchMenu}
   onLeavePress={() => {
@@ -960,6 +1055,7 @@ export default function GameScreen() {
 <LeaveMatchConfirmPopup
   visible={showLeaveConfirm}
   loading={isLeavingMatch}
+  isLocalGame={isLocalGame}
   onCancel={() => setShowLeaveConfirm(false)}
   onConfirm={handleConfirmLeaveGame}
 />
@@ -1137,7 +1233,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(250, 204, 21, 0.35)",
   },
 
-  matchMenuButton: {
+  topRightActions: {
+    position: "absolute",
+    top: 18,
+    right: 18,
+    zIndex: 90,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  topRightActionButton: {
     width: 42,
     height: 42,
     borderRadius: 21,
@@ -1147,6 +1253,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(248, 243, 223, 0.22)",
   },
+  chatUnreadBadge: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ef4444",
+    borderWidth: 1,
+    borderColor: "#f8f3df",
+  },
+
+  chatUnreadText: {
+    color: "#ffffff",
+    fontSize: 9,
+    lineHeight: 11,
+    fontFamily: "RobotoMedium",
+    textAlign: "center",
+  },
 
 
   bottomArea: {
@@ -1155,6 +1283,20 @@ const styles = StyleSheet.create({
     gap: 10,
     // The board intentionally extends beneath this area; keep the hand above it.
     zIndex: 30,
+  },
+  humanTurnProgressTrack: {
+    width: 450,
+    maxWidth: "92%",
+    height: 3,
+    marginTop: -1,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  humanTurnProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#facc15",
   },
   countdownOverlay: {
     position: "absolute",

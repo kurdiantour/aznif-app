@@ -1,0 +1,56 @@
+import type {
+  MeldDropRect,
+  QueuedOpponentDiscardFlight,
+  ScreenRect,
+  TileFlight,
+} from "@/okey/presentation/okey-game-presentation";
+
+export type ScreenPoint = { x: number; y: number };
+
+export function toLocalScreenRect(rect: ScreenRect, screenRect: ScreenRect): ScreenRect {
+  return { ...rect, x: rect.x - screenRect.x, y: rect.y - screenRect.y };
+}
+
+export function createOpponentDiscardFlight(
+  entry: QueuedOpponentDiscardFlight,
+  sourceSeatRect: ScreenRect | null,
+  targetRect: ScreenRect | null,
+  screenRect: ScreenRect,
+): TileFlight | null {
+  if (!sourceSeatRect || !targetRect) return null;
+  const sourceRect = {
+    x: sourceSeatRect.x + sourceSeatRect.width / 2 - targetRect.width / 2,
+    y: sourceSeatRect.y + sourceSeatRect.height / 2 - targetRect.height / 2,
+    width: targetRect.width,
+    height: targetRect.height,
+  };
+  return {
+    id: `opponent-discard-${entry.tile.id}-${entry.discardCount}`,
+    tile: entry.tile,
+    face: "front",
+    from: toLocalScreenRect(sourceRect, screenRect),
+    to: toLocalScreenRect(targetRect, screenRect),
+  };
+}
+
+export function isPointInsideRect(point: ScreenPoint, rect: ScreenRect) {
+  return point.x >= rect.x && point.x <= rect.x + rect.width
+    && point.y >= rect.y && point.y <= rect.y + rect.height;
+}
+
+export function findClosestMeldDropTarget(
+  rects: MeldDropRect[],
+  point: ScreenPoint,
+  isValid: (rect: MeldDropRect) => boolean,
+  snapDistance = 120,
+) {
+  return rects
+    .map((rect) => {
+      const distanceX = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.width));
+      const distanceY = Math.max(rect.y - point.y, 0, point.y - (rect.y + rect.height));
+      return { rect, distance: Math.hypot(distanceX, distanceY) };
+    })
+    .filter((entry) => entry.distance <= snapDistance)
+    .sort((left, right) => left.distance - right.distance)
+    .find(({ rect }) => isValid(rect))?.rect ?? null;
+}

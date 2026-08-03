@@ -95,6 +95,8 @@ export default function Layout() {
               <Stack.Screen name="privacy" />
               <Stack.Screen name="support" />
               <Stack.Screen name="game" />
+              <Stack.Screen name="okey" />
+              <Stack.Screen name="okey/game" />
               <Stack.Screen name="create-room" />
               <Stack.Screen name="matchmaking" />
               <Stack.Screen name="play-ai" />
@@ -107,4 +109,3 @@ export default function Layout() {
     </SafeAreaProvider>
   );
 }
-

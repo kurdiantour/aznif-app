@@ -1,5 +1,6 @@
+import { AVATAR_IDS } from "@/constants/avatars";
 import type { User } from "@supabase/supabase-js";
-import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { supabase } from "./supabase";
 
 export type Profile = {
@@ -7,7 +8,9 @@ export type Profile = {
   email: string | null;
   player_id: string;
   username: string;
+  full_name: string | null;
   avatar_id: string;
+  avatar_url: string | null;
   level?: number;
   points?: number;
   games_played?: number;
@@ -20,12 +23,64 @@ export type Profile = {
 
 export type PublicProfile = Pick<
   Profile,
-  "username" | "avatar_id" | "player_id"
+  "username" | "full_name" | "avatar_id" | "avatar_url" | "player_id"
 >;
 
 const PROFILE_SELECT =
-  "id, email, player_id, username, avatar_id, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+  "id, email, player_id, username, full_name, avatar_id, avatar_url, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
 const PROFILE_CREATE_RETRIES = 3;
+const APP_SCHEME = "dominoapp";
+const AUTH_CALLBACK_URL = `${APP_SCHEME}://auth-callback`;
+
+function authRedirectUrl(flow: "email" | "oauth" | "recovery" = "email") {
+  return `${AUTH_CALLBACK_URL}?flow=${encodeURIComponent(flow)}`;
+}
+
+function authCallbackParams(url: string) {
+  const query = url.split("?")[1]?.split("#")[0] ?? "";
+  const fragment = url.split("#")[1] ?? "";
+
+  return new URLSearchParams(`${query}&${fragment}`);
+}
+
+export async function completeAuthFromUrl(url: string) {
+  const params = authCallbackParams(url);
+  const code = params.get("code");
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+  const errorCode = params.get("error_code") ?? params.get("error");
+  const errorDescription = params.get("error_description");
+
+  if (errorCode || errorDescription) {
+    throw new Error(errorDescription ?? errorCode ?? "Authentication failed.");
+  }
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+  } else if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+  } else {
+    throw new Error("Google sign-in did not return a session code.");
+  }
+
+  const {
+    data: { session },
+    error,
+  } = await supabase.auth.getSession();
+
+  if (error) throw error;
+
+  if (!session?.user) {
+    throw new Error("Google sign-in completed without a saved session.");
+  }
+
+  return session;
+}
 
 function defaultUsernameForUser(userId: string, attempt: number) {
   const baseName = "user_" + userId.slice(0, 8);
@@ -33,20 +88,119 @@ function defaultUsernameForUser(userId: string, attempt: number) {
   return attempt === 0 ? baseName : `${baseName}_${attempt + 1}`;
 }
 
+function usernameForUser(user: User, fullName: string | null, attempt: number) {
+  if (!fullName) {
+    return defaultUsernameForUser(user.id, attempt);
+  }
+
+  const normalized = fullName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 18);
+  const baseName = normalized || "google_user";
+
+  return attempt === 0
+    ? baseName
+    : `${baseName}_${user.id.slice(0, 4)}_${attempt + 1}`;
+}
+
+const DEFAULT_PROFILE_AVATAR_IDS = AVATAR_IDS.filter(
+  (avatarId) => avatarId !== "bot-avatar",
+);
+
+function randomDefaultAvatarId() {
+  const index = Math.floor(Math.random() * DEFAULT_PROFILE_AVATAR_IDS.length);
+
+  return DEFAULT_PROFILE_AVATAR_IDS[index] ?? "avatar-1";
+}
+
 function generatePlayerId() {
   return "DV-" + Math.floor(Math.random() * 1_000_000).toString().padStart(6, "0");
+}
+
+function googleProfileFromUser(user: User) {
+  const metadata = user.user_metadata ?? {};
+  const fullName =
+    typeof metadata.full_name === "string" && metadata.full_name.trim()
+      ? metadata.full_name.trim()
+      : typeof metadata.name === "string" && metadata.name.trim()
+        ? metadata.name.trim()
+        : null;
+  const avatarUrl =
+    typeof metadata.avatar_url === "string" && metadata.avatar_url.trim()
+      ? metadata.avatar_url.trim()
+      : typeof metadata.picture === "string" && metadata.picture.trim()
+        ? metadata.picture.trim()
+        : null;
+
+  return { fullName, avatarUrl };
 }
 
 export async function signUpWithEmail(email: string, password: string) {
   return supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: Linking.createURL("/auth-callback") },
+    options: { emailRedirectTo: authRedirectUrl("email") },
   });
 }
 
 export async function signInWithEmail(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
+}
+
+export async function signInWithGoogle() {
+  const redirectTo = authRedirectUrl("oauth");
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      skipBrowserRedirect: true,
+      queryParams: {
+        access_type: "offline",
+        prompt: "select_account",
+      },
+    },
+  });
+
+  if (error) {
+    return { data, error };
+  }
+
+  if (!data.url) {
+    return {
+      data,
+      error: new Error("Google sign-in did not return an authorization URL."),
+    };
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+  if (result.type === "cancel" || result.type === "dismiss") {
+    return { data, error: new Error("Google sign-in was cancelled.") };
+  }
+
+  if (result.type !== "success" || !result.url) {
+    return {
+      data,
+      error: new Error("Google sign-in did not return to the app."),
+    };
+  }
+
+  try {
+    await completeAuthFromUrl(result.url);
+  } catch (error) {
+    return {
+      data,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("Google sign-in session could not be created."),
+    };
+  }
+
+  return { data, error: null };
 }
 
 export async function signOut() {
@@ -88,6 +242,8 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
     return existing.data;
   }
 
+  const googleProfile = googleProfileFromUser(user);
+
   for (let attempt = 0; attempt < PROFILE_CREATE_RETRIES; attempt += 1) {
     const { data, error } = await supabase
       .from("profiles")
@@ -95,8 +251,10 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
         id: user.id,
         email: user.email ?? null,
         player_id: generatePlayerId(),
-        username: defaultUsernameForUser(user.id, attempt),
-        avatar_id: "avatar-1",
+        username: usernameForUser(user, googleProfile.fullName, attempt),
+        full_name: googleProfile.fullName,
+        avatar_id: randomDefaultAvatarId(),
+        avatar_url: googleProfile.avatarUrl,
       })
       .select(PROFILE_SELECT)
       .single<Profile>();
@@ -130,6 +288,7 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
 export async function updateMyProfile(input: {
   username?: string;
   avatar_id?: string;
+  avatar_url?: string | null;
 }): Promise<Profile> {
   const user = await getCurrentUser();
 
@@ -137,7 +296,7 @@ export async function updateMyProfile(input: {
     throw new Error("User is not authenticated");
   }
 
-  const payload: Partial<Pick<Profile, "username" | "avatar_id">> = {};
+  const payload: Partial<Pick<Profile, "username" | "avatar_id" | "avatar_url">> = {};
 
   if (typeof input.username === "string") {
     payload.username = input.username.trim();
@@ -145,6 +304,11 @@ export async function updateMyProfile(input: {
 
   if (typeof input.avatar_id === "string") {
     payload.avatar_id = input.avatar_id;
+    payload.avatar_url = null;
+  }
+
+  if (input.avatar_url === null || typeof input.avatar_url === "string") {
+    payload.avatar_url = input.avatar_url;
   }
 
   const { data, error } = await supabase
@@ -164,7 +328,7 @@ export async function getPublicProfile(
 ): Promise<PublicProfile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("username, avatar_id, player_id")
+    .select("username, full_name, avatar_id, avatar_url, player_id")
     .eq("id", userId)
     .maybeSingle<PublicProfile>();
 
@@ -175,9 +339,7 @@ export async function getPublicProfile(
 
 export async function sendPasswordReset(email: string) {
   return supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: Linking.createURL("/auth-callback", {
-      queryParams: { flow: "recovery" },
-    }),
+    redirectTo: authRedirectUrl("recovery"),
   });
 }
 
@@ -185,11 +347,10 @@ export async function resendVerificationEmail(email: string) {
   return supabase.auth.resend({
     type: "signup",
     email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: Linking.createURL("/auth-callback") },
+    options: { emailRedirectTo: authRedirectUrl("email") },
   });
 }
 
 export async function updatePassword(password: string) {
   return supabase.auth.updateUser({ password });
 }
-

@@ -145,7 +145,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, username, avatar_id, level, points')
+      .select('id, username, full_name, avatar_id, level, cups')
       .in('id', userIds);
 
     if (profilesError) throw profilesError;
@@ -622,7 +622,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         id: playerId,
         name: row.bot_takeover
           ? 'رۆبوتی کاتی'
-          : profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
+          : (profile?.full_name || profile?.username) ?? (row.user_id ? 'Player' : 'Bot'),
         seat: getRelativeSeat(playerIndex, myPlayerIndex, 2),
         kind: row.kind,
         teamId: row.team_id,
@@ -634,6 +634,8 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
+        level: profile?.level,
+        cups: profile?.cups,
       };
     });
   }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft]);

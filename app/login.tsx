@@ -4,11 +4,12 @@ import {
   getCurrentUser,
   getOrCreateProfile,
   signInWithEmail,
+  signInWithGoogle,
   signUpWithEmail,
   updateMyProfile,
 } from "@/lib/supabaseAuth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -27,6 +28,16 @@ import {
 
 const SAVED_EMAIL_KEY = "domino_saved_email";
 const SESSION_CHECK_TIMEOUT_MS = 8000;
+const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
+
+function isRecentlyCreatedUser(createdAt?: string) {
+  if (!createdAt) return false;
+
+  const createdTime = new Date(createdAt).getTime();
+
+  return Number.isFinite(createdTime) &&
+    Date.now() - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS;
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -48,6 +59,7 @@ export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -74,7 +86,7 @@ export default function LoginScreen() {
             getOrCreateProfile(),
             SESSION_CHECK_TIMEOUT_MS,
           );
-          router.replace("/(tabs)/lobby");
+          router.replace("/(tabs)/play");
           return;
         }
       } catch {
@@ -151,7 +163,7 @@ export default function LoginScreen() {
       }
 
       await AsyncStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
-      router.replace("/(tabs)/lobby");
+      router.replace("/(tabs)/play");
     } catch (error) {
       console.warn("[auth] login failed", error);
       setMessage("هەڵەیەک ڕوویدا. تکایە دووبارە هەوڵ بدەوە.");
@@ -171,6 +183,40 @@ export default function LoginScreen() {
   const isSignup = mode === "signup";
   const isWideLayout = width >= 720;
 
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    setMessage(null);
+
+    try {
+      const result = await signInWithGoogle();
+
+      if (result.error) {
+        setMessage("چوونەژوورەوە بە Google سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە.");
+        return;
+      }
+
+      const profile = await getOrCreateProfile();
+
+      if (!profile) {
+        setMessage("چوونەژوورەوە بە Google سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە.");
+        return;
+      }
+
+      const user = await getCurrentUser();
+
+      if (isRecentlyCreatedUser(user?.created_at)) {
+        await markPendingLeaderboardConsent();
+      }
+
+      await refreshProfile();
+      router.replace("/(tabs)/play");
+    } catch (error) {
+      console.warn("[auth] Google sign-in failed", error);
+      setMessage("چوونەژوورەوە بە Google سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
   const selectMode = (nextMode: "signin" | "signup") => {
     setMode(nextMode);
     setMessage(null);
@@ -234,7 +280,10 @@ export default function LoginScreen() {
                         <TextInput
                           placeholder="ناوی بەکارهێنەر"
                           placeholderTextColor="#8fa1bf"
-                          style={styles.input}
+                          style={[
+  styles.input,
+  username.trim().length > 0 ? styles.ltrInput : styles.rtlInput,
+]}
                           autoCapitalize="none"
                           value={username}
                           onChangeText={setUsername}
@@ -248,7 +297,10 @@ export default function LoginScreen() {
                       <TextInput
                         placeholder="ئیمەیڵ"
                         placeholderTextColor="#8fa1bf"
-                        style={[styles.input, styles.ltrInput]}
+                        style={[
+  styles.input,
+  email.trim().length > 0 ? styles.ltrInput : styles.rtlInput,
+]}
                         autoCapitalize="none"
                         keyboardType="email-address"
                         autoComplete="email"
@@ -267,13 +319,32 @@ export default function LoginScreen() {
                       <TextInput
                         placeholder="وشەی نهێنی"
                         placeholderTextColor="#8fa1bf"
-                        style={styles.input}
-                        secureTextEntry
+                        style={[
+  styles.input,
+  password.length > 0 ? styles.ltrInput : styles.rtlInput,
+]}
+                        secureTextEntry={!isPasswordVisible}
                         autoComplete={isSignup ? "new-password" : "password"}
                         value={password}
                         onChangeText={setPassword}
                         editable={!isLoading}
                       />
+                      <Pressable
+                        style={styles.passwordToggle}
+                        onPress={() => setIsPasswordVisible((visible) => !visible)}
+                        disabled={isLoading}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          isPasswordVisible ? "Hide password" : "Show password"
+                        }
+                      >
+                        <Ionicons
+                          name={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
+                          size={20}
+                          color="#9ca3af"
+                        />
+                      </Pressable>
                     </View>
 
                     {message ? <Text style={styles.messageText}>{message}</Text> : null}
@@ -325,20 +396,41 @@ export default function LoginScreen() {
                 </View>
 
                 <View style={styles.guestColumn}>
-                  <View style={styles.guestIcon}>
-                    <Ionicons name="game-controller-outline" size={26} color="#f8d774" />
+                  <View style={styles.authChoiceRow}>
+                    <View style={styles.authChoiceCard}>
+                      <View style={[styles.guestIcon, styles.googleIcon]}>
+                        <FontAwesome name="google" size={21} color="#ffffff" />
+                      </View>
+                      <Text style={[styles.guestTitle, styles.googleText]}>Google</Text>
+                      <Text style={styles.guestCopy} numberOfLines={2}>
+                        بە هەژماری <Text style={styles.googleInlineText}>Gmail</Text> بچۆ ژوورەوە.
+                      </Text>
+                      <Pressable
+                        style={[styles.guestButton, styles.googleButton, isLoading && styles.disabled]}
+                        onPress={() => void handleGoogleSignIn()}
+                        disabled={isLoading}
+                      >
+                        <Text style={[styles.guestButtonText, styles.googleText]}>Google</Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.authChoiceCard}>
+                      <View style={styles.guestIcon}>
+                        <Ionicons name="game-controller-outline" size={22} color="#f8d774" />
+                      </View>
+                      <Text style={styles.guestTitle}>میوان</Text>
+                      <Text style={styles.guestCopy} numberOfLines={2}>
+                        بەبێ هەژمار بچۆ ناو یاری.
+                      </Text>
+                      <Pressable
+                        style={[styles.guestButton, isLoading && styles.disabled]}
+                        onPress={() => router.replace("/(tabs)/play")}
+                        disabled={isLoading}
+                      >
+                        <Text style={styles.guestButtonText}>بەردەوامبوون</Text>
+                      </Pressable>
+                    </View>
                   </View>
-                  <Text style={styles.guestTitle}>میوان</Text>
-                  <Text style={styles.guestCopy}>
-                    بەبێ هەژمار بچۆ ناو یاری و دواتر دەتوانیت هەژمار دروست بکەیت.
-                  </Text>
-                  <Pressable
-                    style={[styles.guestButton, isLoading && styles.disabled]}
-                    onPress={() => router.replace("/(tabs)/lobby")}
-                    disabled={isLoading}
-                  >
-                    <Text style={styles.guestButtonText}>بەردەوامبوون</Text>
-                  </Pressable>
                 </View>
               </View>
             </View>
@@ -394,47 +486,63 @@ const styles = StyleSheet.create({
     flexDirection: "column",
   },
   formColumn: {
-    flex: 1.28,
+    flex: 1.18,
     minWidth: 0,
   },
   guestColumn: {
-    flex: 0.92,
+    flex: 1.02,
+    minWidth: 0,
+  },
+  authChoiceRow: {
+    flex: 1,
+    flexDirection: "row-reverse",
+    gap: 8,
+    alignItems: "stretch",
+  },
+
+  authChoiceCard: {
+    flex: 1,
     minWidth: 0,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(248, 215, 116, 0.22)",
-    backgroundColor: "rgba(15, 23, 42, 0.66)",
-    padding: 14,
+    borderColor: "rgba(248, 215, 116, 0.18)",
+    backgroundColor: "rgba(4, 10, 25, 0.52)",
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   guestIcon: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(248, 215, 116, 0.12)",
-    marginBottom: 10,
+    marginBottom: 8,
   },
+
+  googleIcon: {
+    backgroundColor: "#4285f4",
+  },
+
   guestTitle: {
     color: "#ffffff",
-    fontSize: 18,
+    fontSize: 15,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
   },
   guestCopy: {
     color: "#b6c2d8",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "SpedaRegular",
-    lineHeight: 22,
+    lineHeight: 18,
     textAlign: "center",
     writingDirection: "rtl",
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  modeSwitch: {
+    marginTop: 6,
+    marginBottom: 10,
+  },  modeSwitch: {
     flexDirection: "row-reverse",
     gap: 6,
     marginBottom: 10,
@@ -491,6 +599,20 @@ const styles = StyleSheet.create({
     textAlign: "left",
     writingDirection: "ltr",
   },
+  
+rtlInput: {
+  fontFamily: "SpedaRegular",
+  textAlign: "right",
+  writingDirection: "rtl",
+},
+
+  passwordToggle: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.92,
+  },
   messageText: {
     color: "#fecaca",
     fontSize: 12,
@@ -544,18 +666,31 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     textDecorationLine: "underline",
   },
-  guestButton: {
-    minHeight: 46,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    alignSelf: "stretch",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(248, 215, 116, 0.34)",
-    backgroundColor: "rgba(248, 215, 116, 0.1)",
+guestButton: {
+  minHeight: 48,
+  flexDirection: "row-reverse",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  alignSelf: "stretch",
+  transform: [{ translateY: 11 }],
+  borderRadius: 6,
+  backgroundColor: "rgba(248, 215, 116, 0.1)",
+},
+  googleButton: {
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(255,255,255,0.1)",
   },
+
+  googleInlineText: {
+    fontFamily: "RobotoMedium",
+  },
+
+  googleText: {
+  fontFamily: "RobotoMedium",
+  writingDirection: "ltr",
+},
+
   guestButtonText: {
     color: "#ffffff",
     fontSize: 13,

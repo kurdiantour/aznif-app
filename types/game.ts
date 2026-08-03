@@ -5,11 +5,9 @@ export type GameMode = "1v1" | "2v2";
 
 import type { AvatarId } from "@/constants/avatars";
 
-export type MatchPerformanceTier = "close" | "normal" | "dominating";
-
 export type MatchReward = {
-  tier: MatchPerformanceTier;
-  gold: number;
+  coin: number;
+  gem: number;
   points: number;
 };
 
@@ -25,6 +23,8 @@ export type Player = {
   score: number;
   isLeader: boolean;
   avatarId?: AvatarId;
+  level?: number;
+  points?: number;
 };
 
 export type DominoTileData = {

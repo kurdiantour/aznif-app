@@ -3,9 +3,12 @@ import {
   ENABLE_GOLD_PURCHASES,
   ENABLE_SHOP_FEATURES,
 } from "@/lib/platformFeatures";
+import { getFriendRequests } from "@/lib/friends";
 import { useProfile } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { getBalance } from "@/lib/wallet";
+import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/lib/supabaseAuth";
 import { subscribeWalletRefresh } from "@/lib/walletEvents";
 import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,12 +16,16 @@ import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+let friendRequestHeaderChannelSequence = 0;
+
 export function LobbyHeader() {
   const { profile, loading } = useProfile();
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
   const [mcBalance, setMcBalance] = useState<string>("...");
-  const [goldBalance, setGoldBalance] = useState<string>("...");
+  const [coinBalance, setCoinBalance] = useState<string>("...");
+  const [gemBalance, setGemBalance] = useState<string>("...");
+  const [friendRequestCount, setFriendRequestCount] = useState(0);
 
   const loadBalance = useCallback(async () => {
     if (loading) return;
@@ -30,11 +37,13 @@ export function LobbyHeader() {
     try {
       const wallet = await getBalance();
       setMcBalance(Number(wallet.balances.mc || 0).toLocaleString());
-      setGoldBalance(Number(wallet.balances.gold || 0).toLocaleString());
+      setCoinBalance(Number(wallet.balances.coin || 0).toLocaleString());
+      setGemBalance(Number(wallet.balances.gem || 0).toLocaleString());
     } catch (error) {
       console.log("[LobbyHeader] Failed to load wallet balance:", error);
       setMcBalance("0");
-      setGoldBalance("0");
+      setCoinBalance("0");
+      setGemBalance("0");
     }
   }, [loading, profile?.id]);
 
@@ -50,6 +59,63 @@ export function LobbyHeader() {
     return () => unsubscribe();
   }, [loadBalance]);
 
+  const refreshFriendRequestCount = useCallback(async () => {
+    if (loading || !profile?.id) {
+      setFriendRequestCount(0);
+      return;
+    }
+
+    try {
+      const requests = await getFriendRequests();
+      setFriendRequestCount(requests.length);
+    } catch (error) {
+      console.log("[LobbyHeader] Failed to load friend requests:", error);
+      setFriendRequestCount(0);
+    }
+  }, [loading, profile?.id]);
+
+  useEffect(() => {
+    void refreshFriendRequestCount();
+  }, [refreshFriendRequestCount]);
+
+  useEffect(() => {
+    let mounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channelId = ++friendRequestHeaderChannelSequence;
+
+    async function subscribeToFriendRequests() {
+      if (loading || !profile?.id) return;
+
+      const user = await getCurrentUser();
+      if (!mounted || !user) return;
+
+      channel = supabase
+        .channel(`friend-request-header-count:${user.id}:${channelId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "friendships",
+            filter: `addressee_id=eq.${user.id}`,
+          },
+          () => {
+            void refreshFriendRequestCount();
+          },
+        )
+        .subscribe();
+    }
+
+    void subscribeToFriendRequests();
+
+    return () => {
+      mounted = false;
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [loading, profile?.id, refreshFriendRequestCount]);
+
   return (
       <View>
         <View style={styles.topBar}>
@@ -59,6 +125,7 @@ export function LobbyHeader() {
           >
             <PlayerAvatar
               avatarId={profile?.avatarId}
+              avatarUrl={profile?.avatarUrl}
               size={50}
               style={styles.avatar}
             />
@@ -77,6 +144,17 @@ export function LobbyHeader() {
           <View style={styles.topRight}>
             {profile ? (
             <View style={styles.balanceGroup}>
+              <LinearGradient
+                colors={["rgba(245,197,66,0.24)", "rgba(255,255,255,0.06)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.balancePillCoin}
+              >
+                <View style={styles.balanceIconCircleCoin}>
+                  <FontAwesome name="circle" size={13} color="#F5C542" />
+                </View>
+                <Text style={styles.balanceText}>{coinBalance} Coin</Text>
+              </LinearGradient>
               <LinearGradient
                 colors={["rgba(255,183,59,0.22)", "rgba(255,255,255,0.07)"]}
                 start={{ x: 0, y: 0 }}
@@ -102,7 +180,7 @@ export function LobbyHeader() {
                       <Ionicons name="diamond" size={14} color="#C084FC" />
                     </View>
 
-                    <Text style={styles.balanceText}>{goldBalance} گەوهەر</Text>
+                    <Text style={styles.balanceText}>{gemBalance} گەوهەر</Text>
 
                     <View style={styles.plusButton}>
                       <Ionicons name="add" size={15} color="#ffffff" />
@@ -120,7 +198,7 @@ export function LobbyHeader() {
                     <Ionicons name="diamond" size={14} color="#C084FC" />
                   </View>
 
-                  <Text style={styles.balanceText}>{goldBalance} گەوهەر</Text>
+                  <Text style={styles.balanceText}>{gemBalance} گەوهەر</Text>
                 </LinearGradient>
               )}
             </View>
@@ -134,6 +212,21 @@ export function LobbyHeader() {
                 <Text style={styles.signInText}>چوونەژوورەوە</Text>
               </Pressable>
             )}
+
+            <Pressable
+              style={styles.topIcon}
+              onPress={() => router.push("/invite-friends")}
+            >
+              <Ionicons name="people" size={19} color="#ffffff" />
+              {friendRequestCount > 0 ? (
+                <View style={styles.friendRequestBadge}>
+                  <Text style={styles.friendRequestBadgeText}>
+                    {friendRequestCount > 9 ? "9+" : friendRequestCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+
 
             <Pressable
               style={styles.topIcon}
@@ -219,6 +312,7 @@ const styles = StyleSheet.create({
 
   balanceGroup: {
     flexDirection: "row-reverse",
+    flexWrap: "wrap",
     gap: 8,
     alignItems: "center",
     flexShrink: 1,
@@ -236,6 +330,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     flexShrink: 0,
+  },
+
+  balancePillCoin: {
+    height: 36,
+    minWidth: 112,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(245,197,66,0.28)",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+
+  balanceIconCircleCoin: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: "rgba(245,197,66,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(245,197,66,0.32)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   balancePillSecondary: {
@@ -302,6 +420,29 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+  },
+
+  friendRequestBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: "#ef4444",
+    borderWidth: 1,
+    borderColor: "#090b1d",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  friendRequestBadgeText: {
+    color: "#ffffff",
+    fontSize: 9,
+    fontFamily: "RobotoMedium",
+    lineHeight: 11,
   },
 
   signInButton: {

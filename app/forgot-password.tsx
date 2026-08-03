@@ -71,7 +71,10 @@ export default function ForgotPasswordScreen() {
       <View style={styles.inputWrap}>
         <Ionicons name="mail-outline" size={18} color="#9ca3af" />
         <TextInput
-          style={[styles.input, styles.ltrInput]}
+          style={[
+  styles.input,
+  email.length > 0 ? styles.ltrInput : styles.rtlInput,
+]}
           value={email}
           onChangeText={setEmail}
           placeholder="ئیمەیڵ"
@@ -275,6 +278,13 @@ export const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     marginTop: 20,
   },
+
+  rtlInput: {
+  fontFamily: "SpedaRegular",
+  textAlign: "right",
+  writingDirection: "rtl",
+},
+
   error: {
     color: "#fecaca",
     fontSize: 12,

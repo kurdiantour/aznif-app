@@ -27,7 +27,6 @@ type MatchType = "duo" | "squad";
 type ModeCardProps = {
   title?: string;
   subtitle: string;
-  playersOnline?: boolean;
   image?: ImageSourcePropType;
   imageOnly?: boolean;
   disabled?: boolean;
@@ -39,7 +38,6 @@ type ModeCardProps = {
 function ModeCard({
   title,
   subtitle,
-  playersOnline,
   image,
   imageOnly,
   disabled,
@@ -71,20 +69,6 @@ function ModeCard({
         />
       )}
 
-      {playersOnline && (
-        <View
-          style={[styles.playersBadge, isTablet && styles.playersBadgeTablet]}
-        >
-          <View
-            style={[styles.onlineDot, isTablet && styles.onlineDotTablet]}
-          />
-          <Text
-            style={[styles.playersText, isTablet && styles.playersTextTablet]}
-          >
-            یاریزان لەسەر هێڵە
-          </Text>
-        </View>
-      )}
 
       {badge ? (
         <View
@@ -146,7 +130,6 @@ export default function LobbyScreen() {
 
   const shortestSide = Math.min(width, height);
   const isTablet = shortestSide >= 600;
-
   useEffect(() => {
     let isMounted = true;
 
@@ -239,7 +222,6 @@ export default function LobbyScreen() {
       >
         <ModeCard
           isTablet={isTablet}
-          playersOnline
           title="پێکدادان"
           subtitle="توانای خۆت بسەلمێنە"
           image={require("@/assets/images/mode-select/1vs1.webp")}
@@ -469,42 +451,6 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  playersBadge: {
-    position: "absolute",
-    top: 14,
-    left: 14,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  playersBadgeTablet: {
-    top: 18,
-    left: 18,
-  },
-
-  onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 99,
-    backgroundColor: "#22c55e",
-    marginRight: 7,
-  },
-
-  onlineDotTablet: {
-    width: 10,
-    height: 10,
-    marginRight: 9,
-  },
-
-  playersText: {
-    color: "#ffffff",
-    fontSize: 11,
-    fontFamily: "SpedaBold",
-  },
-
-  playersTextTablet: {
-    fontSize: 14,
-  },
 
   comingSoonBadge: {
     position: "absolute",

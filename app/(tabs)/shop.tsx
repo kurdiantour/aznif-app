@@ -4,7 +4,7 @@ import {
   type MockShopItem,
   type ShopCategory,
 } from "@/constants/shop";
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect } from "expo-router";
@@ -14,7 +14,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { getMyShopState, purchaseOrEquipShopItem } from "@/lib/shop";
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 import { getBalance } from "@/lib/wallet";
-import { notifyWalletRefresh } from "@/lib/walletEvents";
+import { notifyWalletRefresh, subscribeWalletRefresh } from "@/lib/walletEvents";
 import { ShopPopupContext } from "@/components/shop/InsufficientGemsPopup";
 
 function ItemPreview({ item }: { item: MockShopItem }) {
@@ -93,6 +93,8 @@ function ItemPreview({ item }: { item: MockShopItem }) {
 }
 
 function ShopContent() {
+  const [coinBalance, setCoinBalance] = useState(0);
+  const [gemBalance, setGemBalance] = useState(0);
   const [category, setCategory] = useState<ShopCategory>("tables");
   const [ownedItemIds, setOwnedItemIds] = useState<Set<string>>(
     () => new Set(),
@@ -119,6 +121,21 @@ function ShopContent() {
       console.warn("Unable to load Shop state", error),
     );
   }, [refreshShopState]);
+
+  const refreshBalances = useCallback(async () => {
+    try {
+      const wallet = await getBalance();
+      setCoinBalance(Number(wallet.balances.coin || 0));
+      setGemBalance(Number(wallet.balances.gem || 0));
+    } catch (error) {
+      console.warn("Unable to load Shop balances", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshBalances();
+    return subscribeWalletRefresh(() => void refreshBalances());
+  }, [refreshBalances]);
 
   async function purchaseOrEquipItem(item: MockShopItem) {
     if (busyItemId) return;
@@ -152,7 +169,7 @@ function ShopContent() {
     try {
       const wallet = await getBalance();
 
-      if (wallet.balances.gold < item.price) {
+      if (wallet.balances.gem < item.price) {
         showInsufficientGems();
         return;
       }
@@ -170,6 +187,16 @@ function ShopContent() {
 
   return (
     <View style={styles.screen}>
+      <View style={styles.walletSummary}>
+        <View style={styles.walletPill}>
+          <FontAwesome name="circle" size={13} color="#F5C542" />
+          <Text style={styles.walletText}>{coinBalance.toLocaleString()} Coin</Text>
+        </View>
+        <View style={styles.walletPill}>
+          <Ionicons name="diamond" size={14} color="#C084FC" />
+          <Text style={styles.walletText}>{gemBalance.toLocaleString()} Gem</Text>
+        </View>
+      </View>
       <View style={styles.body}>
         <View style={styles.sidebar}>
           {SHOP_CATEGORIES.map((tab) => {
@@ -244,6 +271,24 @@ export default function ShopScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  walletSummary: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    paddingBottom: 10,
+  },
+  walletPill: {
+    height: 34,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(7,9,19,0.58)",
+  },
+  walletText: { color: "#fff", fontSize: 12, fontFamily: "RobotoMedium" },
   body: { flex: 1, flexDirection: "row", gap: 12, paddingBottom: 82 },
   sidebar: { width: 150, gap: 10, paddingTop: 2 },
   sidebarItem: {

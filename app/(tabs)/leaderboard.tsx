@@ -1,9 +1,15 @@
+import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import type { AvatarId } from "@/constants/avatars";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { getLeaderboardProfiles, useProfile } from "@/lib/profile";
+import {
+  getCurrentLeaderboardRank,
+  getLeaderboardProfiles,
+  useProfile,
+} from "@/lib/profile";
 import { getRankTitleFromLevel } from "@/lib/progression";
 
 type LeaderboardPlayer = {
@@ -12,7 +18,10 @@ type LeaderboardPlayer = {
   level: number;
   points: number;
   aznif?: number;
-  gold?: number;
+  coin?: number;
+  gem?: number;
+  avatarId?: AvatarId;
+  avatarUrl?: string;
 };
 
 const MEDAL_COLORS: Record<number, string> = {
@@ -24,6 +33,7 @@ const MEDAL_COLORS: Record<number, string> = {
 export default function LeaderboardScreen() {
   const { profile } = useProfile();
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
+  const [currentRank, setCurrentRank] = useState<number | null>(null);
 
   const loadPlayers = useCallback(() => {
     let isMounted = true;
@@ -31,11 +41,15 @@ export default function LeaderboardScreen() {
     const refreshPlayers = async () => {
       if (!profile) {
         setPlayers([]);
+        setCurrentRank(null);
         return;
       }
 
       try {
-        const leaderboard = await getLeaderboardProfiles(50);
+        const [leaderboard, rank] = await Promise.all([
+          getLeaderboardProfiles(50),
+          getCurrentLeaderboardRank(profile.id),
+        ]);
 
         if (!isMounted) return;
 
@@ -46,14 +60,19 @@ export default function LeaderboardScreen() {
             level: player.level,
             points: player.points,
             aznif: player.aznif,
-            gold: player.gold,
+            coin: player.coin,
+            gem: player.gem,
+            avatarId: player.avatarId as AvatarId | undefined,
+            avatarUrl: player.avatarUrl,
           })),
         );
+        setCurrentRank(rank);
       } catch (error) {
         console.warn("Failed to load leaderboard:", error);
 
         if (isMounted) {
           setPlayers([]);
+          setCurrentRank(null);
         }
       }
     };
@@ -70,6 +89,10 @@ export default function LeaderboardScreen() {
   const sortedPlayers = useMemo(
     () => [...players].sort((a, b) => b.points - a.points),
     [players],
+  );
+
+  const isCurrentUserInTop50 = players.some(
+    (player) => player.id === profile?.id,
   );
 
   const renderRank = (rank: number, isCurrentUser: boolean) => {
@@ -96,9 +119,9 @@ export default function LeaderboardScreen() {
         <Text style={[styles.headerText, styles.rankHeader]}>پلە</Text>
         <Text style={[styles.headerText, styles.playersHeader]}>یاریزانان</Text>
         <Text style={[styles.headerText, styles.levelHeader]}>ئاست</Text>
-        <Text style={[styles.headerText, styles.pointsHeader]}>خاڵ</Text>
+        <Text style={[styles.headerText, styles.pointsHeader]}>Points</Text>
         <Text style={[styles.headerText, styles.aznifHeader]}>ئەزنیف</Text>
-        <Text style={[styles.headerText, styles.goldHeader]}>گەوهەر</Text>
+        <Text style={[styles.headerText, styles.goldHeader]}>Gem</Text>
       </View>
 
       <ScrollView
@@ -123,6 +146,13 @@ export default function LeaderboardScreen() {
                 <View style={styles.rankBox}>
                   {renderRank(rank, isCurrentUser)}
                 </View>
+
+                <PlayerAvatar
+                  avatarId={player.avatarId}
+                  avatarUrl={player.avatarUrl}
+                  size={28}
+                  style={styles.playerAvatar}
+                />
 
                 <View style={styles.playerInfo}>
                   <Text
@@ -178,13 +208,63 @@ export default function LeaderboardScreen() {
                     isCurrentUser && styles.currentUserText,
                   ]}
                 >
-                  {(player.gold ?? 0).toLocaleString()}
+                  {(player.gem ?? 0).toLocaleString()}
                 </Text>
               </View>
             </View>
           );
         })}
       </ScrollView>
+
+      {!isCurrentUserInTop50 && currentRank !== null ? (
+        <View style={[styles.row, styles.currentUserRow, styles.pinnedCurrentUserRow]}>
+          <View style={styles.playerColumn}>
+            <View style={styles.rankBox}>
+              {renderRank(currentRank, true)}
+            </View>
+
+            <PlayerAvatar
+              avatarId={profile.avatarId}
+              avatarUrl={profile.avatarUrl}
+              size={28}
+              style={styles.playerAvatar}
+            />
+
+            <View style={styles.playerInfo}>
+              <Text
+                style={[styles.playerName, styles.currentUserText]}
+                numberOfLines={1}
+              >
+                {profile.displayName} (تۆ)
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.levelColumn}>
+            <Text style={[styles.levelText, styles.currentUserText]}>
+              {getRankTitleFromLevel(profile.level)}
+            </Text>
+          </View>
+
+          <View style={styles.pointsColumn}>
+            <Text style={[styles.pointsText, styles.currentUserText]}>
+              {profile.points.toLocaleString()}
+            </Text>
+          </View>
+
+          <View style={styles.aznifColumn}>
+            <Text style={[styles.aznifText, styles.currentUserText]}>
+              {profile.coin.toLocaleString()}
+            </Text>
+          </View>
+
+          <View style={styles.goldColumn}>
+            <Text style={[styles.goldText, styles.currentUserText]}>
+              {profile.gems.toLocaleString()}
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -274,6 +354,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(80,62,18,0.82)",
   },
 
+  pinnedCurrentUserRow: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#facc15",
+  },
+
   playerColumn: {
     flex: 1,
     minWidth: 0,
@@ -298,6 +384,13 @@ const styles = StyleSheet.create({
 
   currentUserText: {
     color: "#facc15",
+  },
+
+  playerAvatar: {
+    marginRight: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
   },
 
   playerInfo: {

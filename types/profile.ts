@@ -1,4 +1,4 @@
-import type { AvatarId } from "@/constants/avatars";
+OpenAI: Sign Outimport type { AvatarId } from "@/constants/avatars";
 
 export type ProfileStatus = "active" | "offline" | "banned";
 
@@ -13,7 +13,9 @@ export type Profile = {
   bio?: string;
   status: ProfileStatus;
   level: number;
+  coin: number;
   points: number;
+  gems: number;
   gamesPlayed: number;
   gamesWon: number;
   gamesLost: number;

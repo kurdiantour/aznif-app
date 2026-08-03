@@ -50,14 +50,12 @@ export default function GameOverPopup({
             </View>
           )}
 
-          {reward && didWin && (
+          {reward && (
             <View style={styles.rewardBox}>
               <Text style={styles.rewardLabel}>خەڵات</Text>
 
               <Text style={styles.rewardValue}>
-                {reward.gold > 0
-                  ? `+${reward.gold} گەوهەر · +${reward.points} Point`
-                  : `+${reward.points} Point`}
+                {`+${reward.coin} Coin · +${reward.gem} Gem · ${reward.points >= 0 ? "+" : ""}${reward.points} Points`}
               </Text>
             </View>
           )}

@@ -1,5 +1,5 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { Ionicons } from "@expo/vector-icons";
+import { getRankTitleFromLevel, getRankTitleFromPoints } from "@/lib/progression";
 import { BlurView } from "expo-blur";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -7,17 +7,21 @@ type MatchMenuDrawerProps = {
   visible: boolean;
   players: any[];
   humanPlayer?: any | null;
-  currentTurnPlayerId?: string | null;
   translateX: Animated.Value;
   onClose: () => void;
   onLeavePress: () => void;
 };
 
+function getPlayerRankLabel(player: any) {
+  if (player.kind === "bot") return "\u0628\u06c6\u062a";
+  if (typeof player.points === "number") return getRankTitleFromPoints(player.points);
+  return getRankTitleFromLevel(player.level);
+}
+
 export default function MatchMenuDrawer({
   visible,
   players,
   humanPlayer,
-  currentTurnPlayerId,
   translateX,
   onClose,
   onLeavePress,
@@ -27,7 +31,7 @@ export default function MatchMenuDrawer({
   return (
     <View style={styles.matchMenuOverlay}>
       <Pressable
-        accessibilityLabel="داخستنی ڕێکخستنەکانی یاری"
+        accessibilityLabel="\u062f\u0627\u062e\u0633\u062a\u0646\u06cc \u0695\u06ce\u06a9\u062e\u0633\u062a\u0646\u06d5\u06a9\u0627\u0646\u06cc \u06cc\u0627\u0631\u06cc"
         style={styles.matchMenuBackdrop}
         onPress={onClose}
       />
@@ -56,8 +60,8 @@ export default function MatchMenuDrawer({
               return (
                 <View key={teamId} style={styles.teamGroup}>
                   <Text style={styles.teamGroupTitle}>
-                    {teamId === "teamA" ? "TEAM A" : "TEAM B"}
-                    {isMyTeam ? " · MY TEAM" : " · OPPONENTS"}
+                    {teamId === "teamA" ? "تیمی یەکەم" : "تیمی دووەم"}
+                    {isMyTeam ? " · تیمی تۆ" : " · تیمی بەرامبەر"}
                   </Text>
 
                   {teamPlayers.map((player) => (
@@ -77,20 +81,13 @@ export default function MatchMenuDrawer({
                             {player.name}
                           </Text>
 
-                          {currentTurnPlayerId === player.id ? (
-                            <View style={styles.activeTurnDot} />
-                          ) : null}
                         </View>
 
                         <Text style={styles.matchMenuPlayerMeta}>
-                          {player.kind === "bot" ? "BOT" : "HUMAN"} ·{" "}
-                          {player.tileCount} tiles left
+                          {getPlayerRankLabel(player)}
                         </Text>
                       </View>
 
-                      {currentTurnPlayerId === player.id ? (
-                        <Text style={styles.activeTurnLabel}>TURN</Text>
-                      ) : null}
                     </View>
                   ))}
                 </View>
@@ -99,8 +96,7 @@ export default function MatchMenuDrawer({
           </View>
 
           <Pressable style={styles.matchMenuLeaveButton} onPress={onLeavePress}>
-            <Ionicons name="log-out-outline" size={19} color="#ffffff" />
-            <Text style={styles.matchMenuLeaveText}>دەرچوون لە یاری</Text>
+            <Text style={styles.matchMenuLeaveText}>{"\u062f\u06d5\u0631\u0686\u0648\u0648\u0646 \u0644\u06d5 \u06cc\u0627\u0631\u06cc"}</Text>
           </Pressable>
         </View>
       </Animated.View>
@@ -111,6 +107,7 @@ export default function MatchMenuDrawer({
 const styles = StyleSheet.create({
   matchMenuOverlay: {
     ...StyleSheet.absoluteFillObject,
+    direction: "ltr",
     zIndex: 950,
     elevation: 950,
     alignItems: "flex-end",
@@ -155,7 +152,7 @@ const styles = StyleSheet.create({
   teamGroupTitle: {
     color: "rgba(248,243,239,0.68)",
     fontSize: 10,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaRegular",
     letterSpacing: 0.75,
   },
 
@@ -192,29 +189,17 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     color: "#f8f3ef",
     fontSize: 13,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaRegular",
   },
 
-  activeTurnDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#55e58a",
-  },
 
   matchMenuPlayerMeta: {
     marginTop: 2,
     color: "rgba(248,243,239,0.58)",
     fontSize: 9,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaRegular",
   },
 
-  activeTurnLabel: {
-    color: "#55e58a",
-    fontSize: 9,
-    fontFamily: "RobotoMedium",
-    letterSpacing: 0.4,
-  },
 
   matchMenuLeaveButton: {
     height: 42,

@@ -1,44 +1,30 @@
 type TeamId = "teamA" | "teamB";
-type MatchPerformanceTier = "close" | "normal" | "dominating";
 
 type MatchReward = {
-  tier: MatchPerformanceTier;
-  gold: number;
+  coin: number;
+  gem: number;
   points: number;
 };
 
 export const MATCH_TARGET_SCORE = 350;
 
-const MATCH_REWARD_RULES: Array<{
-  tier: MatchPerformanceTier;
-  maxDifference: number;
-  gold: number;
-  points: number;
-}> = [
-  { tier: "close", maxDifference: 50, gold: 3, points: 10 },
-  { tier: "normal", maxDifference: 150, gold: 6, points: 20 },
-  {
-    tier: "dominating",
-    maxDifference: Number.POSITIVE_INFINITY,
-    gold: 9,
-    points: 30,
-  },
-];
+export const FREE_MATCH_WIN_REWARD: MatchReward = {
+  coin: 20,
+  gem: 5,
+  points: 25,
+};
+
+export const FREE_MATCH_LOSS_REWARD: MatchReward = {
+  coin: 5,
+  gem: 0,
+  points: -15,
+};
 
 export function calculateMatchReward(
-  winnerScore: number,
-  loserScore: number,
+  _winnerScore: number,
+  _loserScore: number,
 ): MatchReward {
-  const difference = Math.max(0, winnerScore - loserScore);
-  const rule =
-    MATCH_REWARD_RULES.find((item) => difference <= item.maxDifference) ??
-    MATCH_REWARD_RULES[2];
-
-  return {
-    tier: rule.tier,
-    gold: rule.gold,
-    points: rule.points,
-  };
+  return { ...FREE_MATCH_WIN_REWARD };
 }
 
 export function getFinalMatchWinner(
@@ -67,15 +53,8 @@ export function resolveMatchOutcome(
     return { winningTeamId: null, matchReward: null };
   }
 
-  const winnerScore = Number(scores[winningTeamId] ?? 0);
-  const loserScore =
-    winningTeamId === "teamA"
-      ? Number(scores.teamB ?? 0)
-      : Number(scores.teamA ?? 0);
-
   return {
     winningTeamId,
-    matchReward:
-      existingReward ?? calculateMatchReward(winnerScore, loserScore),
+    matchReward: existingReward ?? calculateMatchReward(0, 0),
   };
 }

@@ -41,7 +41,7 @@ export default function TabsLayout() {
     return <View style={styles.container} />;
   }
 
-  const isGuestAllowedRoute = pathname.includes("/lobby");
+  const isGuestAllowedRoute = pathname.includes("/play") || pathname.includes("/lobby");
 
   if (!profile && !isGuestAllowedRoute) {
     return <Redirect href="/login" />;

@@ -14,8 +14,8 @@ major_version = 15
 
 [auth]
 enabled = true
-site_url = "http://localhost:8081"
-additional_redirect_urls = ["dominoapp://**"]
+site_url = "dominoapp://auth-callback"
+additional_redirect_urls = ["dominoapp://**", "dominoapp://auth-callback?flow=recovery"]
 enable_signup = true
 
 [functions.process_bot_turns]
@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.delete_account]
 verify_jwt = true
+[auth.email.template.recovery]
+subject = "Reset your Aznif password"
+content_path = "./supabase/templates/recovery.html"

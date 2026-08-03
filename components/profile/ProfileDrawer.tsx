@@ -1,4 +1,5 @@
 import { AvatarPickerModal } from "@/components/player/AvatarPickerModal";
+import { LogoutConfirmPopup } from "@/components/profile/LogoutConfirmPopup";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
 import { useProfile } from "@/lib/profile";
@@ -43,6 +44,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [copied, setCopied] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   const slideX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fade = useRef(new Animated.Value(0)).current;
@@ -101,7 +103,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
     }
   }
 
-  async function handleLogout() {
+  async function performLogout() {
     try {
       await signOut();
       closeDrawer();
@@ -112,6 +114,10 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
     } catch {
       // ignore logout errors
     }
+  }
+
+  function handleLogout() {
+    setIsLogoutConfirmOpen(true);
   }
 
   async function handleCopyPlayerId() {
@@ -197,6 +203,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
               <View style={styles.avatarInner}>
                 <PlayerAvatar
                   avatarId={activeAvatarId}
+                  avatarUrl={profile?.avatarUrl}
                   size={80}
                   style={styles.profileAvatar}
                 />
@@ -266,7 +273,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
 
           <View style={styles.progressCard}>
             <View style={styles.progressHeading}>
-              <Text style={styles.pointsText}>{points} خاڵ</Text>
+              <Text style={styles.pointsText}>{points} Points</Text>
               <View style={styles.levelPill}>
                 <Text style={styles.levelPillText}>پلەی {level}</Text>
               </View>
@@ -294,7 +301,7 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
 
           <Pressable
             style={[styles.actionButton, styles.logoutButton]}
-            onPress={() => void handleLogout()}
+            onPress={handleLogout}
           >
             <View style={[styles.actionIcon, styles.logoutIcon]}>
               <Ionicons name="log-out-outline" size={16} color="#fca5a5" />
@@ -310,6 +317,12 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
         selectedAvatarId={activeAvatarId}
         onSelect={(avatarId) => void handleSelectAvatar(avatarId)}
         onClose={() => setIsAvatarPickerOpen(false)}
+      />
+
+      <LogoutConfirmPopup
+        visible={isLogoutConfirmOpen}
+        onCancel={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={() => void performLogout()}
       />
     </View>
   );

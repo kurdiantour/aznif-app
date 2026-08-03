@@ -19,7 +19,9 @@ type DbProfile = {
   id: string;
   player_id: string;
   username: string;
+  full_name: string | null;
   avatar_id: string;
+  avatar_url: string | null;
   level?: number;
   points?: number;
   games_played?: number;
@@ -31,7 +33,7 @@ type DbProfile = {
 };
 
 const PROFILE_SELECT =
-  "id, player_id, username, avatar_id, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+  "id, player_id, username, full_name, avatar_id, avatar_url, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
 const PROFILE_LOAD_TIMEOUT_MS = 8000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -46,21 +48,28 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
-function mapDbProfile(profile: DbProfile, email?: string): Profile {
+function mapDbProfile(
+  profile: DbProfile,
+  email?: string,
+  coin = 0,
+  gems = 0,
+): Profile {
   const points = Number(profile.points ?? 0);
 
   return {
     id: profile.id,
     playerId: profile.player_id,
     username: profile.username,
-    displayName: profile.username,
+    displayName: profile.full_name || profile.username,
     avatarId: profile.avatar_id as unknown as Profile["avatarId"],
-    avatarUrl: undefined,
+    avatarUrl: profile.avatar_url ?? undefined,
     email,
     bio: undefined,
     status: "active",
     level: calculateLevelFromPoints(points),
+    coin,
     points,
+    gems,
     gamesPlayed: Number(profile.games_played ?? 0),
     gamesWon: Number(profile.games_won ?? 0),
     gamesLost: Number(profile.games_lost ?? 0),
@@ -83,16 +92,29 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     return null;
   }
 
-  return mapDbProfile(dbProfile, user.email ?? undefined);
+  const { data: wallet, error: walletError } = await supabase
+    .from("wallets")
+    .select("coin, gem")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (walletError) throw walletError;
+
+  return mapDbProfile(
+    dbProfile,
+    user.email ?? undefined,
+    Number(wallet?.coin ?? 0),
+    Number(wallet?.gem ?? 0),
+  );
 }
 
 export type LeaderboardProfile = Pick<
   Profile,
-  "id" | "displayName" | "avatarId" | "level" | "points"
+  "id" | "displayName" | "avatarId" | "avatarUrl" | "level" | "coin" | "points"
 > & {
   rank: number;
   aznif: number;
-  gold: number;
+  gem: number;
 };
 
 export async function getLeaderboardProfiles(
@@ -113,11 +135,13 @@ export async function getLeaderboardProfiles(
       id: profile.user_id,
       displayName: profile.display_name,
       avatarId: profile.avatar_id as Profile["avatarId"],
+      avatarUrl: profile.avatar_url ?? undefined,
       level: calculateLevelFromPoints(points),
+      coin: Number(profile.coin ?? 0),
       points,
       rank: Number(profile.rank ?? 0),
       aznif: Number(profile.aznif ?? profile.mc ?? 0),
-      gold: Number(profile.gold ?? 0),
+      gem: Number(profile.gem ?? 0),
     };
   });
 }
@@ -201,7 +225,20 @@ export async function updateCurrentProfile(
 
   const dbProfile = await updateMyProfile(payload);
 
-  return mapDbProfile(dbProfile, user.email ?? undefined);
+  const { data: wallet, error: walletError } = await supabase
+    .from("wallets")
+    .select("coin, gem")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (walletError) throw walletError;
+
+  return mapDbProfile(
+    dbProfile,
+    user.email ?? undefined,
+    Number(wallet?.coin ?? 0),
+    Number(wallet?.gem ?? 0),
+  );
 }
 
 type ProfileContextValue = {
@@ -329,4 +366,3 @@ export function useProfile() {
 
   return context;
 }
-

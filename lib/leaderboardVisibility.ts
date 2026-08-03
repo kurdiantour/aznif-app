@@ -4,6 +4,16 @@ import { getCurrentUser } from "./supabaseAuth";
 
 export const PENDING_LEADERBOARD_CONSENT_KEY =
   "domino_pending_leaderboard_consent";
+const LEADERBOARD_CONSENT_DECISION_KEY_PREFIX =
+  "domino_leaderboard_consent_decision";
+
+function pendingConsentKey(userId: string) {
+  return `${PENDING_LEADERBOARD_CONSENT_KEY}:${userId}`;
+}
+
+function decisionKey(userId: string) {
+  return `${LEADERBOARD_CONSENT_DECISION_KEY_PREFIX}:${userId}`;
+}
 
 function isMissingLeaderboardVisibleColumn(error: unknown) {
   const nextError = error as { code?: string; message?: string } | null;
@@ -59,16 +69,67 @@ export async function setCurrentLeaderboardVisibility(value: boolean) {
 
     throw error;
   }
+
+  await AsyncStorage.setItem(
+    decisionKey(user.id),
+    "1",
+  );
 }
 
 export async function markPendingLeaderboardConsent() {
-  await AsyncStorage.setItem(PENDING_LEADERBOARD_CONSENT_KEY, "1");
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return;
+  }
+
+  const hasDecision =
+    (await AsyncStorage.getItem(
+      decisionKey(user.id),
+    )) === "1";
+
+  if (hasDecision || (await getCurrentLeaderboardVisibility())) {
+    await consumePendingLeaderboardConsent();
+    return;
+  }
+
+  await AsyncStorage.setItem(pendingConsentKey(user.id), "1");
 }
 
 export async function consumePendingLeaderboardConsent() {
+  const user = await getCurrentUser();
+
+  if (user) {
+    await AsyncStorage.removeItem(pendingConsentKey(user.id));
+  }
+
   await AsyncStorage.removeItem(PENDING_LEADERBOARD_CONSENT_KEY);
 }
 
 export async function hasPendingLeaderboardConsent() {
-  return (await AsyncStorage.getItem(PENDING_LEADERBOARD_CONSENT_KEY)) === "1";
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return false;
+  }
+
+  const hasPending =
+    (await AsyncStorage.getItem(pendingConsentKey(user.id))) === "1" ||
+    (await AsyncStorage.getItem(PENDING_LEADERBOARD_CONSENT_KEY)) === "1";
+
+  if (!hasPending) {
+    return false;
+  }
+
+  const hasDecision =
+    (await AsyncStorage.getItem(
+      decisionKey(user.id),
+    )) === "1";
+
+  if (hasDecision || (await getCurrentLeaderboardVisibility())) {
+    await consumePendingLeaderboardConsent();
+    return false;
+  }
+
+  return true;
 }

@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#f6f8fb;font-family:Arial,sans-serif;color:#111827;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e5e7eb;">
+      <h2 style="margin:0 0 12px;font-size:22px;line-height:30px;color:#111827;">Reset your Aznif password</h2>
+      <p style="margin:0 0 20px;font-size:15px;line-height:24px;color:#374151;">
+        We received a request to reset your password. Tap the button below on the Android device where Aznif is installed.
+      </p>
+      <p style="margin:0 0 20px;">
+        <a
+          href="{{ .RedirectTo }}&type=recovery&token_hash={{ .TokenHash }}"
+          style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;line-height:20px;padding:13px 18px;border-radius:8px;"
+        >Open Aznif and choose a new password</a>
+      </p>
+      <p style="margin:0 0 8px;font-size:13px;line-height:21px;color:#4b5563;">
+        If the button does not work, tap this link:
+      </p>
+      <p style="margin:0 0 20px;font-size:13px;line-height:21px;word-break:break-all;">
+        <a href="{{ .RedirectTo }}&type=recovery&token_hash={{ .TokenHash }}" style="color:#2563eb;text-decoration:underline;">
+          {{ .RedirectTo }}&type=recovery&token_hash={{ .TokenHash }}
+        </a>
+      </p>
+      <p style="margin:0;font-size:13px;line-height:21px;color:#6b7280;">
+        If you did not request this, you can safely ignore this email.
+      </p>
+    </div>
+  </body>
+</html>

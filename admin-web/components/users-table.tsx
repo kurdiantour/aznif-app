@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { AdminPlayer } from "@/lib/types";
 import { useCallback, useEffect, useState } from "react";
@@ -35,7 +35,7 @@ export default function UsersTable() {
       <header className="header">
         <div>
           <h2>Players</h2>
-          <p className="muted">Search and review real player data. Balances and points are read-only here.</p>
+          <p className="muted">Search and review real player data. Coin, Gem and Points balances are read-only here.</p>
         </div>
         <form className="tools" onSubmit={(event) => { event.preventDefault(); void loadPlayers(search); }}>
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, or Player ID" />
@@ -51,9 +51,9 @@ export default function UsersTable() {
             <tr>
               <th>Player</th>
               <th>Email</th>
-              <th>Points</th>
+              <th>Coin</th><th>Points</th>
               <th>Aznif</th>
-              <th>Gold</th>
+              <th>Gem</th>
               <th>Games</th>
               <th>Wins</th>
               <th>Losses</th>
@@ -72,9 +72,9 @@ export default function UsersTable() {
                   </div>
                 </td>
                 <td>{player.email ?? "-"}</td>
-                <td><span className="readonly-value">{Number(player.points ?? 0).toLocaleString()}</span></td>
+                <td><span className="readonly-value">{Number(player.coin ?? 0).toLocaleString()}</span></td><td><span className="readonly-value">{Number(player.points ?? 0).toLocaleString()}</span></td>
                 <td><span className="readonly-value">{Number(player.aznif ?? 0).toLocaleString()}</span></td>
-                <td><span className="readonly-value">{Number(player.gold ?? 0).toLocaleString()}</span></td>
+                <td><span className="readonly-value">{Number(player.gem ?? 0).toLocaleString()}</span></td>
                 <td>{Number(player.games_played ?? 0).toLocaleString()}</td>
                 <td>{Number(player.games_won ?? 0).toLocaleString()}</td>
                 <td>{Number(player.games_lost ?? 0).toLocaleString()}</td>

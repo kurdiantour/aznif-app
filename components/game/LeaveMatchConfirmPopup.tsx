@@ -10,13 +10,21 @@ import {
 type LeaveMatchConfirmPopupProps = {
   visible: boolean;
   loading?: boolean;
+  isLocalGame?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 };
 
+const LEAVE_TITLE = "\u0644\u06d5 \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06a9\u06d5 \u062f\u06d5\u0686\u06cc\u062a\u06d5 \u062f\u06d5\u0631\u06d5\u0648\u06d5\u061f";
+const LOCAL_GAME_BODY = "\u0626\u06d5\u06af\u06d5\u0631 \u062f\u06d5\u0631\u0686\u06cc\u062a\u060c \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06a9\u06d5 \u06a9\u06c6\u062a\u0627\u06cc\u06cc \u062f\u06ce\u062a.";
+const ONLINE_GAME_BODY = "\u0626\u06d5\u06af\u06d5\u0631 \u062f\u06d5\u0631\u0686\u06cc\u062a\u060c \u0628\u06c6\u062a \u0644\u06d5 \u062c\u06cc\u0627\u062a\u06cc \u062a\u06c6 \u06cc\u0627\u0631\u06cc \u062f\u06d5\u06a9\u0627\u062a.\n\u062f\u06c6\u0695\u0627\u0646 \u0648\u0627\u062a\u06d5 \u0644\u06d5\u062f\u06d5\u0633\u062a\u062f\u0627\u0646\u06cc \u067e\u0648\u06cc\u0646\u062a.";
+const CANCEL_TEXT = "\u067e\u0627\u0634\u06af\u06d5\u0632\u0628\u0648\u0648\u0646\u06d5\u0648\u06d5";
+const CONFIRM_TEXT = "\u062f\u06d5\u0631\u0686\u0648\u0648\u0646 \u0644\u06d5 \u06cc\u0627\u0631\u06cc";
+
 export default function LeaveMatchConfirmPopup({
   visible,
   loading = false,
+  isLocalGame = false,
   onCancel,
   onConfirm,
 }: LeaveMatchConfirmPopupProps) {
@@ -27,12 +35,10 @@ export default function LeaveMatchConfirmPopup({
       <View style={styles.scrim} />
 
       <BlurView intensity={45} tint="dark" style={styles.modal}>
-        <Text style={styles.title}>لە یارییەکە دەچیتە دەرەوە؟</Text>
+        <Text style={styles.title}>{LEAVE_TITLE}</Text>
 
         <Text style={styles.body}>
-          ئەگەر دەرچیت، بۆت لە جیاتی تۆ یاری دەکات.
-          {"\n"}
-          دۆڕان واتە لەدەستدانی پوینت.
+          {isLocalGame ? LOCAL_GAME_BODY : ONLINE_GAME_BODY}
         </Text>
 
         <View style={styles.actions}>
@@ -41,7 +47,7 @@ export default function LeaveMatchConfirmPopup({
             onPress={onCancel}
             disabled={loading}
           >
-            <Text style={styles.cancelText}>پاشگەزبوونەوە</Text>
+            <Text style={styles.cancelText}>{CANCEL_TEXT}</Text>
           </Pressable>
 
           <Pressable
@@ -52,7 +58,7 @@ export default function LeaveMatchConfirmPopup({
             {loading ? (
               <ActivityIndicator color="#ffffff" size="small" />
             ) : (
-              <Text style={styles.confirmText}>دەرچوون لە یاری</Text>
+              <Text style={styles.confirmText}>{CONFIRM_TEXT}</Text>
             )}
           </Pressable>
         </View>

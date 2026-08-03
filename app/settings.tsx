@@ -4,6 +4,7 @@ import {
   setCurrentLeaderboardVisibility,
 } from "@/lib/leaderboardVisibility";
 import { useProfile } from "@/lib/profile";
+import { useOkeyFeedbackPreferences } from "@/okey/hooks/useOkeyFeedbackPreferences";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -22,7 +23,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { profile } = useProfile();
   const { width } = useWindowDimensions();
-  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState(true);
+  const { soundEnabled, hapticsEnabled, setSoundEnabled, setHapticsEnabled } = useOkeyFeedbackPreferences();
   const [leaderboardVisible, setLeaderboardVisible] = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const isWideLayout = width >= 720;
@@ -113,8 +114,14 @@ export default function SettingsScreen() {
               <SettingSwitch
                 icon="volume-high-outline"
                 label="دەنگەکان"
-                value={soundEffectsEnabled}
-                onValueChange={setSoundEffectsEnabled}
+                value={soundEnabled}
+                onValueChange={setSoundEnabled}
+              />
+              <SettingSwitch
+                icon="phone-portrait-outline"
+                label="لەرینەوەی یاریی ئۆکەی"
+                value={hapticsEnabled}
+                onValueChange={setHapticsEnabled}
               />
               {profile ? (
                 <SettingSwitch

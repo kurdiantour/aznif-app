@@ -1,4 +1,4 @@
-﻿import {
+import {
   accessCookieName,
   assertAdmin,
   createDevServiceSupabase,
@@ -19,12 +19,13 @@ function mapPlayer(row: any): AdminPlayer {
     player_id: row.player_id,
     username: row.username,
     avatar_id: row.avatar_id,
+    coin: Number(row.coin ?? row.wallets?.coin ?? 0),
     points: Number(row.points ?? 0),
     games_played: Number(row.games_played ?? 0),
     games_won: Number(row.games_won ?? 0),
     games_lost: Number(row.games_lost ?? 0),
     aznif: Number(row.aznif ?? row.wallets?.mc ?? 0),
-    gold: Number(row.gold ?? row.wallets?.gold ?? 0),
+    gem: Number(row.gem ?? row.wallets?.gem ?? 0),
     is_admin: Boolean(row.is_admin),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
       const supabase = createDevServiceSupabase();
       let query = supabase
         .from("profiles")
-        .select("id,email,player_id,username,avatar_id,points,games_played,games_won,games_lost,is_admin,created_at,updated_at,wallets(mc,gold)")
+        .select("id,email,player_id,username,avatar_id,points,games_played,games_won,games_lost,is_admin,created_at,updated_at,wallets(mc,coin,gem)")
         .eq("is_admin", false)
         .order("created_at", { ascending: false })
         .limit(100);

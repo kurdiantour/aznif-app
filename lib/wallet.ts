@@ -22,7 +22,8 @@ function mapWalletRow(row: any): Wallet {
     user_id: row.user_id,
     balances: {
       mc: toNumber(row.mc),
-      gold: toNumber(row.gold),
+      coin: toNumber(row.coin),
+      gem: toNumber(row.gem),
     },
     updated_at: row.updated_at,
   };
@@ -33,7 +34,7 @@ export async function getBalance(userId?: string): Promise<Wallet> {
 
   const { data, error } = await supabase
     .from("wallets")
-    .select("id, user_id, mc, gold, updated_at")
+    .select("id, user_id, mc, coin, gem, updated_at")
     .eq("user_id", uid)
     .maybeSingle();
 

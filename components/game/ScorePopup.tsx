@@ -147,15 +147,11 @@ export default function ScorePopup({
             {matchReward ? (
               <View style={styles.rewardRow}>
                 <Text style={styles.rewardTitle}>
-                  {matchReward.tier === "close"
-                    ? "Close win"
-                    : matchReward.tier === "normal"
-                      ? "Normal win"
-                      : "Dominating win"}
+                  Free match reward
                 </Text>
 
                 <Text style={styles.rewardDetail}>
-                  +{matchReward.gold} گەوهەر · +{matchReward.points} Points
+                  +{matchReward.coin} Coin · +{matchReward.gem} Gem · +{matchReward.points} Points
                 </Text>
               </View>
             ) : null}

@@ -8,8 +8,8 @@ import { BlurView } from "expo-blur";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
-type Profile = { username: string; player_id: string; avatar_id: AvatarId; level: number; points: number; games_played: number; games_won: number; games_lost: number };
-type Balances = { mc: number; gold: number };
+type Profile = { username: string; full_name?: string | null; player_id: string; avatar_id: AvatarId; level: number; points: number; coin: number; games_played: number; games_won: number; games_lost: number };
+type Balances = { mc: number; gem: number };
 type FriendState = "none" | "pending" | "accepted" | "self" | "unavailable";
 
 export default function PlayerProfilePopup({
@@ -63,8 +63,20 @@ export default function PlayerProfilePopup({
       ]);
       if (!active) return;
       const card = cards?.[0] ?? null;
-      setProfile(card as Profile | null);
-      setBalances(card ? { mc: Number(card.aznif) || 0, gold: Number(card.gems) || 0 } : null);
+      let fullName: string | null = null;
+
+      if (card) {
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", player.id)
+          .maybeSingle<{ full_name: string | null }>();
+
+        fullName = profileRow?.full_name ?? null;
+      }
+
+      setProfile(card ? ({ ...card, full_name: fullName } as Profile) : null);
+      setBalances(card ? { mc: Number(card.aznif) || 0, gem: Number(card.gems) || 0 } : null);
       const ownId = auth.user?.id;
       if (!ownId) setFriendState("unavailable");
       else if (ownId === player.id) setFriendState("self");
@@ -94,14 +106,14 @@ export default function PlayerProfilePopup({
       <Animated.View style={[styles.card, { transform: [{ translateX }] }]}>
             <BlurView intensity={88} tint="dark" pointerEvents="none" style={StyleSheet.absoluteFill} />
             <PlayerAvatar avatarId={profile?.avatar_id ?? player.avatarId} size={72} style={styles.avatar} />
-            <Text style={styles.name}>{profile?.username ?? player.name}</Text>
+            <Text style={styles.name}>{(profile?.full_name || profile?.username) ?? player.name}</Text>
             {loading ? <ActivityIndicator color="#a855f7" style={styles.loader} /> : (
               <>
                 <Text style={styles.level}>{getRankTitleFromLevel(profile?.level ?? 1)}</Text>
                 <View style={styles.stats}>
                   <View style={styles.statBox}><Text style={styles.statValue}>{balances?.mc ?? 0}</Text><Text style={styles.statLabel}>ئەزنیف</Text></View>
-                  <View style={styles.statBox}><Text style={styles.statValue}>{balances?.gold ?? 0}</Text><Text style={styles.statLabel}>گەوهەر</Text></View>
-                  <View style={styles.statBox}><Text style={styles.statValue}>{profile?.points ?? 0}</Text><Text style={styles.statLabel}>پوینت</Text></View>
+                  <View style={styles.statBox}><Text style={styles.statValue}>{balances?.gem ?? 0}</Text><Text style={styles.statLabel}>گەوهەر</Text></View>
+                  <View style={styles.statBox}><Text style={styles.statValue}>{profile?.points ?? 0}</Text><Text style={styles.statLabel}>خاڵ</Text></View>
                 </View>
                 <View style={styles.gameStats}>
                   <View style={styles.gameStatRow}><Text style={styles.gameStatLabel}>کۆی یارییەکان</Text><Text style={styles.gameStatValue}>{profile?.games_played ?? 0}</Text></View>
@@ -123,6 +135,7 @@ export default function PlayerProfilePopup({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
+    direction: "ltr",
     zIndex: 980,
     elevation: 980,
     alignItems: "flex-end",
@@ -162,12 +175,12 @@ const styles = StyleSheet.create({
   level: { marginTop: 2, color: "#e9d5ff", fontSize: 12, fontFamily: "SpedaBold" },
   stats: { width: "100%", flexDirection: "row", gap: 7, marginTop: 14 },
   statBox: { flex: 1, minHeight: 46, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.07)" },
-  statValue: { color: "#facc15", fontSize: 13, fontFamily: "RobotoMedium" },
+  statValue: { color: "#facc15", fontSize: 13, fontFamily: "SpedaRegular" },
   statLabel: { marginTop: 1, color: "#e9d5ff", fontSize: 8, fontFamily: "SpedaBold" },
   gameStats: { width: "100%", marginTop: 12, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.055)" },
   gameStatRow: { minHeight: 27, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   gameStatLabel: { color: "rgba(255,255,255,0.72)", fontSize: 11, fontFamily: "SpedaBold" },
-  gameStatValue: { color: "#ffffff", fontSize: 13, fontFamily: "RobotoMedium" },
+  gameStatValue: { color: "#ffffff", fontSize: 13, fontFamily: "SpedaRegular" },
   friendButton: { marginTop: 18, minWidth: 170, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#7c3aed" },
   friendButtonDisabled: { backgroundColor: "rgba(124,58,237,0.35)" },
   friendButtonText: { color: "#fff", fontSize: 12, fontFamily: "SpedaBold" },

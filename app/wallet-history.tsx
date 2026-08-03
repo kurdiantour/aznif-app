@@ -56,8 +56,8 @@ export default function WalletHistoryScreen() {
       : item.from_user_id || "System";
     const sign =
       item.transaction_type === "reward" ? "+" : isOutgoing ? "-" : "+";
-    const currencyLabel = item.currency === "Gold" ? "گەوهەر" : item.currency;
-    const amountText = `${sign}${item.amount.toFixed(item.currency === "Gold" ? 0 : 2)} ${currencyLabel}`;
+    const currencyLabel = item.currency === "Gem" ? "گەوهەر" : item.currency;
+    const amountText = `${sign}${item.amount.toFixed(item.currency === "Gem" ? 0 : 2)} ${currencyLabel}`;
 
     return (
       <View style={styles.transactionCard}>

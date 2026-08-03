@@ -1,4 +1,6 @@
+import { AvatarPickerModal } from "@/components/player/AvatarPickerModal";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import { LogoutConfirmPopup } from "@/components/profile/LogoutConfirmPopup";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentLeaderboardRank, useProfile } from "@/lib/profile";
 import {
@@ -18,16 +20,27 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { profile, loading } = useProfile();
+  const { profile, loading, updateProfile } = useProfile();
   const { width } = useWindowDimensions();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [savingName, setSavingName] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
+
+  useEffect(() => {
+    setDraftName(profile?.displayName ?? "");
+  }, [profile?.displayName]);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,7 +85,8 @@ export default function ProfileScreen() {
     return <Redirect href="/login" />;
   }
 
-  const points = Math.max(profile.points ?? 0, 0);
+  const currentProfile = profile;
+  const points = Math.max(currentProfile.points ?? 0, 0);
   const level = calculateLevelFromPoints(points);
   const pointsInLevel = points % POINTS_PER_LEVEL;
   const progress = Math.max(pointsInLevel / POINTS_PER_LEVEL, 0.04);
@@ -81,19 +95,69 @@ export default function ProfileScreen() {
     level >= MAX_LEVEL ? null : getRankTitleFromLevel(level + 1);
   const pointsToNextLevel =
     level >= MAX_LEVEL ? 0 : POINTS_PER_LEVEL - pointsInLevel;
-  const avatarId = profile.avatarId as AvatarId | undefined;
+  const avatarId = currentProfile.avatarId as AvatarId | undefined;
   const isWideLayout = width >= 720;
-  const gamesPlayed = Math.max(profile.gamesPlayed ?? 0, 0);
-  const gamesWon = Math.max(profile.gamesWon ?? 0, 0);
-  const gamesLost = Math.max(profile.gamesLost ?? 0, 0);
+  const gamesPlayed = Math.max(currentProfile.gamesPlayed ?? 0, 0);
+  const gamesWon = Math.max(currentProfile.gamesWon ?? 0, 0);
+  const gamesLost = Math.max(currentProfile.gamesLost ?? 0, 0);
 
-  async function handleLogout() {
+  async function performLogout() {
     setLoggingOut(true);
     try {
       await signOut();
       router.replace("/login");
     } finally {
       setLoggingOut(false);
+    }
+  }
+
+  function handleLogout() {
+    setIsLogoutConfirmOpen(true);
+  }
+
+  function startEditingName() {
+    setDraftName(currentProfile.displayName);
+    setIsEditingName(true);
+  }
+
+  async function finishEditingName() {
+    if (savingName) return;
+
+    const trimmed = draftName.trim();
+
+    if (!trimmed || trimmed === currentProfile.displayName) {
+      setDraftName(currentProfile.displayName);
+      setIsEditingName(false);
+      return;
+    }
+
+    setSavingName(true);
+
+    try {
+      await updateProfile({ displayName: trimmed });
+      setIsEditingName(false);
+    } catch (error) {
+      console.warn("Failed to update profile name:", error);
+      setDraftName(currentProfile.displayName);
+    } finally {
+      setSavingName(false);
+    }
+  }
+
+  async function handleSelectAvatar(nextAvatarId: AvatarId) {
+    if (nextAvatarId === "bot-avatar" || savingAvatar) {
+      return;
+    }
+
+    setSavingAvatar(true);
+
+    try {
+      await updateProfile({ avatarId: nextAvatarId });
+      setIsAvatarPickerOpen(false);
+    } catch (error) {
+      console.warn("Failed to update avatar:", error);
+    } finally {
+      setSavingAvatar(false);
     }
   }
 
@@ -115,17 +179,55 @@ export default function ProfileScreen() {
         <View style={[styles.contentRow, !isWideLayout && styles.contentStack]}>
           <View style={styles.profileCard}>
             <View style={styles.avatarRing}>
-                <PlayerAvatar
-                  avatarId={avatarId}
-                  size={70}
-                  style={styles.avatar}
-                />
-            </View>
+              <PlayerAvatar
+                avatarId={avatarId}
+                avatarUrl={currentProfile.avatarUrl}
+                size={70}
+                style={styles.avatar}
+              />
 
-                <Text style={styles.name} numberOfLines={1}>
-                  {profile.displayName}
-                </Text>
-                <Text style={styles.rank}>{profile.playerId}</Text>
+              <Pressable
+                accessibilityLabel="Change avatar"
+                style={[styles.changeAvatarButton, savingAvatar && styles.disabled]}
+                onPress={() => setIsAvatarPickerOpen(true)}
+                disabled={savingAvatar}
+              >
+                {savingAvatar ? (
+                  <ActivityIndicator color="#f8d774" size="small" />
+                ) : (
+                  <Ionicons name="camera-outline" size={15} color="#f8d774" />
+                )}
+              </Pressable>
+            </View>
+                <View style={styles.nameRow}>
+                  {isEditingName ? (
+                    <TextInput
+                      value={draftName}
+                      onChangeText={setDraftName}
+                      onBlur={() => void finishEditingName()}
+                      onSubmitEditing={() => void finishEditingName()}
+                      editable={!savingName}
+                      returnKeyType="done"
+                      maxLength={18}
+                      selectTextOnFocus
+                      style={styles.nameInput}
+                    />
+                  ) : (
+                    <>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {currentProfile.displayName}
+                      </Text>
+                      <Pressable
+                        accessibilityLabel="Change profile name"
+                        style={styles.editNameButton}
+                        onPress={startEditingName}
+                      >
+                        <Ionicons name="pencil" size={13} color="#f8d774" />
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+                <Text style={styles.rank}>{currentProfile.playerId}</Text>
 
               <Pressable style={styles.telegramButton} onPress={handleOpenTelegram}>
                 <View style={styles.telegramIconBox}>
@@ -155,7 +257,7 @@ export default function ProfileScreen() {
           <View style={styles.detailsColumn}>
             <View style={styles.progressCard}>
               <View style={styles.progressHeader}>
-                <Text style={styles.points}>{points.toLocaleString()} خاڵ</Text>
+                <Text style={styles.points}>{points.toLocaleString()} Points</Text>
                 <View style={styles.levelPill}>
                   <Text style={styles.levelPillText}>{rankTitle}</Text>
                 </View>
@@ -170,7 +272,7 @@ export default function ProfileScreen() {
                 <Text style={styles.nextLevelText}>
                   {level >= MAX_LEVEL
                     ? "گەیشتوویت بە بەرزترین پلە"
-                    : `${pointsToNextLevel.toLocaleString()} خاڵ ماوە بۆ ${nextRankTitle}`}
+                    : `${pointsToNextLevel.toLocaleString()} Points ماوە بۆ ${nextRankTitle}`}
                 </Text>
               </View>
             </View>
@@ -188,6 +290,24 @@ export default function ProfileScreen() {
             </View>
         </View>
       </View>
+
+      <LogoutConfirmPopup
+        visible={isLogoutConfirmOpen}
+        loading={loggingOut}
+        onCancel={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={() => void performLogout()}
+      />
+
+      <AvatarPickerModal
+        visible={isAvatarPickerOpen}
+        selectedAvatarId={avatarId}
+        onSelect={(nextAvatarId) => void handleSelectAvatar(nextAvatarId)}
+        onClose={() => {
+          if (!savingAvatar) {
+            setIsAvatarPickerOpen(false);
+          }
+        }}
+      />
     </ProfileShell>
   );
 }
@@ -295,16 +415,59 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  changeAvatarButton: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.46)",
+    backgroundColor: "#0f172a",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   avatar: {
     borderRadius: 35,
   },
-  name: {
+  nameRow: {
+    marginTop: 9,
+    minHeight: 36,
     maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  name: {
+    maxWidth: 150,
     color: "#ffffff",
     fontSize: 17,
     fontFamily: "RobotoMedium",
     textAlign: "center",
-    marginTop: 9,
+  },
+
+  editNameButton: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  nameInput: {
+    width: 190,
+    height: 36,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.34)",
+    backgroundColor: "rgba(2, 6, 23, 0.72)",
+    color: "#ffffff",
+    paddingHorizontal: 10,
+    fontSize: 16,
+    fontFamily: "RobotoMedium",
+    textAlign: "center",
   },
   rank: {
     color: "#f8d774",

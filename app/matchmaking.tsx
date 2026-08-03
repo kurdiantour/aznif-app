@@ -319,7 +319,7 @@ export default function MatchmakingScreen() {
       if (userIds.length > 0) {
         const { data: profileRows, error: profilesError } = await supabase
           .from("profiles")
-          .select("id, username, avatar_id, level, points")
+          .select("id, username, full_name, avatar_id, level, points")
           .in("id", userIds);
 
         if (profilesError) {
@@ -340,7 +340,7 @@ export default function MatchmakingScreen() {
           return {
             id: String(row.id ?? row.user_id ?? `player-${index}`),
             userId: row.user_id ?? null,
-            name: profile?.username ?? `یاریزان ${index + 1}`,
+            name: (profile?.full_name || profile?.username) ?? `یاریزان ${index + 1}`,
             level: profile?.level ?? calculateLevelFromPoints(profile?.points),
             avatarId: profile?.avatar_id as AvatarId | undefined,
             playerIndex:

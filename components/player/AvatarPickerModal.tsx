@@ -1,7 +1,13 @@
 import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { PlayerAvatar } from "./PlayerAvatar";
+
+const PICKABLE_AVATAR_IDS = AVATAR_IDS.filter(
+  (avatarId) => avatarId !== "bot-avatar",
+);
+const TOP_ROW_AVATAR_IDS = PICKABLE_AVATAR_IDS.slice(0, 4);
+const BOTTOM_ROW_AVATAR_IDS = PICKABLE_AVATAR_IDS.slice(4);
 
 type AvatarPickerModalProps = {
   visible: boolean;
@@ -16,6 +22,10 @@ export function AvatarPickerModal({
   onSelect,
   onClose,
 }: AvatarPickerModalProps) {
+  const { width } = useWindowDimensions();
+  const optionSize = width < 430 ? 54 : 64;
+  const avatarSize = optionSize - 12;
+
   if (!visible) {
     return null;
   }
@@ -25,28 +35,31 @@ export function AvatarPickerModal({
       <Pressable style={styles.backdrop} onPress={onClose} />
 
       <View style={styles.card}>
-        <Text style={styles.title}>وێنەی یاریزان هەڵبژێرە</Text>
         <Text style={styles.subtitle}>ڕووکارێک بۆ پرۆفایلەکەت دیاری بکە</Text>
 
         <View style={styles.options}>
-          {AVATAR_IDS.map((avatarId) => {
-            const active = selectedAvatarId === avatarId;
+          {[TOP_ROW_AVATAR_IDS, BOTTOM_ROW_AVATAR_IDS].map((row, rowIndex) => (
+            <View key={rowIndex} style={styles.optionRow}>
+              {row.map((avatarId) => {
+                const active = selectedAvatarId === avatarId;
 
-            return (
-              <Pressable
-                key={avatarId}
-                style={[styles.option, active && styles.optionSelected]}
-                onPress={() => onSelect(avatarId)}
-              >
-                <PlayerAvatar avatarId={avatarId} size={64} />
-              </Pressable>
-            );
-          })}
+                return (
+                  <Pressable
+                    key={avatarId}
+                    style={[
+                      styles.option,
+                      { width: optionSize, height: optionSize, borderRadius: optionSize / 2 },
+                      active && styles.optionSelected,
+                    ]}
+                    onPress={() => onSelect(avatarId)}
+                  >
+                    <PlayerAvatar avatarId={avatarId} size={avatarSize} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
         </View>
-
-        <Pressable style={styles.closeButton} onPress={onClose}>
-          <Text style={styles.closeButtonText}>داخستن</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -96,19 +109,19 @@ const styles = StyleSheet.create({
   },
 
   options: {
-    width: 388,
-    maxWidth: "100%",
+    width: "100%",
     marginTop: 22,
+    gap: 14,
+  },
+
+  optionRow: {
+    width: "100%",
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 14,
+    justifyContent: "center",
+    gap: 8,
   },
 
   option: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -123,22 +136,4 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(20, 241, 193, 0.14)",
   },
 
-  closeButton: {
-    marginTop: 22,
-    height: 40,
-    minWidth: 130,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-
-  closeButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-  },
 });

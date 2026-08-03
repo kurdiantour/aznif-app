@@ -1,4 +1,4 @@
-﻿import { accessCookieName, assertAdmin, createDevServiceSupabase, isDevBypassEnabled } from "@/lib/supabase-server";
+import { accessCookieName, assertAdmin, createDevServiceSupabase, isDevBypassEnabled } from "@/lib/supabase-server";
 import type { AdminPlayer } from "@/lib/types";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -8,7 +8,7 @@ async function getPlayers(): Promise<AdminPlayer[]> {
     const supabase = createDevServiceSupabase();
     const { data, error } = await supabase
       .from("profiles")
-      .select("id,email,player_id,username,avatar_id,points,games_played,games_won,games_lost,is_admin,created_at,updated_at,wallets(mc,gold)")
+      .select("id,email,player_id,username,avatar_id,points,games_played,games_won,games_lost,is_admin,created_at,updated_at,wallets(mc,coin,gem)")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -20,12 +20,13 @@ async function getPlayers(): Promise<AdminPlayer[]> {
       player_id: row.player_id,
       username: row.username,
       avatar_id: row.avatar_id,
+      coin: Number(row.wallets?.coin ?? 0),
       points: Number(row.points ?? 0),
       games_played: Number(row.games_played ?? 0),
       games_won: Number(row.games_won ?? 0),
       games_lost: Number(row.games_lost ?? 0),
       aznif: Number(row.wallets?.mc ?? 0),
-      gold: Number(row.wallets?.gold ?? 0),
+      gem: Number(row.wallets?.gem ?? 0),
       is_admin: Boolean(row.is_admin),
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -45,12 +46,12 @@ export default async function DashboardPage() {
   const totals = players.reduce(
     (acc, player) => ({
       aznif: acc.aznif + Number(player.aznif ?? 0),
-      gold: acc.gold + Number(player.gold ?? 0),
+      gem: acc.gem + Number(player.gem ?? 0),
       admins: acc.admins + (player.is_admin ? 1 : 0),
       wins: acc.wins + Number(player.games_won ?? 0),
       games: acc.games + Number(player.games_played ?? 0),
     }),
-    { aznif: 0, gold: 0, admins: 0, wins: 0, games: 0 },
+    { aznif: 0, gem: 0, admins: 0, wins: 0, games: 0 },
   );
   const winRate = totals.games > 0 ? Math.round((totals.wins / totals.games) * 100) : 0;
   const recentPlayers = players.slice(0, 5);
@@ -72,7 +73,7 @@ export default async function DashboardPage() {
         <div className="stat-card peach"><span>Total Players</span><strong>{players.length}</strong><small>▲ {activePlayers} active</small></div>
         <div className="stat-card green"><span>Admins</span><strong>{totals.admins}</strong><small>▲ secure access</small></div>
         <div className="stat-card blue"><span>Total Aznif</span><strong>{totals.aznif.toLocaleString()}</strong><small>▲ wallet balance</small></div>
-        <div className="stat-card teal"><span>Total Gold</span><strong>{totals.gold.toLocaleString()}</strong><small>▲ premium balance</small></div>
+        <div className="stat-card teal"><span>Total Gem</span><strong>{totals.gem.toLocaleString()}</strong><small>▲ premium balance</small></div>
         <div className="stat-card rose"><span>Win Rate</span><strong>{winRate}%</strong><small>● all matches</small></div>
       </section>
 
@@ -80,7 +81,7 @@ export default async function DashboardPage() {
         <div className="panel chart-panel">
           <div className="panel-title">
             <h3>Summary</h3>
-            <div><span className="legend aznif-dot" /> Aznif <span className="legend gold-dot" /> Gold</div>
+            <div><span className="legend aznif-dot" /> Aznif <span className="legend gold-dot" /> Gem</div>
           </div>
           <div className="chart">
             <div className="chart-line line-a" />
@@ -110,15 +111,15 @@ export default async function DashboardPage() {
           </div>
           <table className="mini-table">
             <thead>
-              <tr><th>Player</th><th>Points</th><th>Aznif</th><th>Gold</th><th>Status</th></tr>
+              <tr><th>Player</th><th>Coin</th><th>Points</th><th>Aznif</th><th>Gem</th><th>Status</th></tr>
             </thead>
             <tbody>
               {recentPlayers.map((player) => (
                 <tr key={player.user_id}>
                   <td>{player.username}</td>
-                  <td>{Number(player.points ?? 0).toLocaleString()}</td>
+                  <td>{Number(player.coin ?? 0).toLocaleString()}</td><td>{Number(player.points ?? 0).toLocaleString()}</td>
                   <td>{Number(player.aznif ?? 0).toLocaleString()}</td>
-                  <td>{Number(player.gold ?? 0).toLocaleString()}</td>
+                  <td>{Number(player.gem ?? 0).toLocaleString()}</td>
                   <td><span className={player.is_admin ? "pill warning" : "pill success"}>{player.is_admin ? "Admin" : "Player"}</span></td>
                 </tr>
               ))}

@@ -10,6 +10,7 @@ import { getAvatarSource, type AvatarId } from "@/constants/avatars";
 
 type PlayerAvatarProps = {
   avatarId?: AvatarId;
+  avatarUrl?: string;
   size?: number;
   style?: StyleProp<ViewStyle>;
   imageStyle?: StyleProp<ImageStyle>;
@@ -17,10 +18,13 @@ type PlayerAvatarProps = {
 
 export function PlayerAvatar({
   avatarId,
+  avatarUrl,
   size = 40,
   style,
   imageStyle,
 }: PlayerAvatarProps) {
+  const source = avatarUrl ? { uri: avatarUrl } : getAvatarSource(avatarId);
+
   return (
     <View
       style={[
@@ -35,7 +39,7 @@ export function PlayerAvatar({
       ]}
     >
       <Image
-        source={getAvatarSource(avatarId)}
+        source={source}
         style={[{ width: size, height: size }, imageStyle]}
         contentFit="cover"
         cachePolicy="memory-disk"

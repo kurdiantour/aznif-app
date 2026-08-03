@@ -38,6 +38,9 @@ supabase/.temp/
 # typescript
 *.tsbuildinfo
 
+# test coverage
+coverage/
+
 app-example
 
 # generated native folders
