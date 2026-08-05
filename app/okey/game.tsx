@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import {
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import GameChatDrawer from "@/components/game/GameChatDrawer";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
@@ -9,29 +18,29 @@ import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
-import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
+import { OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
+import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
 import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
 import { OkeyPlayerSetScore } from "@/okey/components/OkeyPlayerSetScore";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
-import { OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import { styles } from "@/okey/components/okeyStyles";
 import { canDeclareKonkanOpen, canLockKonkanSet, canSpendTileOnMeld, getRequiredOpenScore, getRoundResultScoreDetails, MAX_PLAYER_MELDS } from "@/okey/engine/okey-engine";
-import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
 import { useOkeyFeedback } from "@/okey/hooks/useOkeyFeedback";
-import { useStableEvent } from "@/okey/hooks/useStableEvent";
+import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
 import { useOkeyTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
+import { useStableEvent } from "@/okey/hooks/useStableEvent";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
-import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import {
-  createOpponentDiscardFlight,
-  findClosestMeldDropTarget,
-  isPointInsideRect,
-  toLocalScreenRect,
-} from "@/okey/presentation/okey-table-interactions";
+  getOkeyRoomStatus,
+  leaveOkeyRoom,
+  subscribeOkeyRoom,
+  type OkeyRoomSnapshot,
+} from "@/okey/multiplayer/okey-room-api";
+import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import type {
   EliminatedTurnFlight,
   MeldDropRect,
@@ -40,6 +49,12 @@ import type {
   ScreenRect,
   TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
+import {
+  createOpponentDiscardFlight,
+  findClosestMeldDropTarget,
+  isPointInsideRect,
+  toLocalScreenRect,
+} from "@/okey/presentation/okey-table-interactions";
 import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 import type { Player } from "@/types/game";
 
@@ -55,45 +70,165 @@ export default function OkeyScreen() {
   );
 }
 
+function getRouteParam(
+  value: string | string[] | undefined,
+) {
+  return Array.isArray(value)
+    ? value[0]
+    : value;
+}
+
 function OkeyGameScreen() {
   const router = useRouter();
-  const { emitFeedback } = useOkeyFeedback();
-  const responsiveLayout = useOkeyResponsiveLayout();
-  const [showGameChat, setShowGameChat] = useState(false);
-  const { showMatchMenu, matchMenuTranslateX, openMatchMenu, closeMatchMenu } = useMatchMenu();
-  const {
-    state,
-    currentRound,
-    maxRounds,
-    matchScores,
-    roundResults,
-    showRoundResultPopup,
-    showFinishRevealPopup,
-    currentRoundResult,
-    matchFinished,
-    matchWinnerTeamId,
-    showMatchResultPopup,
-    newGame,
-    roundResultCountdownRemaining,
-    draw,
-    discard,
-    moveTile,
-    moveTiles,
-    openMelds,
-    declareKonkan,
-    spendTileOnTableMeld,
-    lockKonkanSetOnTable,
-    playEliminated,
-    pendingTimeoutDiscardTileId,
-    beginTimeoutHumanTurn,
-    commitPendingTimeoutDiscard,
-    pendingBotDraw,
-    clearPendingBotDraw,
-    pendingBotDiscardTileId,
-    clearPendingBotDiscardTileId,
-    isAppActive,
-    lifecycleResumeToken,
-  } = useOkeyGame();
+  const params = useLocalSearchParams<{
+  matchId?: string | string[];
+  tableId?: string | string[];
+  table?: string | string[];
+  mode?: string | string[];
+}>();
+
+const onlineMatchId =
+  getRouteParam(params.matchId);
+
+const onlineTableId =
+  getRouteParam(params.tableId) ??
+  getRouteParam(params.table);
+
+const [onlineRoom, setOnlineRoom] =
+  useState<OkeyRoomSnapshot | null>(null);
+
+const [
+  leavingWaitingRoom,
+  setLeavingWaitingRoom,
+] = useState(false);
+
+useEffect(() => {
+  if (!onlineMatchId) {
+    setOnlineRoom(null);
+    return;
+  }
+
+  let active = true;
+
+  void getOkeyRoomStatus(onlineMatchId)
+    .then((room) => {
+      if (active) {
+        setOnlineRoom(room);
+      }
+    })
+    .catch((error) => {
+      console.warn(
+        "Unable to load Okey room status",
+        error,
+      );
+    });
+
+  const unsubscribe = subscribeOkeyRoom(
+    onlineMatchId,
+    (room) => {
+      if (active) {
+        setOnlineRoom(room);
+      }
+    },
+  );
+
+  return () => {
+    active = false;
+    unsubscribe();
+  };
+}, [onlineMatchId]);
+
+const handleCancelWaiting = useCallback(async () => {
+  if (!onlineMatchId || leavingWaitingRoom) {
+    return;
+  }
+
+  setLeavingWaitingRoom(true);
+
+  try {
+    await leaveOkeyRoom(onlineMatchId);
+
+    setOnlineRoom(null);
+
+    router.replace("/okey");
+  } catch (error) {
+    console.warn(
+      "Unable to leave Okey waiting room",
+      error,
+    );
+  } finally {
+    setLeavingWaitingRoom(false);
+  }
+}, [
+  leavingWaitingRoom,
+  onlineMatchId,
+  router,
+]);
+
+const activeOnlineMatchId =
+  onlineRoom?.status === "playing"
+    ? onlineMatchId
+    : undefined;
+
+const waitingForOnlinePlayers =
+  Boolean(onlineMatchId) &&
+  onlineRoom?.status !== "playing";    
+
+const { emitFeedback } = useOkeyFeedback();
+const responsiveLayout = useOkeyResponsiveLayout();
+const [showGameChat, setShowGameChat] =
+  useState(false);
+
+const {
+  showMatchMenu,
+  matchMenuTranslateX,
+  openMatchMenu,
+  closeMatchMenu,
+} = useMatchMenu();
+
+const {
+  state,
+  currentRound,
+  maxRounds,
+  matchScores,
+  roundResults,
+  showRoundResultPopup,
+  showFinishRevealPopup,
+  currentRoundResult,
+  matchFinished,
+  matchWinnerTeamId,
+  showMatchResultPopup,
+  newGame,
+  roundResultCountdownRemaining,
+  draw,
+  discard,
+  moveTile,
+  moveTiles,
+  openMelds,
+  declareKonkan,
+  spendTileOnTableMeld,
+  lockKonkanSetOnTable,
+  playEliminated,
+  pendingTimeoutDiscardTileId,
+  beginTimeoutHumanTurn,
+  commitPendingTimeoutDiscard,
+  pendingBotDraw,
+  clearPendingBotDraw,
+  pendingBotDiscardTileId,
+  clearPendingBotDiscardTileId,
+  isAppActive,
+  lifecycleResumeToken,
+  isOnline,
+  onlineReady,
+  onlineError,
+  onlineCommandPending,
+  reconnectOnline,
+  leaveOnlineMatch,
+} = useOkeyGame(
+  onlineTableId,
+  activeOnlineMatchId,
+  Boolean(onlineMatchId),
+);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [rackSetScore, setRackSetScore] = useState(0);
   const [openableRackMelds, setOpenableRackMelds] = useState<{ melds: OkeyMeld[]; score: number }>({ melds: [], score: 0 });
@@ -722,11 +857,15 @@ function OkeyGameScreen() {
   const turnTimerVisible = state.phase === "playing" || showFinishRevealPopup;
   const turnTimerResetKey = `${currentRound}-${state.currentPlayerIndex}-${state.phase}`;
 
-  useEffect(() => {
-    if (!isAppActive || state.phase !== "playing") {
-      setTurnTimedOut(false);
-      return;
-    }
+useEffect(() => {
+  if (
+    isOnline ||
+    !isAppActive ||
+    state.phase !== "playing"
+  ) {
+    setTurnTimedOut(false);
+    return;
+  }
 
     timeoutTurnKeyRef.current = null;
     setTurnTimedOut(false);
@@ -740,15 +879,28 @@ function OkeyGameScreen() {
       clearTimeout(warning);
       clearTimeout(timeout);
     };
-  }, [currentRound, emitFeedback, isAppActive, state.currentPlayerIndex, state.phase]);
-
+}, [
+  currentRound,
+  emitFeedback,
+  isAppActive,
+  isOnline,
+  state.currentPlayerIndex,
+  state.phase,
+]);
 
   useEffect(() => {
     // Timeout is resolved once for the whole player turn. Drawing a tile changes
     // hasDrawnThisTurn, but it must not create a second timeout for the same turn.
     const turnKey = `${currentRound}-${state.currentPlayerIndex}`;
-    if (!isAppActive || state.phase !== "playing" || state.currentPlayerIndex !== 0 || !turnTimedOut) return;
-    if (timeoutTurnKeyRef.current === turnKey) return;
+if (
+  isOnline ||
+  !isAppActive ||
+  state.phase !== "playing" ||
+  state.currentPlayerIndex !== 0 ||
+  !turnTimedOut
+) {
+  return;
+}    if (timeoutTurnKeyRef.current === turnKey) return;
     if (tileFlight || pendingTimeoutDiscardTileId || pendingDiscardTileIdRef.current) return;
 
     // Lock the turn before starting draw/discard state updates or animations.
@@ -971,6 +1123,9 @@ function OkeyGameScreen() {
     const timer = setTimeout(() => setShowFinalTileCelebration(true), 350);
     return () => clearTimeout(timer);
   }, [showFinishRevealPopup, tileFlight]);
+
+
+  
   return (
 <TableBackground>
   <View
@@ -978,6 +1133,121 @@ function OkeyGameScreen() {
     onLayout={measureScreen}
     style={[styles.screen, responsiveLayout.screen]}
   >
+
+{waitingForOnlinePlayers && onlineRoom ? (
+  <View style={waitingPopupStyles.layer}>
+    <View style={waitingPopupStyles.card}>
+      <ActivityIndicator
+        size="small"
+        color="#f8d774"
+      />
+
+      <Text style={waitingPopupStyles.title}>
+        چاوەڕوانی یاریزانەکان
+      </Text>
+
+      <Text style={waitingPopupStyles.count}>
+        {onlineRoom.memberCount} / 4
+      </Text>
+
+      <View style={waitingPopupStyles.players}>
+        {[0, 1, 2, 3].map((playerIndex) => {
+          const member = onlineRoom.members.find(
+            (item) =>
+              item.playerIndex === playerIndex,
+          );
+
+          return (
+            <View
+              key={playerIndex}
+              style={[
+                waitingPopupStyles.player,
+                member &&
+                  waitingPopupStyles.playerActive,
+              ]}
+            >
+              <Ionicons
+                name={
+                  member
+                    ? "person"
+                    : "person-outline"
+                }
+                size={17}
+                color={
+                  member
+                    ? "#f8d774"
+                    : "rgba(255,255,255,0.42)"
+                }
+              />
+            </View>
+          );
+        })}
+      </View>
+
+      <Pressable
+        disabled={leavingWaitingRoom}
+        onPress={() => {
+          void handleCancelWaiting();
+        }}
+        style={({ pressed }) => [
+          waitingPopupStyles.cancelButton,
+          pressed &&
+            !leavingWaitingRoom &&
+            waitingPopupStyles.cancelButtonPressed,
+          leavingWaitingRoom &&
+            waitingPopupStyles.cancelButtonDisabled,
+        ]}
+      >
+        {leavingWaitingRoom ? (
+          <ActivityIndicator
+            size="small"
+            color="#ffffff"
+          />
+        ) : (
+          <Text
+            style={
+              waitingPopupStyles.cancelButtonText
+            }
+          >
+            پاشگەز بوومەوە
+          </Text>
+        )}
+      </Pressable>
+    </View>
+  </View>
+) : null}
+
+{isOnline &&
+!onlineReady &&
+!waitingForOnlinePlayers ? (
+  <View style={finishRevealStyles.overlay}>
+    <View style={finishRevealStyles.content}>
+      <Text style={finishRevealStyles.title}>
+        پەیوەندی بە یاری
+      </Text>
+
+      <Text style={finishRevealStyles.subtitle}>
+        دۆخی یاری لە سێرڤەر وەردەگیرێت...
+      </Text>
+    </View>
+  </View>
+) : null}
+
+{isOnline && onlineError ? (
+  <Pressable
+    style={finishRevealStyles.connectionError}
+    disabled={onlineCommandPending}
+    onPress={() => {
+      void reconnectOnline();
+    }}
+  >
+    <Text style={finishRevealStyles.connectionErrorText}>
+      پەیوەندی کێشەی هەیە — بۆ هەوڵدانەوە دابگرە
+    </Text>
+  </Pressable>
+) : null}
+
+
     {!showMatchMenu ? (
       <View style={finishRevealStyles.topRightActions}>
         <Pressable
@@ -1170,24 +1440,151 @@ function OkeyGameScreen() {
         enabled={false}
         onClose={() => setShowGameChat(false)}
       />
-      <MatchMenuDrawer
-        visible={showMatchMenu}
-        players={state.players}
-        humanPlayer={humanPlayer}
-        translateX={matchMenuTranslateX}
-        onClose={closeMatchMenu}
-        onLeavePress={() => {
-          closeMatchMenu();
+<MatchMenuDrawer
+  visible={showMatchMenu}
+  players={state.players}
+  humanPlayer={humanPlayer}
+  translateX={matchMenuTranslateX}
+  onClose={closeMatchMenu}
+  onLeavePress={() => {
+    closeMatchMenu();
+
+    if (isOnline) {
+      void leaveOnlineMatch()
+        .catch((error) => {
+          console.warn(
+            "Unable to leave Okey match",
+            error,
+          );
+        })
+        .finally(() => {
           router.replace("/okey");
-        }}
-      />
+        });
+
+      return;
+    }
+
+    router.replace("/okey");
+  }}
+/>
+
+
+
     </TableBackground>
   );
 }
+const waitingPopupStyles = StyleSheet.create({
+  layer: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    zIndex: 100,
+    transform: [
+      { translateX: -200 },
+      { translateY: -100 },
+    ],
+  },
+
+  card: {
+    minHeight: 280,
+    width: 520,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.44)",
+    backgroundColor: "rgba(10,18,34,0.96)",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  title: {
+    marginTop: 8,
+    color: "#f8d774",
+    fontSize: 20,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  count: {
+    marginTop: 3,
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  players: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 9,
+  },
+
+  player: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  playerActive: {
+    borderColor: "rgba(248,215,116,0.72)",
+    backgroundColor: "rgba(248,215,116,0.14)",
+  },
+
+  cancelButton: {
+    marginTop: 14,
+    minWidth: 150,
+    height: 36,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(220,38,38,0.88)",
+  },
+
+  cancelButtonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.98 }],
+  },
+
+  cancelButtonDisabled: {
+    opacity: 0.58,
+  },
+
+  cancelButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontFamily: "SpedaBold",
+  },
+});
 
 const finishRevealStyles = StyleSheet.create({
-  topRightActions: { position: "absolute", top: 18, right: 18, zIndex: 900, elevation: 900, flexDirection: "row", alignItems: "center", gap: 8 },
-  topRightActionButton: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)", borderWidth: 1, borderColor: "rgba(248, 243, 223, 0.22)" },
+  topRightActions: {
+    position: "absolute",
+    top: 18,
+    right: 18,
+    zIndex: 900,
+    elevation: 900,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  topRightActionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(248,243,223,0.22)",
+  },
+
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1000,
@@ -1196,11 +1593,13 @@ const finishRevealStyles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(2,6,23,0.84)",
   },
+
   content: {
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 28,
   },
+
   title: {
     color: "#f8d774",
     fontSize: 34,
@@ -1209,11 +1608,38 @@ const finishRevealStyles = StyleSheet.create({
     textAlign: "center",
     writingDirection: "rtl",
   },
+
   subtitle: {
     marginTop: 10,
     color: "rgba(255,255,255,0.78)",
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  connectionError: {
+    position: "absolute",
+    top: 68,
+    left: 20,
+    right: 20,
+    zIndex: 1200,
+    elevation: 1200,
+    minHeight: 38,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(127,29,29,0.94)",
+    borderWidth: 1,
+    borderColor: "rgba(252,165,165,0.38)",
+  },
+
+  connectionErrorText: {
+    color: "#ffffff",
+    fontSize: 12,
+    lineHeight: 18,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",

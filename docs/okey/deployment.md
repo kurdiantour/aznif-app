@@ -1,0 +1,10 @@
+# Okey production deployment
+
+1. Apply only `supabase/okey/migrations` using `scripts/apply-okey-migrations.ps1`; do not run these files through the Domino migration stream.
+2. Deploy `okey_room`, `okey_match`, `okey_chat`, and `okey_maintenance` with JWT verification enabled. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` only as Edge Function secrets; the service key must never be in Expo variables.
+3. Enable Realtime Broadcast for authenticated clients. Okey channels carry only `{ event: "invalidate", matchId, version }`; clients fetch their own projection from `okey_match` after every notification.
+4. Invoke `okey_maintenance` from a protected scheduler every five seconds, passing `x-okey-worker-key: $OKEY_WORKER_SECRET`. It resolves expired turns and hands stale seats to the deterministic Bot worker; its command commits are versioned and idempotent.
+5. Fund `okey.wallets` through a privileged back-office credit flow before enabling a non-zero entry fee. `okey_charge_entry_fee` is called at game start and `okey_settle_match` exactly once after an authoritative finish; both are idempotent ledger operations.
+6. Monitor Edge Function 4xx/5xx, `version_conflict`, `insufficient_entry_balance`, delayed heartbeats, and matches without `settlement_at` after `finished_at`.
+
+Rollback is additive: disable matchmaking/deployments first, then apply a forward migration that disables the affected table. Do not delete match, command, or ledger rows in production.

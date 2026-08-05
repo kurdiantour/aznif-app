@@ -159,7 +159,6 @@ export function OkeyOpponentSeat({
       </View>
       <View style={styles.namePlate}>
         <Text style={styles.nameText}>{name}</Text>
-        <Text style={styles.countText}>{dealtTileCount}</Text>
       </View>
     </Pressable>
   );

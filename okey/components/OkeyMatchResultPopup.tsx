@@ -161,7 +161,7 @@ export function OkeyMatchResultPopup({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="دەرچوون"
+          accessibilityLabel="یارییەکی نوێ"
           style={({ pressed }) => [
             styles.button,
             pressed && styles.buttonPressed,

@@ -11,8 +11,10 @@ export class OkeyFeedbackGate {
   private preferences: OkeyFeedbackPreferences;
   private readonly consumedKeys = new Set<string>();
   private readonly keyQueue: string[] = [];
+  private readonly maxKeys: number;
 
-  constructor(preferences: OkeyFeedbackPreferences, private readonly maxKeys = 256) {
+  constructor(preferences: OkeyFeedbackPreferences, maxKeys = 256) {
+    this.maxKeys = maxKeys;
     this.preferences = preferences;
   }
 

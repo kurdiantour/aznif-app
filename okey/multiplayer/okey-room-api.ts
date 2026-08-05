@@ -23,48 +23,159 @@ export type OkeyRoomSnapshot = {
   members: OkeyRoomMember[];
 };
 
-async function roomAction(body: Record<string, unknown>): Promise<OkeyRoomSnapshot> {
-  const { data, error } = await supabase.functions.invoke("okey_room", { body });
-  if (error) throw error;
-  if (!data?.room) throw new Error("okey_room_response_invalid");
+async function roomAction(
+  body: Record<string, unknown>,
+): Promise<OkeyRoomSnapshot> {
+  const { data, error } = await supabase.functions.invoke(
+    "okey_room",
+    {
+      body,
+    },
+  );
+
+  if (error) {
+    throw new Error(error.message || "okey_room_request_failed");
+  }
+
+  if (!data?.room) {
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : "okey_room_response_invalid",
+    );
+  }
+
   return data.room as OkeyRoomSnapshot;
 }
 
-export const matchmakeOkeyRoom = (tableId: string) => roomAction({ action: "matchmake", tableId });
-export const getOkeyRoomStatus = (matchId: string) => roomAction({ action: "status", matchId });
-export const reconnectOkeyRoom = (matchId: string) => roomAction({ action: "reconnect", matchId });
-export const leaveOkeyRoom = (matchId: string) => roomAction({ action: "leave", matchId });
+export function matchmakeOkeyRoom(
+  tableId: string,
+): Promise<OkeyRoomSnapshot> {
+  return roomAction({
+    action: "matchmake",
+    tableId,
+  });
+}
+
+export function getOkeyRoomStatus(
+  matchId: string,
+): Promise<OkeyRoomSnapshot> {
+  return roomAction({
+    action: "status",
+    matchId,
+  });
+}
+
+export function heartbeatOkeyRoom(
+  matchId: string,
+): Promise<OkeyRoomSnapshot> {
+  return roomAction({
+    action: "heartbeat",
+    matchId,
+  });
+}
+
+export function reconnectOkeyRoom(
+  matchId: string,
+): Promise<OkeyRoomSnapshot> {
+  return roomAction({
+    action: "reconnect",
+    matchId,
+  });
+}
+
+export function leaveOkeyRoom(
+  matchId: string,
+): Promise<OkeyRoomSnapshot> {
+  return roomAction({
+    action: "leave",
+    matchId,
+  });
+}
 
 export function subscribeOkeyRoom(
   matchId: string,
   listener: (room: OkeyRoomSnapshot) => void,
+  onError?: (error: Error) => void,
 ) {
   let active = true;
   let refreshInFlight: Promise<void> | null = null;
+  let heartbeatInFlight: Promise<void> | null = null;
+
+  const reportError = (error: unknown) => {
+    if (!active || !onError) {
+      return;
+    }
+
+    onError(
+      error instanceof Error
+        ? error
+        : new Error("okey_room_subscription_failed"),
+    );
+  };
+
   const refresh = () => {
-    if (!active || refreshInFlight) return refreshInFlight;
+    if (!active || refreshInFlight) {
+      return refreshInFlight;
+    }
+
     refreshInFlight = getOkeyRoomStatus(matchId)
       .then((room) => {
-        if (active) listener(room);
+        if (active) {
+          listener(room);
+        }
       })
+      .catch(reportError)
       .finally(() => {
         refreshInFlight = null;
       });
+
     return refreshInFlight;
   };
+
+  const heartbeat = () => {
+    if (!active || heartbeatInFlight) {
+      return heartbeatInFlight;
+    }
+
+    heartbeatInFlight = heartbeatOkeyRoom(matchId)
+      .then((room) => {
+        if (active) {
+          listener(room);
+        }
+      })
+      .catch(reportError)
+      .finally(() => {
+        heartbeatInFlight = null;
+      });
+
+    return heartbeatInFlight;
+  };
+
   const channel = supabase
     .channel(`okey-room:${matchId}`)
-    .on("broadcast", { event: "invalidate" }, () => void refresh())
+    .on(
+      "broadcast",
+      {
+        event: "invalidate",
+      },
+      () => {
+        void refresh();
+      },
+    )
     .subscribe((status) => {
-      if (status === "SUBSCRIBED") void refresh();
+      if (status === "SUBSCRIBED") {
+        void heartbeat();
+      }
     });
 
-  const heartbeat = setInterval(() => void refresh(), 1_500);
+  const heartbeatTimer = setInterval(() => {
+    void heartbeat();
+  }, 1_500);
 
   return () => {
     active = false;
-    clearInterval(heartbeat);
+    clearInterval(heartbeatTimer);
     void supabase.removeChannel(channel);
   };
 }
-

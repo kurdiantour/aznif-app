@@ -178,9 +178,7 @@ export function useOkeyFeedback() {
                 ? Haptics.notificationAsync(
                     Haptics.NotificationFeedbackType.Success,
                   )
-                : Haptics.impactAsync(
-                    Haptics.ImpactFeedbackStyle.Light,
-                  );
+                : (Haptics.impactAsync?.(Haptics.ImpactFeedbackStyle.Light) ?? Promise.resolve());
 
         void operation.catch((error) =>
           console.warn(

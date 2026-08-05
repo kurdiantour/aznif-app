@@ -1,5 +1,4 @@
-OpenAI: Sign Outimport type { AvatarId } from "@/constants/avatars";
-
+import type { AvatarId } from "@/constants/avatars";
 export type ProfileStatus = "active" | "offline" | "banned";
 
 export type Profile = {

@@ -13,12 +13,32 @@ export const styles = StyleSheet.create({
   screen: { flex: 1, position: "relative", marginHorizontal: -24, marginTop: -56, marginBottom: -12, paddingHorizontal: 10, paddingTop: 4, paddingBottom: 8 },
   tableArea: { flex: 1, paddingTop: 0 },
   activeDiscardDragTableLayer: { zIndex: 10000, elevation: 10000 },
-  tableSurface: { flex: 1, borderRadius: 30, overflow: "hidden" },
-  feltTexture: { ...StyleSheet.absoluteFillObject, opacity: 0.2, borderWidth: 8, borderColor: "rgba(255,255,255,0.025)" },
+tableSurface: {
+  flex: 1,
+  borderRadius: 30,
+  overflow: "visible",
+},  feltTexture: { ...StyleSheet.absoluteFillObject, opacity: 0.2, borderWidth: 8, borderColor: "rgba(255,255,255,0.025)" },
   opponentSeat: { position: "absolute", alignItems: "center", gap: 0, zIndex: 500, elevation: 500 },
   topSeat: { top: 8, alignSelf: "center" },
-  leftSeat: { left: -20, top: "42%", transform: [{ rotate: "-90deg" }] },
-  rightSeat: { right: -20, top: "42%", transform: [{ rotate: "90deg" }] },
+
+
+leftSeat: {
+  left: -20,
+  top: "42%",
+  transform: [
+    { rotate: "-90deg" },
+    { translateY: -30 },
+  ],
+},
+
+rightSeat: {
+  right: -20,
+  top: "42%",
+  transform: [
+    { rotate: "90deg" },
+    { translateY: -30 },
+  ],
+},
   opponentRack: { height: 26, minWidth: 112, paddingHorizontal: 8, borderRadius: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(76,40,17,0.72)", borderWidth: 1, borderColor: "rgba(255,220,150,0.24)" },
   namePlate: { minWidth: 72, height: 20, borderRadius: 8, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.32)" },
   nameText: { color: "#f8edd0", fontSize: 10, fontFamily: "SpedaRegular" },

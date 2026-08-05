@@ -201,7 +201,11 @@ export function createOkeyResponsiveLayout({
       },
     },
 
-    meldAreas: MELD_AREAS,
+    meldAreas: {
+      ...MELD_AREAS,
+      right: { right: edge, top: 70, width: clamp(usableWidth / 2 - edge * 2, 120, 270) },
+      bottom: { right: edge, bottom: 120, width: clamp(usableWidth / 2 - edge * 2, 120, 270) },
+    },
 
     meldContent: {
       width: MELD_CONTENT_WIDTH,

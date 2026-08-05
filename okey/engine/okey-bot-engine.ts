@@ -11,10 +11,14 @@ import {
   openPlayerMelds,
   playEliminatedTurn,
   spendTileOnBestMeld,
-} from "@/okey/engine/okey-engine";
-import { getOkeyScoreValue } from "@/okey/engine/okey-melds";
-import { OKEY_RULESET_V1 } from "@/okey/rules/okey-ruleset-v1";
-import type { OkeyDrawSource, OkeyGameState, OkeyTile } from "@/okey/types/okey";
+} from "./okey-engine.ts";
+import { getOkeyScoreValue } from "./okey-melds.ts";
+import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+import type {
+  OkeyDrawSource,
+  OkeyGameState,
+  OkeyTile,
+} from "../types/okey.ts";
 
 import {
   getOkeyBotDifficulty,
@@ -22,7 +26,7 @@ import {
   isOkeyBotControlled,
   type OkeyBotDifficulty,
   type OkeyBotProfile,
-} from "@/okey/engine/okey-bot-policy";
+} from "./okey-bot-policy.ts";
 
 export type OkeyBotOptions = { difficulty?: OkeyBotDifficulty; random?: () => number };
 

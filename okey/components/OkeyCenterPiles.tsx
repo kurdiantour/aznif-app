@@ -234,7 +234,13 @@ export function OkeyCenterPiles({
             top: `${CENTER_JOKER_REL_Y * 100}%`,
             transform: [
               { translateX: -0.5 * (layout.usableWidth * CENTER_JOKER_SIZE_PCT) },
-              { translateY: -0.5 * (layout.centerPiles.height ?? 120) },
+              {
+  translateY:
+    -0.5 *
+    (typeof layout.centerPiles.height === "number"
+      ? layout.centerPiles.height
+      : 120),
+},
             ],
             width: layout.usableWidth * CENTER_JOKER_SIZE_PCT,
             height: Math.max(54, layout.usableWidth * CENTER_JOKER_SIZE_PCT * 1.4),

@@ -9,7 +9,7 @@ import { OkeyTileBack, OkeyTileFace } from "./OkeyTileFace";
 
 export const TABLE_MELD_TILE_WIDTH = 18;
 export const TABLE_MELD_TILE_HEIGHT = 24;
-export const FOUR_TILE_SET_REVEAL = 11;
+export const FOUR_TILE_SET_REVEAL = 3;
 
 type TileLayout = {
   stacked: boolean;
