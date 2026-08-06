@@ -16,6 +16,14 @@ import type {
   OkeyMeld,
 } from "../../../okey/types/okey.ts";
 
+type OkeyAuthoritativeBundle = {
+  state: OkeyGameState;
+  player_index: number;
+  version: number;
+  turn_deadline_at: string | null;
+  command_applied: boolean;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -336,18 +344,20 @@ serve(async (req) => {
     };
   };
 
-  const {
-    data: bundle,
-    error: bundleError,
-  } = await service
-    .rpc("okey_get_authoritative_bundle", {
-      p_match_id: matchId,
-      p_user_id: authData.user.id,
-      p_command_id: isSnapshot
-        ? null
-        : body.commandId,
-    })
-    .single();
+const {
+  data: bundleRaw,
+  error: bundleError,
+} = await service
+  .rpc("okey_get_authoritative_bundle", {
+    p_match_id: matchId,
+    p_user_id: authData.user.id,
+    p_command_id: isSnapshot
+      ? null
+      : body.commandId,
+  })
+  .single();
+
+const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
   if (bundleError || !bundle) {
     return json(
@@ -358,6 +368,7 @@ serve(async (req) => {
     );
   }
 
+  
   const state =
     bundle.state as OkeyGameState;
 

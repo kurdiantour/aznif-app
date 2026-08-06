@@ -91,7 +91,7 @@ export function OkeyOpponentSeat({
 }) {
   const layout = useOkeyResponsiveLayout();
   const seatRef = useRef<View | null>(null);
-  const targetBackCount = Math.min(7, Math.max(3, count));
+  const targetBackCount = count > 0 ? Math.min(7, Math.max(3, count)) : 0;
   const [seatOrigin, setSeatOrigin] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [dealtTileCount, setDealtTileCount] = useState(count);
 
@@ -158,7 +158,7 @@ export function OkeyOpponentSeat({
         ))}
       </View>
       <View style={styles.namePlate}>
-        <Text style={styles.nameText}>{name}</Text>
+        <Text style={styles.nameText} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
       </View>
     </Pressable>
   );

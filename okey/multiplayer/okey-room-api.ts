@@ -13,6 +13,8 @@ export type OkeyRoomSnapshot = {
   matchId: string;
   roomCode: string;
   tableId: string;
+  entryFee: number;
+  currency: "fun" | "aznif";
   status: "waiting" | "playing" | "finished" | "cancelled";
   version: number;
   memberCount: number;

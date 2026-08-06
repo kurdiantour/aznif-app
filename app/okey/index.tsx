@@ -151,27 +151,6 @@ function getModeFromTableId(tableId: string): PlayMode {
     : "fun";
 }
 
-function getJoinErrorMessage(error: unknown) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : String(error);
-
-  if (message.includes("insufficient_entry_balance")) {
-    return "باڵانسی پێویستت نییە بۆ چوونە ناو ئەم مێزە.";
-  }
-
-  if (message.includes("unauthorized")) {
-    return "پێویستە سەرەتا بچیتە ژوورەوە.";
-  }
-
-  if (message.includes("unknown_table")) {
-    return "ئەم مێزە بەردەست نییە.";
-  }
-
-  return "نەتوانرا بچیتە ناو مێزەکە. دووبارە هەوڵ بدەوە.";
-}
-
 function ModeCard({
   mode,
   selectedMode,
@@ -422,12 +401,6 @@ if (joiningTableId) {
           ? walletBalances.mc
           : walletBalances.coin;
 
-      if (balance < table.entry) {
-        setJoinError(
-          "باڵانسی پێویستت نییە بۆ ئەم مێزە.",
-        );
-        return;
-      }
 
       setJoinError(null);
       setJoiningTableId(table.id);
@@ -438,9 +411,6 @@ if (joiningTableId) {
 
           openOnlineGame(room);
       } catch (error) {
-        setJoinError(
-          getJoinErrorMessage(error),
-        );
         setJoiningTableId(null);
       }
     },

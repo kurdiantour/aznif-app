@@ -35,6 +35,8 @@ export function OkeyTurnTimerBar({
     return () => animation.stop();
   }, [active, durationMs, progress, resetKey]);
 
+  if (!active) return null;
+
   const fillStyle = orientation === "horizontal"
     ? { width: "100%" as const, height: "100%" as const, transformOrigin: reverse ? "right center" as const : "left center" as const, transform: [{ scaleX: progress }] }
     : { width: "100%" as const, height: "100%" as const, transformOrigin: reverse ? "center top" as const : "center bottom" as const, transform: [{ scaleY: progress }] };

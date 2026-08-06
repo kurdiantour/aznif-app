@@ -5,7 +5,6 @@ import {
 } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -13,10 +12,15 @@ import {
 } from "react-native";
 
 import GameChatDrawer from "@/components/game/GameChatDrawer";
+import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
+import ConnectionOverlay from "@/okey/components/ConnectionOverlay";
+import GameControls from "@/okey/components/GameControls";
+import ConnectionErrorBanner from "@/okey/components/ConnectionErrorBanner";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
+import { supabase } from "@/lib/supabase";
 import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
@@ -40,6 +44,7 @@ import {
   subscribeOkeyRoom,
   type OkeyRoomSnapshot,
 } from "@/okey/multiplayer/okey-room-api";
+import { getRelativeSeatMap, type RelativeSeat } from "@/okey/multiplayer/relative-seat-map";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import type {
   EliminatedTurnFlight,
@@ -61,6 +66,7 @@ import type { Player } from "@/types/game";
 
 const OKEY_TURN_DURATION_SECONDS = 20;
 const TIMEOUT_TURN_WATCHDOG_MS = 2500;
+const EMPTY_OKEY_TILES: OkeyTile[] = [];
 
 export default function OkeyScreen() {
   return (
@@ -96,11 +102,27 @@ const onlineTableId =
 
 const [onlineRoom, setOnlineRoom] =
   useState<OkeyRoomSnapshot | null>(null);
+const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
 const [
   leavingWaitingRoom,
   setLeavingWaitingRoom,
 ] = useState(false);
+
+useEffect(() => {
+  let active = true;
+  void supabase.auth.getUser().then(({ data }) => {
+    if (active) setCurrentUserId(data.user?.id ?? null);
+  });
+  return () => { active = false; };
+}, []);
+// Okey is an authoritative online game. A matchId is issued only by the
+// matchmaking service, so a direct link must not fall back to a local game.
+useEffect(() => {
+  if (!onlineMatchId) {
+    router.replace("/okey");
+  }
+}, [onlineMatchId, router]);
 
 useEffect(() => {
   if (!onlineMatchId) {
@@ -139,7 +161,7 @@ useEffect(() => {
 }, [onlineMatchId]);
 
 const handleCancelWaiting = useCallback(async () => {
-  if (!onlineMatchId || leavingWaitingRoom) {
+  if (!onlineMatchId || leavingWaitingRoom || onlineRoom?.countdownEndsAt) {
     return;
   }
 
@@ -162,6 +184,7 @@ const handleCancelWaiting = useCallback(async () => {
 }, [
   leavingWaitingRoom,
   onlineMatchId,
+  onlineRoom?.countdownEndsAt,
   router,
 ]);
 
@@ -172,7 +195,12 @@ const activeOnlineMatchId =
 
 const waitingForOnlinePlayers =
   Boolean(onlineMatchId) &&
-  onlineRoom?.status !== "playing";    
+  (onlineRoom === null || onlineRoom.status === "waiting");
+
+
+const countdownInProgress =
+  onlineRoom?.status === "waiting" &&
+  onlineRoom.countdownEndsAt !== null;
 
 const { emitFeedback } = useOkeyFeedback();
 const responsiveLayout = useOkeyResponsiveLayout();
@@ -212,10 +240,6 @@ const {
   pendingTimeoutDiscardTileId,
   beginTimeoutHumanTurn,
   commitPendingTimeoutDiscard,
-  pendingBotDraw,
-  clearPendingBotDraw,
-  pendingBotDiscardTileId,
-  clearPendingBotDiscardTileId,
   isAppActive,
   lifecycleResumeToken,
   isOnline,
@@ -227,8 +251,19 @@ const {
 } = useOkeyGame(
   onlineTableId,
   activeOnlineMatchId,
-  Boolean(onlineMatchId),
 );
+
+// The hook has a fully dealt local initial value while it waits for the
+// authoritative projection. Keep it behind this lifecycle boundary so waiting
+// rooms never receive gameplay data or deal triggers.
+const onlineGameplayReady =
+  onlineRoom?.status === "playing" &&
+  onlineReady &&
+  state.phase === "playing";
+
+const dealLifecycleKey = onlineGameplayReady
+  ? `playing-${currentRound}-${onlineRoom?.version ?? 0}`
+  : "waiting";
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [rackSetScore, setRackSetScore] = useState(0);
   const [openableRackMelds, setOpenableRackMelds] = useState<{ melds: OkeyMeld[]; score: number }>({ melds: [], score: 0 });
@@ -437,19 +472,6 @@ const {
       return;
     }
 
-    if (pendingBotDraw) {
-      clearPendingBotDraw();
-      return;
-    }
-
-    const pendingBotTileId = pendingBotDiscardTileId;
-    if (pendingBotTileId) {
-      suppressNextOpponentDiscardFlightTileIdRef.current = pendingBotTileId;
-      clearPendingBotDiscardTileId();
-      discard(pendingBotTileId);
-      return;
-    }
-
     const pendingDiscardTileId = pendingDiscardTileIdRef.current;
     if (pendingDiscardTileId) {
       pendingDiscardTileIdRef.current = null;
@@ -592,59 +614,6 @@ const {
     });
   }, [setTileFlight, toLocalRect]);
 
-  useEffect(() => {
-    if (!pendingBotDraw || tileFlight) return;
-
-    const targetSeatRect = opponentSeatRectsRef.current[pendingBotDraw.playerId];
-    const sourceRect = pendingBotDraw.source === "deck"
-      ? deckTopRectRef.current
-      : discardTopRectRef.current;
-    if (!sourceRect || !targetSeatRect) return;
-
-    const targetRect = {
-      x: targetSeatRect.x + targetSeatRect.width / 2 - sourceRect.width / 2,
-      y: targetSeatRect.y + targetSeatRect.height / 2 - sourceRect.height / 2,
-      width: sourceRect.width,
-      height: sourceRect.height,
-    };
-
-    if (pendingBotDraw.source === "deck") setHideDeckTopTile(true);
-    else setHideDiscardTopTile(true);
-    setTileFlight({
-      id: `pending-bot-draw-${pendingBotDraw.tile.id}-${pendingBotDraw.playerId}`,
-      tile: pendingBotDraw.source === "discard" ? pendingBotDraw.tile : null,
-      face: pendingBotDraw.source === "discard" ? "front" : "back",
-      from: toLocalRect(sourceRect),
-      to: toLocalRect(targetRect),
-    });
-  }, [pendingBotDraw, setHideDeckTopTile, setHideDiscardTopTile, setTileFlight, tileFlight, toLocalRect]);
-
-  useEffect(() => {
-    if (pendingBotDraw || !pendingBotDiscardTileId || tileFlight) return;
-
-    const botPlayer = state.players[state.currentPlayerIndex];
-    if (!botPlayer || botPlayer.kind !== "bot") return;
-
-    const tile = botPlayer.hand.find((entry) => entry.id === pendingBotDiscardTileId);
-    const sourceSeatRect = opponentSeatRectsRef.current[botPlayer.id];
-    const targetRect = discardTopRectRef.current;
-    if (!tile || !sourceSeatRect || !targetRect) return;
-
-    const sourceRect = {
-      x: sourceSeatRect.x + sourceSeatRect.width / 2 - targetRect.width / 2,
-      y: sourceSeatRect.y + sourceSeatRect.height / 2 - targetRect.height / 2,
-      width: targetRect.width,
-      height: targetRect.height,
-    };
-
-    setTileFlight({
-      id: `pending-bot-discard-${tile.id}-${state.currentPlayerIndex}`,
-      tile,
-      face: "front",
-      from: toLocalRect(sourceRect),
-      to: toLocalRect(targetRect),
-    });
-  }, [pendingBotDraw, pendingBotDiscardTileId, setTileFlight, state.currentPlayerIndex, state.players, tileFlight, toLocalRect]);
   useEffect(() => {
     const pendingTimeoutTileId = pendingTimeoutDiscardTileId;
     if (!pendingTimeoutTileId || tileFlight || !pendingDrawFlightRef.current || !state.hasDrawnThisTurn) return;
@@ -854,7 +823,7 @@ const {
     setTurnTimedOut(false);
   }, [lifecycleResumeToken, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, setHideDiscardTopTile, setTileFlight]);
 
-  const turnTimerVisible = state.phase === "playing" || showFinishRevealPopup;
+  const turnTimerVisible = onlineGameplayReady && (state.phase === "playing" || showFinishRevealPopup);
   const turnTimerResetKey = `${currentRound}-${state.currentPlayerIndex}-${state.phase}`;
 
 useEffect(() => {
@@ -979,14 +948,6 @@ if (
     return () => clearTimeout(timer);
   }, [isAppActive, playEliminated, setHideDeckTopTile, setTileFlight, state.currentPlayerIndex, state.deck, state.phase, state.players, tileFlight, toLocalRect]);
   useEffect(() => {
-    const turnPlayer = state.players[state.currentPlayerIndex];
-    const botMoveInProgress =
-      state.phase === "playing" &&
-      turnPlayer?.kind === "bot" &&
-      (state.hasDrawnThisTurn || !!pendingBotDiscardTileId);
-
-    if (botMoveInProgress) return;
-
     setStableOpponentTileCounts((current) => {
       const next = Object.fromEntries(
         state.players.slice(1).map((player) => [player.id, player.hand.length]),
@@ -996,23 +957,50 @@ if (
         Object.entries(next).every(([playerId, count]) => current[playerId] === count);
       return unchanged ? current : next;
     });
-  }, [pendingBotDiscardTileId, state.currentPlayerIndex, state.hasDrawnThisTurn, state.phase, state.players]);
-  const botSummaries = useMemo(
-    () => state.players.slice(1).map((player) => ({
-      id: player.id,
-      name: player.name,
-      count: stableOpponentTileCounts[player.id] ?? player.hand.length,
-      active: currentPlayer?.id === player.id,
-      timerResetKey: turnTimerResetKey,
-      dealResetKey: String(currentRound),
-    })),
-    [currentPlayer?.id, currentRound, stableOpponentTileCounts, state.players, turnTimerResetKey],
+  }, [state.players]);
+  const localPlayerIndex = useMemo(
+    () => onlineRoom?.members.find((member) => member.userId === currentUserId)?.playerIndex ?? null,
+    [currentUserId, onlineRoom?.members],
   );
-
-
-
-  const openOpponentProfile = useStableEvent((playerIndex: number, seat: Player["seat"]) => {
-    const player = state.players[playerIndex];
+  const relativeSeatMap = useMemo(
+    () => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex),
+    [localPlayerIndex],
+  );
+  const playerByServerIndex = useMemo(() => {
+    const byIndex = new Map<number, typeof state.players[number]>();
+    for (const member of onlineRoom?.members ?? []) {
+      const player = state.players.find((entry) => entry.id === member.userId);
+      if (player) byIndex.set(member.playerIndex, player);
+    }
+    return byIndex;
+  }, [onlineRoom?.members, state.players]);
+  const playerForSeat = useCallback((seat: RelativeSeat) => {
+    if (!relativeSeatMap) return null;
+    return playerByServerIndex.get(relativeSeatMap[seat]) ?? null;
+  }, [playerByServerIndex, relativeSeatMap]);
+  const opponentSeats = useMemo(
+    () => (["top", "left", "right"] as const).map((side) => {
+      const serverIndex = relativeSeatMap?.[side] ?? null;
+      const member = serverIndex === null ? null : onlineRoom?.members.find((entry) => entry.playerIndex === serverIndex) ?? null;
+      const player = playerForSeat(side);
+      return {
+        side,
+        id: player?.id ?? member?.userId ?? `waiting-${side}`,
+        name: member?.displayName ?? "",
+        count: onlineGameplayReady ? (player ? stableOpponentTileCounts[player.id] ?? player.hand.length : 0) : 0,
+        active: onlineGameplayReady && currentPlayer?.id === player?.id,
+        timerResetKey: turnTimerResetKey,
+        dealResetKey: dealLifecycleKey,
+      };
+    }),
+    [currentPlayer?.id, dealLifecycleKey, onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, turnTimerResetKey],
+  );
+  const seatOrderedPlayers = useMemo(() => {
+    if (!relativeSeatMap) return [state.players[0], state.players[2], state.players[3], state.players[1]];
+    return ["bottom", "top", "left", "right"].map((seat) => playerForSeat(seat as RelativeSeat) ?? state.players[0]);
+  }, [playerForSeat, relativeSeatMap, state.players]);
+  const openOpponentProfile = useStableEvent((playerId: string, seat: Player["seat"]) => {
+    const player = state.players.find((entry) => entry.id === playerId);
     if (!player) return;
     const tileCount = stableOpponentTileCounts[player.id] ?? player.hand.length;
     setProfilePlayer({
@@ -1031,15 +1019,15 @@ if (
   });
 
   const handleTopOpponentMeasured = useStableEvent((rect: ScreenRect) => {
-    const playerId = botSummaries[0]?.id;
+    const playerId = opponentSeats[0]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
   });
   const handleLeftOpponentMeasured = useStableEvent((rect: ScreenRect) => {
-    const playerId = botSummaries[1]?.id;
+    const playerId = opponentSeats[1]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
   });
   const handleRightOpponentMeasured = useStableEvent((rect: ScreenRect) => {
-    const playerId = botSummaries[2]?.id;
+    const playerId = opponentSeats[2]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
   });
   const handleMeldMeasured = useStableEvent(registerMeldDropRect);
@@ -1134,149 +1122,49 @@ if (
     style={[styles.screen, responsiveLayout.screen]}
   >
 
-{waitingForOnlinePlayers && onlineRoom ? (
-  <View style={waitingPopupStyles.layer}>
-    <View style={waitingPopupStyles.card}>
-      <ActivityIndicator
-        size="small"
-        color="#f8d774"
-      />
+<WaitingPlayersPopup
+  visible={waitingForOnlinePlayers}
+  memberCount={onlineRoom?.memberCount ?? 0}
+  entryFee={onlineRoom?.entryFee ?? 0}
+  currency={onlineRoom?.currency ?? "fun"}
+  members={onlineRoom?.members ?? []}
+  countdownEndsAt={onlineRoom?.countdownEndsAt ?? null}
+  canCancel={!countdownInProgress}
+  loading={leavingWaitingRoom}
+  onCancel={handleCancelWaiting}
+/>
 
-      <Text style={waitingPopupStyles.title}>
-        چاوەڕوانی یاریزانەکان
-      </Text>
+<ConnectionOverlay
+  visible={
+    isOnline &&
+    !onlineReady &&
+    !waitingForOnlinePlayers
+  }
+/>
 
-      <Text style={waitingPopupStyles.count}>
-        {onlineRoom.memberCount} / 4
-      </Text>
+<ConnectionErrorBanner
+  visible={isOnline && !!onlineError}
+  loading={onlineCommandPending}
+  onRetry={reconnectOnline}
+/>
 
-      <View style={waitingPopupStyles.players}>
-        {[0, 1, 2, 3].map((playerIndex) => {
-          const member = onlineRoom.members.find(
-            (item) =>
-              item.playerIndex === playerIndex,
-          );
 
-          return (
-            <View
-              key={playerIndex}
-              style={[
-                waitingPopupStyles.player,
-                member &&
-                  waitingPopupStyles.playerActive,
-              ]}
-            >
-              <Ionicons
-                name={
-                  member
-                    ? "person"
-                    : "person-outline"
-                }
-                size={17}
-                color={
-                  member
-                    ? "#f8d774"
-                    : "rgba(255,255,255,0.42)"
-                }
-              />
-            </View>
-          );
-        })}
-      </View>
-
-      <Pressable
-        disabled={leavingWaitingRoom}
-        onPress={() => {
-          void handleCancelWaiting();
-        }}
-        style={({ pressed }) => [
-          waitingPopupStyles.cancelButton,
-          pressed &&
-            !leavingWaitingRoom &&
-            waitingPopupStyles.cancelButtonPressed,
-          leavingWaitingRoom &&
-            waitingPopupStyles.cancelButtonDisabled,
-        ]}
-      >
-        {leavingWaitingRoom ? (
-          <ActivityIndicator
-            size="small"
-            color="#ffffff"
-          />
-        ) : (
-          <Text
-            style={
-              waitingPopupStyles.cancelButtonText
-            }
-          >
-            پاشگەز بوومەوە
-          </Text>
-        )}
-      </Pressable>
-    </View>
-  </View>
-) : null}
-
-{isOnline &&
-!onlineReady &&
-!waitingForOnlinePlayers ? (
-  <View style={finishRevealStyles.overlay}>
-    <View style={finishRevealStyles.content}>
-      <Text style={finishRevealStyles.title}>
-        پەیوەندی بە یاری
-      </Text>
-
-      <Text style={finishRevealStyles.subtitle}>
-        دۆخی یاری لە سێرڤەر وەردەگیرێت...
-      </Text>
-    </View>
-  </View>
-) : null}
-
-{isOnline && onlineError ? (
-  <Pressable
-    style={finishRevealStyles.connectionError}
-    disabled={onlineCommandPending}
-    onPress={() => {
-      void reconnectOnline();
-    }}
-  >
-    <Text style={finishRevealStyles.connectionErrorText}>
-      پەیوەندی کێشەی هەیە — بۆ هەوڵدانەوە دابگرە
-    </Text>
-  </Pressable>
+{!showMatchMenu ? (
+  <GameControls
+    onOpenMenu={openMatchMenu}
+    onOpenChat={() => setShowGameChat(true)}
+  />
 ) : null}
 
 
-    {!showMatchMenu ? (
-      <View style={finishRevealStyles.topRightActions}>
-        <Pressable
-          style={finishRevealStyles.topRightActionButton}
-          onPress={openMatchMenu}
-        >
-          <Ionicons name="menu-outline" size={22} color="#f8f3df" />
-        </Pressable>
-
-        <Pressable
-          style={finishRevealStyles.topRightActionButton}
-          onPress={() => setShowGameChat(true)}
-        >
-          <Ionicons
-            name="chatbubble-ellipses-outline"
-            size={22}
-            color="#f8f3df"
-          />
-        </Pressable>
-      </View>
-    ) : null}
         <View style={[styles.tableArea, isDiscardDragActive && styles.activeDiscardDragTableLayer]}>
           <View style={styles.tableSurface}>
             <View style={styles.feltTexture} />
-            <MemoizedOkeyOpponentSeat {...botSummaries[0]} side="top" dealOrder={2} dealOrigin={dealOrigin} onMeasured={handleTopOpponentMeasured} onPress={() => openOpponentProfile(1, "top")} />
-            <MemoizedOkeyOpponentSeat {...botSummaries[1]} side="left" dealOrder={1} dealOrigin={dealOrigin} onMeasured={handleLeftOpponentMeasured} onPress={() => openOpponentProfile(2, "left")} />
-            <MemoizedOkeyOpponentSeat {...botSummaries[2]} side="right" dealOrder={3} dealOrigin={dealOrigin} onMeasured={handleRightOpponentMeasured} onPress={() => openOpponentProfile(3, "right")} />
+            <MemoizedOkeyOpponentSeat {...opponentSeats[0]} side="top" dealOrder={2} dealOrigin={dealOrigin} onMeasured={handleTopOpponentMeasured} onPress={opponentSeats[0]?.name ? () => openOpponentProfile(opponentSeats[0]?.id ?? "", "top") : undefined} />
+            <MemoizedOkeyOpponentSeat {...opponentSeats[1]} side="left" dealOrder={1} dealOrigin={dealOrigin} onMeasured={handleLeftOpponentMeasured} onPress={opponentSeats[1]?.name ? () => openOpponentProfile(opponentSeats[1]?.id ?? "", "left") : undefined} />
+            <MemoizedOkeyOpponentSeat {...opponentSeats[2]} side="right" dealOrder={3} dealOrigin={dealOrigin} onMeasured={handleRightOpponentMeasured} onPress={opponentSeats[2]?.name ? () => openOpponentProfile(opponentSeats[2]?.id ?? "", "right") : undefined} />
             <MemoizedOkeyTableMeldAreas
-              players={state.players}
+              players={seatOrderedPlayers}
               okeyTile={state.okeyTile}
               onMeldMeasured={handleMeldMeasured}
               meldOffsets={tableMeldOffsets}
@@ -1304,25 +1192,27 @@ if (
                 ))}
               </View>
             </View>
-            <MemoizedOkeyCenterPiles
-              deckCount={state.deck.length}
-              topDiscard={topDiscard}
-              discardCount={state.discardPile.length}
-              canDraw={canDraw}
-              canDrawDiscard={canDrawDiscard}
-              indicatorTile={state.indicatorTile}
-              okeyTile={state.okeyTile}
-              onDrawDeck={handleDrawDeck}
-              onDrawDiscard={handleDrawDiscard}
-              onViewDiscards={handleViewDiscards}
-              onDiscardDroppedOnRack={handleDiscardDroppedOnRackStable}
-              onDiscardDragActiveChange={setIsDiscardDragActive}
-              onDiscardDragPointChange={setDiscardDragPoint}
-              onDeckMeasured={handleDeckMeasured}
-              onDiscardMeasured={handleDiscardMeasured}
-              hideTopDeckTile={hideDeckTopTile}
-              hideTopDiscardTile={hideDiscardTopTile}
-            />
+            {onlineGameplayReady ? (
+              <MemoizedOkeyCenterPiles
+                deckCount={state.deck.length}
+                topDiscard={topDiscard}
+                discardCount={state.discardPile.length}
+                canDraw={canDraw}
+                canDrawDiscard={canDrawDiscard}
+                indicatorTile={state.indicatorTile}
+                okeyTile={state.okeyTile}
+                onDrawDeck={handleDrawDeck}
+                onDrawDiscard={handleDrawDiscard}
+                onViewDiscards={handleViewDiscards}
+                onDiscardDroppedOnRack={handleDiscardDroppedOnRackStable}
+                onDiscardDragActiveChange={setIsDiscardDragActive}
+                onDiscardDragPointChange={setDiscardDragPoint}
+                onDeckMeasured={handleDeckMeasured}
+                onDiscardMeasured={handleDiscardMeasured}
+                hideTopDeckTile={hideDeckTopTile}
+                hideTopDiscardTile={hideDiscardTopTile}
+              />
+            ) : null}
           </View>
         </View>
         <Pressable
@@ -1393,7 +1283,7 @@ if (
           }}
         />
         <MemoizedOkeyPlayerRack
-          tiles={humanPlayer.hand}
+          tiles={onlineGameplayReady ? humanPlayer.hand : EMPTY_OKEY_TILES}
           selectedTileId={selectedTileId}
           okeyTile={state.okeyTile}
           onSelectTile={handleRackTileSelect}
@@ -1414,8 +1304,8 @@ if (
 
           turnTimerActive={turnTimerVisible && state.currentPlayerIndex === 0}
           turnTimerResetKey={turnTimerResetKey}
-          dealResetKey={String(currentRound)}
-          isDealer={state.dealerIndex === 0}
+          dealResetKey={dealLifecycleKey}
+          isDealer={onlineGameplayReady && state.dealerIndex === 0}
           dealOrigin={dealOrigin}
           onRackMeasured={handleRackMeasured}
           onTileMeasured={handleRackTileMeasured}
@@ -1442,7 +1332,7 @@ if (
       />
 <MatchMenuDrawer
   visible={showMatchMenu}
-  players={state.players}
+  players={seatOrderedPlayers}
   humanPlayer={humanPlayer}
   translateX={matchMenuTranslateX}
   onClose={closeMatchMenu}
@@ -1473,95 +1363,6 @@ if (
     </TableBackground>
   );
 }
-const waitingPopupStyles = StyleSheet.create({
-  layer: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    zIndex: 100,
-    transform: [
-      { translateX: -200 },
-      { translateY: -100 },
-    ],
-  },
-
-  card: {
-    minHeight: 280,
-    width: 520,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(248,215,116,0.44)",
-    backgroundColor: "rgba(10,18,34,0.96)",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  title: {
-    marginTop: 8,
-    color: "#f8d774",
-    fontSize: 20,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
-
-  count: {
-    marginTop: 3,
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-
-  players: {
-    marginTop: 12,
-    flexDirection: "row",
-    gap: 9,
-  },
-
-  player: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  playerActive: {
-    borderColor: "rgba(248,215,116,0.72)",
-    backgroundColor: "rgba(248,215,116,0.14)",
-  },
-
-  cancelButton: {
-    marginTop: 14,
-    minWidth: 150,
-    height: 36,
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(220,38,38,0.88)",
-  },
-
-  cancelButtonPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.98 }],
-  },
-
-  cancelButtonDisabled: {
-    opacity: 0.58,
-  },
-
-  cancelButtonText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-  },
-});
-
 const finishRevealStyles = StyleSheet.create({
   topRightActions: {
     position: "absolute",
@@ -1583,65 +1384,5 @@ const finishRevealStyles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(248,243,223,0.22)",
-  },
-
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
-    elevation: 1000,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(2,6,23,0.84)",
-  },
-
-  content: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 28,
-  },
-
-  title: {
-    color: "#f8d774",
-    fontSize: 34,
-    lineHeight: 42,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    writingDirection: "rtl",
-  },
-
-  subtitle: {
-    marginTop: 10,
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    writingDirection: "rtl",
-  },
-
-  connectionError: {
-    position: "absolute",
-    top: 68,
-    left: 20,
-    right: 20,
-    zIndex: 1200,
-    elevation: 1200,
-    minHeight: 38,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(127,29,29,0.94)",
-    borderWidth: 1,
-    borderColor: "rgba(252,165,165,0.38)",
-  },
-
-  connectionErrorText: {
-    color: "#ffffff",
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    writingDirection: "rtl",
   },
 });

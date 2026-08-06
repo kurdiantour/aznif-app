@@ -82,6 +82,11 @@ const TABLE_ECONOMY: Record<string, TableEconomy> = {
   },
 };
 
+function withTableEconomy(room: OkeyRoomSnapshot): OkeyRoomSnapshot {
+  const economy = TABLE_ECONOMY[room.tableId];
+  if (!economy) throw new Error("room_has_unknown_table");
+  return { ...room, entryFee: economy.entryFee, currency: economy.currency };
+}
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -243,12 +248,13 @@ serve(async (req) => {
   const metadata =
     authData.user.user_metadata ?? {};
 
-  const displayName = String(
-    metadata.display_name ??
-      metadata.full_name ??
-      metadata.name ??
-      "Player",
-  ).slice(0, 64);
+const displayName = String(
+  metadata.display_name ??
+    metadata.full_name ??
+    metadata.name ??
+    authData.user.email?.split("@")[0] ??
+    "Player"
+).slice(0, 64);
 
   const avatarUrl =
     typeof metadata.avatar_url === "string"
@@ -570,6 +576,6 @@ serve(async (req) => {
   }
 
   return json({
-    room,
+    room: withTableEconomy(room),
   });
 });

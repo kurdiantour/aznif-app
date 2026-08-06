@@ -13,6 +13,8 @@ import { playBotTurn } from "../../../okey/engine/okey-bot-engine.ts";
 import type { OkeyGameState } from "../../../okey/types/okey.ts";
 
 const DISCONNECT_TIMEOUT_MS = 15_000;
+// Okey tables are human-only; disconnected players are never replaced locally or by a server bot.
+const BOT_TAKEOVER_ENABLED = false;
 const MATCH_LIMIT = 100;
 
 type MatchRow = {
@@ -292,6 +294,7 @@ serve(async (request) => {
           nextState.players[seat.player_index];
 
         if (
+          !BOT_TAKEOVER_ENABLED ||
           !player ||
           player.controlledByBot
         ) {
@@ -349,6 +352,7 @@ serve(async (request) => {
         ];
 
       if (
+        BOT_TAKEOVER_ENABLED &&
         nextState.phase !== "finished" &&
         currentPlayer?.controlledByBot
       ) {

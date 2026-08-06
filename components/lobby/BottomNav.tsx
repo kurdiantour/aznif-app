@@ -1,16 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
+import DailyGiftButton from "@/components/daily-gift/DailyGiftButton";
 
-export type BottomNavKey = "home" | "leaderboard" | "shop";
+
+export type BottomNavKey =
+  "home"
+  | "leaderboard"
+  | "shop";
+
 
 type BottomNavProps = {
   active?: BottomNavKey | null;
   onChange?: (key: BottomNavKey) => void;
   requireAuth?: boolean;
 };
+
+
 
 const allItems = [
   {
@@ -19,12 +32,14 @@ const allItems = [
     icon: "game-controller",
     href: "/play",
   },
+
   {
     key: "leaderboard",
     label: "خشتەی پێشبڕکێ",
     icon: "trophy",
     href: "/leaderboard",
   },
+
   {
     key: "shop",
     label: "شۆپ",
@@ -34,133 +49,338 @@ const allItems = [
 
 ] as const;
 
+
+
 const items = allItems.filter(
-  (item) => ENABLE_SHOP_FEATURES || item.key !== "shop",
+  (item) =>
+    ENABLE_SHOP_FEATURES ||
+    item.key !== "shop"
 );
+
+
 
 export function BottomNav({
   active: controlledActive,
   onChange,
   requireAuth = false,
 }: BottomNavProps) {
+
+
   const pathname = usePathname();
 
-  const routeActive: BottomNavKey = pathname.includes("leaderboard")
-    ? "leaderboard"
-    : ENABLE_SHOP_FEATURES && pathname.includes("shop")
-      ? "shop"
-      : "home";
 
-  const active = controlledActive === undefined ? routeActive : controlledActive;
+
+  const routeActive: BottomNavKey =
+    pathname.includes("leaderboard")
+      ? "leaderboard"
+
+      : ENABLE_SHOP_FEATURES &&
+        pathname.includes("shop")
+
+        ? "shop"
+
+        : "home";
+
+
+
+  const active =
+    controlledActive === undefined
+      ? routeActive
+      : controlledActive;
+
+
 
   const handlePress = (
     key: BottomNavKey,
-    href: (typeof items)[number]["href"],
+    href: (typeof items)[number]["href"]
   ) => {
+
+
     if (onChange) {
       onChange(key);
       return;
     }
 
+
+
     if (requireAuth && key !== "home") {
+
       router.push("/login");
       return;
+
     }
 
+
+
     router.push(href);
+
   };
 
+
+
   return (
+
     <View style={styles.wrapper}>
-      <View style={styles.container}>
-        {items.map((item) => {
-          const isActive = active === item.key;
 
-          return (
-            <Pressable
-              key={item.key}
-              onPress={() => handlePress(item.key, item.href)}
-              hitSlop={10}
-              style={({ pressed }) => [
-                styles.item,
-                isActive && styles.activeItem,
-                pressed && styles.pressedItem,
-              ]}
-            >
-              <Ionicons
-                name={item.icon}
-                size={15}
-                color={isActive ? "#ffffff" : "rgba(255,255,255,0.52)"}
-              />
 
-              <Text
-                style={[
-                  styles.text,
-                  isActive ? styles.activeText : styles.inactiveText,
+      <View style={styles.row}>
+
+
+        {/* Daily Gift Button */}
+
+        <DailyGiftButton />
+
+
+
+        {/* Main Navigation */}
+
+        <View style={styles.container}>
+
+
+          {items.map((item)=>{
+
+
+            const isActive =
+              active === item.key;
+
+
+
+            return (
+
+              <Pressable
+
+                key={item.key}
+
+                onPress={() =>
+                  handlePress(
+                    item.key,
+                    item.href
+                  )
+                }
+
+                hitSlop={10}
+
+                style={({pressed})=>[
+
+                  styles.item,
+
+                  isActive &&
+                  styles.activeItem,
+
+                  pressed &&
+                  styles.pressed,
+
                 ]}
+
               >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+
+
+                <Ionicons
+
+                  name={item.icon}
+
+                  size={15}
+
+                  color={
+                    isActive
+                      ? "#ffffff"
+                      : "rgba(255,255,255,0.52)"
+                  }
+
+                />
+
+
+
+                <Text
+
+                  style={[
+
+                    styles.text,
+
+                    isActive
+                      ? styles.activeText
+                      : styles.inactiveText,
+
+                  ]}
+
+                >
+
+                  {item.label}
+
+                </Text>
+
+
+
+              </Pressable>
+
+            );
+
+
+          })}
+
+
+        </View>
+
+
       </View>
+
+
     </View>
+
   );
+
 }
 
+
+
+
 const styles = StyleSheet.create({
-  wrapper: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 18,
-    alignItems: "center",
-    zIndex: 999,
-    elevation: 20,
-  },
 
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(180,120,255,0.18)",
-    backgroundColor: "rgba(12, 10, 30, 0.88)",
-  },
 
-  item: {
-    height: 38,
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
+wrapper:{
 
-  activeItem: {
-    backgroundColor: "rgba(150, 90, 255, 0.22)",
-    borderWidth: 1,
-    borderColor: "rgba(190,140,255,0.35)",
-  },
+  position:"absolute",
 
-  pressedItem: {
-    opacity: 0.82,
-  },
+  left:0,
 
-  text: {
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-  },
+  right:0,
 
-  activeText: {
-    color: "#ffffff",
-  },
+  bottom:18,
 
-  inactiveText: {
-    color: "rgba(255,255,255,0.52)",
-  },
+  alignItems:"center",
+
+  zIndex:999,
+
+  elevation:20,
+
+},
+
+
+
+row:{
+
+
+  flexDirection:"row-reverse",
+
+  alignItems:"center",
+
+  gap:10,
+
+},
+
+
+
+
+container:{
+
+
+  flexDirection:"row",
+
+  alignItems:"center",
+
+  paddingHorizontal:6,
+
+  paddingVertical:6,
+
+  borderRadius:999,
+
+  borderWidth:1,
+
+  borderColor:
+    "rgba(180,120,255,0.18)",
+
+  backgroundColor:
+    "rgba(12,10,30,0.88)",
+
+
+},
+
+
+
+
+item:{
+
+
+  height:38,
+
+  paddingHorizontal:18,
+
+  borderRadius:999,
+
+  flexDirection:"row",
+
+  alignItems:"center",
+
+  justifyContent:"center",
+
+  gap:7,
+
+
+},
+
+
+
+activeItem:{
+
+
+  backgroundColor:
+    "rgba(150,90,255,0.22)",
+
+
+  borderWidth:1,
+
+
+  borderColor:
+    "rgba(190,140,255,0.35)",
+
+
+},
+
+
+
+
+pressed:{
+
+
+  opacity:0.82,
+
+
+},
+
+
+
+text:{
+
+
+  fontSize:12,
+
+  fontFamily:"SpedaBold",
+
+
+},
+
+
+
+
+activeText:{
+
+
+  color:"#ffffff",
+
+
+},
+
+
+
+
+inactiveText:{
+
+
+  color:
+    "rgba(255,255,255,0.52)",
+
+
+},
+
+
 });

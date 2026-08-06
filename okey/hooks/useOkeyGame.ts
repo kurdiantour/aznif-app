@@ -7,17 +7,7 @@ import {
 } from "react";
 import { AppState } from "react-native";
 
-import { localOkeyMatchAdapter } from "@/okey/adapters/local-okey-match-adapter";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
-import {
-  chooseBotDrawSource,
-  prepareBotTurn,
-} from "@/okey/engine/okey-bot-engine";
-import {
-  getOkeyBotDifficulty,
-  getOkeyBotProfile,
-  isOkeyBotControlled,
-} from "@/okey/engine/okey-bot-policy";
 import {
   canSpendTileOnBestMeld,
   createInitialOkeyGame,
@@ -37,11 +27,6 @@ import {
   settleFinishedRound,
   type OkeyMatchState,
 } from "@/okey/match/okey-match-state";
-import {
-  clearLocalOkeyMatch,
-  loadLocalOkeyMatchSnapshot,
-  saveLocalOkeyMatch,
-} from "@/okey/persistence/okey-local-match-storage";
 import type {
   OkeyAuthoritativeCommand,
   OkeyServerProjection,
@@ -54,6 +39,14 @@ import type {
 } from "@/okey/types/okey";
 
 const FINISH_REVEAL_SECONDS = 5.35;
+
+// No local match adapter or local persistence exists in the online-only client.
+const onlineOnlyFallback = {
+  apply: <T,>(state: T, ..._args: unknown[]) => state,
+};
+const loadDisabledSnapshot = async (): Promise<{ match: OkeyMatchState; savedAt: number } | null> => null;
+const saveDisabledSnapshot = async (..._args: unknown[]) => undefined;
+const clearDisabledSnapshot = async () => undefined;
 
 function createPlaceholderOkeyTile(
   id: string,
@@ -95,30 +88,30 @@ function createPlaceholderDeck(
   );
 }
 
-/*
- * ترتیب بازیکنان Projection سرور را طوری تغییر می‌دهیم
- * که کاربر فعلی همیشه در UI بازیکن شماره صفر باشد.
- */
+
 function projectToOkeyGameState(
   projection: OkeyServerProjection,
 ): OkeyGameState {
   const totalPlayers =
     projection.players.length;
 
-  const viewerIndex =
-    projection.players.findIndex(
-      (player) =>
-        Array.isArray(player.hand),
-    );
+const viewerIndex =
+  projection.phase === "playing"
+    ? projection.players.findIndex(
+        (player) =>
+          Array.isArray(player.hand),
+      )
+    : -1;
 
   const normalizedPlayers =
     projection.players.map((player) => {
-      const hand = Array.isArray(player.hand)
-        ? player.hand
-        : createPlaceholderHand(
-            player.id,
-            player.handCount,
-          );
+
+    
+  const hand =
+    projection.phase === "playing" &&
+    Array.isArray(player.hand)
+      ? player.hand
+      : [];
 
       return {
         id: player.id,
@@ -189,9 +182,12 @@ function projectToOkeyGameState(
       projection.dealerIndex,
     ),
 
-    deck: createPlaceholderDeck(
-      projection.deckCount,
-    ),
+deck:
+  projection.phase === "playing"
+    ? createPlaceholderDeck(
+        projection.deckCount,
+      )
+    : [],
 
     discardPile:
       projection.discardPile,
@@ -320,11 +316,9 @@ function normalizeOnlineError(
 export function useOkeyGame(
   onlineTableId?: string,
   onlineMatchId?: string,
-  onlineSessionActive = false,
 ) {
-  const isOnline =
-    onlineSessionActive ||
-    Boolean(onlineMatchId);
+  // Local Okey is retired: every game screen is backed by an online match.
+  const isOnline = true;
 
   const [match, setMatch] =
     useState<OkeyMatchState>(() =>
@@ -375,20 +369,6 @@ export function useOkeyGame(
   );
 
   const [
-    pendingBotDraw,
-    setPendingBotDraw,
-  ] = useState<{
-    playerId: string;
-    tile: OkeyTile;
-    source: OkeyDrawSource;
-  } | null>(null);
-
-  const [
-    pendingBotDiscardTileId,
-    setPendingBotDiscardTileId,
-  ] = useState<string | null>(null);
-
-  const [
     pendingTimeoutDiscardTileId,
     setPendingTimeoutDiscardTileId,
   ] = useState<string | null>(null);
@@ -411,7 +391,7 @@ export function useOkeyGame(
 
     let mounted = true;
 
-    loadLocalOkeyMatchSnapshot()
+    loadDisabledSnapshot()
       .then((snapshot) => {
         if (!mounted || !snapshot) {
           return;
@@ -575,16 +555,12 @@ export function useOkeyGame(
               suspendedAt;
 
             setIsAppActive(false);
-            setPendingBotDraw(null);
-            setPendingBotDiscardTileId(
-              null,
-            );
             setPendingTimeoutDiscardTileId(
               null,
             );
 
             if (!isOnline) {
-              void saveLocalOkeyMatch(
+              void saveDisabledSnapshot(
                 matchRef.current,
                 suspendedAt,
               ).catch((error) =>
@@ -680,7 +656,7 @@ export function useOkeyGame(
 
     saveMatchTimerRef.current =
       setTimeout(() => {
-        void saveLocalOkeyMatch(
+        void saveDisabledSnapshot(
           matchRef.current,
         ).catch((error) =>
           console.warn(
@@ -841,7 +817,7 @@ export function useOkeyGame(
       return;
     }
 
-    void clearLocalOkeyMatch().catch(
+    void clearDisabledSnapshot().catch(
       (error) =>
         console.warn(
           "Unable to clear saved Okey match",
@@ -1042,7 +1018,7 @@ export function useOkeyGame(
       }
 
       updateRoundState((current) =>
-        localOkeyMatchAdapter.apply(
+        onlineOnlyFallback.apply(
           current,
           {
             type: "draw",
@@ -1070,7 +1046,7 @@ export function useOkeyGame(
       }
 
       updateRoundState((current) =>
-        localOkeyMatchAdapter.apply(
+        onlineOnlyFallback.apply(
           current,
           {
             type: "discard",
@@ -1092,7 +1068,7 @@ export function useOkeyGame(
    */
   const sortHand = useCallback(() => {
     updateRoundState((current) =>
-      localOkeyMatchAdapter.apply(
+      onlineOnlyFallback.apply(
         current,
         {
           type: "sort-hand",
@@ -1108,7 +1084,7 @@ export function useOkeyGame(
       targetIndex: number,
     ) => {
       updateRoundState((current) =>
-        localOkeyMatchAdapter.apply(
+        onlineOnlyFallback.apply(
           current,
           {
             type: "move-tile",
@@ -1128,7 +1104,7 @@ export function useOkeyGame(
       targetIndex: number,
     ) => {
       updateRoundState((current) =>
-        localOkeyMatchAdapter.apply(
+        onlineOnlyFallback.apply(
           current,
           {
             type: "move-tiles",
@@ -1158,7 +1134,7 @@ export function useOkeyGame(
       }
 
       updateRoundState((current) =>
-        localOkeyMatchAdapter.apply(
+        onlineOnlyFallback.apply(
           current,
           {
             type: "open-melds",
@@ -1187,7 +1163,7 @@ export function useOkeyGame(
       }
 
       updateRoundState((current) =>
-        localOkeyMatchAdapter.apply(
+        onlineOnlyFallback.apply(
           current,
           {
             type: "declare-konkan",
@@ -1214,7 +1190,7 @@ export function useOkeyGame(
 
         updateRoundState(
           (current) =>
-            localOkeyMatchAdapter.apply(
+            onlineOnlyFallback.apply(
               current,
               {
                 type: "spend-best",
@@ -1247,7 +1223,7 @@ export function useOkeyGame(
 
         updateRoundState(
           (current) =>
-            localOkeyMatchAdapter.apply(
+            onlineOnlyFallback.apply(
               current,
               {
                 type: "spend-meld",
@@ -1286,7 +1262,7 @@ export function useOkeyGame(
 
         updateRoundState(
           (current) =>
-            localOkeyMatchAdapter.apply(
+            onlineOnlyFallback.apply(
               current,
               {
                 type: "lock-konkan",
@@ -1417,7 +1393,7 @@ export function useOkeyGame(
 
       updateRoundState(
         (current) =>
-          localOkeyMatchAdapter.apply(
+          onlineOnlyFallback.apply(
             current,
             {
               type: "play-eliminated",
@@ -1460,133 +1436,6 @@ export function useOkeyGame(
       pendingTimeoutDiscardTileId,
       updateRoundState,
     ]);
-
-  /*
-   * Bot محلی در حالت Online کاملاً خاموش است.
-   * Botهای آنلاین فقط توسط okey_maintenance حرکت می‌کنند.
-   */
-  useEffect(() => {
-    if (
-      isOnline ||
-      !hasLoadedSavedGame ||
-      !isAppActive ||
-      match.matchFinished ||
-      state.phase !== "playing" ||
-      pendingBotDraw ||
-      pendingBotDiscardTileId
-    ) {
-      return;
-    }
-
-    const currentPlayer =
-      state.players[
-        state.currentPlayerIndex
-      ];
-
-    if (
-      !currentPlayer ||
-      currentPlayer.eliminated ||
-      !isOkeyBotControlled(
-        currentPlayer,
-      )
-    ) {
-      return;
-    }
-
-    const botDifficulty =
-      getOkeyBotDifficulty(
-        currentPlayer,
-      );
-
-    const timer = setTimeout(() => {
-      updateRoundState(
-        (current) => {
-          const player =
-            current.players[
-              current.currentPlayerIndex
-            ];
-
-          if (
-            !isOkeyBotControlled(
-              player,
-            )
-          ) {
-            return current;
-          }
-
-          const currentDifficulty =
-            getOkeyBotDifficulty(
-              player,
-            );
-
-          const drawSource =
-            current.hasDrawnThisTurn
-              ? null
-              : chooseBotDrawSource(
-                  current,
-                  {
-                    difficulty:
-                      currentDifficulty,
-                  },
-                );
-
-          const drawnTile =
-            drawSource === "deck"
-              ? current.deck[0] ??
-                null
-              : drawSource ===
-                    "discard"
-                ? current.discardPile[
-                    current
-                      .discardPile
-                      .length - 1
-                  ] ?? null
-                : null;
-
-          const prepared =
-            prepareBotTurn(
-              current,
-              {
-                difficulty:
-                  currentDifficulty,
-              },
-            );
-
-          if (
-            player &&
-            drawSource &&
-            drawnTile
-          ) {
-            setPendingBotDraw({
-              playerId: player.id,
-              tile: drawnTile,
-              source: drawSource,
-            });
-          }
-
-          setPendingBotDiscardTileId(
-            prepared.discardTileId,
-          );
-
-          return prepared.state;
-        },
-      );
-    }, getOkeyBotProfile(botDifficulty).thinkDelayMs);
-
-    return () =>
-      clearTimeout(timer);
-  }, [
-    hasLoadedSavedGame,
-    isAppActive,
-    isOnline,
-    match.matchFinished,
-    pendingBotDiscardTileId,
-    pendingBotDraw,
-    state.currentPlayerIndex,
-    state.phase,
-    state.players,
-    updateRoundState,
-  ]);
 
   const currentRoundResult =
     useMemo(
@@ -1673,17 +1522,5 @@ export function useOkeyGame(
     beginTimeoutHumanTurn,
     commitPendingTimeoutDiscard,
 
-    pendingBotDraw,
-
-    clearPendingBotDraw: () =>
-      setPendingBotDraw(null),
-
-    pendingBotDiscardTileId,
-
-    clearPendingBotDiscardTileId:
-      () =>
-        setPendingBotDiscardTileId(
-          null,
-        ),
   };
 }

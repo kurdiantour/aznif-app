@@ -40,8 +40,27 @@ rightSeat: {
   ],
 },
   opponentRack: { height: 26, minWidth: 112, paddingHorizontal: 8, borderRadius: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(76,40,17,0.72)", borderWidth: 1, borderColor: "rgba(255,220,150,0.24)" },
-  namePlate: { minWidth: 72, height: 20, borderRadius: 8, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.32)" },
-  nameText: { color: "#f8edd0", fontSize: 10, fontFamily: "SpedaRegular" },
+namePlate: {
+  width: 96,
+  maxWidth: 96,
+  minWidth: 0,
+  overflow: "hidden",
+  height: 20,
+  paddingHorizontal: 12,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  backgroundColor: "rgba(0,0,0,0.32)"
+},
+
+nameText: {
+  flexShrink: 1,
+  width: "100%",
+  color: "#f8edd0",
+  fontSize: 13,
+  textAlign: "center",
+},
   countText: { color: "#f8d774", fontSize: 11, fontFamily: "SpedaRegular" },
   tableMeldLayer: { ...StyleSheet.absoluteFillObject, zIndex: 7 },
 meldArea: {
@@ -55,22 +74,15 @@ meldArea: {
 meldContent: {
   width: 272,
   minHeight: 50,
-
-  // دو ردیف حالا در OkeyPlayerMeldArea ساخته می‌شوند.
   flexDirection: "column",
-
   alignItems: "flex-start",
   justifyContent: "flex-start",
-
-  // فاصله میان ردیف اول و دوم
   rowGap: 2,
 },
 
 meldRow: {
   flexDirection: "row",
   alignItems: "flex-end",
-
-  // فاصله میان ست‌های داخل یک ردیف
   columnGap: 4,
 },
 
@@ -78,8 +90,6 @@ meldPreview: {
   flexDirection: "row",
   alignItems: "flex-end",
   position: "relative",
-
-  // تایل‌های یک ست باید کاملاً کنار هم باشند.
   gap: 0,
 },
   meldDropHighlight: { ...StyleSheet.absoluteFillObject, left: -5, right: -5, top: -5, bottom: -5, borderWidth: 2, borderColor: "#f8d774", borderRadius: 7, backgroundColor: "rgba(248,215,116,0.12)", shadowColor: "#f8d774", shadowOpacity: 0.95, shadowRadius: 8, zIndex: 40, elevation: 40 },

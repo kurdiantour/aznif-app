@@ -142,10 +142,15 @@ export function createInitialOkeyGame(
     ? dealerIndex
     : 0;
   const shuffledTiles = shuffle(createTileSet(), random);
+  /*
+   * This is a neutral deal factory. Every seat begins as a human seat;
+   * the authoritative room service immediately assigns the four real player
+   * identities. Temporary automated control is only enabled later by the takeover worker.
+   */
   const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
-    id: index === 0 ? "human" : `bot-${index}`,
-    name: index === 0 ? "تۆ" : `ڕۆبۆت ${index}`,
-    kind: index === 0 ? ("human" as const) : ("bot" as const),
+    id: `seat-${index}`,
+    name: `Player ${index + 1}`,
+    kind: "human" as const,
     teamId: getOkeyTeamIdForPlayerIndex(index),
     hand: [] as OkeyTile[],
     opened: false,

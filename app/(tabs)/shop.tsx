@@ -4,7 +4,7 @@ import {
   type MockShopItem,
   type ShopCategory,
 } from "@/constants/shop";
-import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect } from "expo-router";
@@ -187,16 +187,6 @@ function ShopContent() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.walletSummary}>
-        <View style={styles.walletPill}>
-          <FontAwesome name="circle" size={13} color="#F5C542" />
-          <Text style={styles.walletText}>{coinBalance.toLocaleString()} Coin</Text>
-        </View>
-        <View style={styles.walletPill}>
-          <Ionicons name="diamond" size={14} color="#C084FC" />
-          <Text style={styles.walletText}>{gemBalance.toLocaleString()} Gem</Text>
-        </View>
-      </View>
       <View style={styles.body}>
         <View style={styles.sidebar}>
           {SHOP_CATEGORIES.map((tab) => {

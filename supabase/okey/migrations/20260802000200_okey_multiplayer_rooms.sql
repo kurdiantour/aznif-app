@@ -159,34 +159,44 @@ begin
     for update of match;
 
 
-    if v_existing_match_id is not null then
+if v_existing_match_id is not null then
 
-      select match.*
-      into v_match
-      from okey.matches match
-      where match.id = v_existing_match_id
-      for update;
+  select match.*
+  into v_match
+  from okey.matches match
+  where match.id = v_existing_match_id
+  for update;
 
-      update okey.match_seats
-      set
-        connected = true,
-        last_seen_at = now(),
-        display_name = left(
-          coalesce(
-            nullif(trim(p_display_name), ''),
-            display_name,
-            'Player'
-          ),
-          64
+  update okey.match_seats
+  set
+    connected = true,
+    last_seen_at = now(),
+    display_name = left(
+      coalesce(
+        nullif(trim(p_display_name), ''),
+        (
+          select coalesce(
+            raw_user_meta_data->>'display_name',
+            raw_user_meta_data->>'full_name',
+            raw_user_meta_data->>'name',
+            split_part(email, '@', 1)
+          )
+          from auth.users
+          where id = p_user_id
         ),
-        avatar_url = coalesce(
-          p_avatar_url,
-          avatar_url
-        )
-      where match_id = v_match.id
-        and user_id = p_user_id;
+        display_name,
+        'Player'
+      ),
+      64
+    ),
+    avatar_url = coalesce(
+      p_avatar_url,
+      avatar_url
+    )
+  where match_id = v_match.id
+    and user_id = p_user_id;
 
-    else
+else
 
       /*
        * Only one transaction may allocate a seat for this table at a time.
@@ -296,13 +306,23 @@ begin
           else 'teamB'
         end,
 
-        left(
-          coalesce(
-            nullif(trim(p_display_name), ''),
-            'Player'
-          ),
-          64
-        ),
+left(
+  coalesce(
+    nullif(trim(p_display_name), ''),
+    (
+      select coalesce(
+        raw_user_meta_data->>'display_name',
+        raw_user_meta_data->>'full_name',
+        raw_user_meta_data->>'name',
+        split_part(email, '@', 1)
+      )
+      from auth.users
+      where id = p_user_id
+    ),
+    'Player'
+  ),
+  64
+)
 
         p_avatar_url,
         true,
