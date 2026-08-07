@@ -2,26 +2,33 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
-  applyAuthoritativeOkeyCommand,
-  getNextOkeyTurnDeadline,
+  applyAuthoritativeOkeyMatchCommand,
+  getNextOkeyMatchTurnDeadline,
   OkeyCommandError,
-  projectOkeyPublicState,
-  projectOkeyState,
-  resolveAuthoritativeDeadline,
+  projectOkeyMatchPublicState,
+  projectOkeyMatchState,
+  resolveAuthoritativeMatchDeadline,
   type OkeyAuthoritativeCommand,
+  type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
 
 import type {
-  OkeyGameState,
   OkeyMeld,
 } from "../../../okey/types/okey.ts";
 
 type OkeyAuthoritativeBundle = {
-  state: OkeyGameState;
+  state: OkeyAuthoritativeMatchState;
   player_index: number;
   version: number;
   turn_deadline_at: string | null;
   command_applied: boolean;
+};
+
+type OkeyAuthoritativeCommit = {
+  applied: boolean;
+  version: number;
+  state: OkeyAuthoritativeMatchState;
+  turn_deadline_at: string | null;
 };
 
 const corsHeaders = {
@@ -108,23 +115,6 @@ function parseCommand(
     default:
       return null;
   }
-}
-
-function getWinnerTeamId(
-  state: OkeyGameState,
-): string | null {
-  if (
-    state.phase !== "finished" ||
-    !state.winnerId
-  ) {
-    return null;
-  }
-
-  const winner = state.players.find(
-    (player) => player.id === state.winnerId,
-  );
-
-  return winner?.teamId ?? null;
 }
 
 serve(async (req) => {
@@ -288,26 +278,17 @@ serve(async (req) => {
   };
 
   const settleFinishedState = async (
-    state: OkeyGameState,
+    state: OkeyAuthoritativeMatchState,
   ) => {
-    if (state.phase !== "finished") {
+    if (!state.matchFinished) {
       return {
         settlement: null,
         error: null,
       };
     }
 
-    if (!state.winnerId) {
-      return {
-        settlement: null,
-        error: new Error(
-          "finished_match_missing_winner",
-        ),
-      };
-    }
-
     const winnerTeamId =
-      getWinnerTeamId(state);
+      state.matchWinnerTeamId;
 
     if (!winnerTeamId) {
       return {
@@ -370,7 +351,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
   
   const state =
-    bundle.state as OkeyGameState;
+    bundle.state as OkeyAuthoritativeMatchState;
 
   const playerIndex =
     bundle.player_index as number;
@@ -385,7 +366,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   if (isSnapshot) {
     let settlement: unknown = null;
 
-    if (state.phase === "finished") {
+    if (state.matchFinished) {
       const result =
         await settleFinishedState(state);
 
@@ -401,7 +382,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
     return json({
       settlement,
-      projection: projectOkeyState(
+      projection: projectOkeyMatchState(
         state,
         playerIndex,
         bundle.version,
@@ -419,7 +400,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   if (bundle.command_applied) {
     let settlement: unknown = null;
 
-    if (state.phase === "finished") {
+    if (state.matchFinished) {
       const result =
         await settleFinishedState(state);
 
@@ -431,7 +412,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
             applied: false,
             committed: true,
             version: bundle.version,
-            projection: projectOkeyState(
+            projection: projectOkeyMatchState(
               state,
               playerIndex,
               bundle.version,
@@ -448,7 +429,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     return json({
       applied: false,
       settlement,
-      projection: projectOkeyState(
+      projection: projectOkeyMatchState(
         state,
         playerIndex,
         bundle.version,
@@ -457,13 +438,13 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     });
   }
 
-  let nextState: OkeyGameState;
+  let nextState: OkeyAuthoritativeMatchState;
   let commandType: string;
 
   try {
     if (action === "resolve-timeout") {
       nextState =
-        resolveAuthoritativeDeadline(
+        resolveAuthoritativeMatchDeadline(
           state,
           bundle.turn_deadline_at,
         );
@@ -496,7 +477,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       }
 
       nextState =
-        applyAuthoritativeOkeyCommand(
+        applyAuthoritativeOkeyMatchCommand(
           state,
           playerIndex,
           command,
@@ -531,40 +512,43 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     Number(bundle.version) + 1;
 
   const deadline =
-    nextState.phase === "finished"
-      ? null
-      : getNextOkeyTurnDeadline(nextState);
+    getNextOkeyMatchTurnDeadline(
+      nextState,
+    );
 
   const publicProjection =
-    projectOkeyPublicState(
+    projectOkeyMatchPublicState(
       nextState,
       nextVersion,
       deadline,
     );
 
-  const {
-    data: commit,
-    error: commitError,
-  } = await service
-    .rpc(
-      "okey_commit_authoritative_command",
-      {
-        p_match_id: matchId,
-        p_user_id: authData.user.id,
-        p_command_id: body.commandId,
-        p_expected_version:
-          body.expectedVersion,
-        p_command_type: commandType,
-        p_state: nextState,
-        p_projection: publicProjection,
-        p_status:
-          nextState.phase === "finished"
-            ? "finished"
-            : "playing",
-        p_turn_deadline_at: deadline,
-      },
-    )
-    .single();
+const {
+  data: commitRaw,
+  error: commitError,
+} = await service
+  .rpc(
+    "okey_commit_authoritative_command",
+    {
+      p_match_id: matchId,
+      p_user_id: authData.user.id,
+      p_command_id: body.commandId,
+      p_expected_version:
+        body.expectedVersion,
+      p_command_type: commandType,
+      p_state: nextState,
+      p_projection: publicProjection,
+      p_status:
+        nextState.matchFinished
+          ? "finished"
+          : "playing",
+      p_turn_deadline_at: deadline,
+    },
+  )
+  .single();
+
+const commit =
+  commitRaw as OkeyAuthoritativeCommit | null;
 
   if (commitError || !commit) {
     const conflict =
@@ -584,10 +568,10 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   }
 
   const committedState =
-    commit.state as OkeyGameState;
+    commit.state as OkeyAuthoritativeMatchState;
 
   const committedStatus =
-    committedState.phase === "finished"
+    committedState.matchFinished
       ? "finished"
       : "playing";
 
@@ -608,7 +592,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     );
   }
 
-  if (committedState.phase === "finished") {
+  if (committedState.matchFinished) {
     const result =
       await settleFinishedState(
         committedState,
@@ -626,7 +610,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
           details: result.error.message,
           committed: true,
           version: commit.version,
-          projection: projectOkeyState(
+          projection: projectOkeyMatchState(
             committedState,
             playerIndex,
             commit.version,
@@ -640,7 +624,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     return json({
       applied: commit.applied,
       settlement: result.settlement,
-      projection: projectOkeyState(
+      projection: projectOkeyMatchState(
         committedState,
         playerIndex,
         commit.version,
@@ -651,7 +635,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
   return json({
     applied: commit.applied,
-    projection: projectOkeyState(
+    projection: projectOkeyMatchState(
       committedState,
       playerIndex,
       commit.version,

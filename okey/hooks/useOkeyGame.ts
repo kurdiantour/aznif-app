@@ -29,7 +29,7 @@ import {
 } from "@/okey/match/okey-match-state";
 import type {
   OkeyAuthoritativeCommand,
-  OkeyServerProjection,
+  OkeyMatchServerProjection,
 } from "@/okey/server/okey-authoritative";
 import type {
   OkeyDrawSource,
@@ -90,7 +90,7 @@ function createPlaceholderDeck(
 
 
 function projectToOkeyGameState(
-  projection: OkeyServerProjection,
+  projection: OkeyMatchServerProjection,
 ): OkeyGameState {
   const totalPlayers =
     projection.players.length;
@@ -247,6 +247,30 @@ discardOwners:
   };
 }
 
+function projectAuthoritativeRoundResults(
+  projection: OkeyMatchServerProjection,
+): OkeyMatchState["roundResults"] {
+  return projection.roundResults.map(
+    (result) => ({
+      round: result.round,
+      winnerId: result.winnerId,
+      winnerTeamId: result.winnerTeamId,
+      endReason: result.endReason,
+      scoreDetails: {
+        scores: {
+          teamA: result.teamAScore,
+          teamB: result.teamBScore,
+        },
+        /*
+         * جزئیات ریز امتیاز در Projection فعلی سرور ارسال نمی‌شود.
+         * Score نهایی هر تیم authoritative است و از سرور می‌آید.
+         */
+        details: [],
+      },
+    }),
+  );
+}
+
 /*
  * ترتیب دستی رک کاربر روی موبایل نگه داشته می‌شود.
  * وقتی Projection تازه می‌رسد، سرور مالک محتواست،
@@ -326,7 +350,7 @@ export function useOkeyGame(
     );
 
   const [onlineProjection, setOnlineProjection] =
-    useState<OkeyServerProjection | null>(
+    useState<OkeyMatchServerProjection | null>(
       null,
     );
 
@@ -360,6 +384,9 @@ export function useOkeyGame(
     useRef<SupabaseOkeyMatchAdapter | null>(
       null,
     );
+
+  const hasAppliedOnlineProjectionRef =
+    useRef(false);
 
   const inactiveAtRef =
     useRef<number | null>(null);
@@ -440,6 +467,8 @@ export function useOkeyGame(
       setOnlineAdapter(null);
       setOnlineProjection(null);
       setOnlineError(null);
+      hasAppliedOnlineProjectionRef.current =
+        false;
       return;
     }
 
@@ -456,9 +485,11 @@ export function useOkeyGame(
     setOnlineAdapter(adapter);
     setOnlineProjection(null);
     setOnlineError(null);
+    hasAppliedOnlineProjectionRef.current =
+      false;
 
     const applyProjection = (
-      projection: OkeyServerProjection,
+      projection: OkeyMatchServerProjection,
     ) => {
       if (!mounted) {
         return;
@@ -478,16 +509,75 @@ export function useOkeyGame(
             projectedState,
           );
 
+        const projectedRoundResults =
+          projectAuthoritativeRoundResults(
+            projection,
+          );
+
+        const isFirstProjection =
+          !hasAppliedOnlineProjectionRef.current;
+
+        const hasNewRoundResult =
+          !isFirstProjection &&
+          projectedRoundResults.length >
+            current.roundResults.length;
+
         /*
-         * settleFinishedRound فقط وضعیت نمایشی Popup و Score
-         * را برای UI فعلی محاسبه می‌کند.
-         * نتیجه مالی همچنان فقط روی سرور انجام می‌شود.
+         * در Online، شماره راند، نتایج و Score فقط از سرور می‌آیند.
+         * کلاینت دیگر settleFinishedRound را برای نتیجه مسابقه اجرا نمی‌کند.
+         *
+         * سرور بعد از راندهای ۱ تا ۶ بلافاصله roundState راند بعد را می‌سازد،
+         * بنابراین Popup با افزایش roundResults تشخیص داده می‌شود.
          */
-        return settleFinishedRound({
+        return {
           ...current,
           roundState: orderedState,
-        });
+          currentRound:
+            projection.currentRound,
+          roundResults:
+            projectedRoundResults,
+          matchScores: {
+            teamA:
+              projection.matchScores.teamA,
+            teamB:
+              projection.matchScores.teamB,
+          },
+          matchFinished:
+            projection.matchFinished,
+          matchWinnerTeamId:
+            projection.matchWinnerTeamId,
+
+          showFinishRevealPopup:
+            hasNewRoundResult
+              ? true
+              : isFirstProjection
+                ? false
+                : current.showFinishRevealPopup,
+
+          showRoundResultPopup:
+            hasNewRoundResult
+              ? false
+              : isFirstProjection
+                ? false
+                : current.showRoundResultPopup,
+
+          roundResultCountdownRemaining:
+            hasNewRoundResult
+              ? null
+              : isFirstProjection
+                ? null
+                : current.roundResultCountdownRemaining,
+
+          showMatchResultPopup:
+            isFirstProjection &&
+            projection.matchFinished
+              ? true
+              : current.showMatchResultPopup,
+        };
       });
+
+      hasAppliedOnlineProjectionRef.current =
+        true;
 
       setOnlineError(null);
     };
@@ -836,6 +926,13 @@ export function useOkeyGame(
      * کلاینت اجازه ساخت Round جدید را ندارد.
      */
     if (isOnline) {
+      setMatch((current) => ({
+        ...current,
+        showRoundResultPopup: false,
+        showFinishRevealPopup: false,
+        roundResultCountdownRemaining:
+          null,
+      }));
       return;
     }
 
@@ -1438,18 +1535,33 @@ export function useOkeyGame(
     ]);
 
   const currentRoundResult =
-    useMemo(
-      () =>
+    useMemo(() => {
+      if (
+        match.showFinishRevealPopup ||
+        match.showRoundResultPopup ||
+        match.matchFinished
+      ) {
+        return (
+          match.roundResults[
+            match.roundResults.length - 1
+          ] ?? null
+        );
+      }
+
+      return (
         match.roundResults.find(
           (result) =>
             result.round ===
             match.currentRound,
-        ) ?? null,
-      [
-        match.currentRound,
-        match.roundResults,
-      ],
-    );
+        ) ?? null
+      );
+    }, [
+      match.currentRound,
+      match.matchFinished,
+      match.roundResults,
+      match.showFinishRevealPopup,
+      match.showRoundResultPopup,
+    ]);
 
   return {
     state,
@@ -1475,7 +1587,9 @@ export function useOkeyGame(
     currentRound:
       match.currentRound,
 
-    maxRounds: MAX_ROUNDS,
+    maxRounds:
+      onlineProjection?.maxRounds ??
+      MAX_ROUNDS,
     roundResults:
       match.roundResults,
     matchScores:

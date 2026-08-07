@@ -253,7 +253,7 @@ function ShopContent() {
 
 export default function ShopScreen() {
   if (!ENABLE_SHOP_FEATURES) {
-    return <Redirect href="/(tabs)/lobby" />;
+    return <Redirect href="/(tabs)/play" />;
   }
 
   return <ShopContent />;

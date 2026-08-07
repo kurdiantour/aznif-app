@@ -1,6 +1,7 @@
 import { BlurView } from "expo-blur";
-import { MatchReward } from "@/types/game";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+
+import type { MatchReward } from "@/types/game";
 
 type GameOverPopupProps = {
   visible: boolean;
@@ -24,49 +25,82 @@ export default function GameOverPopup({
   onClose,
   onPlayAgain,
 }: GameOverPopupProps) {
-  if (!visible) return null;
+  if (!visible) {
+    return null;
+  }
+
+  const resultText =
+    didWin && finishReason === "opponent_manual_leave"
+      ? "بەرامبەرەکەت لە یارییەکە دەرچوو تۆ براوە بویت."
+      : didWin
+        ? "یارییەکە تەواو بوو • تۆ براوە بویت!"
+        : "یارییەکە تەواو بوو • تۆ دۆڕایت";
 
   return (
     <View style={styles.overlay}>
       <View style={styles.backdrop}>
-        <BlurView intensity={45} tint="dark" style={styles.card}>
+        <BlurView
+          intensity={45}
+          tint="dark"
+          style={styles.card}
+        >
           <Text style={styles.eyebrow}>
-            {didWin && finishReason === "opponent_manual_leave"
-              ? "بەرامبەرەکەت لە یارییەکە دەرچوو تۆ براوە بویت."
-              : didWin
-              ? "یارییەکە تەواو بوو • تۆ براوە بویت!"
-              : "یارییەکە تەواو بوو • تۆ دۆڕایت"}
+            {resultText}
           </Text>
 
-          {teamScores && (
+          {teamScores ? (
             <View style={styles.finalScoreBox}>
-              <Text style={styles.finalScoreTitle}>ئەنجامی کۆتایی</Text>
+              <Text style={styles.finalScoreTitle}>
+                ئەنجامی کۆتایی
+              </Text>
 
               <View style={styles.finalScorePill}>
-                <Text style={styles.teamAScore}>{teamScores.teamA}</Text>
-                <Text style={styles.scoreDivider}>|</Text>
-                <Text style={styles.teamBScore}>{teamScores.teamB}</Text>
+                <Text style={styles.teamAScore}>
+                  {teamScores.teamA}
+                </Text>
+
+                <Text style={styles.scoreDivider}>
+                  |
+                </Text>
+
+                <Text style={styles.teamBScore}>
+                  {teamScores.teamB}
+                </Text>
               </View>
             </View>
-          )}
+          ) : null}
 
-          {reward && (
+          {reward ? (
             <View style={styles.rewardBox}>
-              <Text style={styles.rewardLabel}>خەڵات</Text>
+              <Text style={styles.rewardLabel}>
+                خەڵات
+              </Text>
 
               <Text style={styles.rewardValue}>
-                {`+${reward.coin} Coin · +${reward.gem} Gem · ${reward.points >= 0 ? "+" : ""}${reward.points} Points`}
+                {`+${reward.coin} Coin · +${reward.gem} Gem · ${
+                  reward.points >= 0 ? "+" : ""
+                }${reward.points} Points`}
               </Text>
             </View>
-          )}
+          ) : null}
 
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryButton} onPress={onPlayAgain}>
-              <Text style={styles.secondaryButtonText}>دووبارە یاری بکە</Text>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={onPlayAgain}
+            >
+              <Text style={styles.secondaryButtonText}>
+                دووبارە یاری بکە
+              </Text>
             </Pressable>
 
-            <Pressable style={styles.primaryButton} onPress={onClose}>
-              <Text style={styles.primaryButtonText}>داخستن</Text>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={onClose}
+            >
+              <Text style={styles.primaryButtonText}>
+                داخستن
+              </Text>
             </Pressable>
           </View>
         </BlurView>
@@ -94,19 +128,29 @@ const styles = StyleSheet.create({
     width: "82%",
     maxWidth: 500,
     minHeight: 180,
+
     borderRadius: 10,
     overflow: "hidden",
+
     paddingHorizontal: 22,
     paddingTop: 22,
     paddingBottom: 20,
-    backgroundColor: "rgba(58, 25, 92, 0.22)",
+
+    backgroundColor: "rgba(0, 0, 0, 0.12)",
+
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
+
     alignItems: "center",
+
     shadowColor: "#000",
     shadowOpacity: 0.28,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+
     elevation: 20,
   },
 

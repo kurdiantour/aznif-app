@@ -208,7 +208,7 @@ export default function GameChatDrawer({
         }}
       >
         <BlurView
-          intensity={88}
+          intensity={45}
           tint="dark"
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     padding: 18,
     overflow: "hidden",
-    backgroundColor: "rgba(58, 25, 92, 0.18)",
+    backgroundColor: "rgba(0, 0, 0, 0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
     shadowColor: "#000",

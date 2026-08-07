@@ -28,8 +28,20 @@ const PresenceContext = createContext<PresenceContextValue | null>(null);
 const ONLINE_WINDOW_MS = 35_000;
 
 function routeStatus(pathname: string): PresenceStatus {
-  if (pathname === "/game") return "in_game";
-  if (pathname === "/matchmaking") return "matchmaking";
+  if (
+    pathname === "/domino/game" ||
+    pathname.startsWith("/domino/game/")
+  ) {
+    return "in_game";
+  }
+
+  if (
+    pathname === "/domino/matchmaking" ||
+    pathname.startsWith("/domino/matchmaking/")
+  ) {
+    return "matchmaking";
+  }
+
   return "online_available";
 }
 

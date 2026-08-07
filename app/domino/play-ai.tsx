@@ -154,7 +154,7 @@ export default function PlayAIModeScreen() {
 
     const timeout = setTimeout(() => {
       router.replace({
-        pathname: "/game",
+        pathname: "/domino/game",
         params: {
           room_id: practiceMatchIdRef.current,
           mode: "1v1",

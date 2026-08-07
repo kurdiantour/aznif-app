@@ -2,9 +2,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
-  createAuthoritativeOkeyGame,
-  getNextOkeyTurnDeadline,
-  projectOkeyPublicState,
+  createAuthoritativeOkeyMatch,
+  getNextOkeyMatchTurnDeadline,
+  projectOkeyMatchPublicState,
 } from "../../../okey/server/okey-authoritative.ts";
 
 type OkeyCurrency = "fun" | "aznif";
@@ -35,6 +35,9 @@ type OkeyRoomSnapshot = {
   countdownEndsAt: string | null;
   shouldStart: boolean;
   members: OkeyRoomMember[];
+
+  entryFee?: number;
+  currency?: OkeyCurrency;
 };
 
 type ChargeResult = {
@@ -81,6 +84,7 @@ const TABLE_ECONOMY: Record<string, TableEconomy> = {
     currency: "aznif",
   },
 };
+
 
 function withTableEconomy(room: OkeyRoomSnapshot): OkeyRoomSnapshot {
   const economy = TABLE_ECONOMY[room.tableId];
@@ -187,6 +191,7 @@ serve(async (req) => {
   }
 
   const action = String(body.action ?? "");
+
 
   if (
     ![
@@ -297,6 +302,7 @@ const displayName = String(
     };
   };
 
+
   let {
     data: room,
     error: roomError,
@@ -312,6 +318,7 @@ const displayName = String(
       409,
     );
   }
+
 
   /*
    * Matchmaking may return an already existing waiting or playing room.
@@ -436,7 +443,7 @@ const displayName = String(
     );
 
     const state =
-      createAuthoritativeOkeyGame(
+      createAuthoritativeOkeyMatch(
         identities as [
           typeof identities[0],
           typeof identities[0],
@@ -445,11 +452,12 @@ const displayName = String(
         ],
       );
 
+
     const deadline =
-      getNextOkeyTurnDeadline(state);
+      getNextOkeyMatchTurnDeadline(state);
 
     const projection =
-      projectOkeyPublicState(
+      projectOkeyMatchPublicState(
         state,
         0,
         deadline,

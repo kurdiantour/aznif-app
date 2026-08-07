@@ -8,7 +8,7 @@ import {
 
 export default function BuyGoldScreen() {
   if (!ENABLE_SHOP_FEATURES || !ENABLE_GOLD_PURCHASES) {
-    return <Redirect href="/(tabs)/lobby" />;
+    return <Redirect href="/(tabs)/play" />;
   }
 
   return (

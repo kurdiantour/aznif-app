@@ -10,13 +10,14 @@ import {
   View,
 } from "react-native";
 
+import { ConsentModal } from "@/components/leaderboard/ConsentModal";
+
 type GameCardProps = {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   icon: keyof typeof Ionicons.glyphMap;
   image?: number;
   disabled?: boolean;
-  badge?: string;
   isTablet?: boolean;
   onPress?: () => void;
 };
@@ -26,9 +27,8 @@ function GameCard({
   subtitle,
   icon,
   image,
-  disabled,
-  badge,
-  isTablet,
+  disabled = false,
+  isTablet = false,
   onPress,
 }: GameCardProps) {
   return (
@@ -39,16 +39,17 @@ function GameCard({
         disabled && styles.cardDisabled,
         pressed && !disabled && styles.cardPressed,
       ]}
-      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      onPress={onPress}
     >
       {image ? (
-        <Image
-          source={image}
-          style={styles.cardImageInner}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={0}
-        />
+        <View style={styles.cardImage}>
+          <Image
+            source={image}
+            style={styles.cardImageInner}
+            contentFit="cover"
+          />
+        </View>
       ) : (
         <LinearGradient
           colors={["#1d1145", "#3b1676", "#090b1d"]}
@@ -56,42 +57,34 @@ function GameCard({
         />
       )}
 
-      {badge ? (
-        <View
-          style={[
-            styles.comingSoonBadge,
-            isTablet && styles.comingSoonBadgeTablet,
-          ]}
-        >
-          <Text
-            style={[
-              styles.comingSoonText,
-              isTablet && styles.comingSoonTextTablet,
-            ]}
-          >
-            {badge}
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.iconBox}>
-          <Ionicons name={icon} size={22} color="#f8d774" />
-        </View>
-      )}
+      <View style={styles.iconBox}>
+        <Ionicons name={icon} size={22} color="#f8d774" />
+      </View>
 
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.92)"]}
         style={[styles.bottomFade, isTablet && styles.bottomFadeTablet]}
+        pointerEvents="none"
       />
 
-      <View style={[styles.cardInfo, isTablet && styles.cardInfoTablet]}>
+      <View
+        style={[styles.cardInfo, isTablet && styles.cardInfoTablet]}
+        pointerEvents="none"
+      >
         <Text style={[styles.cardTitle, isTablet && styles.cardTitleTablet]}>
           {title}
         </Text>
-        <Text
-          style={[styles.cardSubtitle, isTablet && styles.cardSubtitleTablet]}
-        >
-          {subtitle}
-        </Text>
+
+        {!!subtitle && (
+          <Text
+            style={[
+              styles.cardSubtitle,
+              isTablet && styles.cardSubtitleTablet,
+            ]}
+          >
+            {subtitle}
+          </Text>
+        )}
       </View>
     </Pressable>
   );
@@ -100,6 +93,7 @@ function GameCard({
 export default function PlayScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
+
   const isTablet = Math.min(width, height) >= 600;
 
   return (
@@ -111,21 +105,38 @@ export default function PlayScreen() {
           subtitle="Lobby, 1v1, 2v2, and private rooms."
           icon="grid-outline"
           image={require("@/assets/images/lobby/create-room.webp")}
-          onPress={() => router.push("/(tabs)/lobby")}
+          onPress={() => router.push("/domino")}
         />
 
         <GameCard
           isTablet={isTablet}
           title="ئۆکەی"
-          subtitle="ئۆکەیی کلاسیک بە یاساکانی تەواوی نۆرە، مەڵد، خاڵ و بەرد."
           icon="ellipse-outline"
           image={require("@/assets/images/okey/lobby/okey-card.png")}
           onPress={() => router.push("/okey")}
         />
 
-        <View style={[styles.card, styles.cardPlaceholder, isTablet && styles.cardTablet]} />
-        <View style={[styles.card, styles.cardPlaceholder, isTablet && styles.cardTablet]} />
+        {/* این دو فضای نامرئی موقعیت فعلی کارت‌ها را حفظ می‌کنند. */}
+        <View
+          style={[
+            styles.card,
+            styles.cardPlaceholder,
+            isTablet && styles.cardTablet,
+          ]}
+          pointerEvents="none"
+        />
+
+        <View
+          style={[
+            styles.card,
+            styles.cardPlaceholder,
+            isTablet && styles.cardTablet,
+          ]}
+          pointerEvents="none"
+        />
       </View>
+
+      <ConsentModal />
     </View>
   );
 }
@@ -135,11 +146,12 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     height: "80%",
-    maxHeight: 238,
+    maxHeight: 240,
     minHeight: 205,
     justifyContent: "center",
     marginTop: 0,
   },
+
   contentTablet: {
     width: "100%",
     height: "72%",
@@ -147,51 +159,60 @@ const styles = StyleSheet.create({
     minHeight: 390,
     marginTop: 12,
   },
+
   cardRow: {
     width: "100%",
     height: "100%",
     alignSelf: "center",
-    flexDirection: "row-reverse",
-    
+    flexDirection: "row",
     gap: 8,
   },
+
   cardRowTablet: {
     gap: 18,
   },
+
   card: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 14,
+    width: 200,
+    height: 250,
+    borderRadius: 12,
     overflow: "hidden",
-    borderWidth: 1.2,
-    borderColor: "rgba(180,120,255,0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(87, 63, 117, 0.5)",
     backgroundColor: "rgba(17,24,39,0.82)",
   },
+
   cardTablet: {
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1.4,
   },
+
   cardDisabled: {
     opacity: 0.65,
   },
+
   cardPlaceholder: {
     opacity: 0,
   },
+
   cardPressed: {
     transform: [{ scale: 0.985 }],
     opacity: 0.9,
   },
+
   cardImage: {
     width: "100%",
     height: "100%",
   },
+
   cardImageInner: {
     width: "100%",
     height: "100%",
   },
+
   iconBox: {
     position: "absolute",
-    top: 12,
+    top: 10,
     right: 12,
     width: 38,
     height: 38,
@@ -202,31 +223,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(248, 215, 116, 0.32)",
     backgroundColor: "rgba(2, 6, 23, 0.62)",
   },
-  comingSoonBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: "rgba(88, 28, 135, 0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(233, 213, 255, 0.55)",
-  },
-  comingSoonBadgeTablet: {
-    top: 16,
-    right: 16,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  comingSoonText: {
-    color: "#f3e8ff",
-    fontSize: 8,
-    fontFamily: "SpedaBold",
-  },
-  comingSoonTextTablet: {
-    fontSize: 11,
-  },
+
   bottomFade: {
     position: "absolute",
     left: 0,
@@ -234,9 +231,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 86,
   },
+
   bottomFadeTablet: {
     height: 125,
   },
+
   cardInfo: {
     position: "absolute",
     left: 15,
@@ -244,11 +243,13 @@ const styles = StyleSheet.create({
     bottom: 12,
     alignItems: "center",
   },
+
   cardInfoTablet: {
     left: 20,
     right: 20,
     bottom: 18,
   },
+
   cardTitle: {
     color: "#ffffff",
     fontSize: 17,
@@ -256,9 +257,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
     writingDirection: "rtl",
   },
+
   cardTitleTablet: {
     fontSize: 24,
   },
+
   cardSubtitle: {
     marginTop: 5,
     color: "#f3f4f6",
@@ -267,6 +270,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     writingDirection: "rtl",
   },
+
   cardSubtitleTablet: {
     marginTop: 8,
     fontSize: 16,

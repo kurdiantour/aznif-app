@@ -481,7 +481,7 @@ export default function MatchmakingScreen() {
           console.warn("Failed to leave private room", error);
         }
       }
-      router.replace("/(tabs)/lobby");
+      router.replace("/(tabs)/play");
       return;
     }
 
@@ -507,7 +507,7 @@ export default function MatchmakingScreen() {
 
     setCountdownSeconds(null);
 
-    router.replace("/(tabs)/lobby");
+    router.replace("/(tabs)/play");
   };
 
   useEffect(() => {
@@ -617,7 +617,7 @@ export default function MatchmakingScreen() {
           void (async () => {
             await gamePreparationRef.current;
             router.replace({
-              pathname: "/game",
+              pathname: "/domino/game",
               params: {
                 mode: gameMode,
                 room_id: currentRoomId,

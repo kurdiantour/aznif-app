@@ -60,8 +60,11 @@ import {
   isPointInsideRect,
   toLocalScreenRect,
 } from "@/okey/presentation/okey-table-interactions";
-import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
-import type { Player } from "@/types/game";
+import type {
+  OkeyMeld,
+  OkeyTeamId,
+  OkeyTile,
+} from "@/okey/types/okey";import type { Player } from "@/types/game";
 
 
 const OKEY_TURN_DURATION_SECONDS = 20;
@@ -387,8 +390,101 @@ const dealLifecycleKey = onlineGameplayReady
     feedbackMatchVisibleRef.current = showMatchResultPopup;
   }, [currentRound, emitFeedback, humanPlayer.teamId, isAppActive, lifecycleResumeToken, matchScores.teamA, matchScores.teamB, matchWinnerTeamId, roundResults, showMatchResultPopup, state]);
 
-  const teamScores = matchScores;
-  const shouldShowScorePopup = showScoreDetails || showRoundResultPopup;
+/*
+ * قرارداد نمایشی UI:
+ *
+ * teamA = تیم خود کاربر
+ * teamB = تیم حریف
+ *
+ * ساختار authoritative سرور تغییر نمی‌کند.
+ */
+const viewerTeamId: OkeyTeamId =
+  humanPlayer.teamId === "teamB"
+    ? "teamB"
+    : "teamA";
+
+const opponentTeamId: OkeyTeamId =
+  viewerTeamId === "teamA"
+    ? "teamB"
+    : "teamA";
+
+const teamScores:
+  Record<OkeyTeamId, number> = {
+  teamA:
+    matchScores[viewerTeamId],
+
+  teamB:
+    matchScores[opponentTeamId],
+};
+
+const displayRoundResults = useMemo(
+  () =>
+    roundResults.map((result) => {
+      const displayWinnerTeamId: OkeyTeamId | null =
+        result.winnerTeamId === null
+          ? null
+          : result.winnerTeamId === viewerTeamId
+            ? "teamA"
+            : "teamB";
+
+      return {
+        ...result,
+        winnerTeamId: displayWinnerTeamId,
+        scoreDetails: {
+          ...result.scoreDetails,
+          scores: {
+            teamA: result.scoreDetails.scores[viewerTeamId],
+            teamB: result.scoreDetails.scores[opponentTeamId],
+          },
+        },
+      };
+    }),
+  [opponentTeamId, roundResults, viewerTeamId],
+);
+
+const rawCurrentScoreDetails =
+  currentRoundResult
+    ?.scoreDetails ??
+  roundScoreDetails;
+
+const displayCurrentRoundScoreDetails =
+  useMemo(
+    () => ({
+      ...rawCurrentScoreDetails,
+
+      scores: {
+        teamA:
+          rawCurrentScoreDetails
+            .scores[
+              viewerTeamId
+            ],
+
+        teamB:
+          rawCurrentScoreDetails
+            .scores[
+              opponentTeamId
+            ],
+      },
+    }),
+    [
+      opponentTeamId,
+      rawCurrentScoreDetails,
+      viewerTeamId,
+    ],
+  );
+
+const displayMatchWinnerTeamId:
+  OkeyTeamId | null =
+  matchWinnerTeamId === null
+    ? null
+    : matchWinnerTeamId ===
+        viewerTeamId
+      ? "teamA"
+      : "teamB";
+
+const shouldShowScorePopup =
+  showScoreDetails ||
+  showRoundResultPopup;
   const previewTileIds = useMemo(() => previewMelds.flatMap((meld) => meld.tiles.map((tile) => tile.id)), [previewMelds]);
   const toLocalRect = useCallback(
     (rect: ScreenRect) => toLocalScreenRect(rect, screenRectRef.current),
@@ -1235,31 +1331,39 @@ if (
           okeyTile={state.okeyTile}
           onClose={() => setShowDiscardHistory(false)}
         />
-        <OkeyScoreDetailsPopup
-          visible={shouldShowScorePopup}
-          onClose={showRoundResultPopup ? undefined : () => setShowScoreDetails(false)}
-          scoreDetails={currentRoundResult?.scoreDetails ?? roundScoreDetails}
-          finishedMessage={showRoundResultPopup && state.endReason === "win" ? "خولەکە تەواو بوو" : undefined}
-          round={currentRound}
-          maxRounds={maxRounds}
-          roundResults={roundResults}
-          matchScores={matchScores}
-          matchFinished={matchFinished}
-          matchWinnerTeamId={matchWinnerTeamId}
-          countdownRemaining={roundResultCountdownRemaining}
-          isTileCycleLimit={showRoundResultPopup && state.endReason === "tile-cycle-limit"}
-        />
-        <OkeyMatchResultPopup
-          visible={showMatchResultPopup}
-          winnerTeamId={matchWinnerTeamId}
-          matchScores={matchScores}
-          onNewMatch={() => {
-            setPreviewMelds([]);
-            setSelectedTileId(null);
-            setShowScoreDetails(false);
-            newGame();
-          }}
-        />
+<OkeyScoreDetailsPopup
+  visible={shouldShowScorePopup}
+  onClose={showRoundResultPopup ? undefined : () => setShowScoreDetails(false)}
+  scoreDetails={displayCurrentRoundScoreDetails}
+  finishedMessage={
+    showRoundResultPopup && currentRoundResult?.endReason === "win"
+      ? "خولەکە تەواو بوو"
+      : undefined
+  }
+  round={currentRoundResult?.round ?? currentRound}
+  maxRounds={maxRounds}
+  roundResults={displayRoundResults}
+  matchScores={teamScores}
+  matchFinished={matchFinished}
+  matchWinnerTeamId={displayMatchWinnerTeamId}
+  countdownRemaining={roundResultCountdownRemaining}
+  isTileCycleLimit={
+    showRoundResultPopup &&
+    currentRoundResult?.endReason === "tile-cycle-limit"
+  }
+/>
+
+<OkeyMatchResultPopup
+  visible={showMatchResultPopup}
+  winnerTeamId={displayMatchWinnerTeamId}
+  matchScores={teamScores}
+  onNewMatch={() => {
+    setPreviewMelds([]);
+    setSelectedTileId(null);
+    setShowScoreDetails(false);
+    newGame();
+  }}
+/>
         {showFinalTileCelebration ? (
           <OkeyFinalTileCelebration
             tile={topDiscard ?? state.indicatorTile}

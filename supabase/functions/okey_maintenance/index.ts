@@ -2,15 +2,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
-  getNextOkeyTurnDeadline,
-  projectOkeyPublicState,
-  resolveAuthoritativeDeadline,
+  getNextOkeyMatchTurnDeadline,
+  projectOkeyMatchPublicState,
+  resolveAuthoritativeMatchDeadline,
+  settleAuthoritativeOkeyRound,
+  type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
 
 import { handSeatToBot } from "../../../okey/engine/okey-bot-policy.ts";
 import { playBotTurn } from "../../../okey/engine/okey-bot-engine.ts";
 
-import type { OkeyGameState } from "../../../okey/types/okey.ts";
 
 const DISCONNECT_TIMEOUT_MS = 15_000;
 // Okey tables are human-only; disconnected players are never replaced locally or by a server bot.
@@ -59,20 +60,13 @@ function isExpired(
 }
 
 function getWinnerTeamId(
-  state: OkeyGameState,
-): string | null {
-  if (
-    state.phase !== "finished" ||
-    !state.winnerId
-  ) {
+  state: OkeyAuthoritativeMatchState,
+): "teamA" | "teamB" | null {
+  if (!state.matchFinished) {
     return null;
   }
 
-  const winner = state.players.find(
-    (player) => player.id === state.winnerId,
-  );
-
-  return winner?.teamId ?? null;
+  return state.matchWinnerTeamId;
 }
 
 serve(async (request) => {
@@ -219,7 +213,7 @@ serve(async (request) => {
       }
 
       const originalState =
-        stateRow.state as OkeyGameState;
+        stateRow.state as OkeyAuthoritativeMatchState;
 
       /*
        * بازی از قبل finished شده، ولی settlement قبلی
@@ -291,7 +285,7 @@ serve(async (request) => {
        */
       for (const seat of seats) {
         const player =
-          nextState.players[seat.player_index];
+          nextState.roundState.players[seat.player_index];
 
         if (
           !BOT_TAKEOVER_ENABLED ||
@@ -316,11 +310,14 @@ serve(async (request) => {
           continue;
         }
 
-        nextState = handSeatToBot(
-          nextState,
-          seat.player_index,
-          "normal",
-        );
+        nextState = {
+          ...nextState,
+          roundState: handSeatToBot(
+            nextState.roundState,
+            seat.player_index,
+            "normal",
+          ),
+        };
 
         changed = true;
       }
@@ -335,7 +332,7 @@ serve(async (request) => {
         )
       ) {
         nextState =
-          resolveAuthoritativeDeadline(
+          resolveAuthoritativeMatchDeadline(
             nextState,
             match.turn_deadline_at,
           );
@@ -347,23 +344,26 @@ serve(async (request) => {
        * در هر اجرای worker فقط یک حرکت Bot انجام می‌شود.
        */
       const currentPlayer =
-        nextState.players[
-          nextState.currentPlayerIndex
+        nextState.roundState.players[
+          nextState.roundState.currentPlayerIndex
         ];
 
       if (
         BOT_TAKEOVER_ENABLED &&
-        nextState.phase !== "finished" &&
+        !nextState.matchFinished &&
         currentPlayer?.controlledByBot
       ) {
-        nextState = playBotTurn(
-          nextState,
-          {
-            difficulty:
-              currentPlayer.botDifficulty ??
-              "normal",
-          },
-        );
+        nextState = settleAuthoritativeOkeyRound({
+          ...nextState,
+          roundState: playBotTurn(
+            nextState.roundState,
+            {
+              difficulty:
+                currentPlayer.botDifficulty ??
+                "normal",
+            },
+          ),
+        });
 
         changed = true;
       }
@@ -377,7 +377,7 @@ serve(async (request) => {
         seats.find(
           (seat) =>
             seat.player_index ===
-            originalState.currentPlayerIndex,
+            originalState.roundState.currentPlayerIndex,
         ) ?? seats[0];
 
       if (!actorSeat?.user_id) {
@@ -400,11 +400,9 @@ serve(async (request) => {
         expectedVersion + 1;
 
       const deadline =
-        nextState.phase === "finished"
-          ? null
-          : getNextOkeyTurnDeadline(
-              nextState,
-            );
+        getNextOkeyMatchTurnDeadline(
+          nextState,
+        );
 
       const {
         data: commit,
@@ -423,13 +421,13 @@ serve(async (request) => {
               "system-maintenance",
             p_state: nextState,
             p_projection:
-              projectOkeyPublicState(
+              projectOkeyMatchPublicState(
                 nextState,
                 nextVersion,
                 deadline,
               ),
             p_status:
-              nextState.phase === "finished"
+              nextState.matchFinished
                 ? "finished"
                 : "playing",
             p_turn_deadline_at:
@@ -475,9 +473,9 @@ serve(async (request) => {
           event: "invalidate",
           payload: {
             matchId: match.id,
-            version: commit.version,
+            version: Number((commit as { version: number }).version),
             status:
-              nextState.phase === "finished"
+              nextState.matchFinished
                 ? "finished"
                 : "playing",
           },
@@ -495,7 +493,7 @@ serve(async (request) => {
        * اگر حرکت Bot یا timeout بازی را تمام کرد،
        * Prize Pool میان دو عضو تیم برنده تقسیم می‌شود.
        */
-      if (nextState.phase === "finished") {
+      if (nextState.matchFinished) {
         const winnerTeamId =
           getWinnerTeamId(nextState);
 

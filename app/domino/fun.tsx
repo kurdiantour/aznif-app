@@ -1,0 +1,713 @@
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { Redirect, router } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ImageSourcePropType,
+} from "react-native";
+
+import { BottomNav } from "@/components/lobby/BottomNav";
+import { LobbyHeader } from "@/components/lobby/LobbyHeader";
+import {
+  MOBILE_HORIZONTAL_INSET,
+  TABLET_HORIZONTAL_INSET,
+} from "@/constants/layout";
+import {
+  consumePendingLeaderboardConsent,
+  hasPendingLeaderboardConsent,
+  setCurrentLeaderboardVisibility,
+} from "@/lib/leaderboardVisibility";
+import { useProfile } from "@/lib/profile";
+import { supabase } from "@/lib/supabase";
+
+type GameMode = "1v1" | "2v2";
+type MatchType = "duo" | "squad";
+
+type FunCardProps = {
+  title: string;
+  subtitle: string;
+  image: ImageSourcePropType;
+  isTablet: boolean;
+  disabled: boolean;
+  loading: boolean;
+  onPress: () => void;
+};
+
+function FunCard({
+  title,
+  subtitle,
+  image,
+  isTablet,
+  disabled,
+  loading,
+  onPress,
+}: FunCardProps) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        isTablet && styles.cardTablet,
+        disabled && styles.cardDisabled,
+        pressed && !disabled && styles.cardPressed,
+      ]}
+    >
+      <Image
+        source={image}
+        style={styles.cardImage}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={0}
+      />
+
+      <LinearGradient
+        colors={[
+          "rgba(0,0,0,0.04)",
+          "rgba(0,0,0,0.22)",
+          "rgba(0,0,0,0.94)",
+        ]}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {loading ? (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator
+            size={isTablet ? "large" : "small"}
+            color="#ffffff"
+          />
+
+          <Text
+            style={[
+              styles.searchingText,
+              isTablet && styles.searchingTextTablet,
+            ]}
+          >
+            گەڕان بۆ یاریزان...
+          </Text>
+        </View>
+      ) : null}
+
+      <View
+        style={[
+          styles.cardInfo,
+          isTablet && styles.cardInfoTablet,
+        ]}
+      >
+        <Text
+          style={[
+            styles.cardTitle,
+            isTablet && styles.cardTitleTablet,
+          ]}
+        >
+          {title}
+        </Text>
+
+        <Text
+          style={[
+            styles.cardSubtitle,
+            isTablet && styles.cardSubtitleTablet,
+          ]}
+        >
+          {subtitle}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+export default function DominoFunScreen() {
+  const {
+    profile,
+    loading: profileLoading,
+  } = useProfile();
+
+  const { width, height } = useWindowDimensions();
+
+  const isTablet = Math.min(width, height) >= 600;
+
+  const [searchingMode, setSearchingMode] =
+    useState<GameMode | null>(null);
+
+  const [
+    showLeaderboardConsent,
+    setShowLeaderboardConsent,
+  ] = useState(false);
+
+  const [
+    isSavingLeaderboardConsent,
+    setIsSavingLeaderboardConsent,
+  ] = useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkPendingConsent() {
+      if (!profile) {
+        if (mounted) {
+          setShowLeaderboardConsent(false);
+        }
+
+        return;
+      }
+
+      try {
+        const pendingConsent =
+          await hasPendingLeaderboardConsent();
+
+        if (mounted) {
+          setShowLeaderboardConsent(pendingConsent);
+        }
+      } catch (reason) {
+        console.warn(
+          "Failed to check leaderboard consent:",
+          reason,
+        );
+
+        if (mounted) {
+          setShowLeaderboardConsent(false);
+        }
+      }
+    }
+
+    void checkPendingConsent();
+
+    return () => {
+      mounted = false;
+    };
+  }, [profile]);
+
+  const saveLeaderboardConsent = async (
+    value: boolean,
+  ) => {
+    if (isSavingLeaderboardConsent) {
+      return;
+    }
+
+    setIsSavingLeaderboardConsent(true);
+
+    try {
+      await setCurrentLeaderboardVisibility(value);
+      await consumePendingLeaderboardConsent();
+
+      setShowLeaderboardConsent(false);
+    } catch (reason) {
+      console.warn(
+        "Failed to save leaderboard consent:",
+        reason,
+      );
+    } finally {
+      setIsSavingLeaderboardConsent(false);
+    }
+  };
+
+  const getMatchmakingError = (
+    reason: unknown,
+  ) => {
+    const message =
+      reason instanceof Error
+        ? reason.message
+        : "Unable to start matchmaking.";
+
+    const normalized = message.toLowerCase();
+
+    if (
+      normalized.includes("authentication") ||
+      normalized.includes("jwt")
+    ) {
+      return "تکایە دووبارە بچۆرە ژوورەوە.";
+    }
+
+    if (
+      normalized.includes("already") &&
+      normalized.includes("match")
+    ) {
+      return "لە ئێستادا لە گەڕانی یارییەکی تردایت.";
+    }
+
+    if (
+      normalized.includes("network") ||
+      normalized.includes("fetch")
+    ) {
+      return "پەیوەندی ئینتەرنێت هەڵەی تێدایە.";
+    }
+
+    return "نەتوانرا گەڕان بۆ یاری دەست پێ بکات.";
+  };
+
+  const startPublicMatch = async (
+    mode: GameMode,
+    matchType: MatchType,
+  ) => {
+    if (searchingMode) {
+      return;
+    }
+
+    if (!profile) {
+      router.push("/login");
+      return;
+    }
+
+    setSearchingMode(mode);
+    setError(null);
+
+    try {
+      const { data: result, error: rpcError } =
+        mode === "1v1"
+          ? await supabase.rpc(
+              "find_one_vs_one_opponent",
+            )
+          : await supabase.rpc(
+              "find_two_vs_two_match",
+            );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+if (!result?.status) {
+  throw new Error(
+    "Unable to start matchmaking.",
+  );
+}
+
+router.push({
+  pathname: "/domino/matchmaking",
+  params: {
+    mode,
+    matchmaking_status: result.status,
+    room_id: result.room_id ?? "",
+    matchType,
+    playMode: "fun",
+    game: "domino",
+  },
+});
+    } catch (reason) {
+      console.warn(
+        "Unable to start Fun matchmaking:",
+        reason,
+      );
+
+      setSearchingMode(null);
+      setError(getMatchmakingError(reason));
+    }
+  };
+
+  if (!profileLoading && !profile) {
+    return <Redirect href="/login" />;
+  }
+
+  if (profileLoading) {
+    return (
+      <View style={styles.shell}>
+        <LobbyHeader />
+
+        <View style={styles.screenLoading}>
+          <ActivityIndicator
+            size="large"
+            color="#ffffff"
+          />
+        </View>
+
+        <BottomNav active={null} />
+      </View>
+    );
+  }
+
+  const isSearching = searchingMode !== null;
+
+  return (
+    <View style={styles.shell}>
+      <LobbyHeader />
+
+      <View
+        style={[
+          styles.shellContent,
+          {
+            paddingHorizontal: isTablet
+              ? TABLET_HORIZONTAL_INSET
+              : MOBILE_HORIZONTAL_INSET,
+          },
+        ]}
+      >
+        <View style={styles.content}>
+          <View
+            style={[
+              styles.cardsRow,
+              isTablet && styles.cardsRowTablet,
+            ]}
+          >
+            <FunCard
+              title="پێکدادان"
+              subtitle="یاریی دوو کەسی، توانای خۆت بسەلمێنە"
+              image={require(
+                "@/assets/images/mode-select/1vs1.webp"
+              )}
+              isTablet={isTablet}
+              disabled={isSearching}
+              loading={searchingMode === "1v1"}
+              onPress={() => {
+                void startPublicMatch(
+                  "1v1",
+                  "duo",
+                );
+              }}
+            />
+
+            <FunCard
+              title="هاوپەیمان"
+              subtitle="یاریی چوار کەسی، لەگەڵ هاوپەیمانەکەت"
+              image={require(
+                "@/assets/images/mode-select/2vs2.webp"
+              )}
+              isTablet={isTablet}
+              disabled={isSearching}
+              loading={searchingMode === "2v2"}
+              onPress={() => {
+                void startPublicMatch(
+                  "2v2",
+                  "squad",
+                );
+              }}
+            />
+          </View>
+
+          {error ? (
+            <Text
+              style={[
+                styles.errorText,
+                isTablet && styles.errorTextTablet,
+              ]}
+            >
+              {error}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      <BottomNav active={null} />
+
+      {showLeaderboardConsent ? (
+        <View
+          style={styles.consentBackdrop}
+          pointerEvents="auto"
+        >
+          <View
+            style={[
+              styles.consentDialog,
+              isTablet &&
+                styles.consentDialogTablet,
+            ]}
+          >
+            <Text
+              style={[
+                styles.consentText,
+                isTablet &&
+                  styles.consentTextTablet,
+              ]}
+            >
+              ڕازیت بە نیشاندانی ناو، پلە و خاڵەکانت
+              لە خشتەی پێشبڕکێ؟
+            </Text>
+
+            <View style={styles.consentActions}>
+              <Pressable
+                disabled={
+                  isSavingLeaderboardConsent
+                }
+                onPress={() => {
+                  void saveLeaderboardConsent(true);
+                }}
+                style={({ pressed }) => [
+                  styles.consentButton,
+                  styles.consentPrimaryButton,
+                  pressed &&
+                    !isSavingLeaderboardConsent &&
+                    styles.cardPressed,
+                ]}
+              >
+                {isSavingLeaderboardConsent ? (
+                  <ActivityIndicator
+                    color="#ffffff"
+                  />
+                ) : (
+                  <Text
+                    style={
+                      styles.consentPrimaryButtonText
+                    }
+                  >
+                    ڕازیم
+                  </Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                disabled={
+                  isSavingLeaderboardConsent
+                }
+                onPress={() => {
+                  void saveLeaderboardConsent(false);
+                }}
+                style={({ pressed }) => [
+                  styles.consentButton,
+                  styles.consentSecondaryButton,
+                  pressed &&
+                    !isSavingLeaderboardConsent &&
+                    styles.cardPressed,
+                ]}
+              >
+                <Text
+                  style={
+                    styles.consentSecondaryButtonText
+                  }
+                >
+                  نەخێر
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+    paddingTop: 14,
+    paddingBottom: 18,
+    backgroundColor: "#090b1d",
+  },
+
+  shellContent: {
+    flex: 1,
+    paddingBottom: 74,
+  },
+
+  content: {
+    flex: 1,
+    justifyContent: "center",
+  },
+
+  screenLoading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+cardsRow: {
+  alignSelf: "flex-start",
+  flexDirection: "row",
+  alignItems: "flex-start",
+  gap: 8,
+},
+
+  cardsRowTablet: {
+    width: "55%",
+    height: "72%",
+    minHeight: 390,
+    maxHeight: 520,
+    gap: 18,
+    marginTop: 12,
+  },
+
+card: {
+  width: 200,
+  height: 250,
+  overflow: "hidden",
+  borderRadius: 14,
+  borderWidth: 1.2,
+  borderColor: "rgba(180,120,255,0.42)",
+  backgroundColor: "rgba(17,24,39,0.82)",
+},
+
+  cardTablet: {
+    borderRadius: 18,
+    borderWidth: 1.4,
+  },
+
+  cardDisabled: {
+    opacity: 0.68,
+  },
+
+  cardPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.985 }],
+  },
+
+  cardImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  cardInfo: {
+    position: "absolute",
+    left: 15,
+    right: 15,
+    bottom: 14,
+    alignItems: "center",
+  },
+
+  cardInfoTablet: {
+    left: 22,
+    right: 22,
+    bottom: 24,
+  },
+
+  cardTitle: {
+    color: "#ffffff",
+    fontSize: 17,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  cardTitleTablet: {
+    fontSize: 25,
+  },
+
+  cardSubtitle: {
+    marginTop: 5,
+    color: "#f3f4f6",
+    fontSize: 11,
+    lineHeight: 17,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  cardSubtitleTablet: {
+    marginTop: 9,
+    fontSize: 16,
+    lineHeight: 25,
+  },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(2,6,23,0.76)",
+  },
+
+  searchingText: {
+    marginTop: 10,
+    color: "#ffffff",
+    fontSize: 11,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  searchingTextTablet: {
+    marginTop: 16,
+    fontSize: 16,
+  },
+
+  errorText: {
+    marginTop: 12,
+    paddingHorizontal: 14,
+    color: "#fca5a5",
+    fontSize: 12,
+    lineHeight: 19,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  errorTextTablet: {
+    marginTop: 18,
+    fontSize: 16,
+    lineHeight: 25,
+  },
+
+  consentBackdrop: {
+    position: "absolute",
+    top: -14,
+    right: 0,
+    bottom: -18,
+    left: 0,
+    zIndex: 1000,
+    elevation: 1000,
+    paddingHorizontal: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.64)",
+  },
+
+  consentDialog: {
+    width: "100%",
+    maxWidth: 360,
+    padding: 18,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.34)",
+    backgroundColor: "#0b1024",
+  },
+
+  consentDialogTablet: {
+    maxWidth: 520,
+    padding: 28,
+    borderRadius: 16,
+  },
+
+  consentText: {
+    color: "#ffffff",
+    fontSize: 16,
+    lineHeight: 28,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  consentTextTablet: {
+    fontSize: 21,
+    lineHeight: 34,
+  },
+
+  consentActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+  },
+
+  consentButton: {
+    flex: 1,
+    minHeight: 46,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  consentPrimaryButton: {
+    backgroundColor: "#2563eb",
+  },
+
+  consentSecondaryButton: {
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.32)",
+    backgroundColor: "rgba(15,23,42,0.9)",
+  },
+
+  consentPrimaryButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  consentSecondaryButtonText: {
+    color: "#e5e7eb",
+    fontSize: 14,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+});

@@ -26,7 +26,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       .on("postgres_changes", { event: "*", schema: "public", table: "game_invites" }, (payload: any) => {
         const row = payload.new;
         if (row?.sender_id === profile.id && row.status === "accepted" && row.room_id) {
-          router.replace({ pathname: "/matchmaking", params: { mode: "1v1", matchmaking_status: "matched", room_id: row.room_id, matchType: "duo" } });
+          router.replace({ pathname: "/domino/matchmaking", params: { mode: "1v1", matchmaking_status: "matched", room_id: row.room_id, matchType: "duo" } });
         }
         void refresh();
       })
@@ -43,7 +43,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       const result = await respondGameInvite(invite.id, accept);
       setInvites((current) => current.filter((item) => item.id !== invite.id));
       if (accept && result.room_id) {
-        router.replace({ pathname: "/matchmaking", params: { mode: "1v1", matchmaking_status: "matched", room_id: result.room_id, matchType: "duo" } });
+        router.replace({ pathname: "/domino/matchmaking", params: { mode: "1v1", matchmaking_status: "matched", room_id: result.room_id, matchType: "duo" } });
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "نەتوانرا بانگهێشتەکە وەڵام بدرێتەوە.");

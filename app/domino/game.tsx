@@ -563,7 +563,7 @@ export default function GameScreen() {
       }
 
       setShowLeaveConfirm(false);
-      router.replace("/(tabs)/lobby");
+      router.replace("/(tabs)/play");
     } catch (error) {
       console.warn("Failed to leave game", error);
       setIsLeavingMatch(false);
@@ -1019,15 +1019,15 @@ export default function GameScreen() {
   }}
   onClose={() => {
     setShowGameOverPopup(false);
-    router.replace("/(tabs)/lobby");
+    router.replace("/(tabs)/play");
   }}
   onPlayAgain={() => {
     if (isPracticeMode) {
-      router.replace("/play-ai");
+      router.replace("/domino/play-ai");
       return;
     }
 
-    router.replace("/(tabs)/lobby");
+    router.replace("/(tabs)/play");
   }}
 />
 

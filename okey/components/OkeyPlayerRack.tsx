@@ -247,19 +247,25 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
     setRackSlots((current) => syncSlotsWithTiles(current, tiles, fixedDrawTileId));
   }, [fixedDrawTileId, tiles]);
 
-  useEffect(() => {
-    const tileIds = tiles.map((tile) => tile.id);
-    setEnteringTileIds(new Set(tileIds));
-    const timeout = setTimeout(() => {
-      setEnteringTileIds((current) => {
-        const next = new Set(current);
-        tileIds.forEach((tileId) => next.delete(tileId));
-        return next;
-      });
-    }, RACK_TILE_ENTER_MS + RACK_DEAL_BATCH_STAGGER_MS * 6 + 120);
-    enterAnimationTimeoutsRef.current.push(timeout);
-    return () => clearTimeout(timeout);
-  }, [dealResetKey]);
+useEffect(() => {
+  // dealResetKey may change because of server updates.
+  // Do not restart the enter animation for tiles already on the rack.
+  if (!dealResetKey) return;
+
+  const currentTileIds = new Set(tiles.map((tile) => tile.id));
+
+  setEnteringTileIds((current) => {
+    const next = new Set<string>();
+
+    for (const tileId of current) {
+      if (currentTileIds.has(tileId)) {
+        next.add(tileId);
+      }
+    }
+
+    return next;
+  });
+}, [dealResetKey, tiles]);
 
   useEffect(() => {
     const previousTileIds = previousTileIdsRef.current;

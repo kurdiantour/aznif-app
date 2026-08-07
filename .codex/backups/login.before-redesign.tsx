@@ -47,7 +47,7 @@ export default function LoginScreen() {
 
         if (user && isMounted) {
           await getOrCreateProfile();
-          router.replace("/(tabs)/lobby");
+          router.replace("/(tabs)/play");
           return;
         }
       } catch {
@@ -113,7 +113,7 @@ export default function LoginScreen() {
       }
 
       await AsyncStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
-      router.replace("/(tabs)/lobby");
+      router.replace("/(tabs)/play");
     } catch (error) {
       console.warn("[auth] login failed", error);
 
@@ -153,7 +153,7 @@ return (
           ئەگەر ناتەوێت هەژمار دروست بکەیت،{" "}
           <Text
             style={styles.guestLink}
-            onPress={() => router.replace("/(tabs)/lobby")}
+            onPress={() => router.replace("/(tabs)/play")}
           >
             وەک میوان بەردەوام
           </Text>{" "}
