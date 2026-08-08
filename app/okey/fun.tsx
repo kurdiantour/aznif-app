@@ -86,6 +86,7 @@ function formatAmount(value: number) {
 type TableCardProps = {
   table: OkeyTable;
   balance: number;
+  points: number;
   joining: boolean;
   disabledByOtherJoin: boolean;
   onJoin: () => void;
@@ -94,14 +95,17 @@ type TableCardProps = {
 function TableCard({
   table,
   balance,
+  points,
   joining,
   disabledByOtherJoin,
   onJoin,
 }: TableCardProps) {
   const affordable = balance >= table.entry;
+  const meetsPointRequirement = points >= table.minPoints;
 
   const disabled =
     !affordable ||
+    !meetsPointRequirement ||
     joining ||
     disabledByOtherJoin;
 
@@ -111,7 +115,7 @@ function TableCard({
       onPress={onJoin}
       style={({ pressed }) => [
         styles.tableCard,
-        !affordable && styles.tableCardLocked,
+        (!affordable || !meetsPointRequirement) && styles.tableCardLocked,
         joining && styles.tableCardJoining,
         pressed && !disabled && styles.pressed,
       ]}
@@ -256,7 +260,7 @@ export default function OkeyFunScreen() {
         return;
       }
 
-      if (coinBalance < table.entry) {
+      if (coinBalance < table.entry || profile.points < table.minPoints) {
         return;
       }
 
@@ -317,6 +321,7 @@ export default function OkeyFunScreen() {
                     key={table.id}
                     table={table}
                     balance={coinBalance}
+                    points={profile?.points ?? 0}
                     joining={
                       joiningTableId === table.id
                     }

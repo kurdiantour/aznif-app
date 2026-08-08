@@ -153,7 +153,9 @@ export function LobbyHeader() {
                 <View style={styles.balanceIconCircleCoin}>
                   <FontAwesome name="circle" size={13} color="#F5C542" />
                 </View>
-                <Text style={styles.balanceText}>{coinBalance} Coin</Text>
+                <Text style={styles.balanceText}>
+  {coinBalance} <Text style={styles.balanceTextKurdish}>سکە</Text>
+</Text>
               </LinearGradient>
               <LinearGradient
                 colors={["rgba(255,183,59,0.22)", "rgba(255,255,255,0.07)"]}
@@ -165,7 +167,9 @@ export function LobbyHeader() {
                   <FontAwesome name="circle" size={13} color="#F5C542" />
                 </View>
 
-                <Text style={styles.balanceText}>{mcBalance} ئەزنیف</Text>
+                <Text style={styles.balanceText}>
+  {mcBalance} <Text style={styles.balanceTextKurdish}>ئەزنیف</Text>
+</Text>
               </LinearGradient>
 
               {ENABLE_SHOP_FEATURES && ENABLE_GOLD_PURCHASES ? (
@@ -180,8 +184,10 @@ export function LobbyHeader() {
                       <Ionicons name="diamond" size={14} color="#C084FC" />
                     </View>
 
-                    <Text style={styles.balanceText}>{gemBalance} گەوهەر</Text>
-
+<Text style={styles.balanceText}>
+  {gemBalance}{" "}
+  <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
+</Text>
                     <View style={styles.plusButton}>
                       <Ionicons name="add" size={15} color="#ffffff" />
                     </View>
@@ -198,7 +204,9 @@ export function LobbyHeader() {
                     <Ionicons name="diamond" size={14} color="#C084FC" />
                   </View>
 
-                  <Text style={styles.balanceText}>{gemBalance} گەوهەر</Text>
+                  <Text style={styles.balanceText}>
+                    {gemBalance} <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
+                  </Text>
                 </LinearGradient>
               )}
             </View>
@@ -398,6 +406,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     flexShrink: 0,
   },
+
+  balanceTextKurdish: {
+  fontFamily: "SpedaBold",
+},
 
   plusButton: {
     width: 23,

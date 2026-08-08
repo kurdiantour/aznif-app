@@ -12,6 +12,7 @@ type OkeyCurrency = "fun" | "aznif";
 type TableEconomy = {
   entryFee: number;
   currency: OkeyCurrency;
+  minPoints?: number;
 };
 
 type OkeyRoomMember = {
@@ -54,18 +55,22 @@ const TABLE_ECONOMY: Record<string, TableEconomy> = {
   starter: {
     entryFee: 500,
     currency: "fun",
+    minPoints: 0,
   },
   bronze: {
     entryFee: 3_500,
     currency: "fun",
+    minPoints: 250,
   },
   silver: {
     entryFee: 15_000,
     currency: "fun",
+    minPoints: 650,
   },
   gold: {
     entryFee: 25_000,
     currency: "fun",
+    minPoints: 1_100,
   },
   "aznif-low": {
     entryFee: 10,
@@ -276,6 +281,36 @@ const displayName = String(
     },
   );
 
+  /*
+   * Fun-table Point requirements are an admission rule, not a match reward.
+   * Check them before joining the room so this cannot be bypassed by calling
+   * the Edge Function directly instead of using the lobby UI.
+   */
+  if (action === "matchmake") {
+    const economy = TABLE_ECONOMY[String(body.tableId)];
+
+    if (economy?.currency === "fun") {
+      const requiredPoints = economy.minPoints ?? 0;
+      const { data: profile, error: profileError } = await service
+        .from("profiles")
+        .select("points")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        return json({ error: "profile_lookup_failed" }, 500);
+      }
+
+      const playerPoints = Number(profile?.points ?? 0);
+
+      if (playerPoints < requiredPoints) {
+        return json(
+          { error: "insufficient_table_points", requiredPoints, playerPoints },
+          403,
+        );
+      }
+    }
+  }
   const callRoomAction = async (
     roomAction: string,
     extra: Record<string, unknown> = {},
