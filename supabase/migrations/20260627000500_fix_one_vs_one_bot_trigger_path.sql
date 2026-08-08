@@ -9,7 +9,6 @@ BEGIN
   END;
 END;
 $$;
-
 -- Serialize heartbeat with manual leave. Once manual_leave_takeover has been
 -- recorded, a late in-flight heartbeat must not restore human control.
 CREATE OR REPLACE FUNCTION public.one_vs_one_player_heartbeat(p_room_id uuid)
@@ -68,7 +67,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 -- Boot currently calls this before starting heartbeat, so it needs the same
 -- manual-leave guard or reopening the game could undo the takeover.
 CREATE OR REPLACE FUNCTION public.restore_one_vs_one_human_control(p_room_id uuid)
@@ -127,9 +125,7 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.one_vs_one_player_heartbeat(uuid)
 TO authenticated;
-
 GRANT EXECUTE ON FUNCTION public.restore_one_vs_one_human_control(uuid)
 TO authenticated;

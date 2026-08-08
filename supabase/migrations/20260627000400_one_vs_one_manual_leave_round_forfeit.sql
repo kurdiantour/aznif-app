@@ -93,7 +93,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'left', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_one_vs_one_round_leave_forfeits(
   p_room_id uuid
 )
@@ -224,12 +223,9 @@ BEGIN
   );
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.leave_one_vs_one_match(uuid)
 TO authenticated;
-
 GRANT EXECUTE ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid)
 TO service_role;

@@ -25,6 +25,7 @@ import type { Wallet } from "@/types/wallet";
 type AznifCardConfig = {
   id: string;
   amount: number;
+  mode: "1v1" | "2v2";
   title: string;
   description: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
@@ -34,10 +35,11 @@ type AznifCardConfig = {
 
 const AZNIF_CARDS: AznifCardConfig[] = [
   {
-    id: "aznif-1",
-    amount: 1,
-    title: "پێکدادانی ١ ئەزنیف",
-    description: "بەشداری بە ١ ئەزنیف و یاریکردنی دوو کەسی.",
+    id: "aznif-5",
+    amount: 5,
+    mode: "1v1",
+    title: "پێکدادان",
+    description: "بەشداری بە 5 ئەزنیف و یاریکردنی دوو کەسی.",
     icon: "shield-outline",
     colors: [
       "rgba(180,117,24,0.96)",
@@ -46,10 +48,11 @@ const AZNIF_CARDS: AznifCardConfig[] = [
     enabled: true,
   },
   {
-    id: "aznif-5",
-    amount: 5,
-    title: "پێکدادانی ٥ ئەزنیف",
-    description: "بەشداری بە ٥ ئەزنیف و یاریکردنی دوو کەسی.",
+    id: "aznif-10",
+    amount: 10,
+    mode: "1v1",
+    title: "پێکدادان",
+    description: "بەشداری بە 10 ئەزنیف و یاریکردنی دوو کەسی.",
     icon: "shield-star-outline",
     colors: [
       "rgba(126,47,194,0.96)",
@@ -58,28 +61,30 @@ const AZNIF_CARDS: AznifCardConfig[] = [
     enabled: true,
   },
   {
-    id: "aznif-coming-1",
-    amount: 0,
-    title: "یاریی نوێی ئەزنیف",
-    description: "ئەم بەشە لە قۆناغی داهاتوودا زیاد دەکرێت.",
+    id: "aznif-15",
+    amount: 15,
+    mode: "2v2",
+    title: "هاوپەیمان",
+    description: "بەشداری بە 15 ئەزنیف و یاریکردنی چوار کەسی.",
     icon: "crown-outline",
     colors: [
-      "rgba(30,64,175,0.90)",
+      "rgba(30,64,175,0.96)",
       "rgba(15,23,42,0.96)",
     ],
-    enabled: false,
+    enabled: true,
   },
   {
-    id: "aznif-coming-2",
-    amount: 0,
-    title: "یاریی نوێی ئەزنیف",
-    description: "ئەم بەشە لە قۆناغی داهاتوودا زیاد دەکرێت.",
+    id: "aznif-20",
+    amount: 20,
+    mode: "2v2",
+    title: "هاوپەیمان",
+    description: "بەشداری بە 20 ئەزنیف و یاریکردنی چوار کەسی.",
     icon: "diamond-stone",
     colors: [
-      "rgba(15,118,110,0.90)",
+      "rgba(15,118,110,0.96)",
       "rgba(15,23,42,0.96)",
     ],
-    enabled: false,
+    enabled: true,
   },
 ];
 
@@ -195,11 +200,6 @@ function AznifCard({
             isTablet && styles.entryBoxTablet,
           ]}
         >
-          <MaterialCommunityIcons
-            name="circle-multiple"
-            size={isTablet ? 20 : 16}
-            color="#f8d774"
-          />
 
           <Text
             style={[
@@ -639,25 +639,25 @@ card: {
     gap: 8,
   },
 
-  entryLabel: {
-    color: "rgba(255,255,255,0.76)",
-    fontSize: 9,
-    fontFamily: "SpedaBold",
-  },
+entryLabel: {
+  color: "#ffffff",
+  fontSize: 11,
+  fontFamily: "SpedaBold",
+},
 
-  entryLabelTablet: {
-    fontSize: 13,
-  },
+entryLabelTablet: {
+  fontSize: 16,
+},
 
-  entryAmount: {
-    color: "#ffffff",
-    fontSize: 11,
-    fontFamily: "SpedaBold",
-  },
+entryAmount: {
+  color: "#ffffff",
+  fontSize: 11,
+  fontFamily: "SpedaBold",
+},
 
-  entryAmountTablet: {
-    fontSize: 16,
-  },
+entryAmountTablet: {
+  fontSize: 16,
+},
 
   balanceWarning: {
     position: "absolute",

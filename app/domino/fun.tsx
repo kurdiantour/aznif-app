@@ -32,6 +32,7 @@ type MatchType = "duo" | "squad";
 type FunCardProps = {
   title: string;
   subtitle: string;
+  entry: number;
   image: ImageSourcePropType;
   isTablet: boolean;
   disabled: boolean;
@@ -42,6 +43,7 @@ type FunCardProps = {
 function FunCard({
   title,
   subtitle,
+  entry,
   image,
   isTablet,
   disabled,
@@ -118,6 +120,38 @@ function FunCard({
         >
           {subtitle}
         </Text>
+      </View>
+
+      <View
+        style={[
+          styles.entryBox,
+          isTablet && styles.entryBoxTablet,
+        ]}
+      >
+        <Text
+          style={[
+            styles.entryCurrency,
+            isTablet && styles.entryCurrencyTablet,
+          ]}
+        >
+          تێچوو
+        </Text>
+
+        <Text
+          style={[
+            styles.entryAmount,
+            isTablet && styles.entryAmountTablet,
+          ]}
+        >
+          {entry.toLocaleString("en-US")}
+        </Text>
+
+        <View
+          style={[
+            styles.coinDot,
+            isTablet && styles.coinDotTablet,
+          ]}
+        />
       </View>
     </Pressable>
   );
@@ -275,23 +309,23 @@ export default function DominoFunScreen() {
         throw rpcError;
       }
 
-if (!result?.status) {
-  throw new Error(
-    "Unable to start matchmaking.",
-  );
-}
+      if (!result?.status) {
+        throw new Error(
+          "Unable to start matchmaking.",
+        );
+      }
 
-router.push({
-  pathname: "/domino/matchmaking",
-  params: {
-    mode,
-    matchmaking_status: result.status,
-    room_id: result.room_id ?? "",
-    matchType,
-    playMode: "fun",
-    game: "domino",
-  },
-});
+      router.push({
+        pathname: "/domino/matchmaking",
+        params: {
+          mode,
+          matchmaking_status: result.status,
+          room_id: result.room_id ?? "",
+          matchType,
+          playMode: "fun",
+          game: "domino",
+        },
+      });
     } catch (reason) {
       console.warn(
         "Unable to start Fun matchmaking:",
@@ -350,6 +384,7 @@ router.push({
             <FunCard
               title="پێکدادان"
               subtitle="یاریی دوو کەسی، توانای خۆت بسەلمێنە"
+              entry={500}
               image={require(
                 "@/assets/images/mode-select/1vs1.webp"
               )}
@@ -367,6 +402,7 @@ router.push({
             <FunCard
               title="هاوپەیمان"
               subtitle="یاریی چوار کەسی، لەگەڵ هاوپەیمانەکەت"
+              entry={3500}
               image={require(
                 "@/assets/images/mode-select/2vs2.webp"
               )}
@@ -506,12 +542,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-cardsRow: {
-  alignSelf: "flex-start",
-  flexDirection: "row",
-  alignItems: "flex-start",
-  gap: 8,
-},
+  cardsRow: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
 
   cardsRowTablet: {
     width: "55%",
@@ -522,15 +558,15 @@ cardsRow: {
     marginTop: 12,
   },
 
-card: {
-  width: 200,
-  height: 250,
-  overflow: "hidden",
-  borderRadius: 14,
-  borderWidth: 1.2,
-  borderColor: "rgba(180,120,255,0.42)",
-  backgroundColor: "rgba(17,24,39,0.82)",
-},
+  card: {
+    width: 200,
+    height: 250,
+    overflow: "hidden",
+    borderRadius: 14,
+    borderWidth: 1.2,
+    borderColor: "rgba(180,120,255,0.42)",
+    backgroundColor: "rgba(17,24,39,0.82)",
+  },
 
   cardTablet: {
     borderRadius: 18,
@@ -555,14 +591,14 @@ card: {
     position: "absolute",
     left: 15,
     right: 15,
-    bottom: 14,
+    bottom: 56,
     alignItems: "center",
   },
 
   cardInfoTablet: {
     left: 22,
     right: 22,
-    bottom: 24,
+    bottom: 78,
   },
 
   cardTitle: {
@@ -589,6 +625,63 @@ card: {
     marginTop: 9,
     fontSize: 16,
     lineHeight: 25,
+  },
+
+  entryBox: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: 10,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: "rgba(2,6,23,0.38)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  entryBoxTablet: {
+    left: 16,
+    right: 16,
+    bottom: 16,
+    height: 46,
+    borderRadius: 12,
+    gap: 8,
+  },
+
+  entryCurrency: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontFamily: "SpedaBold",
+  },
+
+  entryCurrencyTablet: {
+    fontSize: 16,
+  },
+
+  entryAmount: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontFamily: "SpedaBold",
+  },
+
+  entryAmountTablet: {
+    fontSize: 16,
+  },
+
+  coinDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#f8d774",
+  },
+
+  coinDotTablet: {
+    width: 13,
+    height: 13,
   },
 
   loadingOverlay: {

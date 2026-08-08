@@ -1,5 +1,4 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 CREATE TABLE IF NOT EXISTS public.one_vs_one_rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   host_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -14,7 +13,6 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_rooms (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE TABLE IF NOT EXISTS public.one_vs_one_players (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid NOT NULL REFERENCES public.one_vs_one_rooms(id) ON DELETE CASCADE,
@@ -31,11 +29,9 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_players (
   UNIQUE (room_id, seat),
   UNIQUE (room_id, player_index)
 );
-
 CREATE UNIQUE INDEX IF NOT EXISTS one_vs_one_players_unique_user
 ON public.one_vs_one_players (room_id, user_id)
 WHERE user_id IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS public.one_vs_one_moves (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid NOT NULL REFERENCES public.one_vs_one_rooms(id) ON DELETE CASCADE,
@@ -48,16 +44,12 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_moves (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (room_id, sequence)
 );
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_rooms_status
 ON public.one_vs_one_rooms(status);
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_players_room_id
 ON public.one_vs_one_players(room_id);
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_moves_room_id_sequence
 ON public.one_vs_one_moves(room_id, sequence);
-
 CREATE OR REPLACE FUNCTION public.set_one_vs_one_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -67,23 +59,18 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_set_one_vs_one_rooms_updated_at
 ON public.one_vs_one_rooms;
-
 CREATE TRIGGER trigger_set_one_vs_one_rooms_updated_at
 BEFORE UPDATE ON public.one_vs_one_rooms
 FOR EACH ROW
 EXECUTE FUNCTION public.set_one_vs_one_updated_at();
-
 DROP TRIGGER IF EXISTS trigger_set_one_vs_one_players_updated_at
 ON public.one_vs_one_players;
-
 CREATE TRIGGER trigger_set_one_vs_one_players_updated_at
 BEFORE UPDATE ON public.one_vs_one_players
 FOR EACH ROW
 EXECUTE FUNCTION public.set_one_vs_one_updated_at();
-
 CREATE OR REPLACE FUNCTION public.generate_one_vs_one_room_code()
 RETURNS text
 LANGUAGE plpgsql
@@ -107,7 +94,6 @@ BEGIN
   RETURN v_code;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.next_one_vs_one_move_sequence(p_room_id uuid)
 RETURNS int
 LANGUAGE sql
@@ -116,7 +102,6 @@ AS $$
   FROM public.one_vs_one_moves
   WHERE room_id = p_room_id;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_one_vs_one_seat_assignment(p_player_index int)
 RETURNS TABLE(seat text, team_id text)
 LANGUAGE plpgsql
@@ -131,7 +116,6 @@ BEGIN
   END IF;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.create_one_vs_one_room(p_bet_amount numeric DEFAULT 0)
 RETURNS public.one_vs_one_rooms
 LANGUAGE plpgsql
@@ -213,7 +197,6 @@ BEGIN
   RETURN v_room;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.join_one_vs_one_room(p_room_code text)
 RETURNS public.one_vs_one_players
 LANGUAGE plpgsql
@@ -329,7 +312,6 @@ BEGIN
   RETURN v_player;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.start_one_vs_one_game(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -509,7 +491,6 @@ BEGIN
   );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_one_vs_one_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -585,7 +566,6 @@ BEGIN
   );
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.create_one_vs_one_room(numeric) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.join_one_vs_one_room(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.next_one_vs_one_move_sequence(uuid) TO authenticated;

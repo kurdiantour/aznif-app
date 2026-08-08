@@ -3,11 +3,9 @@
 
 ALTER TABLE public.one_vs_one_rooms
 ADD COLUMN IF NOT EXISTS private_expires_at timestamptz;
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_private_waiting_expiry
 ON public.one_vs_one_rooms(private_expires_at)
 WHERE status = 'waiting' AND private_expires_at IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS public.one_vs_one_private_join_attempts (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -16,13 +14,10 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_private_join_attempts (
   room_id uuid REFERENCES public.one_vs_one_rooms(id) ON DELETE SET NULL,
   attempted_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_private_join_attempts_user_time
 ON public.one_vs_one_private_join_attempts(user_id, attempted_at DESC);
-
 ALTER TABLE public.one_vs_one_private_join_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.one_vs_one_private_join_attempts FROM PUBLIC, anon, authenticated;
-
 CREATE OR REPLACE FUNCTION public.enforce_one_active_paid_room()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -57,13 +52,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_enforce_one_active_paid_room
 ON public.one_vs_one_players;
 CREATE TRIGGER trigger_enforce_one_active_paid_room
 BEFORE INSERT OR UPDATE OF user_id, room_id ON public.one_vs_one_players
 FOR EACH ROW EXECUTE FUNCTION public.enforce_one_active_paid_room();
-
 CREATE OR REPLACE FUNCTION public.expire_stale_private_10_aznif_rooms()
 RETURNS integer
 LANGUAGE plpgsql
@@ -106,7 +99,6 @@ BEGIN
   RETURN array_length(v_expired_ids, 1);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.create_private_10_aznif_room()
 RETURNS public.one_vs_one_rooms
 LANGUAGE plpgsql
@@ -181,7 +173,6 @@ BEGIN
   RETURN v_room;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.heartbeat_private_10_aznif_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -206,7 +197,6 @@ BEGIN
   RETURN jsonb_build_object('ok', FOUND);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.join_private_10_aznif_room(p_room_code text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -350,7 +340,6 @@ BEGIN
   );
 END;
 $$;
-
 -- The generic arbitrary-amount private creator/joiner are internal only now.
 REVOKE ALL ON FUNCTION public.create_one_vs_one_room(numeric)
 FROM PUBLIC, anon, authenticated;
@@ -358,7 +347,6 @@ REVOKE ALL ON FUNCTION public.join_one_vs_one_room(text)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.create_one_vs_one_room(numeric) TO service_role;
 GRANT EXECUTE ON FUNCTION public.join_one_vs_one_room(text) TO service_role;
-
 REVOKE ALL ON FUNCTION public.expire_stale_private_10_aznif_rooms()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.enforce_one_active_paid_room()
@@ -369,12 +357,10 @@ REVOKE ALL ON FUNCTION public.join_private_10_aznif_room(text)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.heartbeat_private_10_aznif_room(uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.expire_stale_private_10_aznif_rooms() TO service_role;
 GRANT EXECUTE ON FUNCTION public.create_private_10_aznif_room() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.join_private_10_aznif_room(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.heartbeat_private_10_aznif_room(uuid) TO authenticated;
-
 -- Presence heartbeats provide a lightweight global cleanup clock. Going to
 -- the background also cancels a hosted waiting room immediately when the OS
 -- delivers the AppState transition.

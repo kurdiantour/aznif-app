@@ -23,7 +23,6 @@ BEGIN
     CHECK (entry_type IN ('initialization', 'distribution', 'spend', 'burn', 'adjustment', 'return_to_admin'));
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.record_aznif_return_to_admin_ledger()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -99,13 +98,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_record_aznif_return_to_admin_ledger ON public.wallet_transactions;
 CREATE TRIGGER trigger_record_aznif_return_to_admin_ledger
 AFTER INSERT ON public.wallet_transactions
 FOR EACH ROW
 EXECUTE FUNCTION public.record_aznif_return_to_admin_ledger();
-
 DO $$
 DECLARE
   v_admin_id uuid;
@@ -164,7 +161,5 @@ BEGIN
   WHERE id = true;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.record_aznif_return_to_admin_ledger() FROM PUBLIC;
-
 NOTIFY pgrst, 'reload schema';

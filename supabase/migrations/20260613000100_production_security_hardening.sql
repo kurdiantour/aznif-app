@@ -37,7 +37,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.mark_two_vs_two_player_disconnected(
   p_room_id uuid,
   p_user_id uuid DEFAULT NULL
@@ -75,16 +74,13 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 -- Offline practice results cannot be independently verified by the server.
 -- Keep historical claims readable, but disable new public progression awards.
 REVOKE ALL ON FUNCTION public.award_ai_practice_win(text)
 FROM PUBLIC, anon, authenticated;
-
 -- Match rewards are settled by service-role Edge Functions from finished rooms.
 REVOKE ALL ON FUNCTION public.settle_match_rewards(text, uuid)
 FROM PUBLIC, anon, authenticated;
-
 -- Takeover scans are maintenance operations, never player-authorized actions.
 REVOKE ALL ON FUNCTION public.process_one_vs_one_takeovers(int)
 FROM PUBLIC, anon, authenticated;
@@ -92,7 +88,6 @@ REVOKE ALL ON FUNCTION public.process_two_vs_two_takeovers(int)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.process_one_vs_one_takeovers(int) TO service_role;
 GRANT EXECUTE ON FUNCTION public.process_two_vs_two_takeovers(int) TO service_role;
-
 REVOKE ALL ON FUNCTION public.mark_one_vs_one_player_disconnected(uuid, uuid)
 FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.mark_two_vs_two_player_disconnected(uuid, uuid)

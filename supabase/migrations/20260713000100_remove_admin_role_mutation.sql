@@ -98,9 +98,7 @@ BEGIN
   END IF;
 END;
 $$;
-
 DROP FUNCTION IF EXISTS public.admin_update_player(uuid, integer, numeric, numeric, boolean);
 REVOKE ALL ON FUNCTION public.admin_update_player(uuid, integer, numeric, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_update_player(uuid, integer, numeric, numeric) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

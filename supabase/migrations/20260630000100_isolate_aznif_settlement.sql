@@ -4,13 +4,10 @@
 
 ALTER FUNCTION public.settle_one_vs_one_bet(uuid)
 RENAME TO execute_one_vs_one_bet_settlement;
-
 REVOKE ALL ON FUNCTION public.execute_one_vs_one_bet_settlement(uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.execute_one_vs_one_bet_settlement(uuid)
 TO service_role;
-
 CREATE TABLE public.one_vs_one_bet_settlement_jobs (
   room_id uuid PRIMARY KEY REFERENCES public.one_vs_one_rooms(id) ON DELETE CASCADE,
   bet_amount numeric NOT NULL CHECK (bet_amount > 0),
@@ -23,9 +20,7 @@ CREATE TABLE public.one_vs_one_bet_settlement_jobs (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 ALTER TABLE public.one_vs_one_bet_settlement_jobs ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "one_vs_one_bet_settlement_jobs_select_players"
 ON public.one_vs_one_bet_settlement_jobs
 FOR SELECT
@@ -38,9 +33,7 @@ USING (
       AND player.user_id = auth.uid()
   )
 );
-
 GRANT SELECT ON public.one_vs_one_bet_settlement_jobs TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.settle_one_vs_one_bet(p_room_id uuid)
 RETURNS TABLE(
   settlement_id uuid,
@@ -121,13 +114,10 @@ BEGIN
   END;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.settle_one_vs_one_bet(uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.settle_one_vs_one_bet(uuid)
 TO service_role;
-
 CREATE OR REPLACE FUNCTION public.retry_one_vs_one_bet_settlement(p_room_id uuid)
 RETURNS public.one_vs_one_bet_settlement_jobs
 LANGUAGE plpgsql
@@ -146,9 +136,7 @@ BEGIN
   RETURN v_job;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.retry_one_vs_one_bet_settlement(uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.retry_one_vs_one_bet_settlement(uuid)
 TO service_role;

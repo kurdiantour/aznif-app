@@ -73,6 +73,5 @@ BEGIN
   RETURN jsonb_build_object('status', 'accepted', 'room_id', v_room.id);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.respond_game_invite(uuid, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.respond_game_invite(uuid, boolean) TO authenticated;

@@ -40,5 +40,4 @@ AS $$
   ORDER BY rp.rank ASC, rp.points DESC, rp.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;

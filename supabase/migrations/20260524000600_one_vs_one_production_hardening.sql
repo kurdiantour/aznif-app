@@ -5,10 +5,8 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_private_states (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 ALTER TABLE public.one_vs_one_rooms
 ADD COLUMN IF NOT EXISTS move_sequence int NOT NULL DEFAULT 0;
-
 CREATE OR REPLACE FUNCTION public.next_one_vs_one_move_sequence(p_room_id uuid)
 RETURNS int
 LANGUAGE plpgsql
@@ -30,14 +28,12 @@ BEGIN
   RETURN v_sequence;
 END;
 $$;
-
 ALTER TABLE public.one_vs_one_players
 ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NULL,
 ADD COLUMN IF NOT EXISTS bot_takeover boolean NOT NULL DEFAULT false,
 ADD COLUMN IF NOT EXISTS takeover_started_at timestamptz NULL,
 ADD COLUMN IF NOT EXISTS takeover_expires_at timestamptz NULL,
 ADD COLUMN IF NOT EXISTS abandoned boolean NOT NULL DEFAULT false;
-
 CREATE TABLE IF NOT EXISTS public.one_vs_one_matchmaking_queue (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -47,11 +43,9 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_matchmaking_queue (
   ended_at timestamptz NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_matchmaking_status_created
 ON public.one_vs_one_matchmaking_queue(status, created_at)
 WHERE status = 'searching';
-
 CREATE OR REPLACE FUNCTION public.set_one_vs_one_private_states_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -61,15 +55,12 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_set_one_vs_one_private_states_updated_at
 ON public.one_vs_one_private_states;
-
 CREATE TRIGGER trigger_set_one_vs_one_private_states_updated_at
 BEFORE UPDATE ON public.one_vs_one_private_states
 FOR EACH ROW
 EXECUTE FUNCTION public.set_one_vs_one_private_states_updated_at();
-
 CREATE OR REPLACE FUNCTION public.set_one_vs_one_matchmaking_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -79,15 +70,12 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_set_one_vs_one_matchmaking_updated_at
 ON public.one_vs_one_matchmaking_queue;
-
 CREATE TRIGGER trigger_set_one_vs_one_matchmaking_updated_at
 BEFORE UPDATE ON public.one_vs_one_matchmaking_queue
 FOR EACH ROW
 EXECUTE FUNCTION public.set_one_vs_one_matchmaking_updated_at();
-
 INSERT INTO public.one_vs_one_private_states (room_id, hands, boneyard)
 SELECT
   id,
@@ -96,7 +84,6 @@ SELECT
 FROM public.one_vs_one_rooms
 WHERE state ? 'hands'
 ON CONFLICT (room_id) DO NOTHING;
-
 UPDATE public.one_vs_one_rooms
 SET state = (
   state
@@ -119,7 +106,6 @@ SET state = (
   END
 ) - 'hands' - 'boneyard'
 WHERE state ? 'hands' OR state ? 'boneyard';
-
 CREATE OR REPLACE FUNCTION public.find_one_vs_one_opponent()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -225,7 +211,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'searching');
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_one_vs_one_matchmaking_status()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -259,7 +244,6 @@ BEGIN
   );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_one_vs_one_matchmaking(p_room_id uuid DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -285,7 +269,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'cancelled');
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.start_one_vs_one_game(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -436,7 +419,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'success', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_one_vs_one_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -514,7 +496,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'success', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.one_vs_one_player_heartbeat(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -544,7 +525,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.mark_one_vs_one_player_disconnected(p_room_id uuid, p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -562,7 +542,6 @@ BEGIN
   RETURN jsonb_build_object('status', CASE WHEN FOUND THEN 'ok' ELSE 'not_found' END);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.process_one_vs_one_takeovers(p_grace_seconds int DEFAULT 30)
 RETURNS int
 LANGUAGE plpgsql
@@ -608,7 +587,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.restore_one_vs_one_human_control(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -650,7 +628,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.evaluate_one_vs_one_abandonments_and_forfeits(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -724,7 +701,6 @@ BEGIN
   RETURN jsonb_build_object('forfeit', true, 'winner_team', v_winning_team);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_one_vs_one_snapshot(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -778,7 +754,6 @@ BEGIN
   );
 END;
 $$;
-
 DROP POLICY IF EXISTS "one_vs_one_rooms_select_authenticated" ON public.one_vs_one_rooms;
 DROP POLICY IF EXISTS "one_vs_one_players_select_authenticated" ON public.one_vs_one_players;
 DROP POLICY IF EXISTS "one_vs_one_moves_select_authenticated" ON public.one_vs_one_moves;
@@ -786,7 +761,6 @@ DROP POLICY IF EXISTS "one_vs_one_rooms_insert_owner" ON public.one_vs_one_rooms
 DROP POLICY IF EXISTS "one_vs_one_rooms_update_owner" ON public.one_vs_one_rooms;
 DROP POLICY IF EXISTS "one_vs_one_players_insert_owner" ON public.one_vs_one_players;
 DROP POLICY IF EXISTS "one_vs_one_players_update_owner" ON public.one_vs_one_players;
-
 DROP POLICY IF EXISTS "one_vs_one_rooms_select_players" ON public.one_vs_one_rooms;
 DROP POLICY IF EXISTS "one_vs_one_players_select_room_members" ON public.one_vs_one_players;
 DROP POLICY IF EXISTS "one_vs_one_moves_select_room_members" ON public.one_vs_one_moves;
@@ -794,7 +768,6 @@ DROP POLICY IF EXISTS "one_vs_one_rooms_insert_via_rpc_only" ON public.one_vs_on
 DROP POLICY IF EXISTS "one_vs_one_rooms_update_via_rpc_only" ON public.one_vs_one_rooms;
 DROP POLICY IF EXISTS "one_vs_one_players_insert_via_rpc_only" ON public.one_vs_one_players;
 DROP POLICY IF EXISTS "one_vs_one_players_update_via_rpc_only" ON public.one_vs_one_players;
-
 CREATE OR REPLACE FUNCTION public.is_one_vs_one_room_member(p_room_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -808,70 +781,57 @@ AS $$
       AND user_id = auth.uid()
   );
 $$;
-
 CREATE POLICY "one_vs_one_rooms_select_players"
 ON public.one_vs_one_rooms
 FOR SELECT
 TO authenticated
 USING (public.is_one_vs_one_room_member(id));
-
 CREATE POLICY "one_vs_one_players_select_room_members"
 ON public.one_vs_one_players
 FOR SELECT
 TO authenticated
 USING (public.is_one_vs_one_room_member(room_id));
-
 CREATE POLICY "one_vs_one_moves_select_room_members"
 ON public.one_vs_one_moves
 FOR SELECT
 TO authenticated
 USING (public.is_one_vs_one_room_member(room_id));
-
 CREATE POLICY "one_vs_one_rooms_insert_via_rpc_only"
 ON public.one_vs_one_rooms
 FOR INSERT
 TO authenticated
 WITH CHECK (false);
-
 CREATE POLICY "one_vs_one_rooms_update_via_rpc_only"
 ON public.one_vs_one_rooms
 FOR UPDATE
 TO authenticated
 USING (false)
 WITH CHECK (false);
-
 CREATE POLICY "one_vs_one_players_insert_via_rpc_only"
 ON public.one_vs_one_players
 FOR INSERT
 TO authenticated
 WITH CHECK (false);
-
 CREATE POLICY "one_vs_one_players_update_via_rpc_only"
 ON public.one_vs_one_players
 FOR UPDATE
 TO authenticated
 USING (false)
 WITH CHECK (false);
-
 ALTER TABLE public.one_vs_one_private_states ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.one_vs_one_matchmaking_queue ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "one_vs_one_private_states_no_client_select" ON public.one_vs_one_private_states;
-
 CREATE POLICY "one_vs_one_private_states_no_client_select"
 ON public.one_vs_one_private_states
 FOR SELECT
 TO authenticated
 USING (false);
-
 DROP POLICY IF EXISTS "one_vs_one_matchmaking_select_own" ON public.one_vs_one_matchmaking_queue;
-
 CREATE POLICY "one_vs_one_matchmaking_select_own"
 ON public.one_vs_one_matchmaking_queue
 FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
-
 GRANT SELECT, INSERT, UPDATE ON public.one_vs_one_matchmaking_queue TO authenticated;
 GRANT EXECUTE ON FUNCTION public.find_one_vs_one_opponent() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_one_vs_one_matchmaking_status() TO authenticated;

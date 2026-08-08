@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS public.two_vs_two_rooms (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE TABLE IF NOT EXISTS public.two_vs_two_players (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid NOT NULL REFERENCES public.two_vs_two_rooms(id) ON DELETE CASCADE,
@@ -30,11 +29,9 @@ CREATE TABLE IF NOT EXISTS public.two_vs_two_players (
   UNIQUE (room_id, seat),
   UNIQUE (room_id, player_index)
 );
-
 CREATE UNIQUE INDEX IF NOT EXISTS two_vs_two_players_unique_user
 ON public.two_vs_two_players(room_id, user_id)
 WHERE user_id IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS public.two_vs_two_moves (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid NOT NULL REFERENCES public.two_vs_two_rooms(id) ON DELETE CASCADE,
@@ -47,7 +44,6 @@ CREATE TABLE IF NOT EXISTS public.two_vs_two_moves (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (room_id, sequence)
 );
-
 CREATE TABLE IF NOT EXISTS public.two_vs_two_private_states (
   room_id uuid PRIMARY KEY REFERENCES public.two_vs_two_rooms(id) ON DELETE CASCADE,
   hands jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -55,7 +51,6 @@ CREATE TABLE IF NOT EXISTS public.two_vs_two_private_states (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE TABLE IF NOT EXISTS public.two_vs_two_matchmaking_queue (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -65,20 +60,15 @@ CREATE TABLE IF NOT EXISTS public.two_vs_two_matchmaking_queue (
   ended_at timestamptz NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_rooms_status
 ON public.two_vs_two_rooms(status);
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_players_room_id
 ON public.two_vs_two_players(room_id);
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_moves_room_sequence
 ON public.two_vs_two_moves(room_id, sequence);
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_matchmaking_searching
 ON public.two_vs_two_matchmaking_queue(status, created_at)
 WHERE status = 'searching';
-
 CREATE OR REPLACE FUNCTION public.set_two_vs_two_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -88,39 +78,30 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_set_two_vs_two_rooms_updated_at
 ON public.two_vs_two_rooms;
-
 CREATE TRIGGER trigger_set_two_vs_two_rooms_updated_at
 BEFORE UPDATE ON public.two_vs_two_rooms
 FOR EACH ROW
 EXECUTE FUNCTION public.set_two_vs_two_updated_at();
-
 DROP TRIGGER IF EXISTS trigger_set_two_vs_two_players_updated_at
 ON public.two_vs_two_players;
-
 CREATE TRIGGER trigger_set_two_vs_two_players_updated_at
 BEFORE UPDATE ON public.two_vs_two_players
 FOR EACH ROW
 EXECUTE FUNCTION public.set_two_vs_two_updated_at();
-
 DROP TRIGGER IF EXISTS trigger_set_two_vs_two_private_updated_at
 ON public.two_vs_two_private_states;
-
 CREATE TRIGGER trigger_set_two_vs_two_private_updated_at
 BEFORE UPDATE ON public.two_vs_two_private_states
 FOR EACH ROW
 EXECUTE FUNCTION public.set_two_vs_two_updated_at();
-
 DROP TRIGGER IF EXISTS trigger_set_two_vs_two_queue_updated_at
 ON public.two_vs_two_matchmaking_queue;
-
 CREATE TRIGGER trigger_set_two_vs_two_queue_updated_at
 BEFORE UPDATE ON public.two_vs_two_matchmaking_queue
 FOR EACH ROW
 EXECUTE FUNCTION public.set_two_vs_two_updated_at();
-
 CREATE OR REPLACE FUNCTION public.generate_two_vs_two_room_code()
 RETURNS text
 LANGUAGE plpgsql
@@ -151,7 +132,6 @@ BEGIN
   RETURN v_code;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_two_vs_two_seat_assignment(
   p_player_index int
 )
@@ -176,7 +156,6 @@ BEGIN
   END IF;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.next_two_vs_two_move_sequence(
   p_room_id uuid
 )
@@ -199,7 +178,6 @@ BEGIN
   RETURN v_sequence;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.find_two_vs_two_opponent()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -402,7 +380,6 @@ BEGIN
   );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_two_vs_two_matchmaking_status()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -437,7 +414,6 @@ BEGIN
   );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_two_vs_two_room(
   p_room_id uuid
 )
@@ -543,7 +519,6 @@ BEGIN
   );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_two_vs_two_matchmaking(
   p_room_id uuid DEFAULT NULL
 )
@@ -573,7 +548,6 @@ BEGIN
   );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.start_two_vs_two_game(
   p_room_id uuid
 )
@@ -855,18 +829,13 @@ BEGIN
   );
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.find_two_vs_two_opponent()
 TO authenticated;
-
 GRANT EXECUTE ON FUNCTION public.get_two_vs_two_matchmaking_status()
 TO authenticated;
-
 GRANT EXECUTE ON FUNCTION public.cancel_two_vs_two_matchmaking(uuid)
 TO authenticated;
-
 GRANT EXECUTE ON FUNCTION public.cancel_two_vs_two_room(uuid)
 TO authenticated;
-
 GRANT EXECUTE ON FUNCTION public.start_two_vs_two_game(uuid)
 TO authenticated;

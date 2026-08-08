@@ -15,6 +15,15 @@ import {
   resolveTimeoutTurn,
 } from "../engine/okey-timeout.ts";
 
+import {
+  handSeatToBot,
+  isOkeyBotControlled,
+} from "../engine/okey-bot-policy.ts";
+
+import {
+  playBotTurn,
+} from "../engine/okey-bot-engine.ts";
+
 import type {
   OkeyGameState,
   OkeyMeld,
@@ -31,6 +40,8 @@ export type OkeyTeamId =
 export type OkeyServerPlayerIdentity = {
   id: string;
   name: string;
+  controlledByBot?: boolean;
+  botDifficulty?: "easy" | "normal" | "hard";
 };
 
 export type OkeyAuthoritativeRoundResult = {
@@ -68,6 +79,15 @@ export type OkeyAuthoritativeMatchState = {
   matchWinnerTeamId:
     OkeyTeamId | null;
 
+  timeoutCountsByPlayerId:
+    Record<string, number>;
+
+  manualLeftPlayerIds:
+    string[];
+
+  pendingForfeitTeamId:
+    OkeyTeamId | null;
+
   roundState: OkeyGameState;
 };
 
@@ -101,18 +121,26 @@ function getPlayerIdentities(
     {
       id: state.players[0].id,
       name: state.players[0].name,
+      controlledByBot: state.players[0].controlledByBot,
+      botDifficulty: state.players[0].botDifficulty,
     },
     {
       id: state.players[1].id,
       name: state.players[1].name,
+      controlledByBot: state.players[1].controlledByBot,
+      botDifficulty: state.players[1].botDifficulty,
     },
     {
       id: state.players[2].id,
       name: state.players[2].name,
+      controlledByBot: state.players[2].controlledByBot,
+      botDifficulty: state.players[2].botDifficulty,
     },
     {
       id: state.players[3].id,
       name: state.players[3].name,
+      controlledByBot: state.players[3].controlledByBot,
+      botDifficulty: state.players[3].botDifficulty,
     },
   ];
 }
@@ -174,6 +202,12 @@ export function createAuthoritativeOkeyGame(
           players[index].name,
 
         kind: "human" as const,
+
+        controlledByBot:
+          players[index].controlledByBot,
+
+        botDifficulty:
+          players[index].botDifficulty,
       }),
     ),
 
@@ -216,6 +250,18 @@ export function createAuthoritativeOkeyMatch(
 
     matchWinnerTeamId: null,
 
+    timeoutCountsByPlayerId:
+      Object.fromEntries(
+        players.map((player) => [
+          player.id,
+          0,
+        ]),
+      ),
+
+    manualLeftPlayerIds: [],
+
+    pendingForfeitTeamId: null,
+
     roundState:
       createAuthoritativeOkeyGame(
         players,
@@ -252,6 +298,18 @@ export function settleAuthoritativeOkeyRound(
       "finished"
   ) {
     return match;
+  }
+
+  if (match.pendingForfeitTeamId) {
+    return {
+      ...match,
+      matchFinished: true,
+      matchWinnerTeamId:
+        match.pendingForfeitTeamId === "teamA"
+          ? "teamB"
+          : "teamA",
+      roundState: finishedRound,
+    };
   }
 
   const players =
@@ -605,6 +663,90 @@ export function applyAuthoritativeOkeyCommand(
   return next;
 }
 
+function continueAuthoritativeBotTurns(
+  match: OkeyAuthoritativeMatchState,
+): OkeyAuthoritativeMatchState {
+  let current = match;
+
+  for (let action = 0; action < 32; action += 1) {
+    if (current.matchFinished) {
+      break;
+    }
+
+    const player =
+      current.roundState.players[
+        current.roundState.currentPlayerIndex
+      ];
+
+    if (!isOkeyBotControlled(player)) {
+      break;
+    }
+
+    const nextRoundState = playBotTurn(
+      current.roundState,
+      {
+        difficulty:
+          player.botDifficulty ?? "normal",
+      },
+    );
+
+    if (nextRoundState === current.roundState) {
+      break;
+    }
+
+    current = settleAuthoritativeOkeyRound({
+      ...current,
+      roundState: nextRoundState,
+    });
+  }
+
+  return current;
+}
+export function applyAuthoritativeManualLeave(
+  match: OkeyAuthoritativeMatchState,
+  actorPlayerIndex: number,
+): OkeyAuthoritativeMatchState {
+  if (match.matchFinished) {
+    throw new OkeyCommandError(
+      "command_rejected",
+    );
+  }
+
+  const player =
+    match.roundState.players[actorPlayerIndex];
+
+  if (!player || isOkeyBotControlled(player)) {
+    throw new OkeyCommandError(
+      "command_rejected",
+    );
+  }
+
+  const manualLeftPlayerIds = [
+    ...(match.manualLeftPlayerIds ?? []),
+    player.id,
+  ];
+
+  const teamHasFullyLeft =
+    match.roundState.players
+      .filter((entry) => entry.teamId === player.teamId)
+      .every((entry) =>
+        manualLeftPlayerIds.includes(entry.id),
+      );
+
+  return continueAuthoritativeBotTurns({
+    ...match,
+    manualLeftPlayerIds,
+    pendingForfeitTeamId:
+      teamHasFullyLeft
+        ? player.teamId
+        : match.pendingForfeitTeamId ?? null,
+    roundState: handSeatToBot(
+      match.roundState,
+      actorPlayerIndex,
+      "normal",
+    ),
+  });
+}
 export function applyAuthoritativeOkeyMatchCommand(
   match:
     OkeyAuthoritativeMatchState,
@@ -627,11 +769,26 @@ export function applyAuthoritativeOkeyMatchCommand(
       command,
     );
 
-  return settleAuthoritativeOkeyRound({
-    ...match,
-    roundState:
-      nextRoundState,
-  });
+  const actor =
+    match.roundState.players[actorPlayerIndex];
+
+  const nextTimeoutCounts =
+    actor && !isOkeyBotControlled(actor)
+      ? {
+          ...(match.timeoutCountsByPlayerId ?? {}),
+          [actor.id]: 0,
+        }
+      : match.timeoutCountsByPlayerId;
+
+  return continueAuthoritativeBotTurns(
+    settleAuthoritativeOkeyRound({
+      ...match,
+      timeoutCountsByPlayerId:
+        nextTimeoutCounts,
+      roundState:
+        nextRoundState,
+    }),
+  );
 }
 
 export function resolveAuthoritativeDeadline(
@@ -680,6 +837,58 @@ export function resolveAuthoritativeMatchDeadline(
     );
   }
 
+  if (
+    !deadlineAt ||
+    Date.parse(deadlineAt) > now
+  ) {
+    throw new OkeyCommandError(
+      "deadline_expired",
+    );
+  }
+
+  const playerIndex =
+    match.roundState.currentPlayerIndex;
+
+  const player =
+    match.roundState.players[playerIndex];
+
+  if (!player) {
+    throw new OkeyCommandError(
+      "command_rejected",
+    );
+  }
+
+  if (isOkeyBotControlled(player)) {
+    return continueAuthoritativeBotTurns(match);
+  }
+
+  const timeoutCounts =
+    match.timeoutCountsByPlayerId ?? {};
+
+  const timeoutCount =
+    (timeoutCounts[player.id] ?? 0) + 1;
+
+  const nextTimeoutCounts = {
+    ...timeoutCounts,
+    [player.id]: timeoutCount,
+  };
+
+  if (timeoutCount >= 3) {
+    const botControlledState =
+      handSeatToBot(
+        match.roundState,
+        playerIndex,
+        "normal",
+      );
+
+    return continueAuthoritativeBotTurns({
+      ...match,
+      timeoutCountsByPlayerId:
+        nextTimeoutCounts,
+      roundState: botControlledState,
+    });
+  }
+
   const nextRoundState =
     resolveAuthoritativeDeadline(
       match.roundState,
@@ -689,6 +898,8 @@ export function resolveAuthoritativeMatchDeadline(
 
   return settleAuthoritativeOkeyRound({
     ...match,
+    timeoutCountsByPlayerId:
+      nextTimeoutCounts,
     roundState:
       nextRoundState,
   });

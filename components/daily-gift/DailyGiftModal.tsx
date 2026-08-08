@@ -99,7 +99,6 @@ box: {
   width: "100%",
   maxWidth: 800,
 
-  // 👇 ارتفاع پاپ‌آپ — این عدد را تغییر بده
   minHeight: 360,
 
   overflow: "hidden",

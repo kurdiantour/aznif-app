@@ -73,8 +73,6 @@ BEGIN
   );
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_get_aznif_treasury(int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_get_aznif_treasury(int) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

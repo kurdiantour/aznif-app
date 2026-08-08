@@ -6,12 +6,9 @@ CREATE TABLE IF NOT EXISTS public.user_presence (
   last_seen_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_user_presence_last_seen
 ON public.user_presence(last_seen_at DESC);
-
 ALTER TABLE public.user_presence ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "user_presence_select_friends" ON public.user_presence;
 CREATE POLICY "user_presence_select_friends"
 ON public.user_presence FOR SELECT TO authenticated
@@ -19,10 +16,8 @@ USING (
   user_id = auth.uid()
   OR public.are_friends(auth.uid(), user_id)
 );
-
 REVOKE ALL ON public.user_presence FROM anon, authenticated;
 GRANT SELECT ON public.user_presence TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.update_my_presence(p_status text)
 RETURNS public.user_presence
 LANGUAGE plpgsql
@@ -46,7 +41,6 @@ BEGIN
   RETURN v_presence;
 END;
 $$;
-
 CREATE TABLE IF NOT EXISTS public.game_invites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   sender_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -61,31 +55,24 @@ CREATE TABLE IF NOT EXISTS public.game_invites (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (sender_id <> recipient_id)
 );
-
 CREATE INDEX IF NOT EXISTS idx_game_invites_recipient_pending
 ON public.game_invites(recipient_id, created_at DESC) WHERE status = 'pending';
-
 CREATE UNIQUE INDEX IF NOT EXISTS idx_game_invites_one_pending_pair
 ON public.game_invites(LEAST(sender_id, recipient_id), GREATEST(sender_id, recipient_id))
 WHERE status = 'pending';
-
 ALTER TABLE public.game_invites ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "game_invites_select_participants" ON public.game_invites;
 CREATE POLICY "game_invites_select_participants"
 ON public.game_invites FOR SELECT TO authenticated
 USING (sender_id = auth.uid() OR recipient_id = auth.uid());
-
 REVOKE ALL ON public.game_invites FROM anon, authenticated;
 GRANT SELECT ON public.game_invites TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.expire_stale_game_invites()
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS $$
   UPDATE public.game_invites
   SET status = 'expired', updated_at = now()
   WHERE status = 'pending' AND expires_at <= now();
 $$;
-
 CREATE OR REPLACE FUNCTION public.send_game_invite(p_recipient_id uuid, p_mode text DEFAULT '1v1')
 RETURNS public.game_invites
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -130,7 +117,6 @@ BEGIN
   RETURN v_invite;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_game_invite(p_invite_id uuid)
 RETURNS public.game_invites
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -144,7 +130,6 @@ BEGIN
   RETURN v_invite;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_pending_game_invites()
 RETURNS TABLE(
   id uuid, sender_id uuid, recipient_id uuid, mode text, status text,
@@ -163,7 +148,6 @@ BEGIN
   ORDER BY i.created_at ASC;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.respond_game_invite(p_invite_id uuid, p_accept boolean)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -217,11 +201,8 @@ BEGIN
 
   INSERT INTO public.one_vs_one_moves(room_id, player_id, sequence, action, payload)
   VALUES
-    (v_room.id, v_invite.sender_id, public.next_one_vs_one_move_sequence(v_room.id), 'room_created', jsonb_build_object('game_invite_id', v_invite.id));
-
-  INSERT INTO public.one_vs_one_moves(room_id, player_id, sequence, action, payload)
-  VALUES
-    (v_room.id, v_invite.recipient_id, public.next_one_vs_one_move_sequence(v_room.id), 'room_joined', jsonb_build_object('game_invite_id', v_invite.id));
+    (v_room.id, v_invite.sender_id, 1, 'room_created', jsonb_build_object('game_invite_id', v_invite.id)),
+    (v_room.id, v_invite.recipient_id, 2, 'room_joined', jsonb_build_object('game_invite_id', v_invite.id));
 
   UPDATE public.game_invites
   SET status = 'accepted', room_id = v_room.id, responded_at = now(), updated_at = now()
@@ -236,29 +217,25 @@ BEGIN
   UPDATE public.user_presence SET status = 'matchmaking', updated_at = now(), last_seen_at = now()
   WHERE user_id IN (v_invite.sender_id, v_invite.recipient_id);
 
-  RETURN jsonb_build_object('status', 'accepted', 'room_id', v_room.id);
+  RETURN jsonb_build_object('status', 'accepted', 'room_id', v_room.id, 'room_code', v_room.room_code);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.update_my_presence(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.expire_stale_game_invites() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.send_game_invite(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.respond_game_invite(uuid, boolean) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.cancel_game_invite(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_pending_game_invites() FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.update_my_presence(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.send_game_invite(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.respond_game_invite(uuid, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.cancel_game_invite(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_pending_game_invites() TO authenticated;
-
 DO $$
 BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.user_presence;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 DO $$
 BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.game_invites;

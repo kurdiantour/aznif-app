@@ -42,7 +42,6 @@ BEGIN
   RETURN QUERY SELECT v_wallet.user_id, v_wallet.mc, v_wallet.gold, v_wallet.updated_at;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.award_gold_reward(
   p_user_id uuid,
   p_amount numeric,
@@ -88,7 +87,6 @@ BEGIN
   RETURN QUERY SELECT v_tx_id;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.spend_gold_shop(
   p_user_id uuid,
   p_amount numeric,

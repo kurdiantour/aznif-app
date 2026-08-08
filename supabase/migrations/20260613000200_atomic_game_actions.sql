@@ -77,7 +77,6 @@ BEGIN
   RETURN v_room;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.commit_multiplayer_action(
   text, uuid, bigint, jsonb, jsonb, jsonb, uuid, text, uuid, text, jsonb
 ) FROM PUBLIC, anon, authenticated;

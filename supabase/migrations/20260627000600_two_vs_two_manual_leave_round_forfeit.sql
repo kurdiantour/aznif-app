@@ -89,7 +89,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'left', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_two_vs_two_round_leave_forfeits(
   p_room_id uuid
 )
@@ -223,7 +222,6 @@ BEGIN
   );
 END;
 $$;
-
 -- Manual leave is final for this match; late heartbeats or reopening the
 -- screen must not silently restore human control.
 CREATE OR REPLACE FUNCTION public.two_vs_two_player_heartbeat(p_room_id uuid)
@@ -264,7 +262,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.restore_two_vs_two_human_control(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -303,10 +300,8 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.resolve_two_vs_two_round_leave_forfeits(uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.leave_two_vs_two_match(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.two_vs_two_player_heartbeat(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.restore_two_vs_two_human_control(uuid) TO authenticated;

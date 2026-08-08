@@ -59,12 +59,9 @@ BEGIN
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_list_players(text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_list_players(text, int) TO authenticated;
-
 DROP FUNCTION IF EXISTS public.admin_add_aznif(uuid, numeric);
-
 CREATE OR REPLACE FUNCTION public.admin_add_aznif(
   p_user_id uuid,
   p_amount numeric
@@ -147,8 +144,6 @@ BEGIN
   RETURN QUERY SELECT p_user_id, COALESCE(v_before, 0), v_after, v_tx_id;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_add_aznif(uuid, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_add_aznif(uuid, numeric) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

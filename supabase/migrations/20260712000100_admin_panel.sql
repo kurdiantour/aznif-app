@@ -1,6 +1,5 @@
-﻿ALTER TABLE public.profiles
+ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false;
-
 CREATE OR REPLACE FUNCTION public.current_user_is_admin()
 RETURNS boolean
 LANGUAGE sql
@@ -13,10 +12,8 @@ AS $$
     false
   );
 $$;
-
 REVOKE ALL ON FUNCTION public.current_user_is_admin() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.current_user_is_admin() TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.admin_list_players(
   p_search text DEFAULT NULL,
   p_limit int DEFAULT 50
@@ -73,10 +70,8 @@ BEGIN
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_list_players(text, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_list_players(text, int) TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.admin_update_player(
   p_user_id uuid,
   p_points integer,
@@ -176,9 +171,6 @@ BEGIN
   END IF;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_update_player(uuid, integer, numeric, numeric, boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_update_player(uuid, integer, numeric, numeric, boolean) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';
-

@@ -20,7 +20,7 @@ function botState(hand: OkeyTile[], discardPile: OkeyTile[] = []): OkeyGameState
     discardOwners: discardPile.map(() => ({ playerIndex: 0, playerId: "human" })),
     okeyTile: tile("okey", "black", 13),
     players: state.players.map((player, index) => index === 1
-      ? { ...player, hand, opened: true as const }
+      ? { ...player, kind: "bot" as const, hand, opened: true as const }
       : player),
   };
 }

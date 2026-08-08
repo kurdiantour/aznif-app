@@ -8,13 +8,10 @@ CREATE TABLE IF NOT EXISTS public.game_chat_messages (
   body text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 500),
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_game_chat_messages_room_mode_created
 ON public.game_chat_messages(mode, room_id, created_at);
-
 CREATE INDEX IF NOT EXISTS idx_game_chat_messages_sender
 ON public.game_chat_messages(sender_user_id);
-
 CREATE OR REPLACE FUNCTION public.is_game_room_member(
   p_mode text,
   p_room_id uuid,
@@ -43,7 +40,6 @@ AS $$
     ELSE false
   END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.send_game_chat_message(
   p_mode text,
   p_room_id uuid,
@@ -109,52 +105,40 @@ BEGIN
   RETURN v_message;
 END;
 $$;
-
 ALTER TABLE public.game_chat_messages ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "game_chat_messages_select_room_members"
 ON public.game_chat_messages;
-
 CREATE POLICY "game_chat_messages_select_room_members"
 ON public.game_chat_messages
 FOR SELECT
 TO authenticated
 USING (public.is_game_room_member(mode, room_id));
-
 DROP POLICY IF EXISTS "game_chat_messages_insert_rpc_only"
 ON public.game_chat_messages;
-
 CREATE POLICY "game_chat_messages_insert_rpc_only"
 ON public.game_chat_messages
 FOR INSERT
 TO authenticated
 WITH CHECK (false);
-
 DROP POLICY IF EXISTS "game_chat_messages_update_denied"
 ON public.game_chat_messages;
-
 CREATE POLICY "game_chat_messages_update_denied"
 ON public.game_chat_messages
 FOR UPDATE
 TO authenticated
 USING (false)
 WITH CHECK (false);
-
 DROP POLICY IF EXISTS "game_chat_messages_delete_denied"
 ON public.game_chat_messages;
-
 CREATE POLICY "game_chat_messages_delete_denied"
 ON public.game_chat_messages
 FOR DELETE
 TO authenticated
 USING (false);
-
 GRANT SELECT ON public.game_chat_messages TO authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.game_chat_messages FROM authenticated;
-
 GRANT EXECUTE ON FUNCTION public.is_game_room_member(text, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.send_game_chat_message(text, uuid, text) TO authenticated;
-
 DO $$
 BEGIN
   IF EXISTS (

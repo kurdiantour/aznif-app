@@ -9,13 +9,9 @@ import {
   type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
 
-import { handSeatToBot } from "../../../okey/engine/okey-bot-policy.ts";
 import { playBotTurn } from "../../../okey/engine/okey-bot-engine.ts";
 
 
-const DISCONNECT_TIMEOUT_MS = 15_000;
-// Okey tables are human-only; disconnected players are never replaced locally or by a server bot.
-const BOT_TAKEOVER_ENABLED = false;
 const MATCH_LIMIT = 100;
 
 type MatchRow = {
@@ -280,49 +276,6 @@ serve(async (request) => {
       const now = Date.now();
 
       /*
-       * بازیکنی که قطع شده یا heartbeat او بیش از ۱۵ ثانیه
-       * قدیمی است، به Bot واگذار می‌شود.
-       */
-      for (const seat of seats) {
-        const player =
-          nextState.roundState.players[seat.player_index];
-
-        if (
-          !BOT_TAKEOVER_ENABLED ||
-          !player ||
-          player.controlledByBot
-        ) {
-          continue;
-        }
-
-        const lastSeenAt =
-          typeof seat.last_seen_at === "string"
-            ? Date.parse(seat.last_seen_at)
-            : Number.NaN;
-
-        const stale =
-          !seat.connected ||
-          !Number.isFinite(lastSeenAt) ||
-          lastSeenAt <
-            now - DISCONNECT_TIMEOUT_MS;
-
-        if (!stale) {
-          continue;
-        }
-
-        nextState = {
-          ...nextState,
-          roundState: handSeatToBot(
-            nextState.roundState,
-            seat.player_index,
-            "normal",
-          ),
-        };
-
-        changed = true;
-      }
-
-      /*
        * timeout authoritative
        */
       if (
@@ -349,7 +302,6 @@ serve(async (request) => {
         ];
 
       if (
-        BOT_TAKEOVER_ENABLED &&
         !nextState.matchFinished &&
         currentPlayer?.controlledByBot
       ) {

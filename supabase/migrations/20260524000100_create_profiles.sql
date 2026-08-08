@@ -2,20 +2,16 @@
 -- WARNING: This drops public.profiles and recreates it.
 
 DROP TRIGGER IF EXISTS trigger_handle_new_user ON auth.users;
-
 DO $$
 BEGIN
   IF to_regclass('public.profiles') IS NOT NULL THEN
     DROP TRIGGER IF EXISTS trigger_set_profiles_updated_at ON public.profiles;
   END IF;
 END $$;
-
 DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP FUNCTION IF EXISTS public.set_profiles_updated_at();
 DROP FUNCTION IF EXISTS public.generate_player_id();
-
 DROP TABLE IF EXISTS public.profiles;
-
 CREATE TABLE public.profiles (
   email text,
   player_id text UNIQUE NOT NULL,
@@ -27,13 +23,11 @@ CREATE TABLE public.profiles (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX idx_profiles_email ON public.profiles (email);
 CREATE INDEX idx_profiles_player_id ON public.profiles (player_id);
 CREATE INDEX idx_profiles_username ON public.profiles (username);
 CREATE INDEX idx_profiles_points ON public.profiles (points DESC);
 CREATE INDEX idx_profiles_created_at ON public.profiles (created_at);
-
 CREATE OR REPLACE FUNCTION public.generate_player_id()
 RETURNS text
 LANGUAGE plpgsql
@@ -54,7 +48,6 @@ BEGIN
   RETURN v_player_id;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.set_profiles_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -64,12 +57,10 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trigger_set_profiles_updated_at
 BEFORE UPDATE ON public.profiles
 FOR EACH ROW
 EXECUTE FUNCTION public.set_profiles_updated_at();
-
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -114,42 +105,34 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trigger_handle_new_user
 AFTER INSERT ON auth.users
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_user();
-
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "profiles_select_authenticated" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_insert_own" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
-
 CREATE POLICY "profiles_select_own"
 ON public.profiles
 FOR SELECT
 TO authenticated
 USING (auth.uid() = id);
-
 CREATE POLICY "profiles_insert_own"
 ON public.profiles
 FOR INSERT
 TO authenticated
 WITH CHECK (auth.uid() = id);
-
 CREATE POLICY "profiles_update_own"
 ON public.profiles
 FOR UPDATE
 TO authenticated
 USING (auth.uid() = id)
 WITH CHECK (auth.uid() = id);
-
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT ON TABLE public.profiles TO anon;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.profiles TO authenticated;
-
 INSERT INTO public.profiles (
   email,
   player_id,

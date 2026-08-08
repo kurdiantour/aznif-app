@@ -6,7 +6,6 @@ ON public.profiles
 FOR SELECT
 TO authenticated
 USING (true);
-
 CREATE TABLE IF NOT EXISTS public.friendships (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   requester_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -17,19 +16,15 @@ CREATE TABLE IF NOT EXISTS public.friendships (
   responded_at timestamptz,
   CHECK (requester_id <> addressee_id)
 );
-
 CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_pair
 ON public.friendships (
   LEAST(requester_id, addressee_id),
   GREATEST(requester_id, addressee_id)
 );
-
 CREATE INDEX IF NOT EXISTS idx_friendships_requester
 ON public.friendships (requester_id, status);
-
 CREATE INDEX IF NOT EXISTS idx_friendships_addressee
 ON public.friendships (addressee_id, status);
-
 CREATE OR REPLACE FUNCTION public.set_friendships_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -39,25 +34,19 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_set_friendships_updated_at ON public.friendships;
-
 CREATE TRIGGER trigger_set_friendships_updated_at
 BEFORE UPDATE ON public.friendships
 FOR EACH ROW
 EXECUTE FUNCTION public.set_friendships_updated_at();
-
 ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "friendships_select_own" ON public.friendships;
 CREATE POLICY "friendships_select_own"
 ON public.friendships
 FOR SELECT
 TO authenticated
 USING (requester_id = auth.uid() OR addressee_id = auth.uid());
-
 GRANT SELECT ON public.friendships TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.search_friend_candidates(p_query text, p_limit integer DEFAULT 10)
 RETURNS TABLE(
   id uuid,
@@ -98,7 +87,6 @@ AS $$
   ORDER BY p.username ASC
   LIMIT LEAST(GREATEST(coalesce(p_limit, 10), 1), 25);
 $$;
-
 CREATE OR REPLACE FUNCTION public.send_friend_request(p_addressee uuid)
 RETURNS TABLE(friendship_id uuid, status text)
 LANGUAGE plpgsql
@@ -149,9 +137,7 @@ BEGIN
   RETURN QUERY SELECT v_friendship.id, v_friendship.status;
 END;
 $$;
-
 DROP FUNCTION IF EXISTS public.respond_friend_request(uuid, boolean);
-
 CREATE OR REPLACE FUNCTION public.respond_friend_request(p_friendship_id uuid, p_accept boolean)
 RETURNS TABLE(friendship_id uuid, friendship_status text)
 LANGUAGE plpgsql
@@ -186,7 +172,6 @@ BEGIN
   RETURN QUERY SELECT v_friendship.id, v_friendship.status;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_friends()
 RETURNS TABLE(
   friendship_id uuid,
@@ -218,7 +203,6 @@ AS $$
     AND (f.requester_id = auth.uid() OR f.addressee_id = auth.uid())
   ORDER BY coalesce(f.responded_at, f.updated_at) DESC;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_friend_requests()
 RETURNS TABLE(
   friendship_id uuid,
@@ -246,7 +230,6 @@ AS $$
     AND f.status = 'pending'
   ORDER BY f.created_at DESC;
 $$;
-
 CREATE OR REPLACE FUNCTION public.are_friends(p_first uuid, p_second uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -263,7 +246,6 @@ AS $$
       )
   );
 $$;
-
 CREATE OR REPLACE FUNCTION public.transfer_mc(
   p_from uuid,
   p_to uuid,
@@ -385,7 +367,6 @@ BEGIN
   RETURN QUERY SELECT v_tx_id;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.search_friend_candidates(text, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.send_friend_request(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.respond_friend_request(uuid, boolean) TO authenticated;

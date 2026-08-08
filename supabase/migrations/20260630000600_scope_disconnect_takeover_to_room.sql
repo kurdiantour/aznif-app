@@ -48,7 +48,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.process_two_vs_two_room_takeovers(
   p_room_id uuid,
   p_grace_seconds integer DEFAULT 60
@@ -95,7 +94,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.process_one_vs_one_room_takeovers(uuid,integer)
 FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.process_two_vs_two_room_takeovers(uuid,integer)

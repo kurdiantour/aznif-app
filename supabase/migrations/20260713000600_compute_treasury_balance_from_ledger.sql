@@ -68,9 +68,7 @@ BEGIN
   );
 END;
 $$;
-
 DROP FUNCTION IF EXISTS public.admin_add_aznif(uuid, numeric);
-
 CREATE OR REPLACE FUNCTION public.admin_add_aznif(
   p_user_id uuid,
   p_amount numeric
@@ -195,7 +193,6 @@ BEGIN
   RETURN QUERY SELECT p_user_id, COALESCE(v_before, 0), v_after, v_tx_id, v_new_treasury_balance;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.record_aznif_burn_to_treasury()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -238,10 +235,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_get_aznif_treasury(int) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.admin_add_aznif(uuid, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_get_aznif_treasury(int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_add_aznif(uuid, numeric) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

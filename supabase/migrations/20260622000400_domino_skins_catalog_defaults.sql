@@ -13,14 +13,12 @@ ON CONFLICT (id) DO UPDATE SET
   sort_order = EXCLUDED.sort_order,
   active = true,
   updated_at = now();
-
 -- Every existing account receives the free Classic Ivory skin. It becomes the
 -- equipped skin only for users who have not already chosen a domino skin.
 INSERT INTO public.user_shop_items (user_id, item_id)
 SELECT u.id, 'skin-ivory'
 FROM auth.users AS u
 ON CONFLICT (user_id, item_id) DO NOTHING;
-
 INSERT INTO public.user_equipped_shop_items (user_id, category, item_id, equipped_at)
 SELECT u.id, 'domino-skins', 'skin-ivory', now()
 FROM auth.users AS u
@@ -31,7 +29,6 @@ WHERE NOT EXISTS (
     AND uesi.category = 'domino-skins'
 )
 ON CONFLICT (user_id, category) DO NOTHING;
-
 -- Keep the default skin durable for accounts created after this migration.
 CREATE OR REPLACE FUNCTION public.handle_new_user_wallets()
 RETURNS trigger

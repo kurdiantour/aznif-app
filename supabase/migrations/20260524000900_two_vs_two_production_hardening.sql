@@ -9,10 +9,8 @@ CREATE TABLE IF NOT EXISTS public.two_vs_two_game_states (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_game_states_version
 ON public.two_vs_two_game_states(room_id, version);
-
 CREATE OR REPLACE FUNCTION public.sync_two_vs_two_game_state()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -30,12 +28,10 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_sync_two_vs_two_game_state ON public.two_vs_two_rooms;
 CREATE TRIGGER trigger_sync_two_vs_two_game_state
 AFTER INSERT OR UPDATE OF state, version ON public.two_vs_two_rooms
 FOR EACH ROW EXECUTE FUNCTION public.sync_two_vs_two_game_state();
-
 INSERT INTO public.two_vs_two_game_states(room_id, state, version)
 SELECT id, COALESCE(state, '{}'::jsonb), version
 FROM public.two_vs_two_rooms
@@ -43,25 +39,20 @@ ON CONFLICT (room_id) DO UPDATE
 SET state = EXCLUDED.state,
     version = EXCLUDED.version,
     updated_at = now();
-
 ALTER TABLE public.two_vs_two_players
 ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NULL,
 ADD COLUMN IF NOT EXISTS bot_takeover boolean NOT NULL DEFAULT false,
 ADD COLUMN IF NOT EXISTS takeover_started_at timestamptz NULL,
 ADD COLUMN IF NOT EXISTS takeover_expires_at timestamptz NULL,
 ADD COLUMN IF NOT EXISTS abandoned boolean NOT NULL DEFAULT false;
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_players_user_room
 ON public.two_vs_two_players(user_id, room_id)
 WHERE user_id IS NOT NULL;
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_players_room_team
 ON public.two_vs_two_players(room_id, team_id);
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_rooms_active_status
 ON public.two_vs_two_rooms(status, updated_at)
 WHERE status IN ('waiting', 'active');
-
 CREATE OR REPLACE FUNCTION public.find_two_vs_two_match()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -72,7 +63,6 @@ BEGIN
   RETURN public.find_two_vs_two_opponent();
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.leave_two_vs_two_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -83,7 +73,6 @@ BEGIN
   RETURN public.cancel_two_vs_two_room(p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.two_vs_two_player_heartbeat(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -113,7 +102,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.mark_two_vs_two_player_disconnected(p_room_id uuid, p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -131,7 +119,6 @@ BEGIN
   RETURN jsonb_build_object('status', CASE WHEN FOUND THEN 'ok' ELSE 'not_found' END);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.process_two_vs_two_takeovers(p_grace_seconds int DEFAULT 30)
 RETURNS int
 LANGUAGE plpgsql
@@ -177,7 +164,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.restore_two_vs_two_human_control(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -219,7 +205,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.evaluate_two_vs_two_abandonments_and_forfeits(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -300,7 +285,6 @@ BEGIN
   RETURN jsonb_build_object('forfeit', true, 'winner_team', v_winning_team);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_two_vs_two_snapshot(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -363,43 +347,34 @@ BEGIN
   );
 END;
 $$;
-
 ALTER TABLE public.two_vs_two_game_states ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "two_vs_two_game_states_select_members" ON public.two_vs_two_game_states;
 CREATE POLICY "two_vs_two_game_states_select_members"
 ON public.two_vs_two_game_states FOR SELECT TO authenticated
 USING (public.is_two_vs_two_room_member(room_id));
-
 DROP POLICY IF EXISTS "two_vs_two_game_states_insert_rpc_only" ON public.two_vs_two_game_states;
 CREATE POLICY "two_vs_two_game_states_insert_rpc_only"
 ON public.two_vs_two_game_states FOR INSERT TO authenticated
 WITH CHECK (false);
-
 DROP POLICY IF EXISTS "two_vs_two_game_states_update_rpc_only" ON public.two_vs_two_game_states;
 CREATE POLICY "two_vs_two_game_states_update_rpc_only"
 ON public.two_vs_two_game_states FOR UPDATE TO authenticated
 USING (false) WITH CHECK (false);
-
 DROP POLICY IF EXISTS "two_vs_two_queue_insert_rpc_only" ON public.two_vs_two_matchmaking_queue;
 CREATE POLICY "two_vs_two_queue_insert_rpc_only"
 ON public.two_vs_two_matchmaking_queue FOR INSERT TO authenticated
 WITH CHECK (false);
-
 DROP POLICY IF EXISTS "two_vs_two_queue_update_rpc_only" ON public.two_vs_two_matchmaking_queue;
 CREATE POLICY "two_vs_two_queue_update_rpc_only"
 ON public.two_vs_two_matchmaking_queue FOR UPDATE TO authenticated
 USING (false) WITH CHECK (false);
-
 DROP POLICY IF EXISTS "two_vs_two_queue_delete_rpc_only" ON public.two_vs_two_matchmaking_queue;
 CREATE POLICY "two_vs_two_queue_delete_rpc_only"
 ON public.two_vs_two_matchmaking_queue FOR DELETE TO authenticated
 USING (false);
-
 GRANT SELECT ON public.two_vs_two_game_states TO authenticated;
 REVOKE ALL ON public.two_vs_two_private_states FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.next_two_vs_two_move_sequence(uuid) FROM authenticated;
-
 GRANT EXECUTE ON FUNCTION public.find_two_vs_two_match() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.leave_two_vs_two_room(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.two_vs_two_player_heartbeat(uuid) TO authenticated;
@@ -408,7 +383,6 @@ GRANT EXECUTE ON FUNCTION public.process_two_vs_two_takeovers(int) TO authentica
 GRANT EXECUTE ON FUNCTION public.restore_two_vs_two_human_control(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.evaluate_two_vs_two_abandonments_and_forfeits(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_two_vs_two_snapshot(uuid) TO authenticated;
-
 ALTER FUNCTION public.find_two_vs_two_opponent() SET search_path = public, pg_temp;
 ALTER FUNCTION public.get_two_vs_two_matchmaking_status() SET search_path = public, pg_temp;
 ALTER FUNCTION public.cancel_two_vs_two_matchmaking(uuid) SET search_path = public, pg_temp;

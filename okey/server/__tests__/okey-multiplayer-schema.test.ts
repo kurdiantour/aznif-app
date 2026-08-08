@@ -5,11 +5,11 @@ import test from "node:test";
 const baseSql = readFileSync(
   "supabase/okey/migrations/20260802000100_okey_authoritative_core.sql",
   "utf8",
-).toLowerCase();
+).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const sql = readFileSync(
   "supabase/okey/migrations/20260802000200_okey_multiplayer_rooms.sql",
   "utf8",
-).toLowerCase();
+).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 const matchFunction = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
 
@@ -41,6 +41,13 @@ test("disconnect or leave cancels the countdown", () => {
   assert.doesNotMatch(sql, /\bready\b|ready_count/);
 });
 
+test("manual leave is excluded from reconnect and future matchmaking", () => {
+  assert.match(sql, /state->'manualleftplayerids'/);
+  assert.match(sql, /manual_leave_is_final/);
+  assert.match(sql, /not exists \( select 1 from okey\.match_private_states/);
+  assert.match(matchFunction, /manualLeftPlayerIds/);
+  assert.match(matchFunction, /manual_leave_is_final/);
+});
 test("room gateway is service-role only and supports reconnect", () => {
   assert.match(sql, /auth\.role\(\) <> 'service_role'/);
   assert.match(sql, /revoke all on function public\.okey_room_action[^;]+from public, anon, authenticated/);

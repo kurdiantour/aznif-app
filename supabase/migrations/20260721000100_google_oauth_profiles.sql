@@ -1,11 +1,9 @@
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS full_name text,
 ADD COLUMN IF NOT EXISTS avatar_url text;
-
 CREATE INDEX IF NOT EXISTS idx_profiles_avatar_url
 ON public.profiles (avatar_url)
 WHERE avatar_url IS NOT NULL;
-
 CREATE OR REPLACE FUNCTION public.profile_username_from_auth_user(
   p_user_id uuid,
   p_full_name text DEFAULT NULL
@@ -44,7 +42,6 @@ BEGIN
   RETURN v_candidate;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -105,11 +102,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 GRANT UPDATE (username, avatar_id, avatar_url) ON public.profiles TO authenticated;
-
 DROP FUNCTION IF EXISTS public.get_leaderboard(int);
-
 CREATE OR REPLACE FUNCTION public.get_leaderboard(p_limit int DEFAULT 50)
 RETURNS TABLE(
   user_id uuid,
@@ -155,7 +149,5 @@ AS $$
   ORDER BY rp.rank ASC, rp.points DESC, rp.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;
-
 NOTIFY pgrst, 'reload schema';

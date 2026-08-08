@@ -165,7 +165,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'success', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_one_vs_one_snapshot(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -256,6 +255,5 @@ BEGIN
   );
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.start_one_vs_one_game(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_one_vs_one_snapshot(uuid) TO authenticated;

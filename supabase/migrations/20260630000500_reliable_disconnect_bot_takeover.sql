@@ -5,11 +5,9 @@
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_players_takeover_scan
 ON public.one_vs_one_players(last_seen_at)
 WHERE bot_takeover = false AND abandoned = false;
-
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_players_takeover_scan
 ON public.two_vs_two_players(last_seen_at)
 WHERE bot_takeover = false AND abandoned = false;
-
 CREATE OR REPLACE FUNCTION public.mark_one_vs_one_player_disconnected(
   p_room_id uuid,
   p_user_id uuid DEFAULT NULL
@@ -33,7 +31,6 @@ BEGIN
   RETURN jsonb_build_object('status','ok','room_id',p_room_id,'grace_seconds',60);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.mark_two_vs_two_player_disconnected(
   p_room_id uuid,
   p_user_id uuid DEFAULT NULL
@@ -57,7 +54,6 @@ BEGIN
   RETURN jsonb_build_object('status','ok','room_id',p_room_id,'grace_seconds',60);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.process_one_vs_one_takeovers(
   p_grace_seconds integer DEFAULT 60
 )
@@ -128,7 +124,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.process_two_vs_two_takeovers(
   p_grace_seconds integer DEFAULT 60
 )
@@ -199,7 +194,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.process_one_vs_one_takeovers(integer)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.process_two_vs_two_takeovers(integer)

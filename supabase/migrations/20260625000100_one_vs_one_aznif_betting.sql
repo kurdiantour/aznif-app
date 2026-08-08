@@ -3,11 +3,9 @@
 
 ALTER TABLE public.one_vs_one_matchmaking_queue
 ADD COLUMN IF NOT EXISTS bet_amount numeric NOT NULL DEFAULT 0 CHECK (bet_amount >= 0);
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_matchmaking_bet_status_created
 ON public.one_vs_one_matchmaking_queue(bet_amount, status, created_at)
 WHERE status = 'searching';
-
 CREATE TABLE IF NOT EXISTS public.one_vs_one_bet_settlements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid NOT NULL UNIQUE REFERENCES public.one_vs_one_rooms(id) ON DELETE CASCADE,
@@ -18,26 +16,19 @@ CREATE TABLE IF NOT EXISTS public.one_vs_one_bet_settlements (
   burned_amount numeric NOT NULL CHECK (burned_amount >= 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_bet_settlements_winner
 ON public.one_vs_one_bet_settlements(winner_user_id, created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_one_vs_one_bet_settlements_loser
 ON public.one_vs_one_bet_settlements(loser_user_id, created_at DESC);
-
 ALTER TABLE public.one_vs_one_bet_settlements ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "one_vs_one_bet_settlements_select_own"
 ON public.one_vs_one_bet_settlements;
-
 CREATE POLICY "one_vs_one_bet_settlements_select_own"
 ON public.one_vs_one_bet_settlements
 FOR SELECT
 TO authenticated
 USING (winner_user_id = auth.uid() OR loser_user_id = auth.uid());
-
 GRANT SELECT ON public.one_vs_one_bet_settlements TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.create_one_vs_one_room(p_bet_amount numeric DEFAULT 0)
 RETURNS public.one_vs_one_rooms
 LANGUAGE plpgsql
@@ -137,7 +128,6 @@ BEGIN
   RETURN v_room;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.join_one_vs_one_room(p_room_code text)
 RETURNS public.one_vs_one_players
 LANGUAGE plpgsql
@@ -267,7 +257,6 @@ BEGIN
   RETURN v_player;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.find_one_vs_one_opponent()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -379,7 +368,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'searching');
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.find_one_vs_one_bet_match(p_bet_amount numeric)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -402,7 +390,7 @@ BEGIN
     RAISE EXCEPTION 'bet_amount must be positive';
   END IF;
 
-  IF p_bet_amount NOT IN (1, 5) THEN
+  IF p_bet_amount NOT IN (5, 10, 15, 20) THEN
     RAISE EXCEPTION 'Unsupported 1v1 bet amount';
   END IF;
 
@@ -516,7 +504,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'searching', 'bet_amount', p_bet_amount);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.settle_one_vs_one_bet(p_room_id uuid)
 RETURNS TABLE(
   settlement_id uuid,
@@ -744,7 +731,6 @@ BEGIN
   RETURN NEXT;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.commit_multiplayer_action(
   p_mode text,
   p_room_id uuid,
@@ -826,7 +812,6 @@ BEGIN
   RETURN v_room;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_one_vs_one_round_leave_forfeits(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -904,7 +889,6 @@ BEGIN
   RETURN jsonb_build_object('forfeit', true, 'winner_team', v_winning_team);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.cancel_one_vs_one_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -985,7 +969,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'success', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.evaluate_one_vs_one_abandonments_and_forfeits(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1062,7 +1045,6 @@ BEGIN
   RETURN jsonb_build_object('forfeit', true, 'winner_team', v_winning_team);
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.find_one_vs_one_bet_match(numeric) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.settle_one_vs_one_bet(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.create_one_vs_one_room(numeric) TO authenticated;

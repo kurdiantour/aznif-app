@@ -114,12 +114,10 @@ BEGIN
   RETURN v_settlement_id;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.settle_free_two_vs_two_manual_forfeit(uuid, uuid)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.settle_free_two_vs_two_manual_forfeit(uuid, uuid)
 TO service_role;
-
 CREATE OR REPLACE FUNCTION public.leave_two_vs_two_match(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -223,7 +221,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'left', 'room_id', p_room_id);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.leave_two_vs_two_match(uuid)
 FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.leave_two_vs_two_match(uuid)

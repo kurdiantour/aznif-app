@@ -2,7 +2,6 @@
 -- Used only by Edge Functions with service_role after a match is finished.
 -- Frontend callers should use public.settle_match_rewards(text, uuid).
 DROP FUNCTION IF EXISTS public.settle_finished_match_rewards(text, uuid);
-
 CREATE OR REPLACE FUNCTION public.settle_finished_match_rewards(
   p_mode text,
   p_room_id uuid
@@ -236,9 +235,7 @@ BEGIN
   END LOOP;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.settle_finished_match_rewards(text, uuid)
 FROM PUBLIC, anon, authenticated;
-
 GRANT EXECUTE ON FUNCTION public.settle_finished_match_rewards(text, uuid)
 TO service_role;

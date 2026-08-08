@@ -2,7 +2,6 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS games_played integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS games_won integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS games_lost integer NOT NULL DEFAULT 0;
-
 CREATE OR REPLACE FUNCTION public.record_finished_match_stats()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -31,17 +30,14 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS record_one_vs_one_match_stats ON public.one_vs_one_rooms;
 CREATE TRIGGER record_one_vs_one_match_stats
 AFTER UPDATE OF state ON public.one_vs_one_rooms
 FOR EACH ROW EXECUTE FUNCTION public.record_finished_match_stats('public.one_vs_one_players');
-
 DROP TRIGGER IF EXISTS record_two_vs_two_match_stats ON public.two_vs_two_rooms;
 CREATE TRIGGER record_two_vs_two_match_stats
 AFTER UPDATE OF state ON public.two_vs_two_rooms
 FOR EACH ROW EXECUTE FUNCTION public.record_finished_match_stats('public.two_vs_two_players');
-
 CREATE OR REPLACE FUNCTION public.get_public_player_card(p_player_id uuid)
 RETURNS TABLE(
   username text,
@@ -67,6 +63,5 @@ AS $$
   LEFT JOIN public.wallets w ON w.user_id = p.id
   WHERE p.id = p_player_id;
 $$;
-
 REVOKE ALL ON FUNCTION public.get_public_player_card(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_public_player_card(uuid) TO authenticated;

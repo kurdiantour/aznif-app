@@ -12,7 +12,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'ok', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.leave_one_vs_one_match(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -44,7 +43,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'left', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.process_one_vs_one_takeovers(p_grace_seconds int DEFAULT 30)
 RETURNS int
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -72,7 +70,6 @@ BEGIN
   RETURN v_taken;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.mark_one_vs_one_player_disconnected(p_room_id uuid, p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -84,6 +81,5 @@ BEGIN
   RETURN jsonb_build_object('status', CASE WHEN FOUND THEN 'ok' ELSE 'not_found' END);
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.one_vs_one_player_heartbeat(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.leave_one_vs_one_match(uuid) TO authenticated;

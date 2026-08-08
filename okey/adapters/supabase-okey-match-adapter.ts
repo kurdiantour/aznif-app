@@ -446,6 +446,39 @@ export class SupabaseOkeyMatchAdapter
   }
 
   async leave(): Promise<void> {
+    if (
+      this.snapshot?.version ===
+      undefined
+    ) {
+      await this.refresh();
+    }
+
+    const expectedVersion =
+      this.snapshot?.version;
+
+    if (expectedVersion === undefined) {
+      throw new Error(
+        "okey_snapshot_unavailable",
+      );
+    }
+
+    const { error } =
+      await supabase.functions.invoke(
+        "okey_match",
+        {
+          body: {
+            action: "manual-leave",
+            matchId: this.matchId,
+            commandId: createCommandId(),
+            expectedVersion,
+          },
+        },
+      );
+
+    if (error) {
+      throw error;
+    }
+
     await leaveOkeyRoom(
       this.matchId,
     );

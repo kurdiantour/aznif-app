@@ -1,5 +1,4 @@
 DROP FUNCTION IF EXISTS public.get_leaderboard(int);
-
 CREATE OR REPLACE FUNCTION public.get_leaderboard(p_limit int DEFAULT 50)
 RETURNS TABLE(
   user_id uuid,
@@ -41,5 +40,4 @@ AS $$
   ORDER BY rp.rank ASC, rp.points DESC, rp.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;

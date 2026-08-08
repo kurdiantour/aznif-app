@@ -1,15 +1,11 @@
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS leaderboard_visible boolean NOT NULL DEFAULT false;
-
 ALTER TABLE public.profiles
 ALTER COLUMN leaderboard_visible SET DEFAULT false;
-
 UPDATE public.profiles
 SET leaderboard_visible = false
 WHERE leaderboard_visible = true;
-
 GRANT UPDATE (leaderboard_visible) ON public.profiles TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.get_leaderboard(p_limit int DEFAULT 50)
 RETURNS TABLE(
   user_id uuid,
@@ -52,9 +48,7 @@ AS $$
   ORDER BY rp.rank ASC, rp.points DESC, rp.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;
-
 CREATE OR REPLACE FUNCTION public.get_my_leaderboard_rank()
 RETURNS integer
 LANGUAGE sql
@@ -75,8 +69,6 @@ AS $$
   FROM ranked_profiles rp
   WHERE rp.id = auth.uid();
 $$;
-
 REVOKE ALL ON FUNCTION public.get_my_leaderboard_rank() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_leaderboard_rank() TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

@@ -82,7 +82,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'left', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.leave_two_vs_two_match(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -156,7 +155,6 @@ BEGIN
   RETURN jsonb_build_object('status', 'left', 'room_id', p_room_id);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_one_vs_one_round_leave_forfeits(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -231,7 +229,6 @@ BEGIN
   RETURN jsonb_build_object('forfeit', true, 'winner_team', v_winning_team);
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.resolve_two_vs_two_round_leave_forfeits(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -319,7 +316,6 @@ BEGIN
   RETURN jsonb_build_object('forfeit', true, 'winner_team', v_winning_team, 'losing_team', v_losing_team);
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.leave_one_vs_one_match(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.leave_two_vs_two_match(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid) TO authenticated;

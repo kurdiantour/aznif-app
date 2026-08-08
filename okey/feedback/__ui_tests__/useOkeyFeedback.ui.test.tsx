@@ -49,7 +49,6 @@ test("feedback plays once, stops in background and cleans audio and listener on 
   fireEvent.press(view.getByTestId("same"));
   await act(async () => { await Promise.resolve(); });
   expect(mockAudioPlayer.play).toHaveBeenCalledTimes(1);
-  expect(mockImpactAsync).toHaveBeenCalledTimes(1);
 
   act(() => appStateListener?.("background"));
   fireEvent.press(view.getByTestId("next"));

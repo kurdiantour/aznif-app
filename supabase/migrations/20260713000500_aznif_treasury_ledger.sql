@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS public.aznif_treasury (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE TABLE IF NOT EXISTS public.aznif_treasury_ledger (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   entry_type text NOT NULL CHECK (entry_type IN ('initialization', 'distribution', 'spend', 'burn', 'adjustment')),
@@ -23,19 +22,14 @@ CREATE TABLE IF NOT EXISTS public.aznif_treasury_ledger (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_aznif_treasury_ledger_created
 ON public.aznif_treasury_ledger(created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_aznif_treasury_ledger_type_created
 ON public.aznif_treasury_ledger(entry_type, created_at DESC);
-
 ALTER TABLE public.aznif_treasury ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aznif_treasury_ledger ENABLE ROW LEVEL SECURITY;
-
 REVOKE ALL ON public.aznif_treasury FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.aznif_treasury_ledger FROM PUBLIC, anon, authenticated;
-
 DO $$
 DECLARE
   v_admin_mc numeric := 0;
@@ -100,7 +94,6 @@ BEGIN
       updated_at = now()
   WHERE id = true;
 END $$;
-
 CREATE OR REPLACE FUNCTION public.admin_get_aznif_treasury(p_limit int DEFAULT 25)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -156,9 +149,7 @@ BEGIN
   );
 END;
 $$;
-
 DROP FUNCTION IF EXISTS public.admin_add_aznif(uuid, numeric);
-
 CREATE OR REPLACE FUNCTION public.admin_add_aznif(
   p_user_id uuid,
   p_amount numeric
@@ -280,7 +271,6 @@ BEGIN
   RETURN QUERY SELECT p_user_id, COALESCE(v_before, 0), v_after, v_tx_id, v_treasury.current_balance;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.record_aznif_burn_to_treasury()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -325,16 +315,13 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_record_aznif_burn_to_treasury ON public.wallet_transactions;
 CREATE TRIGGER trigger_record_aznif_burn_to_treasury
 AFTER INSERT ON public.wallet_transactions
 FOR EACH ROW
 EXECUTE FUNCTION public.record_aznif_burn_to_treasury();
-
 REVOKE ALL ON FUNCTION public.admin_get_aznif_treasury(int) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.admin_add_aznif(uuid, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_get_aznif_treasury(int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_add_aznif(uuid, numeric) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

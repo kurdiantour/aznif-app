@@ -16,29 +16,23 @@ CREATE TABLE IF NOT EXISTS public.match_reward_records (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (room_id, mode, user_id)
 );
-
 CREATE INDEX IF NOT EXISTS idx_match_reward_records_user_created
 ON public.match_reward_records(user_id, created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_match_reward_records_room_mode
 ON public.match_reward_records(room_id, mode);
-
 ALTER TABLE public.match_reward_records ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "match_reward_records_select_own" ON public.match_reward_records;
 CREATE POLICY "match_reward_records_select_own"
 ON public.match_reward_records
 FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
-
 DROP POLICY IF EXISTS "match_reward_records_insert_denied" ON public.match_reward_records;
 CREATE POLICY "match_reward_records_insert_denied"
 ON public.match_reward_records
 FOR INSERT
 TO authenticated
 WITH CHECK (false);
-
 DROP POLICY IF EXISTS "match_reward_records_update_denied" ON public.match_reward_records;
 CREATE POLICY "match_reward_records_update_denied"
 ON public.match_reward_records
@@ -46,14 +40,11 @@ FOR UPDATE
 TO authenticated
 USING (false)
 WITH CHECK (false);
-
 GRANT SELECT ON public.match_reward_records TO authenticated;
-
 -- Restrict direct profile edits to display fields. Leaderboard fields are
 -- updated only by SECURITY DEFINER reward functions.
 REVOKE UPDATE ON public.profiles FROM authenticated;
 GRANT UPDATE (username, avatar_id) ON public.profiles TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.calculate_match_reward(
   p_winner_score integer,
   p_loser_score integer
@@ -80,7 +71,6 @@ AS $$
       ELSE 30
     END AS points;
 $$;
-
 CREATE OR REPLACE FUNCTION public.get_leaderboard(p_limit int DEFAULT 50)
 RETURNS TABLE(
   user_id uuid,
@@ -119,7 +109,6 @@ AS $$
   ORDER BY rp.rank ASC, rp.points DESC, rp.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 $$;
-
 CREATE OR REPLACE FUNCTION public.settle_match_rewards(
   p_mode text,
   p_room_id uuid
@@ -362,7 +351,6 @@ BEGIN
   END LOOP;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.settle_match_rewards(text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.calculate_match_reward(integer, integer) TO authenticated;

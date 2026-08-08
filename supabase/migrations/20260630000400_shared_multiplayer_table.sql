@@ -59,6 +59,5 @@ BEGIN
   RETURN COALESCE(v_table_id, 'table-classic');
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.get_multiplayer_room_table(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_multiplayer_room_table(uuid, text) TO authenticated;

@@ -61,5 +61,4 @@ BEGIN
   );
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.get_two_vs_two_snapshot(uuid) TO authenticated;

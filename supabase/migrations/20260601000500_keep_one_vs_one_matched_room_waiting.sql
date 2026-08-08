@@ -104,5 +104,4 @@ BEGIN
   RETURN jsonb_build_object('status', 'searching');
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.find_one_vs_one_opponent() TO authenticated;

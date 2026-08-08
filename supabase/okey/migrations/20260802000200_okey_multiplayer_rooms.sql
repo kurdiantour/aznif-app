@@ -149,6 +149,15 @@ begin
       on match.id = seat.match_id
     where seat.user_id = p_user_id
       and match.status in ('waiting', 'playing')
+      and not exists (
+        select 1
+        from okey.match_private_states private_state
+        where private_state.match_id = match.id
+          and coalesce(
+            private_state.state->'manualLeftPlayerIds',
+            '[]'::jsonb
+          ) ? p_user_id::text
+      )
     order by
       case
         when match.status = 'playing' then 0
@@ -322,7 +331,7 @@ left(
     'Player'
   ),
   64
-)
+),
 
         p_avatar_url,
         true,
@@ -370,6 +379,25 @@ left(
         and seat.user_id = p_user_id
     ) then
       raise exception 'not_a_participant'
+        using errcode = '42501';
+    end if;
+
+
+    if p_action in (
+      'status',
+      'heartbeat',
+      'reconnect',
+      'start'
+    ) and exists (
+      select 1
+      from okey.match_private_states private_state
+      where private_state.match_id = v_match.id
+        and coalesce(
+          private_state.state->'manualLeftPlayerIds',
+          '[]'::jsonb
+        ) ? p_user_id::text
+    ) then
+      raise exception 'manual_leave_is_final'
         using errcode = '42501';
     end if;
 

@@ -70,7 +70,6 @@ BEGIN
   RETURN QUERY SELECT v_claim_id, v_user_id, 1, true;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.award_ai_practice_win(text)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.award_ai_practice_win(text)

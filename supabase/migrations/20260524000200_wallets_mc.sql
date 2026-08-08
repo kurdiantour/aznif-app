@@ -8,13 +8,10 @@ CREATE TABLE IF NOT EXISTS public.wallets (
   gold numeric NOT NULL DEFAULT 0 CHECK (gold >= 0),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_wallets_user_id
 ON public.wallets (user_id);
-
 CREATE INDEX IF NOT EXISTS idx_wallets_updated_at
 ON public.wallets (updated_at);
-
 -- Wallet transactions table (both currencies)
 CREATE TABLE IF NOT EXISTS public.wallet_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -30,43 +27,32 @@ CREATE TABLE IF NOT EXISTS public.wallet_transactions (
   balance_after numeric NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_wallet_tx_user_id
 ON public.wallet_transactions (user_id);
-
 CREATE INDEX IF NOT EXISTS idx_wallet_tx_created_at
 ON public.wallet_transactions (created_at);
-
 -- Simple RLS
 ALTER TABLE public.wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wallet_transactions ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Users can view own wallet" ON public.wallets;
-
 CREATE POLICY "Users can view own wallet"
 ON public.wallets
 FOR SELECT
 USING (user_id = auth.uid());
-
 DROP POLICY IF EXISTS "Users can insert own wallet" ON public.wallets;
-
 CREATE POLICY "Users can insert own wallet"
 ON public.wallets
 FOR INSERT
 TO authenticated
 WITH CHECK (user_id = auth.uid());
-
 DROP POLICY IF EXISTS "Users can view own transactions" ON public.wallet_transactions;
-
 CREATE POLICY "Users can view own transactions"
 ON public.wallet_transactions
 FOR SELECT
 USING (user_id = auth.uid());
-
 GRANT SELECT ON public.wallets TO authenticated;
 GRANT INSERT ON public.wallets TO authenticated;
 GRANT SELECT ON public.wallet_transactions TO authenticated;
-
 -- Ensure wallets row exists for new users
 CREATE OR REPLACE FUNCTION public.handle_new_user_wallets()
 RETURNS trigger
@@ -80,14 +66,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_handle_new_user_wallets ON auth.users;
-
 CREATE TRIGGER trigger_handle_new_user_wallets
 AFTER INSERT ON auth.users
 FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_user_wallets();
-
 -- Update MC balance helper
 CREATE OR REPLACE FUNCTION public.update_mc_balance(
   p_user_id uuid,
@@ -136,7 +119,6 @@ BEGIN
   SELECT v_wallet.user_id, v_wallet.mc, v_wallet.gold, v_wallet.updated_at;
 END;
 $$;
-
 -- MC transfer
 CREATE OR REPLACE FUNCTION public.transfer_mc(
   p_from uuid,
@@ -255,7 +237,6 @@ BEGIN
   RETURN QUERY SELECT v_tx_id;
 END;
 $$;
-
 -- Place room bet
 CREATE OR REPLACE FUNCTION public.place_room_bet(
   p_user_id uuid,

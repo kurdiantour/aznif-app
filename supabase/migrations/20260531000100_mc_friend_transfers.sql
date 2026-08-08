@@ -8,25 +8,18 @@ CREATE TABLE IF NOT EXISTS public.mc_transfers (
   status text NOT NULL DEFAULT 'completed',
   created_at timestamptz NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_mc_transfers_sender
 ON public.mc_transfers (sender_id, created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_mc_transfers_receiver
 ON public.mc_transfers (receiver_id, created_at DESC);
-
 ALTER TABLE public.mc_transfers ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "mc_transfers_select_own" ON public.mc_transfers;
-
 CREATE POLICY "mc_transfers_select_own"
 ON public.mc_transfers
 FOR SELECT
 TO authenticated
 USING (sender_id = auth.uid() OR receiver_id = auth.uid());
-
 GRANT SELECT ON public.mc_transfers TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.transfer_mc_to_friend(
   receiver_profile_id uuid,
   transfer_amount integer
@@ -169,5 +162,4 @@ BEGIN
   RETURN QUERY SELECT true, v_transfer_id;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.transfer_mc_to_friend(uuid, integer) TO authenticated;

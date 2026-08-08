@@ -1,11 +1,10 @@
 import { expect, jest, test } from "@jest/globals";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Pressable, Text, View } from "react-native";
 
 import { useOkeyGame } from "../useOkeyGame";
 
-function OfflineGameHarness() {
+function OnlineOnlyFallbackHarness() {
   const game = useOkeyGame();
   const player = game.state.players[0];
   return (
@@ -21,27 +20,22 @@ function OfflineGameHarness() {
   );
 }
 
-test("offline UI flow loads, draws, discards and persists the authoritative local result", async () => {
+test("online-only fallback ignores local authoritative commands", async () => {
   const random = jest.spyOn(Math, "random").mockReturnValue(0);
-  const view = render(<OfflineGameHarness />);
+  const view = render(<OnlineOnlyFallbackHarness />);
 
   await waitFor(() => expect(view.getByTestId("hand-count").props.children).toBe(15));
   expect(view.getByTestId("turn").props.children).toBe(0);
 
   fireEvent.press(view.getByTestId("discard"));
-  await waitFor(() => expect(view.getByTestId("hand-count").props.children).toBe(14));
-  expect(view.getByTestId("discard-count").props.children).toBe(1);
-
-  await waitFor(async () => {
-    const persistedKeys = await AsyncStorage.getAllKeys();
-    expect(persistedKeys.some((key) => key.includes("okey"))).toBe(true);
-  }, { timeout: 1000 });
+  expect(view.getByTestId("hand-count").props.children).toBe(15);
+  expect(view.getByTestId("discard-count").props.children).toBe(0);
   random.mockRestore();
 });
 
 test("dealer cannot draw before making the opening discard", async () => {
   const random = jest.spyOn(Math, "random").mockReturnValue(0);
-  const view = render(<OfflineGameHarness />);
+  const view = render(<OnlineOnlyFallbackHarness />);
   await waitFor(() => expect(view.getByTestId("hand-count").props.children).toBe(15));
 
   fireEvent.press(view.getByTestId("draw-deck"));

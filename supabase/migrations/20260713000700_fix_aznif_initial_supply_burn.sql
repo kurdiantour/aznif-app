@@ -5,7 +5,6 @@ UPDATE public.aznif_treasury
 SET initial_supply = 1000000000,
     updated_at = now()
 WHERE id = true;
-
 UPDATE public.aznif_treasury_ledger
 SET amount = 1000000000,
     treasury_delta = 1000000000,
@@ -15,7 +14,6 @@ SET amount = 1000000000,
         'corrected_reason', 'Burned Aznif must not be included in initial supply or treasury balance'
       )
 WHERE entry_type = 'initialization';
-
 CREATE OR REPLACE FUNCTION public.admin_get_aznif_treasury(p_limit int DEFAULT 25)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -83,9 +81,7 @@ BEGIN
   );
 END;
 $$;
-
 DROP FUNCTION IF EXISTS public.admin_add_aznif(uuid, numeric);
-
 CREATE OR REPLACE FUNCTION public.admin_add_aznif(
   p_user_id uuid,
   p_amount numeric
@@ -210,7 +206,6 @@ BEGIN
   RETURN QUERY SELECT p_user_id, COALESCE(v_before, 0), v_after, v_tx_id, v_new_treasury_balance;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.record_aznif_burn_to_treasury()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -253,10 +248,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_get_aznif_treasury(int) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.admin_add_aznif(uuid, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_get_aznif_treasury(int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_add_aznif(uuid, numeric) TO authenticated;
-
 NOTIFY pgrst, 'reload schema';

@@ -10,26 +10,20 @@ CREATE TABLE IF NOT EXISTS public.ai_practice_reward_claims (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (practice_match_id, user_id)
 );
-
 CREATE INDEX IF NOT EXISTS idx_ai_practice_reward_claims_user_created
 ON public.ai_practice_reward_claims (
   user_id,
   created_at DESC
 );
-
 ALTER TABLE public.ai_practice_reward_claims ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "ai_practice_reward_claims_select_own"
 ON public.ai_practice_reward_claims;
-
 CREATE POLICY "ai_practice_reward_claims_select_own"
 ON public.ai_practice_reward_claims
 FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
-
 GRANT SELECT ON public.ai_practice_reward_claims TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.award_ai_practice_win(
   p_practice_match_id text
 )
@@ -100,6 +94,5 @@ BEGIN
     true;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.award_ai_practice_win(text)
 TO authenticated;

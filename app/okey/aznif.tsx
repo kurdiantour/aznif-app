@@ -149,21 +149,15 @@ function TableCard({
         )}
       </View>
 
-      <View style={styles.entryBox}>
-        <MaterialCommunityIcons
-          name="circle-multiple"
-          size={16}
-          color="#f8d774"
-        />
+<View style={styles.entryBox}>
+  <Text style={styles.entryCurrency}>
+    بەشداری
+  </Text>
 
-        <Text style={styles.entryCurrency}>
-          تێچوو
-        </Text>
-
-        <Text style={styles.entryAmount}>
-          {formatAmount(table.entry)}
-        </Text>
-      </View>
+  <Text style={styles.entryAmount}>
+    {formatAmount(table.entry)} ئەزنیف
+  </Text>
+</View>
     </Pressable>
   );
 }
@@ -450,16 +444,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  entryAmount: {
-    color: "#ffffff",
-    fontSize: 14,
-  },
+entryAmount: {
+  color: "#ffffff",
+  fontSize: 12,
+  fontFamily: "SpedaBold",
+},
 
-  entryCurrency: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-  },
+entryCurrency: {
+  color: "#ffffff",
+  fontSize: 12,
+  fontFamily: "SpedaBold",
+},
 
   toast: {
     position: "absolute",

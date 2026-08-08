@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
   applyAuthoritativeOkeyMatchCommand,
+  applyAuthoritativeManualLeave,
   getNextOkeyMatchTurnDeadline,
   OkeyCommandError,
   projectOkeyMatchPublicState,
@@ -207,7 +208,8 @@ serve(async (req) => {
   if (
     action !== "snapshot" &&
     action !== "command" &&
-    action !== "resolve-timeout"
+    action !== "resolve-timeout" &&
+    action !== "manual-leave"
   ) {
     return json(
       {
@@ -356,6 +358,23 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   const playerIndex =
     bundle.player_index as number;
 
+  const hasManuallyLeft =
+    (state.manualLeftPlayerIds ?? [])
+      .includes(authData.user.id);
+
+  if (
+    hasManuallyLeft &&
+    !(
+      action === "manual-leave" &&
+      bundle.command_applied
+    )
+  ) {
+    return json(
+      { error: "manual_leave_is_final" },
+      403,
+    );
+  }
+
   /*
    * Snapshot normally only returns state.
    *
@@ -442,7 +461,15 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   let commandType: string;
 
   try {
-    if (action === "resolve-timeout") {
+    if (action === "manual-leave") {
+      nextState =
+        applyAuthoritativeManualLeave(
+          state,
+          playerIndex,
+        );
+
+      commandType = "manual-leave";
+    } else if (action === "resolve-timeout") {
       nextState =
         resolveAuthoritativeMatchDeadline(
           state,

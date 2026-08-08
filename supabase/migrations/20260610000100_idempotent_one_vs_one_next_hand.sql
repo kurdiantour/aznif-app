@@ -70,13 +70,7 @@ BEGIN
   FOR UPDATE;
 
   v_is_next_hand := COALESCE(v_room.state ->> 'roundWinnerPlayerId', '') <> '';
-  v_round_winner_player_id := NULLIF(
-    COALESCE(
-      v_room.state ->> 'leaderPlayerId',
-      v_room.state ->> 'roundWinnerPlayerId'
-    ),
-    ''
-  )::uuid;
+  v_round_winner_player_id := NULLIF(v_room.state ->> 'roundWinnerPlayerId', '')::uuid;
 
   v_has_playable_existing_hand :=
     FOUND
@@ -243,5 +237,4 @@ BEGIN
   );
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.start_one_vs_one_game(uuid) TO authenticated;
