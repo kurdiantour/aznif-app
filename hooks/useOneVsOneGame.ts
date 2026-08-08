@@ -16,12 +16,10 @@ import type {
     KozelBoardState,
     KozelBranch,
     MatchReward,
-    RoundPhase, RoundResult,
     ScoringEvent,
     TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
 import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handContainsTile, handHasPlayableTile } from './gameRuleQueries';
 import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
@@ -30,9 +28,7 @@ import { buildRoundResult } from './roundResult';
 import { useRoundLifecycle } from './useRoundLifecycle';
 import {
   MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN,
-  NEXT_ROUND_COUNTDOWN_SECONDS,
   PLAYER_TURN_DURATION_SECONDS,
-  ROUND_RESULT_REVEAL_MS,
   ROUND_TRANSITION_SYNC_MS,
 } from './gameShared';
 
@@ -354,18 +350,6 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     void heartbeat();
     const interval = setInterval(() => void heartbeat(), 10_000);
     return () => clearInterval(interval);
-  }, [roomId, currentUserId]);
-
-  useEffect(() => {
-    if (!roomId || !currentUserId) return;
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') return;
-      void supabase.rpc('mark_one_vs_one_player_disconnected', {
-        p_room_id: roomId,
-        p_user_id: currentUserId,
-      });
-    });
-    return () => subscription.remove();
   }, [roomId, currentUserId]);
 
   useEffect(() => {

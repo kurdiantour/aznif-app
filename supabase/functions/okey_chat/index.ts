@@ -125,10 +125,6 @@ serve(async (request) => {
     },
   });
 
-  /*
-   * چون service_role محدودیت‌های RLS را دور می‌زند،
-   * عضویت کاربر باید قبل از list و send صریحاً بررسی شود.
-   */
   const {
     data: participant,
     error: participantError,

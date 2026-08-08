@@ -15,13 +15,10 @@ import type {
     KozelBoardState,
     KozelBranch,
     MatchReward,
-    RoundPhase,
-    RoundResult,
     ScoringEvent,
     TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
 import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handHasPlayableTile } from './gameRuleQueries';
 import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
@@ -29,9 +26,7 @@ import { runMultiplayerAction } from './multiplayerAction';
 import { buildRoundResult } from './roundResult';
 import { useRoundLifecycle } from './useRoundLifecycle';
 import {
-  NEXT_ROUND_COUNTDOWN_SECONDS,
   PLAYER_TURN_DURATION_SECONDS,
-  ROUND_RESULT_REVEAL_MS,
 } from './gameShared';
 
 type UseTwoVsTwoResult = Omit<MockGameState, 'playTile' | 'passTurn'> & {
@@ -274,18 +269,6 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     void heartbeat();
     const interval = setInterval(() => void heartbeat(), 10_000);
     return () => clearInterval(interval);
-  }, [roomId, currentUserId]);
-
-  useEffect(() => {
-    if (!roomId || !currentUserId) return;
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') return;
-      void supabase.rpc('mark_two_vs_two_player_disconnected', {
-        p_room_id: roomId,
-        p_user_id: currentUserId,
-      });
-    });
-    return () => subscription.remove();
   }, [roomId, currentUserId]);
 
   useEffect(() => {

@@ -1,6 +1,24 @@
 -- AI Practice Rewards
--- One AI win = exactly 1 leaderboard point.
--- Idempotent per (practice_match_id, user_id).
+-- One AI win = exactly 1 progression / leaderboard point.
+--
+-- PRODUCT / SECURITY NOTE:
+-- AI Practice is intentionally a lightweight client-side practice mode.
+-- Matches are not server-authoritative and may be played without limit.
+-- The reward is intentionally low-value: +1 progression point per reported win.
+--
+-- Because match execution is local, the server cannot independently verify
+-- that a submitted practice_match_id represents a genuinely completed AI win.
+-- This is an accepted product tradeoff for this temporary / low-value mode.
+--
+-- Current protection:
+-- - A given (practice_match_id, user_id) can only be rewarded once.
+-- - Rewards require an authenticated user.
+-- - Reward amount is fixed at exactly 1 point.
+--
+-- Do NOT add daily play/reward caps unless product requirements change.
+-- If AI Practice rewards later gain monetary value, MC value, competitive prizes,
+-- or other meaningful economic value, migrate this flow to server-verifiable
+-- match/result validation before increasing reward value.
 
 CREATE TABLE IF NOT EXISTS public.ai_practice_reward_claims (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
