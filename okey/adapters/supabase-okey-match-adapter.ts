@@ -62,30 +62,14 @@ export class SupabaseOkeyMatchAdapter
     | Promise<void>
     | null = null;
 
-  /*
-   * جلوگیری از ارسال چند resolve-timeout
-   * همزمان از همین دستگاه.
-   */
   private resolveTimeoutPromise:
     | Promise<void>
     | null = null;
 
-  /*
-   * Timer محلی فقط نقش Alarm دارد.
-   *
-   * این Timer state بازی را تغییر نمی‌دهد.
-   * وقتی deadline واقعی سرور برسد،
-   * فقط از Edge Function می‌خواهد
-   * Timeout authoritative را resolve کند.
-   */
   private timeoutTimer:
     | ReturnType<typeof setTimeout>
     | null = null;
 
-  /*
-   * deadlineای که در حال حاضر برای آن
-   * Timer ساخته‌ایم.
-   */
   private scheduledDeadline:
     | string
     | null = null;
@@ -111,12 +95,6 @@ export class SupabaseOkeyMatchAdapter
 
     if (this.snapshot) {
       listener(this.snapshot);
-
-      /*
-       * اگر Snapshot قبل از subscribe
-       * دریافت شده باشد، مطمئن می‌شویم
-       * Timer آن هم فعال است.
-       */
       this.scheduleTimeout(
         this.snapshot,
       );
@@ -141,10 +119,7 @@ export class SupabaseOkeyMatchAdapter
     command:
       OkeyAuthoritativeCommand,
   ): Promise<void> {
-    /*
-     * قبل از ارسال Command باید
-     * حتماً Snapshot معتبر داشته باشیم.
-     */
+
     if (
       this.snapshot?.version ===
       undefined
@@ -185,10 +160,6 @@ export class SupabaseOkeyMatchAdapter
         | { error?: string }
         | null = null;
 
-      /*
-       * FunctionsHttpError پاسخ واقعی
-       * Edge Function را داخل context دارد.
-       */
       try {
         if (
           "context" in error &&
@@ -201,13 +172,6 @@ export class SupabaseOkeyMatchAdapter
         errorBody = null;
       }
 
-      /*
-       * deadline گذشته است.
-       *
-       * Command قدیمی دیگر نباید اجرا شود.
-       * از سرور می‌خواهیم timeout را
-       * authoritative حل کند.
-       */
       if (
         errorBody?.error ===
         "turn_deadline_expired"
@@ -216,10 +180,6 @@ export class SupabaseOkeyMatchAdapter
         return;
       }
 
-      /*
-       * در خطاهای دیگر Snapshot را تازه
-       * می‌کنیم، سپس خطا را به UI می‌دهیم.
-       */
       await this.refresh();
 
       throw error;
@@ -233,28 +193,14 @@ export class SupabaseOkeyMatchAdapter
     );
   }
 
-  /*
-   * وقتی deadline نوبت تمام می‌شود،
-   * از سرور می‌خواهیم حرکت Timeout
-   * authoritative را اجرا کند.
-   *
-   * خود موبایل هیچ Tile یا state بازی را
-   * به صورت محلی تغییر نمی‌دهد.
-   */
   async resolveTimeout(): Promise<void> {
-    /*
-     * اگر همین موبایل در حال resolve کردن
-     * Timeout است، درخواست دوم نفرست.
-     */
     if (this.resolveTimeoutPromise) {
       return this.resolveTimeoutPromise;
     }
 
     this.resolveTimeoutPromise =
       (async () => {
-        /*
-         * ابتدا مطمئن شو Snapshot داریم.
-         */
+
         if (
           this.snapshot?.version ===
           undefined
@@ -294,30 +240,16 @@ export class SupabaseOkeyMatchAdapter
           );
 
         if (error) {
-          /*
-           * ممکن است دستگاه دیگری یا Worker
-           * چند میلی‌ثانیه زودتر همین timeout
-           * را resolve کرده باشد.
-           *
-           * این حالت Connection Error نیست.
-           * فقط Snapshot جدید را دریافت می‌کنیم.
-           */
           try {
             await this.refresh();
           } catch {
-            /*
-             * refresh بعدی از Realtime یا
-             * reconnect دوباره تلاش خواهد کرد.
-             */
+
           }
 
           return;
         }
 
-        /*
-         * اگر همین درخواست موفق شد،
-         * Projection جدید را منتشر کن.
-         */
+
         this.publish(
           data?.projection as
             | OkeyMatchServerProjection
@@ -332,9 +264,7 @@ export class SupabaseOkeyMatchAdapter
     return this.resolveTimeoutPromise;
   }
 
-  /*
-   * Timer قبلی deadline را پاک می‌کند.
-   */
+
   private clearTimeoutTimer(): void {
     if (this.timeoutTimer) {
       clearTimeout(
@@ -347,14 +277,7 @@ export class SupabaseOkeyMatchAdapter
     this.scheduledDeadline = null;
   }
 
-  /*
-   * برای turnDeadlineAt واقعی که از سرور
-   * آمده یک Alarm محلی می‌سازیم.
-   *
-   * مهم:
-   * این Alarm خودش Draw/Discard نمی‌کند.
-   * فقط resolve-timeout را به سرور می‌فرستد.
-   */
+
   private scheduleTimeout(
     snapshot:
       OkeyMatchServerProjection,
@@ -362,10 +285,6 @@ export class SupabaseOkeyMatchAdapter
     const deadline =
       snapshot.turnDeadlineAt;
 
-    /*
-     * وقتی بازی در حالت playing نیست
-     * یا deadline نداریم، Timer لازم نیست.
-     */
     if (
       snapshot.phase !== "playing" ||
       !deadline
@@ -374,10 +293,6 @@ export class SupabaseOkeyMatchAdapter
       return;
     }
 
-    /*
-     * برای همین deadline قبلاً Timer داریم.
-     * دوباره Timer نساز.
-     */
     if (
       this.timeoutTimer &&
       this.scheduledDeadline ===
@@ -386,10 +301,6 @@ export class SupabaseOkeyMatchAdapter
       return;
     }
 
-    /*
-     * نوبت یا deadline عوض شده.
-     * Timer قبلی دیگر معتبر نیست.
-     */
     this.clearTimeoutTimer();
 
     const deadlineMs =
@@ -406,11 +317,6 @@ export class SupabaseOkeyMatchAdapter
     this.scheduledDeadline =
       deadline;
 
-    /*
-     * 150ms مهلت کوچک می‌دهیم تا
-     * درخواست دقیقاً قبل از deadline
-     * به سرور نرسد.
-     */
     const delay =
       Math.max(
         0,
@@ -421,12 +327,6 @@ export class SupabaseOkeyMatchAdapter
 
     this.timeoutTimer =
       setTimeout(() => {
-        /*
-         * Timer فعلی تمام شد.
-         *
-         * Snapshot بعدی deadline جدید
-         * را دوباره schedule خواهد کرد.
-         */
         this.timeoutTimer = null;
         this.scheduledDeadline =
           null;
@@ -538,10 +438,7 @@ export class SupabaseOkeyMatchAdapter
       return;
     }
 
-    /*
-     * Projection قدیمی اجازه ندارد
-     * Snapshot جدیدتر را overwrite کند.
-     */
+
     if (
       this.snapshot &&
       snapshot.version <
@@ -551,15 +448,6 @@ export class SupabaseOkeyMatchAdapter
     }
 
     this.snapshot = snapshot;
-
-    /*
-     * مهم‌ترین بخش اصلاح Timer:
-     *
-     * هر Snapshot authoritative
-     * turnDeadlineAt واقعی سرور را دارد.
-     *
-     * برای همان deadline Alarm می‌سازیم.
-     */
     this.scheduleTimeout(
       snapshot,
     );
@@ -587,11 +475,7 @@ export class SupabaseOkeyMatchAdapter
           event: "invalidate",
         },
         () => {
-          /*
-           * سرور فقط invalidate می‌فرستد.
-           * Snapshot authoritative را
-           * دوباره از Edge Function می‌گیریم.
-           */
+
           void this.refresh();
         },
       )
@@ -605,10 +489,6 @@ export class SupabaseOkeyMatchAdapter
   }
 
   private closeRealtimeChannel(): void {
-    /*
-     * وقتی دیگر Listener نداریم،
-     * Alarm محلی این Adapter هم متوقف شود.
-     */
     this.clearTimeoutTimer();
 
     if (!this.channel) {

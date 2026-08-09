@@ -25,6 +25,55 @@ export type OkeyRoomSnapshot = {
   members: OkeyRoomMember[];
 };
 
+export type OkeyChatMessage = {
+  id: string;
+  match_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+};
+
+async function chatAction(
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke("okey_chat", { body });
+
+  if (error) {
+    throw new Error(error.message || "okey_chat_request_failed");
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error("okey_chat_response_invalid");
+  }
+
+  if ("error" in data && data.error) {
+    throw new Error(String(data.error));
+  }
+
+  return data as Record<string, unknown>;
+}
+
+export async function getOkeyChatMessages(matchId: string): Promise<OkeyChatMessage[]> {
+  const data = await chatAction({ action: "list", matchId });
+  return Array.isArray(data.messages) ? data.messages as OkeyChatMessage[] : [];
+}
+
+export async function sendOkeyChatMessage(matchId: string, body: string): Promise<OkeyChatMessage> {
+  const data = await chatAction({ action: "send", matchId, body });
+  if (!data.message) throw new Error("okey_chat_response_invalid");
+  return data.message as OkeyChatMessage;
+}
+
+export function subscribeOkeyChat(matchId: string, listener: () => void) {
+  const channel = supabase
+    .channel(`okey-chat:${matchId}`)
+    .on("broadcast", { event: "invalidate" }, listener)
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
 async function roomAction(
   body: Record<string, unknown>,
 ): Promise<OkeyRoomSnapshot> {
@@ -36,7 +85,21 @@ async function roomAction(
   );
 
   if (error) {
-    throw new Error(error.message || "okey_room_request_failed");
+    let errorBody: { error?: string; details?: string } | null = null;
+
+    try {
+      if ("context" in error && error.context) {
+        errorBody = await error.context.json();
+      }
+    } catch {
+      errorBody = null;
+    }
+
+    throw new Error(
+      errorBody?.details
+        ? `${errorBody.error ?? "okey_room_request_failed"}: ${errorBody.details}`
+        : errorBody?.error ?? error.message ?? "okey_room_request_failed",
+    );
   }
 
   if (!data?.room) {

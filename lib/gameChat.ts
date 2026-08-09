@@ -10,6 +10,7 @@ export type GameChatMessage = {
   sender_user_id: string;
   sender_name: string;
   sender_avatar_id: AvatarId | null;
+  sender_avatar_url?: string | null;
   body: string;
   created_at: string;
 };

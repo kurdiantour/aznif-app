@@ -1,5 +1,5 @@
 import { discardTile, drawTile } from "./okey-engine.ts";
-import type { OkeyGameState } from "../types/okey";
+import type { OkeyGameState } from "../types/okey.ts";
 
 export type PreparedTimeoutTurn = {
   state: OkeyGameState;

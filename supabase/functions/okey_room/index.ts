@@ -289,7 +289,7 @@ const displayName = String(
   if (action === "matchmake") {
     const economy = TABLE_ECONOMY[String(body.tableId)];
 
-    if (economy?.currency === "fun") {
+    if (economy?.currency === "fun" && (economy.minPoints ?? 0) > 0) {
       const requiredPoints = economy.minPoints ?? 0;
       const { data: profile, error: profileError } = await service
         .from("profiles")
@@ -470,49 +470,63 @@ const displayName = String(
     const chargedByThisRequest =
       chargeResult.charged === true;
 
-    const identities = members.map(
-      (member) => ({
-        id: member.userId,
-        name: member.displayName,
-      }),
-    );
+    let startFailureDetails: string | null = null;
 
-    const state =
-      createAuthoritativeOkeyMatch(
-        identities as [
-          typeof identities[0],
-          typeof identities[0],
-          typeof identities[0],
-          typeof identities[0],
-        ],
+    try {
+      const identities = members.map(
+        (member) => ({
+          id: member.userId,
+          name: member.displayName,
+        }),
       );
 
+      const state =
+        createAuthoritativeOkeyMatch(
+          identities as [
+            typeof identities[0],
+            typeof identities[0],
+            typeof identities[0],
+            typeof identities[0],
+          ],
+        );
 
-    const deadline =
-      getNextOkeyMatchTurnDeadline(state);
+      const deadline =
+        getNextOkeyMatchTurnDeadline(state);
 
-    const projection =
-      projectOkeyMatchPublicState(
-        state,
-        0,
-        deadline,
-      );
+      const projection =
+        projectOkeyMatchPublicState(
+          state,
+          0,
+          deadline,
+        );
 
-    const started =
-      await callRoomAction("start", {
-        p_match_id: room.matchId,
-        p_state: state,
-        p_projection: projection,
-        p_turn_deadline_at: deadline,
-      });
+      const started =
+        await callRoomAction("start", {
+          p_match_id: room.matchId,
+          p_state: state,
+          p_projection: projection,
+          p_turn_deadline_at: deadline,
+        });
 
-    if (
-      !started.error &&
-      started.data
-    ) {
-      room = started.data;
-      startedMatch = true;
-    } else {
+      if (
+        !started.error &&
+        started.data
+      ) {
+        room = started.data;
+        startedMatch = true;
+      } else {
+        startFailureDetails =
+          started.error?.message ??
+          "start_returned_no_room";
+      }
+    } catch (error) {
+      startFailureDetails =
+        error instanceof Error
+          ? error.message
+          : "unknown_start_error";
+    }
+
+    if (!startedMatch) {
       /*
        * Important race protection:
        *
@@ -520,39 +534,112 @@ const displayName = String(
        * In that case start returns match_already_started, but we must NOT
        * refund or cancel the already playing match.
        */
-      const refreshed =
-        await callRoomAction("status", {
-          p_match_id: room.matchId,
-        });
+      let refreshed: Awaited<
+        ReturnType<typeof callRoomAction>
+      > | null = null;
 
-      if (
-        refreshed.data?.status === "playing"
-      ) {
-        room = refreshed.data;
-        startedMatch = true;
-      } else if (chargedByThisRequest) {
-        /*
-         * This request charged the players and the match genuinely
-         * failed to start, so a full refund is required.
-         */
-        const refund = await service.rpc(
-          "okey_settle_match",
-          {
+      try {
+        refreshed =
+          await callRoomAction("status", {
             p_match_id: room.matchId,
-            p_winner_team_id: null,
+          });
+      } catch (error) {
+        const refreshDetails =
+          error instanceof Error
+            ? error.message
+            : "unknown_status_refresh_error";
+
+        console.error(
+          "Okey match start failed and status refresh failed",
+          {
+            matchId: room.matchId,
+            startDetails: startFailureDetails,
+            refreshDetails,
           },
         );
 
-        if (refund.error) {
+        return json(
+          {
+            error: "match_start_status_refresh_failed",
+            startDetails: startFailureDetails,
+            refreshDetails,
+          },
+          500,
+        );
+      }
+
+      if (refreshed.error || !refreshed.data) {
+        const refreshDetails =
+          refreshed.error?.message ??
+          "status_refresh_returned_no_room";
+
+        console.error(
+          "Okey match start failed and status refresh failed",
+          {
+            matchId: room.matchId,
+            startDetails: startFailureDetails,
+            refreshDetails,
+          },
+        );
+
+        return json(
+          {
+            error: "match_start_status_refresh_failed",
+            startDetails: startFailureDetails,
+            refreshDetails,
+          },
+          500,
+        );
+      }
+
+      if (refreshed.data.status === "playing") {
+        room = refreshed.data;
+        startedMatch = true;
+      } else if (
+        chargedByThisRequest &&
+        refreshed.data.status === "waiting"
+      ) {
+        /*
+         * This request charged the players and the match genuinely
+         * failed to start, so the dedicated cancellation RPC must return
+         * every charged entry in its original currency.
+         */
+        let refundError: string | null = null;
+
+        try {
+          const refund = await service.rpc(
+            "okey_cancel_match_and_refund",
+            {
+              p_match_id: room.matchId,
+              p_cancel_reason: "match_start_failed",
+            },
+          );
+
+          refundError =
+            refund.error?.message ?? null;
+        } catch (error) {
+          refundError =
+            error instanceof Error
+              ? error.message
+              : "unknown_refund_error";
+        }
+
+        if (refundError) {
+          console.error(
+            "Okey match start failed and refund failed",
+            {
+              matchId: room.matchId,
+              startDetails: startFailureDetails,
+              refundDetails: refundError,
+            },
+          );
+
           return json(
             {
               error:
                 "match_start_failed_refund_failed",
-              startDetails:
-                started.error?.message ??
-                "unknown_start_error",
-              refundDetails:
-                refund.error.message,
+              startDetails: startFailureDetails,
+              refundDetails: refundError,
             },
             500,
           );
@@ -575,7 +662,7 @@ const displayName = String(
           },
           409,
         );
-      } else {
+      } else if (!chargedByThisRequest) {
         /*
          * Entry was already charged by another request, but the refreshed
          * room is not playing yet. Do not refund money owned by another
@@ -585,10 +672,27 @@ const displayName = String(
           {
             error: "match_start_in_progress",
             refunded: false,
-            room:
-              refreshed.data ?? room,
+            room: refreshed.data,
           },
           409,
+        );
+      } else {
+        console.error(
+          "Okey match start failed with an unexpected room status",
+          {
+            matchId: room.matchId,
+            startDetails: startFailureDetails,
+            roomStatus: refreshed.data.status,
+          },
+        );
+
+        return json(
+          {
+            error: "match_start_failed_unexpected_status",
+            startDetails: startFailureDetails,
+            room: refreshed.data,
+          },
+          500,
         );
       }
     }

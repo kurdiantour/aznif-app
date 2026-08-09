@@ -383,34 +383,14 @@ export default async function handler(req: Request) {
       throw commitError;
     }
 
-    if (roundWinnerPlayerId) {
-      const { data: forfeit, error: forfeitErr } = await svc.rpc(
-        "resolve_two_vs_two_round_leave_forfeits",
-        {
-          p_room_id: room_id,
-        },
-      );
-      if (forfeitErr) throw forfeitErr;
-
-      if (!forfeit?.forfeit && nextState.winningTeamId) {
-        const { error: finishError } = await svc
-          .from("two_vs_two_rooms")
-          .update({ status: "finished", current_turn_player_id: null })
-          .eq("id", room_id)
-          .eq("status", "active");
-        if (finishError) throw finishError;
-        const { error: rewardError } = await svc.rpc(
-          "settle_finished_match_rewards",
-          { p_mode: "2v2", p_room_id: room_id },
-        );
-        if (rewardError) throw rewardError;
-      }
-    }
 
     return json(
       {
         ok: true,
-        state: { ...nextState, myHand: finalHands[playerIndex] ?? [] },
+        state: {
+          ...(updatedRoom?.state ?? nextState),
+          myHand: finalHands[playerIndex] ?? [],
+        },
         room: updatedRoom,
       },
       200,

@@ -22,7 +22,7 @@ test("a fake joker left in hand scores as the round's effective okey value", () 
     copy: 1,
   };
   const loser = state.players[0];
-  const winner = state.players[2];
+  const winner = state.players[1];
   const finishedState = {
     ...state,
     phase: "finished" as const,

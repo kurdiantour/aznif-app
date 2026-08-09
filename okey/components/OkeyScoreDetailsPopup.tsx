@@ -14,12 +14,6 @@ import type {
 } from "@/okey/types/okey";
 
 type OkeyRoundScoreDetails = {
-  /*
-   * قرارداد نمایشی این کامپوننت:
-   *
-   * teamA = تیم خود کاربر
-   * teamB = تیم حریف
-   */
   scores: Record<OkeyTeamId, number>;
 
   details: OkeyRoundScoreDetail[];

@@ -76,17 +76,7 @@ export function ConsentModal() {
     setIsSaving(true);
 
     try {
-      /*
-       * همان وضعیت مشترکی که Settings استفاده می‌کند.
-       * true  = نمایش در Leaderboard
-       * false = مخفی‌بودن در Leaderboard
-       */
       await setCurrentLeaderboardVisibility(value);
-
-      /*
-       * مشخص می‌کند که سؤال اولیه از کاربر پرسیده شده است.
-       * تغییر بعدی در Settings باعث نمایش دوباره Popup نمی‌شود.
-       */
       await consumePendingLeaderboardConsent();
 
       setVisible(false);
@@ -116,7 +106,6 @@ export function ConsentModal() {
       statusBarTranslucent
       hardwareAccelerated
       onRequestClose={() => {
-        // Popup بدون انتخاب کاربر بسته نمی‌شود.
       }}
     >
       <View style={styles.backdrop}>

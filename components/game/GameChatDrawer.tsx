@@ -27,7 +27,14 @@ type GameChatDrawerProps = {
   roomId: string;
   currentUserId?: string | null;
   enabled?: boolean;
+  transport?: GameChatTransport;
   onClose: () => void;
+};
+
+export type GameChatTransport = {
+  getMessages: (roomId: string) => Promise<GameChatMessage[]>;
+  sendMessage: (roomId: string, body: string) => Promise<GameChatMessage>;
+  subscribe: (roomId: string, onInvalidate: () => void) => () => void;
 };
 
 function formatMessageTime(value: string) {
@@ -64,6 +71,7 @@ export default function GameChatDrawer({
   roomId,
   currentUserId,
   enabled = true,
+  transport,
   onClose,
 }: GameChatDrawerProps) {
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
@@ -118,7 +126,12 @@ export default function GameChatDrawer({
     setLoading(true);
     setError(null);
 
-    getGameChatMessages(mode, roomId)
+    const loadMessages = () =>
+      transport
+        ? transport.getMessages(roomId)
+        : getGameChatMessages(mode, roomId);
+
+    loadMessages()
       .then((nextMessages) => {
         if (isMounted) setMessages(nextMessages);
       })
@@ -130,29 +143,44 @@ export default function GameChatDrawer({
         if (isMounted) setLoading(false);
       });
 
-    const channel = supabase
-      .channel(`game_chat_messages:${mode}:${roomId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "game_chat_messages",
-          filter: `room_id=eq.${roomId}`,
-        },
-        (payload) => {
-          const message = payload.new as GameChatMessage;
-          if (message.mode !== mode) return;
-          setMessages((current) => mergeMessages(current, message));
-        },
-      )
-      .subscribe();
+    const unsubscribe = transport
+      ? transport.subscribe(roomId, () => {
+          void loadMessages()
+            .then((nextMessages) => {
+              if (isMounted) setMessages(nextMessages);
+            })
+            .catch((err) => {
+              console.warn("Failed to refresh game chat messages", err);
+              if (isMounted) setError("نەتوانرا پەیامەکان نوێ بکرێنەوە.");
+            });
+        })
+      : (() => {
+          const channel = supabase
+            .channel(`game_chat_messages:${mode}:${roomId}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "INSERT",
+                schema: "public",
+                table: "game_chat_messages",
+                filter: `room_id=eq.${roomId}`,
+              },
+              (payload) => {
+                const message = payload.new as GameChatMessage;
+                if (message.mode !== mode) return;
+                setMessages((current) => mergeMessages(current, message));
+              },
+            )
+            .subscribe();
+
+          return () => { void supabase.removeChannel(channel); };
+        })();
 
     return () => {
       isMounted = false;
-      void supabase.removeChannel(channel);
+      unsubscribe();
     };
-  }, [enabled, mode, roomId, visible]);
+  }, [enabled, mode, roomId, transport, visible]);
 
 
   useEffect(() => {
@@ -173,7 +201,9 @@ export default function GameChatDrawer({
     setError(null);
 
     try {
-      const sentMessage = await sendGameChatMessage(mode, roomId, text);
+      const sentMessage = transport
+        ? await transport.sendMessage(roomId, text)
+        : await sendGameChatMessage(mode, roomId, text);
       setMessages((current) => mergeMessages(current, sentMessage));
       if (clearDraft) setDraft("");
       Keyboard.dismiss();
@@ -248,6 +278,7 @@ export default function GameChatDrawer({
                   {!isMine ? (
                     <PlayerAvatar
                       avatarId={item.sender_avatar_id as AvatarId | undefined}
+                      avatarUrl={item.sender_avatar_url ?? undefined}
                       size={28}
                       style={styles.avatar}
                     />
@@ -274,6 +305,7 @@ export default function GameChatDrawer({
                   {isMine ? (
                     <PlayerAvatar
                       avatarId={item.sender_avatar_id as AvatarId | undefined}
+                      avatarUrl={item.sender_avatar_url ?? undefined}
                       size={28}
                       style={styles.avatar}
                     />

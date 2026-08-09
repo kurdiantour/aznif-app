@@ -114,10 +114,6 @@ export function OkeyTileFace({
   onAccessibilityMovePrevious,
   onAccessibilityMoveNext,
 }: OkeyTileFaceProps) {
-  /*
-   * 0 یعنی روی اصلی تایل.
-   * 1 یعنی پشت تایل.
-   */
   const flipProgress = useRef(
     new Animated.Value(flipped ? 1 : 0),
   ).current;
@@ -136,11 +132,6 @@ export function OkeyTileFace({
       animation.stop();
     };
   }, [flipProgress, flipped]);
-
-  /*
-   * تایل در وسط انیمیشن کمی بالا می‌رود
-   * و در پایان دوباره سر جای خودش می‌نشیند.
-   */
   const tileLift = flipProgress.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [0, -14, 0],
@@ -161,10 +152,6 @@ export function OkeyTileFace({
     outputRange: ["180deg", "360deg"],
   });
 
-  /*
-   * Opacity کمک می‌کند در Android هنگام چرخش،
-   * تصویر طرف دیگر به‌شکل آینه‌ای دیده نشود.
-   */
   const frontOpacity = flipProgress.interpolate({
     inputRange: [0, 0.49, 0.5, 1],
     outputRange: [1, 1, 0, 0],
@@ -191,7 +178,6 @@ export function OkeyTileFace({
         ],
       }}
     >
-      {/* روی اصلی تایل */}
       <Animated.View
         pointerEvents="none"
         style={{
@@ -228,7 +214,6 @@ export function OkeyTileFace({
         ) : null}
       </Animated.View>
 
-      {/* پشت تایل */}
       <Animated.View
         pointerEvents="none"
         style={{
@@ -265,13 +250,7 @@ export function OkeyTileFace({
     styles.tileShadow,
 
     compact ? styles.tileShadowCompact : undefined,
-
     selected ? styles.selectedTile : undefined,
-
-    /*
-     * عرض و ارتفاع اختصاصی باید بعد از tileShadowCompact قرار بگیرند.
-     * در غیر این صورت compact اندازه تایل‌های روی میز را تغییر می‌دهد.
-     */
     width !== undefined && height !== undefined
       ? {
           width,

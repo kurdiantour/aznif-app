@@ -30,7 +30,9 @@ export default function GameOverPopup({
   }
 
   const resultText =
-    didWin && finishReason === "opponent_manual_leave"
+    didWin &&
+      (finishReason === "opponent_team_manual_leave" ||
+        finishReason === "opponent_manual_leave")
       ? "بەرامبەرەکەت لە یارییەکە دەرچوو تۆ براوە بویت."
       : didWin
         ? "یارییەکە تەواو بوو • تۆ براوە بویت!"

@@ -14,8 +14,8 @@ export const OKEY_RULESET_V1 = {
   table: {
     playerCount: 4,
     teamIds: ["teamA", "teamB"] as const satisfies readonly OkeyTeamId[],
-    seatTeamIds: ["teamA", "teamA", "teamB", "teamB"] as const satisfies readonly OkeyTeamId[],
-    counterClockwiseTurnOrder: [0, 3, 1, 2] as const,
+    seatTeamIds: ["teamA", "teamB", "teamA", "teamB"] as const satisfies readonly OkeyTeamId[],
+    counterClockwiseTurnOrder: [0, 1, 2, 3] as const,
   },
   hand: {
     dealerInitialSize: 15,

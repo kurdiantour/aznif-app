@@ -25,8 +25,6 @@ type MatchRow = {
 type SeatRow = {
   user_id: string;
   player_index: number;
-  connected: boolean;
-  last_seen_at: string | null;
 };
 
 function json(body: unknown, status = 200) {
@@ -111,15 +109,7 @@ serve(async (request) => {
     },
   );
 
-  /*
-   * دو نوع مسابقه بررسی می‌شود:
-   *
-   * 1. playing:
-   *    timeout، قطع اتصال و حرکت Bot
-   *
-   * 2. finished و settlement_at = null:
-   *    بازی تمام شده ولی پرداخت جایزه قبلاً شکست خورده است
-   */
+
   const {
     data: matches,
     error: matchesError,
@@ -190,7 +180,7 @@ serve(async (request) => {
           .schema("okey")
           .from("match_seats")
           .select(
-            "user_id, player_index, connected, last_seen_at",
+            "user_id, player_index",
           )
           .eq("match_id", match.id),
       ]);
@@ -210,16 +200,11 @@ serve(async (request) => {
 
       const originalState =
         stateRow.state as OkeyAuthoritativeMatchState;
-
-      /*
-       * بازی از قبل finished شده، ولی settlement قبلی
-       * موفق نبوده است. فقط settlement را دوباره اجرا می‌کنیم.
-       */
       if (match.status === "finished") {
         const winnerTeamId =
           getWinnerTeamId(originalState);
 
-        if (!winnerTeamId) {
+        if (!winnerTeamId && originalState.leaveTerminationReason !== "no-humans") {
           throw new Error(
             "finished_match_missing_winner_team",
           );
@@ -275,9 +260,6 @@ serve(async (request) => {
 
       const now = Date.now();
 
-      /*
-       * timeout authoritative
-       */
       if (
         isExpired(
           match.turn_deadline_at,
@@ -293,9 +275,7 @@ serve(async (request) => {
         changed = true;
       }
 
-      /*
-       * در هر اجرای worker فقط یک حرکت Bot انجام می‌شود.
-       */
+
       const currentPlayer =
         nextState.roundState.players[
           nextState.roundState.currentPlayerIndex
@@ -394,10 +374,6 @@ serve(async (request) => {
             "version_conflict",
           ) ?? false;
 
-        /*
-         * conflict طبیعی است؛ کلاینت یا worker دیگری
-         * زودتر state را تغییر داده است.
-         */
         if (versionConflict) {
           skipped += 1;
           continue;
@@ -411,10 +387,7 @@ serve(async (request) => {
 
       processed += 1;
 
-      /*
-       * ابتدا state جدید را broadcast می‌کنیم.
-       * شکست settlement نباید مانع دیده‌شدن state نهایی شود.
-       */
+
       try {
         const channel = service.channel(
           `okey-match:${match.id}`,
@@ -441,15 +414,12 @@ serve(async (request) => {
         );
       }
 
-      /*
-       * اگر حرکت Bot یا timeout بازی را تمام کرد،
-       * Prize Pool میان دو عضو تیم برنده تقسیم می‌شود.
-       */
+
       if (nextState.matchFinished) {
         const winnerTeamId =
           getWinnerTeamId(nextState);
 
-        if (!winnerTeamId) {
+        if (!winnerTeamId && nextState.leaveTerminationReason !== "no-humans") {
           throw new Error(
             "finished_match_missing_winner_team",
           );
@@ -467,11 +437,7 @@ serve(async (request) => {
         );
 
         if (settlementError) {
-          /*
-           * بازی در دیتابیس finished شده است.
-           * اجرای بعدی worker به‌خاطر settlement_at=null
-           * دوباره settlement را امتحان می‌کند.
-           */
+
           throw new Error(
             `settlement_failed: ${settlementError.message}`,
           );

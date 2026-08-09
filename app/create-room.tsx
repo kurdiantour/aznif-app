@@ -350,7 +350,6 @@ export default function CreateRoomScreen() {
             isTablet && styles.cardsRowTablet,
           ]}
         >
-          {/* ساخت اتاق خصوصی */}
           <View
             style={[
               styles.card,
@@ -444,7 +443,6 @@ export default function CreateRoomScreen() {
             </View>
           </View>
 
-          {/* ورود به اتاق خصوصی */}
           <View
             style={[
               styles.card,

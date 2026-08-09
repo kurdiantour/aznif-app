@@ -44,9 +44,7 @@ function pausePlayersSafely(
   Object.values(players).forEach((player) => {
     try {
       player.pause();
-    } catch {
-      // Player was already released (Fast Refresh / Unmount)
-    }
+    } catch {    }
   });
 }
 
@@ -113,8 +111,6 @@ export function useOkeyFeedback() {
       unsubscribePreferences();
       subscription.remove();
 
-      // عمداً pause نمی‌کنیم.
-      // useAudioPlayer خودش موقع Unmount پلیرها را آزاد می‌کند.
     };
   }, [players]);
 

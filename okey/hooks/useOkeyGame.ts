@@ -107,20 +107,22 @@ const viewerIndex =
     projection.players.map((player) => {
 
     
-  const hand =
-    projection.phase === "playing" &&
-    Array.isArray(player.hand)
+  const hand = projection.phase === "playing"
+    ? Array.isArray(player.hand)
       ? player.hand
-      : [];
+      : createPlaceholderHand(player.id, player.handCount)
+    : [];
 
       return {
         id: player.id,
         name: player.name,
-        kind: "human" as const,
+        kind: player.kind,
         botDifficulty:
           player.botDifficulty,
         controlledByBot:
           player.controlledByBot,
+        botNumber:
+          player.botNumber,
         teamId: player.teamId,
         hand,
         opened: player.opened,
@@ -192,10 +194,6 @@ deck:
     discardPile:
       projection.discardPile,
 
-    /*
-     * playerIndex داخل discardOwners نیز باید
-     * متناسب با چرخش بازیکنان اصلاح شود.
-     */
 discardOwners:
   projection.discardOwners.flatMap(
     (owner) => {
@@ -261,21 +259,12 @@ function projectAuthoritativeRoundResults(
           teamA: result.teamAScore,
           teamB: result.teamBScore,
         },
-        /*
-         * جزئیات ریز امتیاز در Projection فعلی سرور ارسال نمی‌شود.
-         * Score نهایی هر تیم authoritative است و از سرور می‌آید.
-         */
         details: [],
       },
     }),
   );
 }
 
-/*
- * ترتیب دستی رک کاربر روی موبایل نگه داشته می‌شود.
- * وقتی Projection تازه می‌رسد، سرور مالک محتواست،
- * ولی ترتیب Tileهای قبلی کاربر حفظ می‌شود.
- */
 function preserveViewerRackOrder(
   previousState: OkeyGameState,
   nextState: OkeyGameState,
@@ -341,7 +330,7 @@ export function useOkeyGame(
   onlineTableId?: string,
   onlineMatchId?: string,
 ) {
-  // Local Okey is retired: every game screen is backed by an online match.
+
   const isOnline = true;
 
   const [match, setMatch] =
@@ -406,10 +395,6 @@ export function useOkeyGame(
     !isOnline ||
     onlineProjection !== null;
 
-  /*
-   * بازی ذخیره‌شده فقط برای حالت Local خوانده می‌شود.
-   * مسابقه آنلاین همیشه باید از Snapshot سرور ساخته شود.
-   */
   useEffect(() => {
     if (isOnline) {
       setHasLoadedSavedGame(true);
@@ -458,9 +443,7 @@ export function useOkeyGame(
     matchRef.current = match;
   }, [match]);
 
-  /*
-   * ساخت Adapter آنلاین، دریافت Snapshot و اتصال Realtime.
-   */
+
   useEffect(() => {
     if (!onlineMatchId) {
       onlineAdapterRef.current = null;
@@ -522,13 +505,6 @@ export function useOkeyGame(
           projectedRoundResults.length >
             current.roundResults.length;
 
-        /*
-         * در Online، شماره راند، نتایج و Score فقط از سرور می‌آیند.
-         * کلاینت دیگر settleFinishedRound را برای نتیجه مسابقه اجرا نمی‌کند.
-         *
-         * سرور بعد از راندهای ۱ تا ۶ بلافاصله roundState راند بعد را می‌سازد،
-         * بنابراین Popup با افزایش roundResults تشخیص داده می‌شود.
-         */
         return {
           ...current,
           roundState: orderedState,
@@ -613,15 +589,6 @@ export function useOkeyGame(
     };
   }, [onlineMatchId]);
 
-  /*
-   * AppState:
-   *
-   * Local:
-   *   Save و reconcile محلی
-   *
-   * Online:
-   *   reconnect و دریافت Snapshot از سرور
-   */
   useEffect(() => {
     const subscription =
       AppState.addEventListener(
@@ -722,9 +689,7 @@ export function useOkeyGame(
       subscription.remove();
   }, [isOnline]);
 
-  /*
-   * ذخیره خودکار فقط برای بازی Local.
-   */
+
   const saveMatchTimerRef =
     useRef<ReturnType<
       typeof setTimeout
@@ -816,10 +781,7 @@ export function useOkeyGame(
       [],
     );
 
-  /*
-   * ارسال Command authoritative.
-   * هیچ optimistic update برای منطق بازی انجام نمی‌شود.
-   */
+
   const dispatchOnline =
     useCallback(
       async (
@@ -921,10 +883,7 @@ export function useOkeyGame(
   }, [isOnline, reconnectOnline]);
 
   const nextRound = useCallback(() => {
-    /*
-     * تغییر Round آنلاین باید توسط state authoritative سرور انجام شود.
-     * کلاینت اجازه ساخت Round جدید را ندارد.
-     */
+
     if (isOnline) {
       setMatch((current) => ({
         ...current,
@@ -1159,10 +1118,6 @@ export function useOkeyGame(
     ],
   );
 
-  /*
-   * مرتب‌سازی رک فقط presentation محلی است
-   * و حتی در مسابقه آنلاین به سرور ارسال نمی‌شود.
-   */
   const sortHand = useCallback(() => {
     updateRoundState((current) =>
       onlineOnlyFallback.apply(
@@ -1277,10 +1232,7 @@ export function useOkeyGame(
   const spendTile =
     useCallback(
       (tileId: string) => {
-        /*
-         * spend-best فرمان authoritative ندارد.
-         * در UI آنلاین باید همیشه target meld مشخص باشد.
-         */
+
         if (isOnline) {
           return;
         }
@@ -1422,10 +1374,6 @@ export function useOkeyGame(
       ],
     );
 
-  /*
-   * Timeout آنلاین فقط توسط Edge Function/Worker حل می‌شود.
-   * موبایل اجازه تغییر state برای timeout را ندارد.
-   */
   const beginTimeoutHumanTurn =
     useCallback(() => {
       if (isOnline) {
@@ -1479,9 +1427,6 @@ export function useOkeyGame(
       updateRoundState,
     ]);
 
-  /*
-   * بازیکن Eliminated آنلاین نیز توسط Worker حرکت می‌کند.
-   */
   const playEliminated =
     useCallback(() => {
       if (isOnline) {

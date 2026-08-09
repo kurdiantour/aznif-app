@@ -11,7 +11,8 @@ import {
   View,
 } from "react-native";
 
-import GameChatDrawer from "@/components/game/GameChatDrawer";
+import GameChatDrawer, { type GameChatTransport } from "@/components/game/GameChatDrawer";
+import type { GameChatMessage } from "@/lib/gameChat";
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
 import ConnectionOverlay from "@/okey/components/ConnectionOverlay";
 import GameControls from "@/okey/components/GameControls";
@@ -25,6 +26,7 @@ import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
 import { OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
+import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
 import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
 import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
@@ -42,6 +44,9 @@ import {
   getOkeyRoomStatus,
   leaveOkeyRoom,
   subscribeOkeyRoom,
+  getOkeyChatMessages,
+  sendOkeyChatMessage,
+  subscribeOkeyChat,
   type OkeyRoomSnapshot,
 } from "@/okey/multiplayer/okey-room-api";
 import { getRelativeSeatMap, type RelativeSeat } from "@/okey/multiplayer/relative-seat-map";
@@ -102,6 +107,11 @@ const onlineMatchId =
 const onlineTableId =
   getRouteParam(params.tableId) ??
   getRouteParam(params.table);
+
+const okeyMatchMode: OkeyMatchMode =
+  getRouteParam(params.mode) === "aznif"
+    ? "aznif"
+    : "fun";
 
 const [onlineRoom, setOnlineRoom] =
   useState<OkeyRoomSnapshot | null>(null);
@@ -205,10 +215,58 @@ const countdownInProgress =
   onlineRoom?.status === "waiting" &&
   onlineRoom.countdownEndsAt !== null;
 
+const [initialStartTransitionMatchId, setInitialStartTransitionMatchId] =
+  useState<string | null>(null);
+
+useEffect(() => {
+  if (
+    onlineMatchId &&
+    onlineRoom?.matchId === onlineMatchId &&
+    onlineRoom.status === "waiting" &&
+    onlineRoom.countdownEndsAt !== null
+  ) {
+    setInitialStartTransitionMatchId(onlineMatchId);
+  }
+}, [
+  onlineMatchId,
+  onlineRoom?.countdownEndsAt,
+  onlineRoom?.matchId,
+  onlineRoom?.status,
+]);
+
 const { emitFeedback } = useOkeyFeedback();
 const responsiveLayout = useOkeyResponsiveLayout();
 const [showGameChat, setShowGameChat] =
   useState(false);
+const [showLeaveConfirm, setShowLeaveConfirm] =
+  useState(false);
+const [isLeavingMatch, setIsLeavingMatch] =
+  useState(false);
+const okeyChatMembersRef = useRef(onlineRoom?.members ?? []);
+okeyChatMembersRef.current = onlineRoom?.members ?? [];
+
+const okeyChatTransport = useMemo<GameChatTransport>(() => {
+  const normalize = (message: Awaited<ReturnType<typeof sendOkeyChatMessage>>): GameChatMessage => {
+    const member = okeyChatMembersRef.current.find((entry) => entry.userId === message.user_id);
+    return {
+      id: message.id,
+      mode: "2v2",
+      room_id: message.match_id,
+      sender_user_id: message.user_id,
+      sender_name: member?.displayName ?? "Player",
+      sender_avatar_id: null,
+      sender_avatar_url: member?.avatarUrl ?? null,
+      body: message.body,
+      created_at: message.created_at,
+    };
+  };
+
+  return {
+    getMessages: async (matchId) => (await getOkeyChatMessages(matchId)).map(normalize),
+    sendMessage: async (matchId, body) => normalize(await sendOkeyChatMessage(matchId, body)),
+    subscribe: subscribeOkeyChat,
+  };
+}, []);
 
 const {
   showMatchMenu,
@@ -256,6 +314,20 @@ const {
   activeOnlineMatchId,
 );
 
+const handleConfirmLeaveMatch = useCallback(async () => {
+  if (isLeavingMatch) return;
+
+  setIsLeavingMatch(true);
+  try {
+    await leaveOnlineMatch();
+    setShowLeaveConfirm(false);
+    router.replace("/okey");
+  } catch (error) {
+    console.warn("Unable to leave Okey match", error);
+    setIsLeavingMatch(false);
+  }
+}, [isLeavingMatch, leaveOnlineMatch, router]);
+
 // The hook has a fully dealt local initial value while it waits for the
 // authoritative projection. Keep it behind this lifecycle boundary so waiting
 // rooms never receive gameplay data or deal triggers.
@@ -263,6 +335,22 @@ const onlineGameplayReady =
   onlineRoom?.status === "playing" &&
   onlineReady &&
   state.phase === "playing";
+
+const initialStartTransitionPending =
+  initialStartTransitionMatchId === onlineMatchId &&
+  !onlineGameplayReady;
+
+const shouldShowWaitingPlayers =
+  waitingForOnlinePlayers || initialStartTransitionPending;
+
+useEffect(() => {
+  if (
+    initialStartTransitionMatchId !== null &&
+    (initialStartTransitionMatchId !== onlineMatchId || onlineGameplayReady)
+  ) {
+    setInitialStartTransitionMatchId(null);
+  }
+}, [initialStartTransitionMatchId, onlineGameplayReady, onlineMatchId]);
 
 const dealLifecycleKey = onlineGameplayReady
   ? `playing-${currentRound}-${onlineRoom?.version ?? 0}`
@@ -303,6 +391,8 @@ const dealLifecycleKey = onlineGameplayReady
   const discardTopRectRef = useRef<ScreenRect | null>(null);
   const opponentSeatRectsRef = useRef<Record<string, ScreenRect>>({});
   const previousDiscardCountRef = useRef(state.discardPile.length);
+  const previousDeckCountRef = useRef(state.deck.length);
+  const pendingOpponentDiscardAfterDrawRef = useRef<QueuedOpponentDiscardFlight | null>(null);
   const queuedOpponentDiscardFlightsRef = useRef<QueuedOpponentDiscardFlight[]>([]);
   const suppressNextOpponentDiscardFlightTileIdRef = useRef<string | null>(null);
   const rackRectRef = useRef<ScreenRect | null>(null);
@@ -390,14 +480,7 @@ const dealLifecycleKey = onlineGameplayReady
     feedbackMatchVisibleRef.current = showMatchResultPopup;
   }, [currentRound, emitFeedback, humanPlayer.teamId, isAppActive, lifecycleResumeToken, matchScores.teamA, matchScores.teamB, matchWinnerTeamId, roundResults, showMatchResultPopup, state]);
 
-/*
- * قرارداد نمایشی UI:
- *
- * teamA = تیم خود کاربر
- * teamB = تیم حریف
- *
- * ساختار authoritative سرور تغییر نمی‌کند.
- */
+
 const viewerTeamId: OkeyTeamId =
   humanPlayer.teamId === "teamB"
     ? "teamB"
@@ -509,6 +592,30 @@ const shouldShowScorePopup =
     while (queuedOpponentDiscardFlightsRef.current.length > 0) {
       const next = queuedOpponentDiscardFlightsRef.current.shift();
       if (!next) return false;
+
+      if (next.animateWallDraw) {
+        const deckRect = deckTopRectRef.current;
+        const seatRect = opponentSeatRectsRef.current[next.ownerPlayerId] ?? null;
+        if (deckRect && seatRect) {
+          const landingRect = {
+            x: seatRect.x + seatRect.width / 2 - deckRect.width / 2,
+            y: seatRect.y + seatRect.height / 2 - deckRect.height / 2,
+            width: deckRect.width,
+            height: deckRect.height,
+          };
+          pendingOpponentDiscardAfterDrawRef.current = next;
+          setHideDeckTopTile(true);
+          setTileFlight({
+            id: `opponent-draw-${next.ownerPlayerId}-${next.discardCount}`,
+            tile: null,
+            face: "back",
+            from: toLocalRect(deckRect),
+            to: toLocalRect(landingRect),
+          });
+          return true;
+        }
+      }
+
       const nextFlight = buildOpponentDiscardFlight(next);
       if (!nextFlight) continue;
       setHideDiscardTopTile(true);
@@ -516,7 +623,7 @@ const shouldShowScorePopup =
       return true;
     }
     return false;
-  }, [buildOpponentDiscardFlight, setHideDiscardTopTile, setTileFlight]);
+  }, [buildOpponentDiscardFlight, setHideDeckTopTile, setHideDiscardTopTile, setTileFlight, toLocalRect]);
   const startTimeoutDiscardFlight = useCallback((tileId: string) => {
     const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
     const sourceRect = rackTileRectsRef.current[tileId] ?? timeoutDrawLandingRectRef.current;
@@ -568,6 +675,16 @@ const shouldShowScorePopup =
       return;
     }
 
+    const pendingOpponentDiscard = pendingOpponentDiscardAfterDrawRef.current;
+    if (pendingOpponentDiscard) {
+      pendingOpponentDiscardAfterDrawRef.current = null;
+      const discardFlight = buildOpponentDiscardFlight(pendingOpponentDiscard);
+      if (discardFlight) {
+        setHideDiscardTopTile(true);
+        setTileFlight(discardFlight);
+        return;
+      }
+    }
     const pendingDiscardTileId = pendingDiscardTileIdRef.current;
     if (pendingDiscardTileId) {
       pendingDiscardTileIdRef.current = null;
@@ -794,6 +911,8 @@ const shouldShowScorePopup =
     const previousCount = previousDiscardCountRef.current;
     const nextCount = state.discardPile.length;
     previousDiscardCountRef.current = nextCount;
+    let remainingWallDraws = Math.max(0, previousDeckCountRef.current - state.deck.length);
+    previousDeckCountRef.current = state.deck.length;
 
     if (nextCount <= previousCount) return;
 
@@ -810,6 +929,7 @@ const shouldShowScorePopup =
         tile: discardedTile,
         ownerPlayerId: owner.playerId,
         discardCount: index + 1,
+        animateWallDraw: remainingWallDraws-- > 0,
       });
     }
 
@@ -819,7 +939,7 @@ const shouldShowScorePopup =
     if (!tileFlight) {
       startNextQueuedOpponentDiscardFlight();
     }
-  }, [startNextQueuedOpponentDiscardFlight, state.discardOwners, state.discardPile, tileFlight]);
+  }, [startNextQueuedOpponentDiscardFlight, state.deck.length, state.discardOwners, state.discardPile, tileFlight]);
   useEffect(() => () => {
     if (discardAdvanceTimerRef.current) clearTimeout(discardAdvanceTimerRef.current);
     if (timeoutDrawFallbackTimerRef.current) clearTimeout(timeoutDrawFallbackTimerRef.current);
@@ -1082,7 +1202,7 @@ if (
       return {
         side,
         id: player?.id ?? member?.userId ?? `waiting-${side}`,
-        name: member?.displayName ?? "",
+        name: player?.name ?? member?.displayName ?? "",
         count: onlineGameplayReady ? (player ? stableOpponentTileCounts[player.id] ?? player.hand.length : 0) : 0,
         active: onlineGameplayReady && currentPlayer?.id === player?.id,
         timerResetKey: turnTimerResetKey,
@@ -1219,13 +1339,13 @@ if (
   >
 
 <WaitingPlayersPopup
-  visible={waitingForOnlinePlayers}
+  visible={shouldShowWaitingPlayers}
   memberCount={onlineRoom?.memberCount ?? 0}
   entryFee={onlineRoom?.entryFee ?? 0}
   currency={onlineRoom?.currency ?? "fun"}
   members={onlineRoom?.members ?? []}
   countdownEndsAt={onlineRoom?.countdownEndsAt ?? null}
-  canCancel={!countdownInProgress}
+  canCancel={!countdownInProgress && !initialStartTransitionPending}
   loading={leavingWaitingRoom}
   onCancel={handleCancelWaiting}
 />
@@ -1234,7 +1354,7 @@ if (
   visible={
     isOnline &&
     !onlineReady &&
-    !waitingForOnlinePlayers
+    !shouldShowWaitingPlayers
   }
 />
 
@@ -1253,19 +1373,56 @@ if (
 ) : null}
 
 
-        <View style={[styles.tableArea, isDiscardDragActive && styles.activeDiscardDragTableLayer]}>
-          <View style={styles.tableSurface}>
-            <View style={styles.feltTexture} />
-            <MemoizedOkeyOpponentSeat {...opponentSeats[0]} side="top" dealOrder={2} dealOrigin={dealOrigin} onMeasured={handleTopOpponentMeasured} onPress={opponentSeats[0]?.name ? () => openOpponentProfile(opponentSeats[0]?.id ?? "", "top") : undefined} />
-            <MemoizedOkeyOpponentSeat {...opponentSeats[1]} side="left" dealOrder={1} dealOrigin={dealOrigin} onMeasured={handleLeftOpponentMeasured} onPress={opponentSeats[1]?.name ? () => openOpponentProfile(opponentSeats[1]?.id ?? "", "left") : undefined} />
-            <MemoizedOkeyOpponentSeat {...opponentSeats[2]} side="right" dealOrder={3} dealOrigin={dealOrigin} onMeasured={handleRightOpponentMeasured} onPress={opponentSeats[2]?.name ? () => openOpponentProfile(opponentSeats[2]?.id ?? "", "right") : undefined} />
-            <MemoizedOkeyTableMeldAreas
-              players={seatOrderedPlayers}
-              okeyTile={state.okeyTile}
-              onMeldMeasured={handleMeldMeasured}
-              meldOffsets={tableMeldOffsets}
-              onMeldOffsetChange={handleMeldOffsetChange}
-              highlightedMeldId={hoveredMeldTarget?.meldId ?? null}
+<View style={[styles.tableArea, isDiscardDragActive && styles.activeDiscardDragTableLayer]}>
+  <View style={styles.tableSurface}>
+    <View style={styles.feltTexture} />
+
+    <MemoizedOkeyOpponentSeat
+      {...opponentSeats[0]}
+      side="top"
+      dealOrder={2}
+      dealOrigin={dealOrigin}
+      onMeasured={handleTopOpponentMeasured}
+      onPress={
+        opponentSeats[0]?.name
+          ? () => openOpponentProfile(opponentSeats[0]?.id ?? "", "top")
+          : undefined
+      }
+    />
+
+    <MemoizedOkeyOpponentSeat
+      {...opponentSeats[1]}
+      side="left"
+      dealOrder={3}
+      dealOrigin={dealOrigin}
+      onMeasured={handleLeftOpponentMeasured}
+      onPress={
+        opponentSeats[1]?.name
+          ? () => openOpponentProfile(opponentSeats[1]?.id ?? "", "left")
+          : undefined
+      }
+    />
+
+    <MemoizedOkeyOpponentSeat
+      {...opponentSeats[2]}
+      side="right"
+      dealOrder={1}
+      dealOrigin={dealOrigin}
+      onMeasured={handleRightOpponentMeasured}
+      onPress={
+        opponentSeats[2]?.name
+          ? () => openOpponentProfile(opponentSeats[2]?.id ?? "", "right")
+          : undefined
+      }
+    />
+
+    <MemoizedOkeyTableMeldAreas
+      players={seatOrderedPlayers}
+      okeyTile={state.okeyTile}
+      onMeldMeasured={handleMeldMeasured}
+      meldOffsets={tableMeldOffsets}
+      onMeldOffsetChange={handleMeldOffsetChange}
+      highlightedMeldId={hoveredMeldTarget?.meldId ?? null}
             />
             <View
               ref={humanMeldDropZoneRef}
@@ -1430,8 +1587,10 @@ if (
       <GameChatDrawer
         visible={showGameChat}
         mode="2v2"
-        roomId=""
-        enabled={false}
+        roomId={onlineMatchId ?? ""}
+        currentUserId={currentUserId}
+        enabled={!!onlineMatchId && !!currentUserId && onlineRoom?.status !== "waiting"}
+        transport={okeyChatTransport}
         onClose={() => setShowGameChat(false)}
       />
 <MatchMenuDrawer
@@ -1442,26 +1601,18 @@ if (
   onClose={closeMatchMenu}
   onLeavePress={() => {
     closeMatchMenu();
-
-    if (isOnline) {
-      void leaveOnlineMatch()
-        .catch((error) => {
-          console.warn(
-            "Unable to leave Okey match",
-            error,
-          );
-        })
-        .finally(() => {
-          router.replace("/okey");
-        });
-
-      return;
-    }
-
-    router.replace("/okey");
+    setShowLeaveConfirm(true);
   }}
 />
-
+<OkeyLeaveMatchConfirmPopup
+  visible={showLeaveConfirm}
+  mode={okeyMatchMode}
+  loading={isLeavingMatch}
+  onCancel={() => setShowLeaveConfirm(false)}
+  onConfirm={() => {
+    void handleConfirmLeaveMatch();
+  }}
+/>
 
 
     </TableBackground>

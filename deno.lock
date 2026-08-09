@@ -1,0 +1,61 @@
+{
+  "version": "5",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.112.1"
+  },
+  "remote": {
+    "https://deno.land/std@0.224.0/async/delay.ts": "f90dd685b97c2f142b8069082993e437b1602b8e2561134827eeb7c12b95c499",
+    "https://deno.land/std@0.224.0/http/server.ts": "f9313804bf6467a1704f45f76cb6cd0a3396a3b31c316035e6a4c2035d1ea514",
+    "https://esm.sh/@supabase/supabase-js@2.112.1": "497e1884f2e760ee816b6081f8e9497f453d35d0b5fb10c0bb898b0debeee58d"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@expo/vector-icons@^15.0.3",
+        "npm:@react-native-async-storage/async-storage@2.2.0",
+        "npm:@react-navigation/bottom-tabs@^7.4.0",
+        "npm:@react-navigation/elements@^2.6.3",
+        "npm:@react-navigation/native@^7.1.8",
+        "npm:@supabase/supabase-js@2.106.1",
+        "npm:@testing-library/react-native@^13.3.3",
+        "npm:@types/jest@^29.5.14",
+        "npm:@types/react@19.1",
+        "npm:eslint-config-expo@10.0",
+        "npm:eslint@^9.25.0",
+        "npm:expo-asset@~12.0.13",
+        "npm:expo-audio@~1.1.1",
+        "npm:expo-blur@~15.0.8",
+        "npm:expo-clipboard@~8.0.8",
+        "npm:expo-constants@~18.0.13",
+        "npm:expo-font@~14.0.12",
+        "npm:expo-haptics@~15.0.8",
+        "npm:expo-image@~3.0.11",
+        "npm:expo-keep-awake@~15.0.8",
+        "npm:expo-linear-gradient@~15.0.8",
+        "npm:expo-linking@~8.0.12",
+        "npm:expo-navigation-bar@~5.0.10",
+        "npm:expo-router@~6.0.24",
+        "npm:expo-splash-screen@~31.0.13",
+        "npm:expo-status-bar@~3.0.9",
+        "npm:expo-updates@~29.0.19",
+        "npm:expo-web-browser@~15.0.11",
+        "npm:expo@~54.0.36",
+        "npm:jest-expo@~54.0.17",
+        "npm:jest@29.7",
+        "npm:react-dom@19.1.0",
+        "npm:react-native-gesture-handler@2.28",
+        "npm:react-native-reanimated@~4.1.1",
+        "npm:react-native-safe-area-context@5.6",
+        "npm:react-native-screens@4.16",
+        "npm:react-native-svg@15.12.1",
+        "npm:react-native-url-polyfill@^1.1.0",
+        "npm:react-native-web@0.21",
+        "npm:react-native-worklets@0.5.1",
+        "npm:react-native@0.81.5",
+        "npm:react-test-renderer@^19.1.0",
+        "npm:react@19.1.0",
+        "npm:typescript@~5.9.2"
+      ]
+    }
+  }
+}

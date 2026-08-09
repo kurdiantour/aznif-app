@@ -40,6 +40,7 @@ export type OkeyPlayer = {
   kind: OkeyPlayerKind;
   botDifficulty?: OkeyBotDifficulty;
   controlledByBot?: boolean;
+  botNumber?: number;
   teamId: OkeyTeamId;
   hand: OkeyTile[];
   opened: boolean;

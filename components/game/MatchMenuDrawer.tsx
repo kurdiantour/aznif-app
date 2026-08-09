@@ -44,17 +44,6 @@ export default function MatchMenuDrawer({
     return null;
   }
 
-  /*
-   * players از OkeyScreen با ترتیب صندلی‌ها می‌آید:
-   *
-   * 0 = bottom = خود کاربر
-   * 1 = top    = هم‌تیمی کاربر
-   * 2 = left   = حریف
-   * 3 = right  = حریف
-   *
-   * بنابراین Sidebar نیز مستقیماً از همین
-   * چیدمان واقعی میز ساخته می‌شود.
-   */
   const myTeamPlayers = [
     players[0],
     players[1],

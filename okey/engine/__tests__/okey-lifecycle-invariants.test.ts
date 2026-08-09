@@ -109,7 +109,7 @@ test("timeout after draw, wrong turn, and finished phase are deterministic", () 
 
 test("basic and Konkan scoring cover opened, unopened, natural, and stolen joker penalties", () => {
   const state = createInitialOkeyGame(0);
-  const winner = state.players[2];
+  const winner = state.players[1];
   const penaltyHand = [
     tile(13, { color: state.okeyTile.color, value: state.okeyTile.value, jokerOrigin: "natural" }),
     tile(13, { color: state.okeyTile.color, value: state.okeyTile.value, jokerOrigin: "stolen" }),
@@ -123,18 +123,18 @@ test("basic and Konkan scoring cover opened, unopened, natural, and stolen joker
     players: state.players.map((player, index) => index === 0
       ? { ...player, opened: true, hand: penaltyHand }
       : index === 1
-        ? { ...player, opened: false, hand: [tile(9)] }
+        ? { ...player, opened: false, konkan, hand: [] }
         : index === 2
-          ? { ...player, opened: false, konkan, hand: [] }
+          ? { ...player, opened: false, hand: [tile(9)] }
           : { ...player, opened: true, hand: [] }),
   });
   const basic = getRoundResultScoreDetails(finished(false));
   assert.equal(basic.details.find((detail) => detail.playerId === state.players[0].id)?.points, 32);
-  assert.equal(basic.details.find((detail) => detail.playerId === state.players[1].id)?.points, 100);
+  assert.equal(basic.details.find((detail) => detail.playerId === state.players[2].id)?.points, 100);
   assert.equal(basic.scores.teamA, 132);
   const konkan = getRoundResultScoreDetails(finished(true));
   assert.equal(konkan.details.find((detail) => detail.playerId === state.players[0].id)?.points, 132);
-  assert.equal(konkan.details.find((detail) => detail.playerId === state.players[1].id)?.points, 200);
+  assert.equal(konkan.details.find((detail) => detail.playerId === state.players[2].id)?.points, 200);
   assert.equal(konkan.scores.teamA, 332);
   assert.equal(konkan.scores.teamB, 0);
 });

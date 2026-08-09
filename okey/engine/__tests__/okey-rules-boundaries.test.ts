@@ -84,7 +84,7 @@ test("all five official Konkan runs accept a valid completion meld", () => {
 test("opening thresholds cover initial, teammate, own-team, and opponent-first cases", () => {
   const state = createInitialOkeyGame(0);
   assert.equal(getRequiredOpenScore(state, 0), 81);
-  const teammateOpened = { ...state, players: state.players.map((player, index) => index === 1 ? { ...player, opened: true } : player) };
+  const teammateOpened = { ...state, players: state.players.map((player, index) => index === 2 ? { ...player, opened: true } : player) };
   assert.equal(getRequiredOpenScore(teammateOpened, 0), 61);
   assert.equal(getRequiredOpenScore({ ...state, teamFirstOpenScores: { teamA: 90, teamB: null } }, 0), 61);
   assert.equal(getRequiredOpenScore({ ...state, teamFirstOpenScores: { teamA: null, teamB: 92 } }, 0), 93);

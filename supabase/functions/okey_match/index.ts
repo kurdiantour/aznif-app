@@ -292,12 +292,10 @@ serve(async (req) => {
     const winnerTeamId =
       state.matchWinnerTeamId;
 
-    if (!winnerTeamId) {
+    if (!winnerTeamId && state.leaveTerminationReason !== "no-humans") {
       return {
         settlement: null,
-        error: new Error(
-          "winner_team_not_found",
-        ),
+        error: new Error("winner_team_not_found"),
       };
     }
 

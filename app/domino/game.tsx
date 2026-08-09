@@ -12,6 +12,7 @@ import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 import type { GameChatMessage } from "@/lib/gameChat";
 import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
+import MiniScoreBoard from "@/components/game/MiniScoreBoard";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { PLAYER_TURN_DURATION_SECONDS } from "@/hooks/gameShared";
 import { useGame } from "@/hooks/useGame";
@@ -926,33 +927,15 @@ export default function GameScreen() {
               </Pressable>
             </View>
           ) : null}
-          <View style={styles.bottomHudRow}>
-            <Pressable
-              style={styles.miniScoreBoard}
-              onPress={() => setShowScorePopup(true)}
-            >
-              <View style={styles.miniScoreItem}>
-                <Text numberOfLines={1} style={styles.miniScoreLabel}>
-                  {miniScoreTeamAName}
-                </Text>
-                <Text style={styles.miniScoreValue}>
-                  {miniScoreTeamAScore}
-                </Text>
-              </View>
-
-              <View style={styles.miniScoreDivider} />
-
-              <View style={styles.miniScoreItem}>
-                <Text numberOfLines={1} style={styles.miniScoreLabel}>
-                  {miniScoreTeamBName}
-                </Text>
-                <Text style={styles.miniScoreValue}>
-                  {miniScoreTeamBScore}
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-
+ <View style={styles.bottomHudRow}>
+  <MiniScoreBoard
+    teamAName={miniScoreTeamAName}
+    teamAScore={miniScoreTeamAScore}
+    teamBName={miniScoreTeamBName}
+    teamBScore={miniScoreTeamBScore}
+    onPress={() => setShowScorePopup(true)}
+  />
+</View>
           <DrawPilePrompt
             visible={game.canDrawTile || shouldShowPassPrompt}
             gameMode={gameMode}
@@ -1173,25 +1156,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     alignSelf: "stretch",
-    // Extend only the playable board behind the hand; bottomArea keeps its
-    // normal layout position and PlayerHand does not move.
     marginBottom: -32,
-  },
-
-
-  miniScoreBoard: {
-    minWidth: 142,
-    maxWidth: 178,
-    height: 42,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    zIndex: 80,
-    borderWidth: 1,
-    borderColor: "rgba(248, 243, 223, 0.22)",
   },
 
   bottomHudRow: {
@@ -1202,35 +1167,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     zIndex: 80,
-  },
-
-  miniScoreItem: {
-    minWidth: 46,
-    maxWidth: 78,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  miniScoreLabel: {
-    color: "#f8f3df",
-    fontSize: 9,
-    fontFamily: "RobotoMedium",
-    letterSpacing: 0,
-    maxWidth: "100%",
-  },
-
-  miniScoreValue: {
-    marginTop: 1,
-    color: "#facc15",
-    fontSize: 10,
-    fontFamily: "RobotoMedium",
-  },
-
-  miniScoreDivider: {
-    width: 1,
-    height: 22,
-    marginHorizontal: 10,
-    backgroundColor: "rgba(250, 204, 21, 0.35)",
   },
 
   topRightActions: {

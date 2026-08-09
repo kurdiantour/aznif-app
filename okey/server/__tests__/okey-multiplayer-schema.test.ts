@@ -12,6 +12,10 @@ const sql = readFileSync(
 ).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 const matchFunction = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
+const leaveSettlementSql = readFileSync(
+  "supabase/migrations/20260809000100_okey_manual_leave_forfeit_settlement.sql",
+  "utf8",
+).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 
 test("multiplayer migration remains Okey-only", () => {
   assert.match(sql, /alter table okey\.matches/);
@@ -48,6 +52,21 @@ test("manual leave is excluded from reconnect and future matchmaking", () => {
   assert.match(matchFunction, /manualLeftPlayerIds/);
   assert.match(matchFunction, /manual_leave_is_final/);
 });
+test("manual-left seats are excluded from winner money and Fun rewards", () => {
+  assert.match(leaveSettlementSql, /state->'manualleftplayerids'/);
+  assert.match(leaveSettlementSql, /team_id = p_winner_team_id and not \(v_manual_left_player_ids \? seat\.user_id::text\)/);
+  assert.match(leaveSettlementSql, /v_match\.prize_pool \/ 2/);
+  assert.match(leaveSettlementSql, /and not \(v_manual_left_player_ids \? v_seat\.user_id::text\) then 35/);
+  assert.match(leaveSettlementSql, /and not \(v_manual_left_player_ids \? v_seat\.user_id::text\) then 10/);
+});
+
+test("zero-human settlement closes without prize or refund", () => {
+  assert.match(leaveSettlementSql, /no_winner_requires_zero_humans/);
+  assert.match(leaveSettlementSql, /'type', 'no_winner'/);
+  assert.match(leaveSettlementSql, /'payoutperwinner', 0/);
+  assert.match(leaveSettlementSql, /'refundedplayers', 0/);
+  assert.match(leaveSettlementSql, /set status = 'finished'/);
+});
 test("room gateway is service-role only and supports reconnect", () => {
   assert.match(sql, /auth\.role\(\) <> 'service_role'/);
   assert.match(sql, /revoke all on function public\.okey_room_action[^;]+from public, anon, authenticated/);
@@ -60,4 +79,17 @@ test("Realtime carries invalidation only, never authoritative state", () => {
   assert.match(matchFunction, /event: "invalidate"/);
   assert.doesNotMatch(roomFunction, /payload:\s*\{[^}]*state/s);
   assert.doesNotMatch(matchFunction, /payload:\s*\{[^}]*state/s);
+});
+
+test("charged start failures refresh before using the cancellation refund", () => {
+  const chargeStart = roomFunction.indexOf('"okey_charge_entry_fee"');
+  const failureFlow = roomFunction.slice(chargeStart);
+
+  assert.ok(chargeStart >= 0);
+  assert.match(failureFlow, /try\s*\{[\s\S]*createAuthoritativeOkeyMatch[\s\S]*getNextOkeyMatchTurnDeadline[\s\S]*projectOkeyMatchPublicState[\s\S]*callRoomAction\("start"/);
+  assert.match(failureFlow, /callRoomAction\("status"[\s\S]*refreshed\.data\.status === "playing"/);
+  assert.match(failureFlow, /chargedByThisRequest\s*&&\s*refreshed\.data\.status === "waiting"/);
+  assert.match(failureFlow, /"okey_cancel_match_and_refund"[\s\S]*p_cancel_reason: "match_start_failed"/);
+  assert.match(failureFlow, /match_start_failed_refund_failed/);
+  assert.doesNotMatch(failureFlow, /"okey_settle_match"/);
 });

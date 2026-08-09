@@ -116,7 +116,6 @@ export default function PlayScreen() {
           onPress={() => router.push("/okey")}
         />
 
-        {/* این دو فضای نامرئی موقعیت فعلی کارت‌ها را حفظ می‌کنند. */}
         <View
           style={[
             styles.card,

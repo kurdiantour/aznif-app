@@ -553,7 +553,7 @@ serve(async (req) => {
       }
     }
 
-    const { error: commitError } = await svc.rpc("commit_multiplayer_action", {
+    const { data: updatedRoom, error: commitError } = await svc.rpc("commit_multiplayer_action", {
       p_mode: mode,
       p_room_id: room_id,
       p_expected_version: room.version,
@@ -598,29 +598,13 @@ serve(async (req) => {
       }
     }
 
-    if (mode === "2v2" && nextState.roundWinnerPlayerId) {
-      const { data: forfeit, error: forfeitErr } = await svc.rpc(
-        names.resolveForfeits,
-        { p_room_id: room_id },
-      );
-      if (forfeitErr) throw forfeitErr;
 
-      if (!forfeit?.forfeit && nextState.winningTeamId) {
-        const { error: finishErr } = await svc
-          .from(names.rooms)
-          .update({ status: "finished", current_turn_player_id: null })
-          .eq("id", room_id)
-          .eq("status", "active");
-        if (finishErr) throw finishErr;
-        const { error: rewardErr } = await svc.rpc(
-          "settle_finished_match_rewards",
-          { p_mode: "2v2", p_room_id: room_id },
-        );
-        if (rewardErr) throw rewardErr;
-      }
-    }
-
-    return json({ ok: true, processed: true, action, state: nextState });
+    return json({
+      ok: true,
+      processed: true,
+      action,
+      state: mode === "2v2" ? (updatedRoom?.state ?? nextState) : nextState,
+    });
   } catch (err) {
     console.error("process_bot_turns error", err);
     return json({ error: err?.message ?? String(err) }, 500);

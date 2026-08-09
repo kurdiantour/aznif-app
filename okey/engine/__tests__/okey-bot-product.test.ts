@@ -8,7 +8,6 @@ import {
   getOkeyBotProfile,
   handSeatToBot,
   isOkeyBotControlled,
-  returnSeatToPlayer,
 } from "../okey-bot-policy.ts";
 import { createInitialOkeyGame } from "../okey-engine.ts";
 
@@ -32,21 +31,23 @@ test("seeded bot decisions are reproducible", () => {
   assert.deepEqual(first.state, second.state);
 });
 
-test("a disconnected human seat can be handed to a bot and returned without changing identity or hand", () => {
+test("takeover assigns a stable independent Bot identity without changing seat ownership or hand", () => {
   const state = createInitialOkeyGame(1, createSeededOkeyBotRandom(4));
   const identity = state.players[0].id;
+  const humanName = state.players[0].name;
   const handIds = state.players[0].hand.map((tile) => tile.id);
   const controlled = handSeatToBot(state, 0, "hard");
+  const repeated = handSeatToBot(controlled, 0, "hard");
 
   assert.equal(isOkeyBotControlled(controlled.players[0]), true);
-  assert.equal(controlled.players[0].kind, "human");
+  assert.equal(controlled.players[0].kind, "bot");
   assert.equal(controlled.players[0].id, identity);
+  assert.notEqual(controlled.players[0].name, humanName);
+  assert.equal(controlled.players[0].name, `Bot ${controlled.players[0].botNumber}`);
+  assert.ok((controlled.players[0].botNumber ?? 0) >= 300);
+  assert.equal(repeated.players[0].name, controlled.players[0].name);
+  assert.equal(repeated.players[0].botNumber, controlled.players[0].botNumber);
   assert.deepEqual(controlled.players[0].hand.map((tile) => tile.id), handIds);
-
-  const restored = returnSeatToPlayer(controlled, 0);
-  assert.equal(isOkeyBotControlled(restored.players[0]), false);
-  assert.equal(restored.players[0].id, identity);
-  assert.deepEqual(restored.players[0].hand.map((tile) => tile.id), handIds);
 });
 
 test("bot evaluation stays bounded on complex hands", () => {
