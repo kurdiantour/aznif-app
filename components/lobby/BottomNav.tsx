@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
+import { useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -7,23 +8,23 @@ import {
   View,
 } from "react-native";
 
-import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 import DailyGiftButton from "@/components/daily-gift/DailyGiftButton";
-
+import DailyGiftModal from "@/components/daily-gift/DailyGiftModal";
+import DailyQuestsButton from "@/components/daily-quests/DailyQuestsButton";
+import DailyQuestsModal from "@/components/daily-quests/DailyQuestsModal";
+import { useDailyGift } from "@/hooks/useDailyGift";
+import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 
 export type BottomNavKey =
   "home"
   | "leaderboard"
   | "shop";
 
-
 type BottomNavProps = {
   active?: BottomNavKey | null;
   onChange?: (key: BottomNavKey) => void;
   requireAuth?: boolean;
 };
-
-
 
 const allItems = [
   {
@@ -46,10 +47,7 @@ const allItems = [
     icon: "storefront",
     href: "/shop",
   },
-
 ] as const;
-
-
 
 const items = allItems.filter(
   (item) =>
@@ -57,330 +55,225 @@ const items = allItems.filter(
     item.key !== "shop"
 );
 
-
-
 export function BottomNav({
   active: controlledActive,
   onChange,
   requireAuth = false,
 }: BottomNavProps) {
-
-
   const pathname = usePathname();
 
-
+  const [dailyGiftVisible, setDailyGiftVisible] =
+    useState(false);
+  const [dailyQuestsVisible, setDailyQuestsVisible] =
+    useState(false);
+  const dailyGift = useDailyGift();
 
   const routeActive: BottomNavKey =
     pathname.includes("leaderboard")
       ? "leaderboard"
-
       : ENABLE_SHOP_FEATURES &&
-        pathname.includes("shop")
-
+          pathname.includes("shop")
         ? "shop"
-
         : "home";
-
-
 
   const active =
     controlledActive === undefined
       ? routeActive
       : controlledActive;
 
-
-
   const handlePress = (
     key: BottomNavKey,
     href: (typeof items)[number]["href"]
   ) => {
-
-
     if (onChange) {
       onChange(key);
       return;
     }
 
-
-
     if (requireAuth && key !== "home") {
-
       router.push("/login");
       return;
-
     }
 
-
-
     router.push(href);
-
   };
 
-
-
   return (
+    <>
+      <View style={styles.wrapper}>
+        <View style={styles.row}>
+          {/* Daily Gift Button */}
 
-    <View style={styles.wrapper}>
+          <DailyGiftButton
+            canClaim={dailyGift.status?.canClaim}
+            onPress={() => {
+              setDailyGiftVisible(true);
+              void dailyGift.refresh();
+            }}
+          />
 
+          <DailyQuestsButton
+            onPress={() =>
+              setDailyQuestsVisible(true)
+            }
+          />
 
-      <View style={styles.row}>
+          {/* Main Navigation */}
 
+          <View style={styles.container}>
+            {items.map((item) => {
+              const isActive =
+                active === item.key;
 
-        {/* Daily Gift Button */}
-
-        <DailyGiftButton />
-
-
-
-        {/* Main Navigation */}
-
-        <View style={styles.container}>
-
-
-          {items.map((item)=>{
-
-
-            const isActive =
-              active === item.key;
-
-
-
-            return (
-
-              <Pressable
-
-                key={item.key}
-
-                onPress={() =>
-                  handlePress(
-                    item.key,
-                    item.href
-                  )
-                }
-
-                hitSlop={10}
-
-                style={({pressed})=>[
-
-                  styles.item,
-
-                  isActive &&
-                  styles.activeItem,
-
-                  pressed &&
-                  styles.pressed,
-
-                ]}
-
-              >
-
-
-                <Ionicons
-
-                  name={item.icon}
-
-                  size={15}
-
-                  color={
-                    isActive
-                      ? "#ffffff"
-                      : "rgba(255,255,255,0.52)"
+              return (
+                <Pressable
+                  key={item.key}
+                  onPress={() =>
+                    handlePress(
+                      item.key,
+                      item.href
+                    )
                   }
-
-                />
-
-
-
-                <Text
-
-                  style={[
-
-                    styles.text,
-
-                    isActive
-                      ? styles.activeText
-                      : styles.inactiveText,
-
+                  hitSlop={10}
+                  style={({ pressed }) => [
+                    styles.item,
+                    isActive &&
+                      styles.activeItem,
+                    pressed &&
+                      styles.pressed,
                   ]}
-
                 >
+                  <Ionicons
+                    name={item.icon}
+                    size={15}
+                    color={
+                      isActive
+                        ? "#ffffff"
+                        : "rgba(255,255,255,0.52)"
+                    }
+                  />
 
-                  {item.label}
-
-                </Text>
-
-
-
-              </Pressable>
-
-            );
-
-
-          })}
-
-
+                  <Text
+                    style={[
+                      styles.text,
+                      isActive
+                        ? styles.activeText
+                        : styles.inactiveText,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-
-
       </View>
 
+      <DailyGiftModal
+        visible={dailyGiftVisible}
+        statuses={dailyGift.status?.statuses}
+        nextResetAt={dailyGift.status?.nextResetAt}
+        claiming={dailyGift.claiming}
+        onClaim={dailyGift.claim}
+        onClose={() =>
+          setDailyGiftVisible(false)
+        }
+      />
 
-    </View>
-
+      <DailyQuestsModal
+        visible={dailyQuestsVisible}
+        onClose={() =>
+          setDailyQuestsVisible(false)
+        }
+      />
+    </>
   );
-
 }
 
-
-
-
 const styles = StyleSheet.create({
+  wrapper: {
+    position: "absolute",
 
+    left: 0,
+    right: 0,
+    bottom: 18,
 
-wrapper:{
+    alignItems: "center",
 
-  position:"absolute",
+    zIndex: 999,
+    elevation: 20,
+  },
 
-  left:0,
+  row: {
+    flexDirection: "row-reverse",
 
-  right:0,
+    alignItems: "center",
 
-  bottom:18,
+    gap: 10,
+  },
 
-  alignItems:"center",
+  container: {
+    flexDirection: "row",
 
-  zIndex:999,
+    alignItems: "center",
 
-  elevation:20,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
 
-},
+    borderRadius: 999,
 
+    borderWidth: 1,
 
+    borderColor:
+      "rgba(180,120,255,0.18)",
 
-row:{
+    backgroundColor:
+      "rgba(12,10,30,0.88)",
+  },
 
+  item: {
+    height: 38,
 
-  flexDirection:"row-reverse",
+    paddingHorizontal: 18,
 
-  alignItems:"center",
+    borderRadius: 999,
 
-  gap:10,
+    flexDirection: "row",
 
-},
+    alignItems: "center",
 
+    justifyContent: "center",
 
+    gap: 7,
+  },
 
+  activeItem: {
+    backgroundColor:
+      "rgba(150,90,255,0.22)",
 
-container:{
+    borderWidth: 1,
 
+    borderColor:
+      "rgba(190,140,255,0.35)",
+  },
 
-  flexDirection:"row",
+  pressed: {
+    opacity: 0.82,
+  },
 
-  alignItems:"center",
+  text: {
+    fontSize: 12,
 
-  paddingHorizontal:6,
+    fontFamily: "SpedaBold",
+  },
 
-  paddingVertical:6,
+  activeText: {
+    color: "#ffffff",
+  },
 
-  borderRadius:999,
-
-  borderWidth:1,
-
-  borderColor:
-    "rgba(180,120,255,0.18)",
-
-  backgroundColor:
-    "rgba(12,10,30,0.88)",
-
-
-},
-
-
-
-
-item:{
-
-
-  height:38,
-
-  paddingHorizontal:18,
-
-  borderRadius:999,
-
-  flexDirection:"row",
-
-  alignItems:"center",
-
-  justifyContent:"center",
-
-  gap:7,
-
-
-},
-
-
-
-activeItem:{
-
-
-  backgroundColor:
-    "rgba(150,90,255,0.22)",
-
-
-  borderWidth:1,
-
-
-  borderColor:
-    "rgba(190,140,255,0.35)",
-
-
-},
-
-
-
-
-pressed:{
-
-
-  opacity:0.82,
-
-
-},
-
-
-
-text:{
-
-
-  fontSize:12,
-
-  fontFamily:"SpedaBold",
-
-
-},
-
-
-
-
-activeText:{
-
-
-  color:"#ffffff",
-
-
-},
-
-
-
-
-inactiveText:{
-
-
-  color:
-    "rgba(255,255,255,0.52)",
-
-
-},
-
-
+  inactiveText: {
+    color:
+      "rgba(255,255,255,0.52)",
+  },
 });

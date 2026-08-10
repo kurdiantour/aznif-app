@@ -90,6 +90,8 @@ FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.settle_free_two_vs_two_manual_forfeit(uuid, uuid)
 TO service_role;
 
+DROP FUNCTION IF EXISTS public.settle_finished_match_rewards(text, uuid);
+
 CREATE OR REPLACE FUNCTION public.settle_finished_match_rewards(
   p_mode text,
   p_room_id uuid

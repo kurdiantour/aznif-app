@@ -54,7 +54,6 @@ export type OkeyResponsiveLayout = {
   scoreBoard: ViewStyle;
   seats: Record<OkeySeatPosition, ViewStyle>;
   meldAreas: Record<OkeyMeldPosition, ViewStyle>;
-  meldContent: ViewStyle;
   centerPiles: ViewStyle;
   rackWrap: ViewStyle;
   playerRack: ViewStyle;
@@ -64,34 +63,6 @@ export type OkeyResponsiveLayout = {
 const DEFAULT_VIEWPORT = {
   width: 844,
   height: 390,
-};
-
-const MELD_CONTENT_WIDTH = 270;
-
-const MELD_AREAS: Record<OkeyMeldPosition, ViewStyle> = {
-  top: {
-    left: 70,
-    top: 70,
-    width: 145,
-  },
-
-  left: {
-    left: 70,
-    bottom: 120,
-    width: 145,
-  },
-
-  right: {
-    right: 100,
-    top: 70,
-    width: 270,
-  },
-
-  bottom: {
-    right: 105,
-    bottom: 120,
-    width: 270,
-  },
 };
 
 const clamp = (
@@ -126,22 +97,22 @@ export function createOkeyResponsiveLayout({
     usableWidth >= 1000 || usableHeight >= 600
       ? "tablet"
       : usableWidth < 700 || usableHeight < 350
-        ? "compact"
-        : "regular";
+      ? "compact"
+      : "regular";
 
   const edge =
     layoutClass === "compact"
       ? 8
       : layoutClass === "tablet"
-        ? 20
-        : 12;
+      ? 20
+      : 12;
 
   const sideSeatInset =
     layoutClass === "compact"
       ? -34
       : layoutClass === "tablet"
-        ? 4
-        : -20;
+      ? 4
+      : -20;
 
   const rackHeight = RACK_HEIGHT;
   const rackBottom = RACK_BOTTOM_BASE + safe.bottom;
@@ -201,15 +172,55 @@ export function createOkeyResponsiveLayout({
       },
     },
 
-    meldAreas: {
-      ...MELD_AREAS,
-      right: { right: edge, top: 70, width: clamp(usableWidth / 2 - edge * 2, 120, 270) },
-      bottom: { right: edge, bottom: 120, width: clamp(usableWidth / 2 - edge * 2, 120, 270) },
-    },
+meldAreas: {
+  top: {
+    position: "absolute",
+    left: 100,
+    top: 70,
+    width: clamp(
+      usableWidth / 2 - 70 - edge,
+      80,
+      150,
+    ),
+    minHeight: 54,
+  },
 
-    meldContent: {
-      width: MELD_CONTENT_WIDTH,
-    },
+  left: {
+    position: "absolute",
+    left: 100,
+    bottom: 130,
+    width: clamp(
+      usableWidth / 2 - 70 - edge,
+      80,
+      150,
+    ),
+    minHeight: 54,
+  },
+
+  right: {
+    position: "absolute",
+    right: 100,
+    top: 70,
+    width: clamp(
+      usableWidth / 2 - 70 - edge,
+      80,
+      150,
+    ),
+    minHeight: 54,
+  },
+
+  bottom: {
+    position: "absolute",
+    right: 100,
+    bottom: 130,
+    width: clamp(
+      usableWidth / 2 - edge * 2,
+      80,
+      150,
+    ),
+    minHeight: 54,
+  },
+},
 
     centerPiles: {
       top: centerPilesTop,
@@ -249,7 +260,7 @@ const DEFAULT_OKEY_RESPONSIVE_LAYOUT =
   createOkeyResponsiveLayout(DEFAULT_VIEWPORT);
 
 const OkeyResponsiveLayoutContext =
-  createContext<OkeyResponsiveLayout>(
+  createContext(
     DEFAULT_OKEY_RESPONSIVE_LAYOUT,
   );
 

@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   applyAuthoritativeOkeyMatchCommand,
   applyAuthoritativeManualLeave,
+  deriveOkeyDailyQuestGameplayEvents,
   getNextOkeyMatchTurnDeadline,
   OkeyCommandError,
   projectOkeyMatchPublicState,
@@ -319,8 +320,43 @@ serve(async (req) => {
       };
     }
 
+    let playerReward: {
+      pointDelta: number;
+      gemDelta: number;
+    } | null = null;
+
+    if (
+      settlement &&
+      typeof settlement === "object" &&
+      (settlement as { currency?: unknown }).currency === "fun"
+    ) {
+      const { data: rewardRow, error: rewardError } = await service
+        .schema("okey")
+        .from("fun_match_rewards")
+        .select("point_delta, gem_delta")
+        .eq("match_id", matchId)
+        .eq("user_id", authData.user.id)
+        .maybeSingle();
+
+      if (rewardError) {
+        return {
+          settlement: null,
+          error: new Error(rewardError.message),
+        };
+      }
+
+      if (rewardRow) {
+        playerReward = {
+          pointDelta: Number(rewardRow.point_delta ?? 0),
+          gemDelta: Number(rewardRow.gem_delta ?? 0),
+        };
+      }
+    }
+
     return {
-      settlement,
+      settlement: settlement && typeof settlement === "object"
+        ? { ...settlement, playerReward }
+        : settlement,
       error: null,
     };
   };
@@ -457,6 +493,9 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
   let nextState: OkeyAuthoritativeMatchState;
   let commandType: string;
+  let acceptedCommand:
+    | OkeyAuthoritativeCommand
+    | { type: "manual-leave" | "system-timeout" };
 
   try {
     if (action === "manual-leave") {
@@ -467,6 +506,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
         );
 
       commandType = "manual-leave";
+      acceptedCommand = { type: "manual-leave" };
     } else if (action === "resolve-timeout") {
       nextState =
         resolveAuthoritativeMatchDeadline(
@@ -475,6 +515,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
         );
 
       commandType = "system-timeout";
+      acceptedCommand = { type: "system-timeout" };
     } else {
       if (
         bundle.turn_deadline_at &&
@@ -509,6 +550,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
         );
 
       commandType = command.type;
+      acceptedCommand = command;
     }
   } catch (error) {
     if (error instanceof OkeyCommandError) {
@@ -547,13 +589,21 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       nextVersion,
       deadline,
     );
+  const dailyQuestEvents =
+    deriveOkeyDailyQuestGameplayEvents(
+      state,
+      nextState,
+      playerIndex,
+      acceptedCommand,
+      body.commandId,
+    );
 
 const {
   data: commitRaw,
   error: commitError,
 } = await service
   .rpc(
-    "okey_commit_authoritative_command",
+    "okey_commit_authoritative_command_with_events",
     {
       p_match_id: matchId,
       p_user_id: authData.user.id,
@@ -568,6 +618,7 @@ const {
           ? "finished"
           : "playing",
       p_turn_deadline_at: deadline,
+      p_gameplay_events: dailyQuestEvents,
     },
   )
   .single();

@@ -59,11 +59,43 @@ export type OkeyAuthoritativeRoundResult = {
 
   endReason:
     OkeyGameState["endReason"];
+
+  winnerWasKonkan?: boolean;
+};
+
+export type OkeyDailyQuestMetric =
+  | "okey_match_completed"
+  | "okey_match_won"
+  | "okey_konkan_entered"
+  | "okey_konkan_won"
+  | "okey_joker_stolen"
+  | "okey_meld_opened"
+  | "okey_opened_with_130_plus_points"
+  | "okey_tile_spent_on_meld";
+
+export type OkeyDailyQuestGameplayEvent = {
+  userId: string;
+  metric: OkeyDailyQuestMetric;
+  amount: number;
+  sourceKey: string;
+  metadata: Record<string, unknown>;
 };
 
 export type OkeyAuthoritativeMatchScores = {
   teamA: number;
   teamB: number;
+};
+
+export type OkeyTimeoutDiscardEvent = {
+  id: string;
+
+  playerId: string;
+
+  tileId: string;
+
+  source:
+    | "deck"
+    | "rack";
 };
 
 export type OkeyAuthoritativeMatchState = {
@@ -89,12 +121,16 @@ export type OkeyAuthoritativeMatchState = {
   pendingForfeitTeamId:
     OkeyTeamId | null;
 
-  leaveTerminationReason:
-    | "last-human-winner"
-    | "no-humans"
-    | null;
+leaveTerminationReason:
+  | "last-human-winner"
+  | "no-humans"
+  | "team-forfeit"
+  | null;
 
-  roundState: OkeyGameState;
+lastTimeoutDiscardEvent?:
+  OkeyTimeoutDiscardEvent | null;
+
+roundState: OkeyGameState;
 };
 
 function secureRandom(): number {
@@ -277,6 +313,8 @@ export function createAuthoritativeOkeyMatch(
 
     leaveTerminationReason: null,
 
+    lastTimeoutDiscardEvent: null,
+
     roundState:
       createAuthoritativeOkeyGame(
         players,
@@ -319,6 +357,39 @@ export function settleAuthoritativeOkeyRound(
     getPlayerIdentities(
       finishedRound,
     );
+  const pendingForfeitTeamId = match.pendingForfeitTeamId;
+  const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
+    ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"
+    : null;
+
+  const finishPendingForfeit = (
+    roundResults: OkeyAuthoritativeRoundResult[],
+    matchScores: OkeyAuthoritativeMatchScores,
+  ): OkeyAuthoritativeMatchState => {
+    if (!pendingForfeitTeamId || !forfeitWinnerTeamId) {
+      throw new Error("missing_pending_okey_team_forfeit");
+    }
+
+    const remainingHumans = finishedRound.players.filter(
+      (player) => !(match.manualLeftPlayerIds ?? []).includes(player.id),
+    );
+
+    if (
+      remainingHumans.some((player) => player.teamId === pendingForfeitTeamId) ||
+      !remainingHumans.some((player) => player.teamId === forfeitWinnerTeamId)
+    ) {
+      throw new Error("invalid_pending_okey_team_forfeit");
+    }
+
+    return {
+      ...match,
+      roundResults,
+      matchScores,
+      matchFinished: true,
+      matchWinnerTeamId: forfeitWinnerTeamId,
+      roundState: finishedRound,
+    };
+  };
 
   /*
    * پایان دسته بدون برنده:
@@ -328,6 +399,10 @@ export function settleAuthoritativeOkeyRound(
     finishedRound.endReason ===
     "tile-cycle-limit"
   ) {
+    if (pendingForfeitTeamId) {
+      return finishPendingForfeit(match.roundResults, match.matchScores);
+    }
+
     return {
       ...match,
 
@@ -393,6 +468,10 @@ export function settleAuthoritativeOkeyRound(
 
       endReason:
         finishedRound.endReason,
+
+      winnerWasKonkan: finishedRound.players.some(
+        (player) => player.id === finishedRound.winnerId && player.konkan,
+      ),
     };
 
   const nextScores:
@@ -410,6 +489,10 @@ export function settleAuthoritativeOkeyRound(
     ...match.roundResults,
     roundResult,
   ];
+
+  if (pendingForfeitTeamId) {
+    return finishPendingForfeit(nextRoundResults, nextScores);
+  }
 
   if (match.leaveTerminationReason === "last-human-winner") {
     const remainingHumans = finishedRound.players.filter(
@@ -566,7 +649,24 @@ export type OkeyMatchServerProjection =
 
     matchWinnerTeamId:
       OkeyTeamId | null;
+
+    settlement?: OkeyMatchSettlement | null;
+
+    lastTimeoutDiscardEvent:
+      OkeyTimeoutDiscardEvent | null;
   };
+
+export type OkeyMatchSettlement = {
+  type: "winner" | "no_winner";
+  currency: "fun" | "aznif";
+  winnerTeamId?: OkeyTeamId;
+  entryFeePerPlayer: number;
+  payoutPerWinner: number;
+  playerReward?: {
+    pointDelta: number;
+    gemDelta: number;
+  } | null;
+};
   
 export class OkeyCommandError
   extends Error {
@@ -768,11 +868,20 @@ export function applyAuthoritativeManualLeave(
   const remainingHumans = match.roundState.players.filter(
     (entry) => !manualLeftPlayerIds.includes(entry.id),
   );
+  const remainingHumanTeamIds = new Set(
+    remainingHumans.map((entry) => entry.teamId),
+  );
+
+  const pendingForfeitTeamId: OkeyTeamId | null =
+    remainingHumans.length > 0 && remainingHumanTeamIds.size === 1
+      ? remainingHumans[0].teamId === "teamA" ? "teamB" : "teamA"
+      : null;
 
   const takeoverMatch: OkeyAuthoritativeMatchState = {
     ...match,
     manualLeftPlayerIds,
-    pendingForfeitTeamId: null,
+    pendingForfeitTeamId,
+    leaveTerminationReason: pendingForfeitTeamId ? "team-forfeit" : null,
     roundState: handSeatToBot(
       match.roundState,
       actorPlayerIndex,
@@ -780,23 +889,14 @@ export function applyAuthoritativeManualLeave(
     ),
   };
 
-  if (remainingHumans.length <= 1) {
-    const nextMatch: OkeyAuthoritativeMatchState = {
+  if (remainingHumans.length === 0) {
+    return {
       ...takeoverMatch,
-      leaveTerminationReason: remainingHumans.length === 1
-        ? "last-human-winner"
-        : "no-humans",
+      pendingForfeitTeamId: null,
+      leaveTerminationReason: "no-humans",
+      matchFinished: true,
+      matchWinnerTeamId: null,
     };
-
-    if (remainingHumans.length === 0) {
-      return {
-        ...nextMatch,
-        matchFinished: true,
-        matchWinnerTeamId: null,
-      };
-    }
-
-    return continueAuthoritativeBotTurns(nextMatch);
   }
 
   return continueAuthoritativeBotTurns(takeoverMatch);
@@ -855,6 +955,97 @@ export function applyAuthoritativeOkeyMatchCommand(
         nextRoundState,
     }),
   );
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function deriveOkeyDailyQuestGameplayEvents(
+  previous: OkeyAuthoritativeMatchState,
+  next: OkeyAuthoritativeMatchState,
+  actorPlayerIndex: number,
+  command: OkeyAuthoritativeCommand | {
+    type: "manual-leave" | "system-timeout";
+  },
+  commandId: string,
+): OkeyDailyQuestGameplayEvent[] {
+  const events: OkeyDailyQuestGameplayEvent[] = [];
+  const actorBefore = previous.roundState.players[actorPlayerIndex];
+  const actorAfter = next.roundState.players.find(
+    (player) => player.id === actorBefore?.id,
+  );
+  const push = (
+    userId: string | undefined,
+    metric: OkeyDailyQuestMetric,
+    amount = 1,
+    suffix: string = metric,
+    metadata: Record<string, unknown> = {},
+  ) => {
+    if (!userId || !UUID_PATTERN.test(userId) || amount <= 0) return;
+    events.push({
+      userId,
+      metric,
+      amount,
+      sourceKey: `${commandId}:${userId}:${suffix}`,
+      metadata,
+    });
+  };
+
+  if (actorBefore && actorAfter) {
+    if (!actorBefore.konkan && actorAfter.konkan) {
+      push(actorBefore.id, "okey_konkan_entered");
+    }
+
+    if (command.type === "open-melds" && !actorBefore.opened && actorAfter.opened) {
+      push(actorBefore.id, "okey_meld_opened");
+      if (actorAfter.scoreOpened >= 130) {
+        push(
+          actorBefore.id,
+          "okey_opened_with_130_plus_points",
+          1,
+          "okey_opened_with_130_plus_points",
+          { score: actorAfter.scoreOpened },
+        );
+      }
+    }
+
+    if (command.type === "spend-meld" || command.type === "lock-konkan") {
+      push(actorBefore.id, "okey_tile_spent_on_meld");
+    }
+
+    const stolenBefore = new Set(
+      actorBefore.hand
+        .filter((tile) => tile.jokerOrigin === "stolen")
+        .map((tile) => tile.id),
+    );
+    const stolenCount = actorAfter.hand.filter(
+      (tile) => tile.jokerOrigin === "stolen" && !stolenBefore.has(tile.id),
+    ).length;
+    push(actorBefore.id, "okey_joker_stolen", stolenCount);
+  }
+
+  const appendedResults = next.roundResults.slice(previous.roundResults.length);
+  appendedResults.forEach((result) => {
+    if (result.winnerWasKonkan) {
+      push(
+        result.winnerId ?? undefined,
+        "okey_konkan_won",
+        1,
+        `okey_konkan_won:round:${result.round}`,
+      );
+    }
+  });
+
+  if (!previous.matchFinished && next.matchFinished) {
+    for (const player of previous.roundState.players) {
+      push(player.id, "okey_match_completed");
+      if (next.matchWinnerTeamId && player.teamId === next.matchWinnerTeamId) {
+        push(player.id, "okey_match_won");
+      }
+    }
+  }
+
+  return events;
 }
 
 export function resolveAuthoritativeDeadline(
@@ -934,28 +1125,74 @@ export function resolveAuthoritativeMatchDeadline(
   const timeoutCount =
     (timeoutCounts[player.id] ?? 0) + 1;
 
-  const nextTimeoutCounts = {
-    ...timeoutCounts,
-    [player.id]: timeoutCount,
-  };
+const nextTimeoutCounts = {
+  ...timeoutCounts,
+  [player.id]: timeoutCount,
+};
 
 
-  const nextRoundState =
-    resolveAuthoritativeDeadline(
-      match.roundState,
-      deadlineAt,
-      now,
-    );
+const timeoutDiscardTile =
+  match.roundState.hasDrawnThisTurn
+    ? player.hand[
+        player.hand.length - 1
+      ] ?? null
+    : match.roundState.deck[0] ??
+      null;
 
-  return continueAuthoritativeBotTurns(
-    settleAuthoritativeOkeyRound({
-      ...match,
-      timeoutCountsByPlayerId:
-        nextTimeoutCounts,
-      roundState:
-        nextRoundState,
-    }),
+
+const timeoutDiscardSource:
+  | "deck"
+  | "rack" =
+  match.roundState.hasDrawnThisTurn
+    ? "rack"
+    : "deck";
+
+
+const nextRoundState =
+  resolveAuthoritativeDeadline(
+    match.roundState,
+    deadlineAt,
+    now,
   );
+
+
+const lastTimeoutDiscardEvent:
+  OkeyTimeoutDiscardEvent | null =
+  timeoutDiscardTile
+    ? {
+        id: [
+          "timeout",
+          now,
+          player.id,
+          timeoutCount,
+          timeoutDiscardTile.id,
+        ].join("-"),
+
+        playerId:
+          player.id,
+
+        tileId:
+          timeoutDiscardTile.id,
+
+        source:
+          timeoutDiscardSource,
+      }
+    : null;
+
+
+return continueAuthoritativeBotTurns(
+  settleAuthoritativeOkeyRound({
+    ...match,
+
+    timeoutCountsByPlayerId:
+      nextTimeoutCounts,
+
+    lastTimeoutDiscardEvent,
+
+    roundState:
+      nextRoundState,
+  }),
+);
 }
 
 export function getNextOkeyTurnDeadline(
@@ -1104,6 +1341,10 @@ export function projectOkeyMatchState(
 
     matchWinnerTeamId:
       match.matchWinnerTeamId,
+
+    lastTimeoutDiscardEvent:
+      match.lastTimeoutDiscardEvent ??
+  null,
   };
 }
 

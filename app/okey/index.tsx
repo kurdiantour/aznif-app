@@ -137,6 +137,18 @@ export default function OkeyLobbyScreen() {
     <View style={styles.shell}>
       <LobbyHeader />
 
+      {__DEV__ ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Okey local preview"
+          onPress={() => router.push("/okey/preview")}
+          style={styles.previewButton}
+        >
+          <MaterialCommunityIcons name="test-tube" size={18} color="#fff7d6" />
+          <Text style={styles.previewButtonText}>Okey Preview</Text>
+        </Pressable>
+      ) : null}
+
       <View
         style={[
           styles.shellContent,
@@ -190,6 +202,26 @@ export default function OkeyLobbyScreen() {
 }
 
 const styles = StyleSheet.create({
+  previewButton: {
+    position: "absolute",
+    top: 18,
+    right: 18,
+    zIndex: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,247,214,0.28)",
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  previewButtonText: {
+    color: "#fff7d6",
+    fontSize: 12,
+    fontFamily: "RobotoMedium",
+  },
   shell: {
     flex: 1,
     paddingTop: 14,

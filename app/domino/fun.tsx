@@ -25,6 +25,7 @@ import {
 } from "@/lib/leaderboardVisibility";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
+import { getBalance } from "@/lib/wallet";
 
 type GameMode = "1v1" | "2v2";
 type MatchType = "duo" | "squad";
@@ -182,6 +183,23 @@ export default function DominoFunScreen() {
 
   const [error, setError] =
     useState<string | null>(null);
+  const [coinBalance, setCoinBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    let mounted = true;
+    void getBalance()
+      .then((wallet) => {
+        if (mounted) setCoinBalance(Number(wallet.balances.coin ?? 0));
+      })
+      .catch((reason) => {
+        console.warn("Unable to load Fun Coin balance:", reason);
+        if (mounted) setError("نەتوانرا باڵانسی Coin بار بکرێت.");
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [profile]);
 
   useEffect(() => {
     let mounted = true;
@@ -251,6 +269,8 @@ export default function DominoFunScreen() {
     const message =
       reason instanceof Error
         ? reason.message
+        : typeof (reason as { message?: unknown })?.message === "string"
+          ? String((reason as { message: string }).message)
         : "Unable to start matchmaking.";
 
     const normalized = message.toLowerCase();
@@ -263,10 +283,10 @@ export default function DominoFunScreen() {
     }
 
     if (
-      normalized.includes("already") &&
-      normalized.includes("match")
+      normalized.includes("insufficient") ||
+      normalized.includes("balance")
     ) {
-      return "لە ئێستادا لە گەڕانی یارییەکی تردایت.";
+      return "Coinی پێویستت بۆ ئەم یارییە نییە.";
     }
 
     if (
@@ -296,14 +316,11 @@ export default function DominoFunScreen() {
     setError(null);
 
     try {
-      const { data: result, error: rpcError } =
-        mode === "1v1"
-          ? await supabase.rpc(
-              "find_one_vs_one_opponent",
-            )
-          : await supabase.rpc(
-              "find_two_vs_two_match",
-            );
+      const entryFee = mode === "1v1" ? 500 : 3500;
+      const { data: result, error: rpcError } = await supabase.rpc(
+        "find_domino_match",
+        { p_mode: mode, p_currency: "fun", p_entry_fee: entryFee },
+      );
 
       if (rpcError) {
         throw rpcError;
@@ -323,6 +340,7 @@ export default function DominoFunScreen() {
           room_id: result.room_id ?? "",
           matchType,
           playMode: "fun",
+          entryFee: String(mode === "1v1" ? 500 : 3500),
           game: "domino",
         },
       });
@@ -389,7 +407,7 @@ export default function DominoFunScreen() {
                 "@/assets/images/mode-select/1vs1.webp"
               )}
               isTablet={isTablet}
-              disabled={isSearching}
+              disabled={isSearching || coinBalance === null || coinBalance < 500}
               loading={searchingMode === "1v1"}
               onPress={() => {
                 void startPublicMatch(
@@ -407,7 +425,7 @@ export default function DominoFunScreen() {
                 "@/assets/images/mode-select/2vs2.webp"
               )}
               isTablet={isTablet}
-              disabled={isSearching}
+              disabled={isSearching || coinBalance === null || coinBalance < 3500}
               loading={searchingMode === "2v2"}
               onPress={() => {
                 void startPublicMatch(

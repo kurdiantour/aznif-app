@@ -64,15 +64,13 @@ nameText: {
   countText: { color: "#f8d774", fontSize: 11, fontFamily: "SpedaRegular" },
   tableMeldLayer: { ...StyleSheet.absoluteFillObject, zIndex: 7 },
 meldArea: {
-  position: "absolute",
-  minHeight: 54,
   alignItems: "flex-start",
 },
 
 
 
 meldContent: {
-  width: 272,
+  width: "100%",
   minHeight: 50,
   flexDirection: "column",
   alignItems: "flex-start",
@@ -96,7 +94,7 @@ meldPreview: {
   meldMetaPill: { marginTop: 1, minWidth: 28, height: 13, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.28)" },
   meldMetaText: { color: "rgba(255,247,218,0.82)", fontSize: 8, fontFamily: "SpedaRegular" },
   humanMeldDropZone: { zIndex: 90, elevation: 90, justifyContent: "flex-start" },
-  previewMeldContent: { position: "absolute", left: 0, top: 0, zIndex: 91, elevation: 91, width: 272, minHeight: 50, flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start", rowGap: 2 },
+  previewMeldContent: { zIndex: 91, elevation: 91, width: "100%", minHeight: 50, flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start", rowGap: 2 },
   stagingArea: { position: "absolute", left: "38%", right: "38%", bottom: 116, height: 40, alignItems: "center", justifyContent: "flex-end" },
   stagingRail: { width: "100%", height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.34)" },
   okeyMiniScoreBoard: { position: "absolute", left: 25, top: 22, zIndex: 230, elevation: 230, minWidth: 128, height: 34, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "rgba(255,255,255,0.12)", borderWidth: 1, borderColor: "rgba(248, 243, 223, 0.22)", overflow: "hidden" },
@@ -104,12 +102,41 @@ meldPreview: {
   okeyMiniScoreLabel: { color: "rgba(255,247,218,0.62)", fontSize: 7, fontFamily: "SpedaRegular" },
   okeyMiniScoreValue: { color: "#f8d774", fontSize: 14, lineHeight: 17, fontFamily: "SpedaRegular" },
   okeyMiniScoreDivider: { width: 1, height: 22, backgroundColor: "rgba(255,247,218,0.18)" },
-  playerSetScoreWrap: { position: "absolute", right: 26, bottom: 22, zIndex: 220, elevation: 220, alignItems: "center", gap: 6 },
+  playerSetScoreWrap: { position: "absolute", right: 42, bottom: 22, zIndex: 220, elevation: 220, alignItems: "center", gap: 6 },
   openSetsButton: { minWidth: 82, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(248,215,116,0.92)", borderWidth: 1, borderColor: "rgba(255,247,218,0.72)" },
   openSetsButtonText: { color: "#182012", fontSize: 12, fontFamily: "SpedaRegular" },
   playerSetScore: { minWidth: 82, height: 42, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(8,17,12,0.58)", borderWidth: 1, borderColor: "rgba(248,215,116,0.34)" },
   playerSetScoreLabel: { color: "rgba(255,247,218,0.68)", fontSize: 8, fontFamily: "SpedaRegular" },
   playerSetScoreValue: { color: "#f8d774", fontSize: 18, lineHeight: 21, fontFamily: "SpedaRegular" },
+
+playerSetScoreValueRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  direction: "ltr",
+},
+
+playerSetScoreTarget: {
+  color: "#f8d774",
+  fontSize: 18,
+  lineHeight: 21,
+  fontFamily: "SpedaRegular",
+},
+
+playerSetScoreSlash: {
+  color: "rgba(255,255,255,0.38)",
+  fontSize: 16,
+  lineHeight: 21,
+  fontFamily: "SpedaRegular",
+},
+
+playerSetScoreCurrent: {
+  color: "rgba(255,255,255,0.70)",
+  fontSize: 18,
+  lineHeight: 21,
+  fontFamily: "SpedaRegular",
+},
+
   centerPiles: { position: "absolute", left: 0, right: 0, top: "34%", height: 140, flexDirection: "row", alignItems: "flex-start", justifyContent: "center", gap: 54, zIndex: 180, elevation: 180 },
   activeDiscardDragLayer: { zIndex: 10000, elevation: 10000 },
   indicatorTileSpot: { position: "absolute", left: 4, top: -30, width: 42, height: 58, alignItems: "center", justifyContent: "center", zIndex: 0, elevation: 0 },
@@ -139,6 +166,10 @@ rackTileViewport: {
   direction: "ltr",
 },
   activeRackDragViewport: { zIndex: 200, elevation: 200 },
+  activeRackDragLayer: {
+  zIndex: 10000,
+  elevation: 10000,
+},
   rackScroll: { width: "100%", minWidth: "100%", alignItems: "stretch", justifyContent: "center", paddingHorizontal: RACK_TILE_SIDE_PADDING, direction: "ltr" },
   rackRows: { width: "100%", height: "100%", justifyContent: "space-between", direction: "ltr" },
   rackRail: { width: "100%", height: "47%", overflow: "visible", justifyContent: "flex-end", direction: "ltr" },
@@ -146,8 +177,11 @@ rackTileViewport: {
   rackSlot: { position: "relative", alignItems: "center", justifyContent: "flex-end" },
   hiddenRackTile: { opacity: 0 },
   draggedTileOverlay: { position: "absolute", left: 0, top: 0, zIndex: 5000, elevation: 5000 },
-  tileFlightOverlay: { position: "absolute", zIndex: 9000, elevation: 9000 },
-  turnTimerTrack: { position: "absolute", overflow: "hidden", backgroundColor: "rgba(36,8,8,0.62)", borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,180,180,0.28)", zIndex: 120, elevation: 120 },
+tileFlightOverlay: {
+  position: "absolute",
+  zIndex: 800,
+  elevation: 800,
+},  turnTimerTrack: { position: "absolute", overflow: "hidden", backgroundColor: "rgba(36,8,8,0.62)", borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,180,180,0.28)", zIndex: 120, elevation: 120 },
   turnTimerTrackHorizontal: { flexDirection: "row", alignItems: "stretch" },
   turnTimerTrackVertical: { flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
   turnTimerReverseHorizontal: { flexDirection: "row-reverse" },
@@ -155,8 +189,20 @@ rackTileViewport: {
   turnTimerFill: { backgroundColor: "#ef2424", shadowColor: "#ef2424", shadowOpacity: 0.7, shadowRadius: 6 },
   rackTurnTimer: { left: RACK_TURN_TIMER_LEFT, right: RACK_TURN_TIMER_RIGHT, top: RACK_TURN_TIMER_TOP, height: RACK_TURN_TIMER_HEIGHT },
   opponentTimerTop: { left: 0, right: 0, top: -7, height: 4 },
-  opponentTimerLeft: { left: -8, top: 0, bottom: 0, width: 4 },
-  opponentTimerRight: { right: -8, top: 0, bottom: 0, width: 4 },
+  
+opponentTimerLeft: {
+  left: 0,
+  right: 0,
+  top: -7,
+  height: 4,
+},
+
+opponentTimerRight: {
+  left: 0,
+  right: 0,
+  top: -7,
+  height: 4,
+},
 rackSlotIndicator: {
   position: "absolute",
   left: 2,

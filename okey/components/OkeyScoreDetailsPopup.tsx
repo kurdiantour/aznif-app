@@ -48,6 +48,8 @@ type Props = {
 
   round?: number;
 
+  winnerName?: string | null;
+
   maxRounds?: number;
 
   roundResults?:
@@ -73,6 +75,7 @@ export function OkeyScoreDetailsPopup({
   scoreDetails,
   finishedMessage,
   round,
+  winnerName = null,
   maxRounds = 7,
   roundResults = [],
   matchScores,
@@ -193,6 +196,15 @@ export function OkeyScoreDetailsPopup({
             style={styles.finalMessage}
           >
             {finalMessage}
+          </Text>
+        ) : null}
+
+        {winnerName && !isTileCycleLimit ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={styles.winnerMessage}
+          >
+            {`براوە: ${winnerName}`}
           </Text>
         ) : null}
 
@@ -405,6 +417,8 @@ export function OkeyScoreDetailsPopup({
 }
 
 const styles = StyleSheet.create({
+
+  
   overlayRoot: {
     ...StyleSheet.absoluteFillObject,
 
@@ -454,6 +468,19 @@ const styles = StyleSheet.create({
   },
 
   finalMessage: {
+    color: "#151515",
+
+    fontSize: 12,
+    lineHeight: 18,
+
+    fontFamily: "SpedaBold",
+
+    textAlign: "center",
+
+    marginBottom: 8,
+  },
+
+  winnerMessage: {
     color: "#151515",
 
     fontSize: 12,

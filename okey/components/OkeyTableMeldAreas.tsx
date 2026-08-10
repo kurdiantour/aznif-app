@@ -34,61 +34,86 @@ function AnimatedSpentTile({
 
   useEffect(() => {
     if (!shouldAnimateRef.current) return;
+
+    progress.setValue(0);
+
     const animation = Animated.timing(progress, {
       toValue: 1,
-      duration: 1500,
-      easing: Easing.out(Easing.cubic),
+      duration: 620,
+      easing: Easing.bezier(0.16, 0.72, 0.2, 1),
       useNativeDriver: true,
     });
+
     animation.start(({ finished }) => {
       if (finished) setIsAnimating(false);
     });
+
     return () => animation.stop();
   }, [progress]);
 
-return (
-  <Animated.View
-    style={{
-      width: TABLE_MELD_TILE_WIDTH,
-      height: TABLE_MELD_TILE_HEIGHT,
+  const distance = Math.hypot(sourceOrigin.x, sourceOrigin.y);
+  const arcHeight = Math.min(120, Math.max(48, distance * 0.22));
+  const middleY = sourceOrigin.y * 0.5 - arcHeight;
 
-      zIndex: isAnimating ? 160 : 1,
-      elevation: isAnimating ? 160 : 1,
-      opacity: 1,
-      transform: [
-        {
-          translateX: progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [sourceOrigin.x, 0],
-          }),
-        },
-        {
-          translateY: progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [sourceOrigin.y, 0],
-          }),
-        },
-      ],
-    }}
-  >
-{locked ? (
-  <OkeyTileBack
-    small
-    width={TABLE_MELD_TILE_WIDTH}
-    height={TABLE_MELD_TILE_HEIGHT}
-  />
-) : (
-  <OkeyTileFace
-    tile={tile}
-    compact
-    width={TABLE_MELD_TILE_WIDTH}
-    height={TABLE_MELD_TILE_HEIGHT}
-    isWildcard={isOkeyWildcard(tile, okeyTile)}
-  />
-)}
-</Animated.View>
-);
+  return (
+    <Animated.View
+      style={{
+        width: TABLE_MELD_TILE_WIDTH,
+        height: TABLE_MELD_TILE_HEIGHT,
+        zIndex: isAnimating ? 160 : 1,
+        elevation: isAnimating ? 160 : 1,
+        opacity: 1,
+        transform: [
+          {
+            translateX: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [sourceOrigin.x, 0],
+            }),
+          },
+          {
+            translateY: progress.interpolate({
+              inputRange: [0, 0.5, 0.88, 1],
+              outputRange: [sourceOrigin.y, middleY, -4, 0],
+            }),
+          },
+          {
+            scale: progress.interpolate({
+              inputRange: [0, 0.48, 0.84, 0.94, 1],
+              outputRange: [1, 1.1, 1.03, 0.96, 1],
+            }),
+          },
+          {
+            rotate: progress.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [
+                "0deg",
+                sourceOrigin.x >= 0 ? "4deg" : "-4deg",
+                "0deg",
+              ],
+            }),
+          },
+        ],
+      }}
+    >
+      {locked ? (
+        <OkeyTileBack
+          small
+          width={TABLE_MELD_TILE_WIDTH}
+          height={TABLE_MELD_TILE_HEIGHT}
+        />
+      ) : (
+        <OkeyTileFace
+          tile={tile}
+          compact
+          width={TABLE_MELD_TILE_WIDTH}
+          height={TABLE_MELD_TILE_HEIGHT}
+          isWildcard={isOkeyWildcard(tile, okeyTile)}
+        />
+      )}
+    </Animated.View>
+  );
 }
+
 function MeldPreview({
   meld,
   okeyTile,
@@ -395,7 +420,7 @@ export function OkeyPlayerMeldArea({
       pointerEvents="box-none"
     >
       {meldRows.length > 0 ? (
-        <View style={[styles.meldContent, layout.meldContent]} pointerEvents="box-none">
+        <View style={styles.meldContent} pointerEvents="box-none">
           {meldRows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.meldRow} pointerEvents="box-none">
               {row.map((meld) => (

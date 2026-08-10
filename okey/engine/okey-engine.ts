@@ -147,19 +147,20 @@ export function createInitialOkeyGame(
    * the authoritative room service immediately assigns the four real player
    * identities. Temporary automated control is only enabled later by the takeover worker.
    */
-  const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
-    id: `seat-${index}`,
-    name: `Player ${index + 1}`,
-    kind: "human" as const,
-    teamId: getOkeyTeamIdForPlayerIndex(index),
-    hand: [] as OkeyTile[],
-    opened: false,
-    melds: [],
-    scoreOpened: 0,
-    konkan: false,
-    konkanEntryReason: null,
-    pendingKonkanFromDiscard: false,
-  }));
+const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
+  id: `seat-${index}`,
+  name: `Player ${index + 1}`,
+  kind: "human" as const,
+  teamId: getOkeyTeamIdForPlayerIndex(index),
+  hand: [] as OkeyTile[],
+  opened: false,
+  melds: [],
+  scoreOpened: 0,
+  firstOpenScore: null,
+  konkan: false,
+  konkanEntryReason: null,
+  pendingKonkanFromDiscard: false,
+}));
 
   for (let playerIndex = 0; playerIndex < PLAYER_COUNT; playerIndex += 1) {
     const handSize = playerIndex === safeDealerIndex ? INITIAL_DEALER_HAND_SIZE : INITIAL_HAND_SIZE;
@@ -366,18 +367,19 @@ export function openPlayerMelds(
       ...state.teamFirstOpenScores,
       [player.teamId]: state.teamFirstOpenScores[player.teamId] ?? score,
     },
-    players: state.players.map((entry, index) =>
-      index === playerIndex
-        ? {
-            ...entry,
-            hand: nextHand,
-            opened: true,
-            melds: nextMelds,
-            scoreOpened: entry.scoreOpened + score,
-            pendingKonkanFromDiscard: false,
-          }
-        : entry,
-    ),
+players: state.players.map((entry, index) =>
+  index === playerIndex
+    ? {
+        ...entry,
+        hand: nextHand,
+        opened: true,
+        melds: nextMelds,
+        scoreOpened: entry.scoreOpened + score,
+        firstOpenScore: entry.firstOpenScore ?? score,
+        pendingKonkanFromDiscard: false,
+      }
+    : entry,
+),
   };
 
   return nextState;

@@ -185,12 +185,7 @@ export class SupabaseOkeyMatchAdapter
       throw error;
     }
 
-    this.publish(
-      data?.projection as
-        | OkeyMatchServerProjection
-        | null
-        | undefined,
-    );
+    this.publishResponse(data);
   }
 
   async resolveTimeout(): Promise<void> {
@@ -250,12 +245,7 @@ export class SupabaseOkeyMatchAdapter
         }
 
 
-        this.publish(
-          data?.projection as
-            | OkeyMatchServerProjection
-            | null
-            | undefined,
-        );
+        this.publishResponse(data);
       })().finally(() => {
         this.resolveTimeoutPromise =
           null;
@@ -415,12 +405,7 @@ export class SupabaseOkeyMatchAdapter
           throw error;
         }
 
-        this.publish(
-          data?.projection as
-            | OkeyMatchServerProjection
-            | null
-            | undefined,
-        );
+        this.publishResponse(data);
       })().finally(() => {
         this.refreshPromise = null;
       });
@@ -428,6 +413,27 @@ export class SupabaseOkeyMatchAdapter
     return this.refreshPromise;
   }
 
+  private publishResponse(data: unknown): void {
+    if (!data || typeof data !== "object") {
+      return;
+    }
+
+    const response = data as {
+      projection?: OkeyMatchServerProjection | null;
+      settlement?: OkeyMatchServerProjection["settlement"];
+    };
+
+    if (!response.projection) {
+      return;
+    }
+
+    this.publish({
+      ...response.projection,
+      settlement: "settlement" in response
+        ? response.settlement ?? null
+        : this.snapshot?.settlement ?? null,
+    });
+  }
   private publish(
     snapshot:
       | OkeyMatchServerProjection

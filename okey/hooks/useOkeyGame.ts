@@ -505,6 +505,9 @@ export function useOkeyGame(
           projectedRoundResults.length >
             current.roundResults.length;
 
+        const matchJustFinished =
+          !current.matchFinished && projection.matchFinished;
+
         return {
           ...current,
           roundState: orderedState,
@@ -548,6 +551,8 @@ export function useOkeyGame(
             isFirstProjection &&
             projection.matchFinished
               ? true
+              : matchJustFinished && !hasNewRoundResult
+                ? true
               : current.showMatchResultPopup,
         };
       });

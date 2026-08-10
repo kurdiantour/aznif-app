@@ -291,6 +291,8 @@ export default function DominoAznifScreen() {
     const message =
       reason instanceof Error
         ? reason.message
+        : typeof (reason as { message?: unknown })?.message === "string"
+          ? String((reason as { message: string }).message)
         : "Unable to start Aznif matchmaking.";
 
     const normalized = message.toLowerCase();
@@ -346,9 +348,11 @@ export default function DominoAznifScreen() {
     try {
       const { data: result, error: rpcError } =
         await supabase.rpc(
-          "find_one_vs_one_bet_match",
+          "find_domino_match",
           {
-            p_bet_amount: config.amount,
+            p_mode: config.mode,
+            p_currency: "aznif",
+            p_entry_fee: config.amount,
           },
         );
 
@@ -369,12 +373,12 @@ export default function DominoAznifScreen() {
       router.replace({
         pathname: "/domino/matchmaking",
         params: {
-          mode: "1v1",
+          mode: config.mode,
           matchmaking_status: result.status,
           room_id: result.room_id ?? "",
-          matchType: "duo",
+          matchType: config.mode === "1v1" ? "duo" : "squad",
           playMode: "aznif",
-          betAmount: String(config.amount),
+          entryFee: String(config.amount),
         },
       });
     } catch (reason) {

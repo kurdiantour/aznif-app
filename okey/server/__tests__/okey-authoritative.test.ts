@@ -224,16 +224,32 @@ test("manual leave preserves the seat state and bot control across rounds", () =
   assert.equal(nextRound.roundState.players[1].botNumber, controlledPlayer.botNumber);
   assert.equal(nextRound.roundState.players[1].kind, "bot");});
 
-test("two remaining humans keep the match active regardless of which team left", () => {
+test("a whole-team leave finishes the match after the current round", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = applyAuthoritativeManualLeave(match, 1);
   match = applyAuthoritativeManualLeave(match, 3);
 
-  assert.equal(match.pendingForfeitTeamId, null);
+  assert.equal(match.pendingForfeitTeamId, "teamB");
   assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);
   assert.equal(isOkeyBotControlled(match.roundState.players[3]), true);
   assert.equal(match.matchFinished, false);
-  assert.equal(match.leaveTerminationReason, null);
+  assert.equal(match.leaveTerminationReason, "team-forfeit");
+
+  const finished = settleAuthoritativeOkeyRound({
+    ...match,
+    roundState: {
+      ...match.roundState,
+      phase: "finished",
+      winnerId: match.roundState.players[1].id,
+      endReason: "win",
+    },
+  });
+
+  assert.equal(finished.matchFinished, true);
+  assert.equal(finished.matchWinnerTeamId, "teamA");
+  assert.equal(finished.currentRound, 1);
+  assert.equal(finished.roundResults.length, 1);
+  assert.equal(finished.roundState.phase, "finished");
 });
 
 test("round three completes before the sole remaining human wins and round four is not created", () => {
@@ -247,7 +263,7 @@ test("round three completes before the sole remaining human wins and round four 
 
   assert.equal(match.matchFinished, false);
   assert.equal(match.matchWinnerTeamId, null);
-  assert.equal(match.leaveTerminationReason, "last-human-winner");
+  assert.equal(match.leaveTerminationReason, "team-forfeit");
   assert.deepEqual([...match.manualLeftPlayerIds].sort(), ["player-1", "player-2", "player-3"]);
   assert.equal(isOkeyBotControlled(match.roundState.players[0]), false);
   assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);

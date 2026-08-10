@@ -905,7 +905,14 @@ const renderRackRow = (row: RackRow) => {
   const overlayWidth = draggingMeld ? getOkeyMeldWidth(draggingMeld, rackTileWidth, meldStackReveal) : rackTileWidth;
 
   return (
-    <View style={[styles.rackWrap, layout.rackWrap]}>
+    <View
+  style={[
+    styles.rackWrap,
+    layout.rackWrap,
+    (draggingTile || draggingMeld) &&
+      styles.activeRackDragLayer,
+  ]}
+>
       <View ref={rackRef} onLayout={() => measureViewport()} style={[styles.playerRack, layout.playerRack]}>
         <OkeyTurnTimerBar active={turnTimerActive} resetKey={turnTimerResetKey} style={styles.rackTurnTimer} />
         <Image

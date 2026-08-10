@@ -9,6 +9,7 @@ export type MatchReward = {
   coin: number;
   gem: number;
   points: number;
+  currency?: "fun" | "aznif";
 };
 
 export type Player = {

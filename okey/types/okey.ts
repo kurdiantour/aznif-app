@@ -46,6 +46,7 @@ export type OkeyPlayer = {
   opened: boolean;
   melds: OkeyMeld[];
   scoreOpened: number;
+  firstOpenScore: number | null;
   konkan: boolean;
   konkanEntryReason: OkeyKonkanEntryReason | null;
   pendingKonkanFromDiscard?: boolean;

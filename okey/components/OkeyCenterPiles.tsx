@@ -27,6 +27,7 @@ type OkeyCenterPilesProps = {
   onDiscardMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
   hideTopDeckTile?: boolean;
   hideTopDiscardTile?: boolean;
+  discardPresentationFallback?: OkeyTile | null;
 };
 
 export function OkeyCenterPiles({
@@ -47,6 +48,7 @@ export function OkeyCenterPiles({
   onDiscardMeasured,
   hideTopDeckTile,
   hideTopDiscardTile,
+  discardPresentationFallback,
 }: OkeyCenterPilesProps) {
   const layout = useOkeyResponsiveLayout();
   const rootRef = useRef<View | null>(null);
@@ -56,6 +58,9 @@ export function OkeyCenterPiles({
   const discardDragStartedRef = useRef(false);
   const [discardDragPosition, setDiscardDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [discardTileSize, setDiscardTileSize] = useState({ width: 38, height: 54 });
+  const displayedTopDiscard = hideTopDiscardTile
+    ? discardPresentationFallback ?? null
+    : topDiscard;
   useEffect(() => {
     onDiscardDragActiveChange?.(!!discardDragPosition);
   }, [discardDragPosition, onDiscardDragActiveChange]);
@@ -138,13 +143,13 @@ export function OkeyCenterPiles({
         <View style={[styles.discardUnderTile, styles.discardUnderBottom]}>
           <OkeyTileBack />
         </View>
-        {topDiscard ? (
+        {displayedTopDiscard ? (
           <View
             testID="okey-top-discard"
             ref={discardTopRef}
             accessible
             accessibilityRole="button"
-            accessibilityLabel={OKEY_ACCESSIBILITY.discardLabel(topDiscard, discardCount, isOkeyWildcard(topDiscard, okeyTile))}
+            accessibilityLabel={OKEY_ACCESSIBILITY.discardLabel(displayedTopDiscard, discardCount, isOkeyWildcard(displayedTopDiscard, okeyTile))}
             accessibilityHint={OKEY_ACCESSIBILITY.discardHint}
             accessibilityState={{ disabled: !canDrawDiscard }}
             accessibilityActions={[
@@ -158,9 +163,9 @@ export function OkeyCenterPiles({
             collapsable={false}
             onLayout={measureDiscardTop}
             {...discardDragHandlers.panHandlers}
-            style={hideTopDiscardTile || discardDragPosition ? styles.hiddenRackTile : undefined}
+            style={discardDragPosition ? styles.hiddenRackTile : undefined}
           >
-            <OkeyTileFace tile={topDiscard} compact isWildcard={isOkeyWildcard(topDiscard, okeyTile)} />
+            <OkeyTileFace tile={displayedTopDiscard} compact isWildcard={isOkeyWildcard(displayedTopDiscard, okeyTile)} />
           </View>
         ) : (
           <View ref={discardTopRef} collapsable={false} onLayout={measureDiscardTop} style={styles.emptyDiscard} />

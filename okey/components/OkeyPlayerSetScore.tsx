@@ -4,11 +4,13 @@ import { styles } from "./okeyStyles";
 
 export function OkeyPlayerSetScore({
   score,
+  targetScore,
   canOpen = false,
   konkan = false,
   onOpen,
 }: {
   score: number;
+  targetScore: number;
   canOpen?: boolean;
   konkan?: boolean;
   onOpen?: () => void;
@@ -21,7 +23,7 @@ export function OkeyPlayerSetScore({
           onPress={onOpen}
         >
           <Text style={styles.openSetsButtonText}>
-            {konkan ? "کۆنکان" : "کردنەوە"}
+            {konkan ? "کۆنکان" : "ڕاخستن"}
           </Text>
         </Pressable>
       ) : null}
@@ -34,9 +36,25 @@ export function OkeyPlayerSetScore({
           {konkan ? "دۆخ" : "نمرەی دەستە"}
         </Text>
 
-        <Text style={styles.playerSetScoreValue}>
-          {konkan ? "کۆنکان" : score}
-        </Text>
+        {konkan ? (
+          <Text style={styles.playerSetScoreValue}>
+            کۆنکان
+          </Text>
+        ) : (
+          <View style={styles.playerSetScoreValueRow}>
+            <Text style={styles.playerSetScoreTarget}>
+              {targetScore}
+            </Text>
+
+            <Text style={styles.playerSetScoreSlash}>
+              {" / "}
+            </Text>
+
+            <Text style={styles.playerSetScoreCurrent}>
+              {score}
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );

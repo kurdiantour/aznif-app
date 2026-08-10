@@ -3,8 +3,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { OkeyTeamId } from "@/okey/types/okey";
 
 type MatchRewards = {
+  currencyLabel: "Coin" | "MC";
+  currencyDelta: number;
   gem: number;
-  coin: number;
   point: number;
 };
 
@@ -12,21 +13,16 @@ type Props = {
   visible: boolean;
   winnerTeamId: OkeyTeamId | null;
   matchScores: Record<OkeyTeamId, number>;
-  rewards?: MatchRewards;
+  rewards?: MatchRewards | null;
   onNewMatch: () => void;
 };
 
-const EMPTY_REWARDS: MatchRewards = {
-  gem: 0,
-  coin: 0,
-  point: 0,
-};
 
 export function OkeyMatchResultPopup({
   visible,
   winnerTeamId,
   matchScores,
-  rewards = EMPTY_REWARDS,
+  rewards,
   onNewMatch,
 }: Props) {
   if (!visible) return null;
@@ -37,9 +33,22 @@ export function OkeyMatchResultPopup({
     ? "تیمی ئێوە براوە بوو"
     : "تیمی بەرامبەر براوە بوو";
 
-  const rewardValueStatusStyle = humanTeamWon
-    ? styles.rewardValueWin
-    : styles.rewardValueLose;
+  const formatDelta = (value: number) =>
+    `${value > 0 ? "+" : ""}${value.toLocaleString()}`;
+
+  const rewardValueStyle = (value: number) =>
+    value > 0
+      ? styles.rewardValueWin
+      : value < 0
+        ? styles.rewardValueLose
+        : styles.rewardValueNeutral;
+
+  const rewardChangeLabel = (value: number) =>
+    value > 0
+      ? "\u0628\u06d5\u062f\u06d5\u0633\u062a\u0647\u06ce\u0646\u0627"
+      : value < 0
+        ? "\u0644\u06d5\u062f\u06d5\u0633\u062a\u062f\u0627"
+        : "\u0628\u06ce \u06af\u06c6\u0695\u0627\u0646\u06a9\u0627\u0631\u06cc";
 
   return (
     <View
@@ -110,54 +119,32 @@ export function OkeyMatchResultPopup({
           </View>
         </View>
 
-        <View style={styles.rewardSection}>
-          <View style={styles.rewardRow}>
-            <View style={styles.rewardCard}>
-              <Text style={styles.rewardLabel}>
-                گەوهەر
-              </Text>
-
-              <Text
-                style={[
-                  styles.rewardValue,
-                  rewardValueStatusStyle,
-                ]}
-              >
-                {rewards.gem}
-              </Text>
-            </View>
-
-            <View style={styles.rewardCard}>
-              <Text style={styles.rewardLabel}>
-                کۆین
-              </Text>
-
-              <Text
-                style={[
-                  styles.rewardValue,
-                  rewardValueStatusStyle,
-                ]}
-              >
-                {rewards.coin}
-              </Text>
-            </View>
-
-            <View style={styles.rewardCard}>
-              <Text style={styles.rewardLabel}>
-                پوینت
-              </Text>
-
-              <Text
-                style={[
-                  styles.rewardValue,
-                  rewardValueStatusStyle,
-                ]}
-              >
-                {rewards.point}
-              </Text>
+        {rewards ? (
+          <View style={styles.rewardSection}>
+            <View style={styles.rewardRow}>
+              {[
+                { label: "Gem", value: rewards.gem },
+                { label: rewards.currencyLabel, value: rewards.currencyDelta },
+                { label: "Point", value: rewards.point },
+              ].map((reward) => (
+                <View key={reward.label} style={styles.rewardCard}>
+                  <Text style={styles.rewardLabel}>{reward.label}</Text>
+                  <Text
+                    style={[
+                      styles.rewardValue,
+                      rewardValueStyle(reward.value),
+                    ]}
+                  >
+                    {formatDelta(reward.value)}
+                  </Text>
+                  <Text style={styles.rewardChangeLabel}>
+                    {rewardChangeLabel(reward.value)}
+                  </Text>
+                </View>
+              ))}
             </View>
           </View>
-        </View>
+        ) : null}
 
         <Pressable
           accessibilityRole="button"
@@ -347,6 +334,18 @@ const styles = StyleSheet.create({
 
   rewardValueLose: {
     color: "#D64545",
+  },
+
+  rewardValueNeutral: {
+    color: "#6B7280",
+  },
+
+  rewardChangeLabel: {
+    marginTop: 2,
+    color: "rgba(0, 0, 0, 0.48)",
+    fontSize: 9,
+    fontFamily: "SpedaRegular",
+    textAlign: "center",
   },
 
   button: {

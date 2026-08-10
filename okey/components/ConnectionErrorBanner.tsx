@@ -28,7 +28,7 @@ export default function ConnectionErrorBanner({
       onPress={onRetry}
     >
       <Text style={styles.text}>
-        پەیوەندی کێشەی هەیە — بۆ هەوڵدانەوە دابگرە
+        پەیوەندی ئینتەرنێتت کێشەی هەیە
       </Text>
     </Pressable>
   );

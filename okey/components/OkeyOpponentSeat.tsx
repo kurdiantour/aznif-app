@@ -91,7 +91,7 @@ export function OkeyOpponentSeat({
 }) {
   const layout = useOkeyResponsiveLayout();
   const seatRef = useRef<View | null>(null);
-  const targetBackCount = count > 0 ? Math.min(7, Math.max(3, count)) : 0;
+  const targetBackCount = count > 0 ? Math.min(7, Math.max(1, count)) : 0;
   const [seatOrigin, setSeatOrigin] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [dealtTileCount, setDealtTileCount] = useState(count);
 
@@ -141,7 +141,7 @@ export function OkeyOpponentSeat({
           active={active}
           durationMs={timerDurationMs}
           resetKey={timerResetKey}
-          orientation={side === "top" ? "horizontal" : "vertical"}
+          orientation="horizontal"
           reverse={side !== "left"}
           style={side === "top" ? styles.opponentTimerTop : side === "left" ? styles.opponentTimerLeft : styles.opponentTimerRight}
         />

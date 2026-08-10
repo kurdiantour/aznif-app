@@ -60,6 +60,13 @@ test("manual-left seats are excluded from winner money and Fun rewards", () => {
   assert.match(leaveSettlementSql, /and not \(v_manual_left_player_ids \? v_seat\.user_id::text\) then 10/);
 });
 
+test("finished match response exposes the persisted reward for the requesting player", () => {
+  assert.match(matchFunction, /\.from\("fun_match_rewards"\)/);
+  assert.match(matchFunction, /\.eq\("match_id", matchId\)/);
+  assert.match(matchFunction, /\.eq\("user_id", authData\.user\.id\)/);
+  assert.match(matchFunction, /pointDelta: Number\(rewardRow\.point_delta/);
+  assert.match(matchFunction, /gemDelta: Number\(rewardRow\.gem_delta/);
+});
 test("zero-human settlement closes without prize or refund", () => {
   assert.match(leaveSettlementSql, /no_winner_requires_zero_humans/);
   assert.match(leaveSettlementSql, /'type', 'no_winner'/);

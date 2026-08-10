@@ -22,7 +22,6 @@ import { useRoundPresentation } from "@/hooks/useRoundPresentation";
 import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
 import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
 import { calculateMoveScore } from "@/lib/game/kozel-engine";
-import { FREE_MATCH_LOSS_REWARD, FREE_MATCH_WIN_REWARD } from "@/lib/game/match-rules";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/types/game";
@@ -625,14 +624,25 @@ export default function GameScreen() {
     ? game.winningTeamId === humanPlayer.teamId
     : game.winningTeamId === "teamA";
 
-  const isFreeOnlineMatch =
-    !isPracticeMode &&
-    (gameMode === "2v2" || rawState?.freeEconomyEligible === true);
-  const freeMatchResultReward = isFreeOnlineMatch
-    ? didWinMatch
-      ? FREE_MATCH_WIN_REWARD
-      : FREE_MATCH_LOSS_REWARD
-    : null;
+  const onlineSettlement = rawState?.settlement;
+  const onlineMatchResultReward =
+    !isPracticeMode && onlineSettlement?.type === "winner"
+      ? {
+          coin: didWinMatch
+            ? Number(onlineSettlement.payoutPerWinner ?? 0) -
+              Number(onlineSettlement.entryFeePerPlayer ?? 0)
+            : -Number(onlineSettlement.entryFeePerPlayer ?? 0),
+          gem:
+            onlineSettlement.currency === "fun" && didWinMatch ? 10 : 0,
+          points:
+            onlineSettlement.currency === "fun"
+              ? didWinMatch
+                ? 35
+                : -15
+              : 0,
+          currency: onlineSettlement.currency === "aznif" ? "aznif" as const : "fun" as const,
+        }
+      : null;
 
   const practiceWinReward = useMemo(
     () =>
@@ -981,7 +991,7 @@ export default function GameScreen() {
             teamAScore={visibleScoreByTeam.teamA}
             teamBScore={visibleScoreByTeam.teamB}
             winnerTeamId={game.winningTeamId}
-            matchReward={isFreeOnlineMatch && game.winningTeamId ? FREE_MATCH_WIN_REWARD : null}
+            matchReward={onlineMatchResultReward}
             teamAName={scoreTeamAName}
             teamBName={scoreTeamBName}
           />
@@ -994,7 +1004,7 @@ export default function GameScreen() {
     !shouldShowRoundResultReveal
   }
   didWin={didWinMatch}
-  reward={practiceWinReward ?? freeMatchResultReward}
+  reward={practiceWinReward ?? onlineMatchResultReward}
   finishReason={(game as any).rawState?.finishReason ?? null}
   teamScores={{
     teamA: game.teamScores?.teamA ?? 0,
