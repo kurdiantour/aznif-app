@@ -281,6 +281,101 @@ const displayName = String(
     },
   );
 
+  let activeParty: {
+    id: string;
+    leader_id: string;
+    flow_status: string;
+  } | null = null;
+  let partyMembers: Array<{ user_id: string; role: string }> = [];
+
+  if (action === "matchmake" || action === "leave") {
+    const partyResult = await authClient.rpc("get_my_domino_party");
+
+    if (partyResult.error) {
+      console.error("Unable to load game party", partyResult.error);
+      return json({
+        error: "party_lookup_failed",
+        details: partyResult.error.message,
+      }, 500);
+    }
+
+    const party = partyResult.data as Record<string, unknown> | null;
+    if (party?.id) {
+      activeParty = {
+        id: String(party.id),
+        leader_id: String(party.leader_id),
+        flow_status: String(party.flow_status ?? "idle"),
+      };
+      partyMembers = Array.isArray(party.members)
+        ? party.members.map((member: Record<string, unknown>) => ({
+            user_id: String(member.user_id),
+            role: String(member.role),
+          }))
+        : [];
+    }
+  }
+  if (action === "matchmake" && activeParty) {
+    if (activeParty.leader_id !== authData.user.id) {
+      return json({ error: "party_leader_required" }, 403);
+    }
+    if (partyMembers.length !== 2) {
+      return json({ error: "invalid_party_size" }, 409);
+    }
+
+    const partyUserIds = partyMembers.map((member) => member.user_id);
+    const economy = TABLE_ECONOMY[String(body.tableId)];
+    const [presenceResult, walletResult, profileResult] = await Promise.all([
+      service.from("user_presence")
+        .select("user_id, status, last_seen_at").in("user_id", partyUserIds),
+      service.from("wallets")
+        .select("user_id, coin, mc").in("user_id", partyUserIds),
+      service.from("profiles")
+        .select("id, points").in("id", partyUserIds),
+    ]);
+    if (presenceResult.error || walletResult.error || profileResult.error) {
+      const failedLookup = presenceResult.error
+        ? `presence: ${presenceResult.error.message}`
+        : walletResult.error
+          ? `wallet: ${walletResult.error.message}`
+          : `profile: ${profileResult.error?.message ?? "unknown_error"}`;
+      console.error("Party eligibility lookup failed", {
+        presence: presenceResult.error,
+        wallet: walletResult.error,
+        profile: profileResult.error,
+      });
+      return json({
+        error: "party_eligibility_lookup_failed",
+        details: failedLookup,
+      }, 500);
+    }
+
+    const cutoff = Date.now() - 35_000;
+    const allAvailable = partyUserIds.every((userId) => {
+      const presence = presenceResult.data?.find((row) => row.user_id === userId);
+      return presence?.status === "online_available" &&
+        Date.parse(presence.last_seen_at) >= cutoff;
+    });
+    if (!allAvailable) return json({ error: "party_member_unavailable" }, 409);
+
+    const allFunded = partyUserIds.every((userId) => {
+      const wallet = walletResult.data?.find((row) => row.user_id === userId);
+      return Number(economy.currency === "aznif" ? wallet?.mc : wallet?.coin) >=
+        economy.entryFee;
+    });
+    if (!allFunded) {
+      return json({ error: "party_member_insufficient_entry_balance" }, 409);
+    }
+
+    if ((economy.minPoints ?? 0) > 0) {
+      const allQualified = partyUserIds.every((userId) => {
+        const profile = profileResult.data?.find((row) => row.id === userId);
+        return Number(profile?.points ?? 0) >= (economy.minPoints ?? 0);
+      });
+      if (!allQualified) {
+        return json({ error: "party_member_insufficient_table_points" }, 409);
+      }
+    }
+  }
   /*
    * Fun-table Point requirements are an admission rule, not a match reward.
    * Check them before joining the room so this cannot be bypassed by calling
@@ -338,11 +433,40 @@ const displayName = String(
   };
 
 
-  let {
-    data: room,
-    error: roomError,
-  } = await callRoomAction(action);
+  if (action === "leave" && activeParty && activeParty.leader_id !== authData.user.id) {
+    const waitingRoom = await callRoomAction("status", {
+      p_match_id: body.matchId,
+    });
+    if (waitingRoom.data?.status === "waiting") {
+      return json({ error: "party_leader_required" }, 403);
+    }
+  }
+  let room: OkeyRoomSnapshot | null = null;
+  let roomError: { message: string } | null = null;
 
+  if (action === "matchmake" && activeParty) {
+    const teammate = partyMembers.find((member) => member.user_id !== authData.user.id);
+    if (!teammate) return json({ error: "invalid_party_size" }, 409);
+    const teammateProfile = await service.from("profiles").select("username, full_name, avatar_id")
+      .eq("id", teammate.user_id).maybeSingle();
+    if (teammateProfile.error) return json({ error: "party_member_profile_failed" }, 500);
+    const economy = TABLE_ECONOMY[String(body.tableId)];
+    const allocation = await service.rpc("matchmake_okey_party", {
+      p_party_id: activeParty.id, p_leader_id: authData.user.id, p_member_id: teammate.user_id,
+      p_table_id: String(body.tableId), p_leader_name: displayName, p_leader_avatar: avatarUrl,
+      p_member_name: teammateProfile.data?.full_name ?? teammateProfile.data?.username ?? "Player",
+      p_member_avatar: teammateProfile.data?.avatar_id ?? null,
+      p_currency: economy.currency, p_entry_fee: economy.entryFee,
+    });
+    if (allocation.error || !allocation.data) {
+      return json({ error: "party_room_assignment_failed", details: allocation.error?.message }, 409);
+    }
+    const snapshot = await callRoomAction("status", { p_match_id: String(allocation.data) });
+    room = snapshot.data; roomError = snapshot.error;
+  } else {
+    const result = await callRoomAction(action);
+    room = result.data; roomError = result.error;
+  }
   if (roomError || !room) {
     return json(
       {
@@ -355,6 +479,23 @@ const displayName = String(
   }
 
 
+  if (
+    action === "leave" && activeParty &&
+    activeParty.leader_id === authData.user.id && room.status === "waiting"
+  ) {
+    const teammate = partyMembers.find((member) => member.user_id !== authData.user.id);
+    if (teammate) {
+      await callRoomAction("leave", {
+        p_user_id: teammate.user_id,
+        p_match_id: body.matchId,
+      });
+    }
+    await service.from("domino_parties").update({
+      flow_status: "idle",
+      command_version: Date.now(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", activeParty.id);
+  }
   /*
    * Matchmaking may return an already existing waiting or playing room.
    * Economy must always be selected from the room's actual tableId,

@@ -197,3 +197,69 @@ test("opened bot can replace and steal a joker", () => {
   assert.equal(prepared.state.players[1].konkan, false);
   assert.equal(prepared.state.players[0].melds[0].tiles.some((entry) => entry.id === "replacement-r4-opened"), true);
 });
+
+test("opened bot takes a visible discard that completes a same-number group", () => {
+  const state = botState([
+    tile("red-8", "red", 8),
+    tile("blue-8", "blue", 8),
+    tile("run-3", "black", 3),
+    tile("run-4", "black", 4),
+  ], [tile("yellow-8", "yellow", 8)]);
+
+  assert.equal(chooseBotDrawSource(state, { difficulty: "hard" }), "discard");
+  const prepared = prepareBotTurn(state, { difficulty: "hard" });
+  assert.equal(prepared.decision.drawSource, "discard");
+  assert.notEqual(prepared.discardTileId, "yellow-8");
+});
+
+test("opened bot keeps a legally stolen joker and discards the loose tile", () => {
+  const state = botState([
+    tile("exact-red-4", "red", 4),
+    tile("weak-yellow-1", "yellow", 1),
+  ]);
+  state.hasDrawnThisTurn = true;
+  state.players[0] = {
+    ...state.players[0],
+    opened: true,
+    melds: [{
+      id: "stealable-joker-run",
+      ownerId: state.players[0].id,
+      kind: "run",
+      tiles: [tile("table-red-3", "red", 3), { ...state.okeyTile, id: "valuable-joker" }, tile("table-red-5", "red", 5)],
+      score: 12,
+    }],
+  };
+
+  const prepared = prepareBotTurn(state, { difficulty: "hard" });
+  const bot = prepared.state.players[1];
+  assert.ok(bot.hand.some((entry) => entry.id === "valuable-joker" && entry.jokerOrigin === "stolen"));
+  assert.equal(prepared.decision.spentTileIds.includes("exact-red-4"), true);
+  assert.equal(prepared.discardTileId, "weak-yellow-1");
+});
+
+test("opened bot spends a legal table tile, preserves a useful pair, and discards the weakest tile", () => {
+  const state = botState([
+    tile("spend-red-10", "red", 10),
+    tile("keep-blue-5", "blue", 5),
+    tile("keep-blue-6", "blue", 6),
+    tile("weak-yellow-12", "yellow", 12),
+  ]);
+  state.hasDrawnThisTurn = true;
+  state.players[0] = {
+    ...state.players[0],
+    opened: true,
+    melds: [{
+      id: "table-red-run",
+      ownerId: state.players[0].id,
+      kind: "run",
+      tiles: [tile("table-red-7", "red", 7), tile("table-red-8", "red", 8), tile("table-red-9", "red", 9)],
+      score: 24,
+    }],
+  };
+
+  const prepared = prepareBotTurn(state, { difficulty: "hard" });
+  assert.equal(prepared.decision.spentTileIds.includes("spend-red-10"), true);
+  assert.equal(prepared.discardTileId, "weak-yellow-12");
+  assert.ok(prepared.state.players[1].hand.some((entry) => entry.id === "keep-blue-5"));
+  assert.ok(prepared.state.players[1].hand.some((entry) => entry.id === "keep-blue-6"));
+});

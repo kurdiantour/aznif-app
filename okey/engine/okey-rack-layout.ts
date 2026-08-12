@@ -1,5 +1,6 @@
 import type { OkeyMeld, OkeyTile } from "../types/okey.ts";
 import { getOrderedMeldScore, selectBestMeldPlan } from "./okey-melds.ts";
+import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
 
 type RackOpenLayout = {
   melds: OkeyMeld[];
@@ -113,4 +114,13 @@ export function getRackDisplayScore(
   okeyTile: OkeyTile,
 ): number {
   return getRackMeldPlan(contiguousGroups, okeyTile).score;
+}
+
+export function getOrderedKonkanRunCandidates(contiguousGroups: OkeyTile[][]): string[][] {
+  const size = OKEY_RULESET_V1.konkan.officialRunSize;
+  return contiguousGroups.flatMap((group) =>
+    Array.from({ length: Math.max(0, group.length - size + 1) }, (_, start) =>
+      group.slice(start, start + size).map((tile) => tile.id),
+    ),
+  );
 }

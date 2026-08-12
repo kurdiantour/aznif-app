@@ -3,9 +3,10 @@ import { Pressable, StyleSheet, View } from "react-native";
 
 type Props = {
   onPress: () => void;
+  claimableCount?: number;
 };
 
-export default function DailyQuestsButton({ onPress }: Props) {
+export default function DailyQuestsButton({ onPress, claimableCount = 0 }: Props) {
   return (
     <Pressable
       accessibilityLabel="کردنەوەی ئەرکە ڕۆژانەکان"
@@ -18,9 +19,9 @@ export default function DailyQuestsButton({ onPress }: Props) {
     >
       <View style={styles.innerGlow} />
       <Ionicons name="clipboard" size={22} color="#ffd45c" />
-      <View style={styles.badge}>
-        <View style={styles.badgeInner} />
-      </View>
+      {claimableCount > 0 ? (
+        <View style={styles.badge}><View style={styles.badgeInner} /></View>
+      ) : null}
     </Pressable>
   );
 }

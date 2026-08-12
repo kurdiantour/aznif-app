@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getOpenableRackLayout, getRackDisplayScore } from "../okey-rack-layout.ts";
+import { getOpenableRackLayout, getOrderedKonkanRunCandidates, getRackDisplayScore } from "../okey-rack-layout.ts";
 import type { OkeyTile } from "../../types/okey.ts";
 
 function tile(id: string, color: OkeyTile["color"], value: number): OkeyTile {
@@ -50,6 +50,13 @@ test("does not combine matching tiles across separate rack blocks", () => {
 
   assert.deepEqual(result.melds.map((meld) => meld.tiles.map((entry) => entry.id)), [validSet.map((entry) => entry.id)]);
   assert.equal(result.score, 27);
+});
+
+test("Konkan candidates never cross rack gaps and preserve slot order", () => {
+  const ordered = Array.from({ length: 11 }, (_, index) => tile(`red-${index + 1}`, "red", index + 1));
+  const candidates = getOrderedKonkanRunCandidates([ordered]);
+  assert.deepEqual(candidates, [ordered.slice(0, 10).map((entry) => entry.id), ordered.slice(1, 11).map((entry) => entry.id)]);
+  assert.deepEqual(getOrderedKonkanRunCandidates([ordered.slice(0, 5), ordered.slice(5, 10)]), []);
 });
 
 test("does not use a joker outside an incomplete group", () => {

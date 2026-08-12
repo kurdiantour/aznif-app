@@ -4,6 +4,7 @@ import {
   declareKonkanOpen,
   discardTile,
   drawTile,
+  findKonkanDeclarationForPlayer,
   findBestMeldPlan,
   getRequiredOpenScore,
   isOkeyWildcard,
@@ -96,6 +97,25 @@ function evaluationValue(evaluation: HandEvaluation) {
   return evaluation.meldTileCount * 24 + evaluation.meldScore * 1.4 + evaluation.potential - evaluation.penalty;
 }
 
+function bestPostDiscardValue(hand: OkeyTile[], okeyTile: OkeyTile) {
+  if (hand.length <= 1) return evaluationValue(evaluateHand(hand, okeyTile));
+  return Math.max(...hand.map((discard) => evaluationValue(
+    evaluateHand(hand.filter((tile) => tile.id !== discard.id), okeyTile),
+  )));
+}
+
+function tileSupportsStructure(hand: OkeyTile[], candidate: OkeyTile, okeyTile: OkeyTile) {
+  if (isOkeyWildcard(candidate, okeyTile)) return true;
+  const effectiveCandidate = effectiveTile(candidate, okeyTile);
+  return hand.some((tile) => {
+    if (isOkeyWildcard(tile, okeyTile)) return true;
+    const effective = effectiveTile(tile, okeyTile);
+    if (effective.value === effectiveCandidate.value && effective.color !== effectiveCandidate.color) return true;
+    if (effective.color !== effectiveCandidate.color) return false;
+    const distance = Math.abs(effective.value - effectiveCandidate.value);
+    return distance <= 2 || (Math.max(effective.value, effectiveCandidate.value) === 13 && Math.min(effective.value, effectiveCandidate.value) === 1);
+  });
+}
 function canLegallyDrawDiscard(state: OkeyGameState) {
   if (state.discardPile.length === 0) return false;
   const topIndex = state.discardPile.length - 1;
@@ -112,9 +132,9 @@ export function chooseBotDrawSource(state: OkeyGameState, options: OkeyBotOption
   const profile = getOkeyBotProfile(options.difficulty ?? (player ? getOkeyBotDifficulty(player) : "normal"));
   const discard = state.discardPile[state.discardPile.length - 1];
   if (!player || !discard || !canLegallyDrawDiscard(state)) return "deck";
-  const before = evaluationValue(evaluateHand(player.hand, state.okeyTile));
   const afterHand = [...player.hand, discard];
-  const directGain = evaluationValue(evaluateHand(afterHand, state.okeyTile, 1)) - before;
+  const directGain = bestPostDiscardValue(afterHand, state.okeyTile) -
+    bestPostDiscardValue(player.hand, state.okeyTile);
   const openingPlan = findBestMeldPlan(afterHand, state.okeyTile, 1);
   const completesOpening = !player.opened &&
     openingPlan.score >= getRequiredOpenScore(state, state.currentPlayerIndex) &&
@@ -122,7 +142,8 @@ export function chooseBotDrawSource(state: OkeyGameState, options: OkeyBotOption
   if (!player.opened && !player.konkan) {
     return completesOpening ? "discard" : "deck";
   }
-  return directGain >= profile.minimumDiscardGain ? "discard" : "deck";
+  const structurallyUseful = tileSupportsStructure(player.hand, discard, state.okeyTile);
+  return structurallyUseful && directGain >= profile.minimumDiscardGain ? "discard" : "deck";
 }
 
 function tryOpen(state: OkeyGameState) {
@@ -151,38 +172,107 @@ function tryLockUsefulKonkanSet(state: OkeyGameState) {
 
   return state;
 }
-function spendUsefulTiles(state: OkeyGameState, profile: OkeyBotProfile) {
+function spendOneUsefulTile(state: OkeyGameState) {
   const playerIndex = state.currentPlayerIndex;
-  const spentTileIds: string[] = [];
+  const player = state.players[playerIndex];
+
+  if (
+    !player ||
+    player.hand.length <= 1 ||
+    state.phase !== "playing" ||
+    !player.opened
+  ) {
+    return {
+      state,
+      spentTileId: null as string | null,
+    };
+  }
+
+  let best: {
+    state: OkeyGameState;
+    tileId: string;
+    value: number;
+  } | null = null;
+
+  const baseline = evaluationValue(
+    evaluateHand(player.hand, state.okeyTile, 1),
+  );
+
+  for (const tile of player.hand) {
+    // Preserve a joker for hand completion instead of spending it as an ordinary extension.
+    if (isOkeyWildcard(tile, state.okeyTile)) continue;
+    const candidate = spendTileOnBestMeld(
+      state,
+      playerIndex,
+      tile.id,
+    );
+
+    if (candidate === state) continue;
+
+    const nextPlayer = candidate.players[playerIndex];
+
+    if (!nextPlayer || nextPlayer.hand.length < 1) {
+      continue;
+    }
+
+    const handGain =
+      evaluationValue(
+        evaluateHand(
+          nextPlayer.hand,
+          state.okeyTile,
+          1,
+        ),
+      ) - baseline;
+
+    const releasedJoker = nextPlayer.hand.some((entry) =>
+      entry.jokerOrigin === "stolen" && !player.hand.some((before) => before.id === entry.id),
+    );
+    const value = handGain + tilePenalty(tile, state.okeyTile) + (releasedJoker ? 80 : 0);
+
+    if (
+      !best ||
+      value > best.value ||
+      (
+        value === best.value &&
+        tile.id < best.tileId
+      )
+    ) {
+      best = {
+        state: candidate,
+        tileId: tile.id,
+        value,
+      };
+    }
+  }
+
+  return best
+    ? {
+        state: best.state,
+        spentTileId: best.tileId,
+      }
+    : {
+        state,
+        spentTileId: null,
+      };
+}
+
+function spendUsefulTiles(state: OkeyGameState, profile: OkeyBotProfile) {
   let current = state;
+  const spentTileIds: string[] = [];
   const seenHands = new Set<string>();
   for (let action = 0; action < profile.maximumSpendActions; action += 1) {
-    const player = current.players[playerIndex];
-    if (!player || player.hand.length <= 1 || current.phase !== "playing") break;
-    // Bots avoid entering KonKan by stealing a joker before their normal Open.
-    // Human players keep that legal option in the shared engine.
-    if (!player.opened) break;
+    const player = current.players[current.currentPlayerIndex];
+    if (!player || current.phase !== "playing" || player.hand.length <= 1) break;
     const signature = player.hand.map((tile) => tile.id).sort().join("|");
     if (seenHands.has(signature)) break;
     seenHands.add(signature);
-    let best: { state: OkeyGameState; tileId: string; value: number } | null = null;
-    const baseline = evaluationValue(evaluateHand(player.hand, current.okeyTile, 1));
-    for (const tile of player.hand) {
-      const candidate = spendTileOnBestMeld(current, playerIndex, tile.id);
-      if (candidate === current) continue;
-      const nextPlayer = candidate.players[playerIndex];
-      if (!nextPlayer || nextPlayer.hand.length < 1) continue;
-      const handGain = evaluationValue(evaluateHand(nextPlayer.hand, current.okeyTile, 1)) - baseline;
-      const value = handGain + tilePenalty(tile, current.okeyTile);
-      if (!best || value > best.value || (value === best.value && tile.id < best.tileId)) best = { state: candidate, tileId: tile.id, value };
-    }
-    if (!best) break;
-    current = best.state;
-    spentTileIds.push(best.tileId);
+    const spent = spendOneUsefulTile(current);
+    if (spent.state === current || !spent.spentTileId) break;
+    current = spent.state;
+    spentTileIds.push(spent.spentTileId);
   }
   return { state: current, spentTileIds };
 }
-
 function discardDanger(state: OkeyGameState, tile: OkeyTile) {
   const order: readonly number[] = OKEY_RULESET_V1.table.counterClockwiseTurnOrder;
   const nextPlayerIndex = order[(order.indexOf(state.currentPlayerIndex) + 1) % order.length];
@@ -212,8 +302,17 @@ export function chooseBotDiscardTile(state: OkeyGameState, options: OkeyBotOptio
   return window[selectedIndex]?.tile ?? null;
 }
 
-export function prepareBotTurn(state: OkeyGameState, options: OkeyBotOptions = {}): PreparedBotTurn {
-  const emptyDecision: OkeyBotDecision = { drawSource: null, discardTileId: null, opened: false, spentTileIds: [], declaredKonkan: false };
+export function prepareBotTurn(
+  state: OkeyGameState,
+  options: OkeyBotOptions = {},
+): PreparedBotTurn {
+  const emptyDecision: OkeyBotDecision = {
+    drawSource: null,
+    discardTileId: null,
+    opened: false,
+    spentTileIds: [],
+    declaredKonkan: false,
+  };
   if (state.phase !== "playing") return { state, discardTileId: null, decision: emptyDecision };
   const player = state.players[state.currentPlayerIndex];
   if (!player) return { state, discardTileId: null, decision: emptyDecision };
@@ -222,32 +321,67 @@ export function prepareBotTurn(state: OkeyGameState, options: OkeyBotOptions = {
 
   const difficulty = options.difficulty ?? getOkeyBotDifficulty(player);
   const profile = getOkeyBotProfile(difficulty);
-
-  const drawSource = state.hasDrawnThisTurn ? null : chooseBotDrawSource(state, { ...options, difficulty });
+  const drawSource = state.hasDrawnThisTurn
+    ? null
+    : chooseBotDrawSource(state, { ...options, difficulty });
   let current = drawSource ? drawTile(state, drawSource) : state;
   if (current.phase !== "playing" || !current.hasDrawnThisTurn) {
     return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource } };
   }
-  if (canDeclareKonkanOpen(current, current.currentPlayerIndex)) {
-    current = declareKonkanOpen(current, current.currentPlayerIndex);
-    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan: true } };
+
+  let declaredKonkan = false;
+  const openingKonkanRun = findKonkanDeclarationForPlayer(current, current.currentPlayerIndex);
+  if (openingKonkanRun && canDeclareKonkanOpen(current, current.currentPlayerIndex, openingKonkanRun)) {
+    current = declareKonkanOpen(current, current.currentPlayerIndex, openingKonkanRun);
+    declaredKonkan = true;
   }
+  if (current.phase !== "playing") {
+    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan } };
+  }
+
   const beforeOpen = current.players[current.currentPlayerIndex]?.opened ?? false;
   current = tryOpen(current);
   const opened = !beforeOpen && !!current.players[current.currentPlayerIndex]?.opened;
+
   const spent = spendUsefulTiles(current, profile);
   current = spent.state;
   current = tryLockUsefulKonkanSet(current);
-  if (canDeclareKonkanOpen(current, current.currentPlayerIndex)) {
-    current = declareKonkanOpen(current, current.currentPlayerIndex);
-    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, opened, spentTileIds: spent.spentTileIds, declaredKonkan: true } };
+
+  const finishingKonkanRun = findKonkanDeclarationForPlayer(current, current.currentPlayerIndex);
+  if (finishingKonkanRun && canDeclareKonkanOpen(current, current.currentPlayerIndex, finishingKonkanRun)) {
+    current = declareKonkanOpen(current, current.currentPlayerIndex, finishingKonkanRun);
+    declaredKonkan = true;
   }
+  if (current.phase !== "playing") {
+    return {
+      state: current,
+      discardTileId: null,
+      decision: { ...emptyDecision, drawSource, opened, spentTileIds: spent.spentTileIds, declaredKonkan },
+    };
+  }
+
   const discard = chooseBotDiscardTile(current, { ...options, difficulty });
-  const decision = { drawSource, discardTileId: discard?.id ?? null, opened, spentTileIds: spent.spentTileIds, declaredKonkan: false };
-  return { state: current, discardTileId: discard?.id ?? null, decision };
+  const discardTileId = discard?.id ?? null;
+  return {
+    state: current,
+    discardTileId,
+    decision: { drawSource, discardTileId, opened, spentTileIds: spent.spentTileIds, declaredKonkan },
+  };
 }
 
-export function playBotTurn(state: OkeyGameState, options: OkeyBotOptions = {}): OkeyGameState {
-  const prepared = prepareBotTurn(state, options);
-  return prepared.discardTileId ? discardTile(prepared.state, prepared.discardTileId) : prepared.state;
+export function playBotTurn(
+  state: OkeyGameState,
+  options: OkeyBotOptions = {},
+): OkeyGameState {
+  const prepared = prepareBotTurn(
+    state,
+    options,
+  );
+
+  return prepared.discardTileId
+    ? discardTile(
+        prepared.state,
+        prepared.discardTileId,
+      )
+    : prepared.state;
 }

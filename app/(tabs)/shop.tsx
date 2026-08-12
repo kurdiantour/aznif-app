@@ -93,8 +93,8 @@ function ItemPreview({ item }: { item: MockShopItem }) {
 }
 
 function ShopContent() {
-  const [coinBalance, setCoinBalance] = useState(0);
-  const [gemBalance, setGemBalance] = useState(0);
+  const [, setCoinBalance] = useState(0);
+  const [, setGemBalance] = useState(0);
   const [category, setCategory] = useState<ShopCategory>("tables");
   const [ownedItemIds, setOwnedItemIds] = useState<Set<string>>(
     () => new Set(),
@@ -225,7 +225,7 @@ function ShopContent() {
                 >
                   <View style={styles.cardTopRow}>
                     <View style={styles.priceBadge}>
-                      <Ionicons name="diamond" size={12} color="#ffd34d" />
+                      <Text style={styles.priceEmoji}>{"\u{1F48E}"}</Text>
                       <Text style={styles.priceText}>
                         {item.price === 0
                           ? "بەخۆڕایی"
@@ -260,6 +260,9 @@ export default function ShopScreen() {
 }
 
 const styles = StyleSheet.create({
+  priceEmoji: {
+    fontSize: 12,
+  },
   screen: { flex: 1 },
   walletSummary: {
     flexDirection: "row-reverse",

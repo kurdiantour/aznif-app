@@ -4,7 +4,6 @@ import {
   Animated,
   Easing,
   Pressable,
-  Text,
   View,
   type GestureResponderHandlers,
 } from "react-native";
@@ -121,7 +120,7 @@ export function OkeyTileFace({
   useEffect(() => {
     const animation = Animated.timing(flipProgress, {
       toValue: flipped ? 1 : 0,
-      duration: 900,
+      duration: 1050,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     });
@@ -132,15 +131,15 @@ export function OkeyTileFace({
       animation.stop();
     };
   }, [flipProgress, flipped]);
-  const tileLift = flipProgress.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, -14, 0],
-  });
+const tileLift = flipProgress.interpolate({
+  inputRange: [0, 0.25, 0.5, 0.75, 1],
+  outputRange: [0, -35, -85, -35, 0],
+});
 
-  const tileScale = flipProgress.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [1, 1.07, 1]
-  });
+const tileScale = flipProgress.interpolate({
+  inputRange: [0, 0.5, 1],
+  outputRange: [1, 1.07, 1],
+});
 
   const frontRotation = flipProgress.interpolate({
     inputRange: [0, 1],
@@ -207,11 +206,7 @@ export function OkeyTileFace({
           transition={0}
         />
 
-        {isWildcard ? (
-          <View style={styles.okeyChip}>
-            <Text style={styles.okeyChipText}>ئ</Text>
-          </View>
-        ) : null}
+
       </Animated.View>
 
       <Animated.View

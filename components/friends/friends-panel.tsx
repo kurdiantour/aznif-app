@@ -157,6 +157,36 @@ function getMeaningfulSearchQuery(query: string) {
   return trimmed;
 }
 
+function getGameInviteError(reason: unknown) {
+  const message =
+    reason instanceof Error
+      ? reason.message
+      : typeof (reason as { message?: unknown })?.message === "string"
+        ? String((reason as { message: string }).message)
+        : "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("player_already_in_party")) {
+    return "تۆ یان هاوڕێکەت پێشتر لە پارتیدان.";
+  }
+  if (normalized.includes("already pending")) {
+    return "بانگهێشتێک پێشتر نێردراوە و چاوەڕوانی وەڵامە.";
+  }
+  if (normalized.includes("not available")) {
+    return "هاوڕێکەت ئێستا بۆ بانگهێشت بەردەست نییە.";
+  }
+  if (normalized.includes("confirmed friends")) {
+    return "تەنها دەتوانیت هاوڕێی پەسەندکراو بانگهێشت بکەیت.";
+  }
+  if (normalized.includes("unauthorized") || normalized.includes("jwt")) {
+    return "تکایە دووبارە بچۆرە ژوورەوە.";
+  }
+  if (normalized.includes("network") || normalized.includes("fetch")) {
+    return "پەیوەندی ئینتەرنێت هەڵەی تێدایە.";
+  }
+
+  return message || "نەتوانرا بانگهێشتی یاری بنێردرێت.";
+}
 export function FriendsPanel({
   searchQuery = "",
   onSendChip,
@@ -312,7 +342,7 @@ export function FriendsPanel({
       await sendGameInvite(friend.id);
       setSuccessMessage(`بانگهێشت بۆ ${friend.name} نێردرا.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to send game invitation.");
+      setError(getGameInviteError(err));
       void refreshPresence([friend.id]);
     } finally {
       setInviteBusyId(null);

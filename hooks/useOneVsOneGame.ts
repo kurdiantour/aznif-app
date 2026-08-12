@@ -4,6 +4,7 @@ import {
   submitOneVsOneMove,
   submitOneVsOnePass,
   MultiplayerRequestError,
+  type TurnTimeoutClaim,
 } from '@/lib/multiplayer/multiplayerApi';
 import {
   boardContainsMove,
@@ -20,6 +21,7 @@ import type {
     TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handContainsTile, handHasPlayableTile } from './gameRuleQueries';
 import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
@@ -68,13 +70,39 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   const latestVersionRef = useRef(-1);
   const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
   const timeoutPassInFlightRef = useRef(false);
+  const timeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeoutRetryTurnKeyRef = useRef<string | null>(null);
+  const activeTurnKeyRef = useRef<string | null>(null);
+  const serverClockOffsetMsRef = useRef(0);
+  const roomIdRef = useRef(roomId);
+  const timeoutSubmitRef = useRef<((claim: TurnTimeoutClaim, turnKey: string, claimRoomId: string) => void) | null>(null);
+  const lastRealtimeActivityRef = useRef<number>(Date.now());
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef<number>(0);
 
+  const clearTimeoutRetry = useCallback(() => {
+    if (timeoutRetryRef.current) {
+      clearTimeout(timeoutRetryRef.current);
+      timeoutRetryRef.current = null;
+    }
+    timeoutRetryTurnKeyRef.current = null;
+  }, []);
 
   useEffect(() => {
+    roomIdRef.current = roomId;
     latestVersionRef.current = -1;
     pendingMoveRef.current = null;
+    activeTurnKeyRef.current = null;
+    timeoutPassInFlightRef.current = false;
+    clearTimeoutRetry();
     setPendingMove(null);
-  }, [roomId]);
+
+    return () => {
+      activeTurnKeyRef.current = null;
+      timeoutPassInFlightRef.current = false;
+      clearTimeoutRetry();
+    };
+  }, [roomId, clearTimeoutRetry]);
 
   const applySnapshot = useCallback((snapshot: any) => {
     const version = getSnapshotVersion(snapshot);
@@ -91,6 +119,13 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         null,
     };
 
+    const turnStartedAt = nextRawState.turnStartedAt ?? nextRawState.updated_at ?? null;
+    const currentTurnPlayerId = nextRawState.currentTurnPlayerId ?? null;
+    activeTurnKeyRef.current =
+      version >= 0 && typeof turnStartedAt === 'string' && typeof currentTurnPlayerId === 'string'
+        ? `${version}:${turnStartedAt}:${currentTurnPlayerId}`
+        : null;
+    clearTimeoutRetry();
     setRawState(nextRawState);
     const pending = pendingMoveRef.current;
     if (
@@ -102,7 +137,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       setPendingMove(null);
     }
     return true;
-  }, []);
+  }, [clearTimeoutRetry]);
 
   const refreshSnapshot = useCallback(async () => {
     if (!roomId) throw new Error('No 1v1 room id');
@@ -141,7 +176,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, username, full_name, avatar_id, level, cups')
+      .select('id, username, full_name, avatar_id, level, points')
       .in('id', userIds);
 
     if (profilesError) throw profilesError;
@@ -237,74 +272,100 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
         await Promise.all([loadRoom(), refreshPlayers()]);
 
-        roomChannelRef.current = supabase
-          .channel(`one_vs_one_rooms:${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'one_vs_one_rooms',
-              filter: `id=eq.${roomId}`,
-            },
-            () => {
-              if (!mounted) return;
-              void loadRoom();
-            },
-          )
-          .subscribe((status, err) => {
-            if (!mounted) return;
-            if (status === 'SUBSCRIBED') void loadRoom();
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              setError(err?.message ?? 'Realtime sync failed');
-            }
-          });
+        const markRealtimeActivity = () => {
+          lastRealtimeActivityRef.current = Date.now();
+        };
 
-        playersChannelRef.current = supabase
-          .channel(`one_vs_one_players:${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'one_vs_one_players',
-              filter: `room_id=eq.${roomId}`,
-            },
-            () => void refreshPlayers(),
-          )
-          .subscribe((status, err) => {
-            if (!mounted) return;
-            if (status === 'SUBSCRIBED') void refreshPlayers();
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              setError(err?.message ?? 'Realtime player sync failed');
-            }
-          });
+        const handleChannelStatus = (channelName: string, status: string, err?: any) => {
+          if (!mounted) return;
+          if (status === 'SUBSCRIBED') {
+            reconnectAttemptRef.current = 0;
+            markRealtimeActivity();
+            setError(null);
+            void loadRoom();
+            void refreshPlayers();
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn(`1v1 Realtime ${channelName} status: ${status}`, err);
+            const backoffDelay = Math.min(
+              1000 * Math.pow(2, reconnectAttemptRef.current),
+              15000,
+            );
+            reconnectAttemptRef.current += 1;
 
-        movesChannelRef.current = supabase
-          .channel(`one_vs_one_moves:${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'one_vs_one_moves',
-              filter: `room_id=eq.${roomId}`,
-            },
-            (payload) => {
-              if (!mounted) return;
-              void loadRoom();
-              if ((payload.new as any)?.action === 'manual_leave_takeover') {
+            if (!reconnectTimerRef.current && mounted && roomId) {
+              reconnectTimerRef.current = setTimeout(() => {
+                reconnectTimerRef.current = null;
+                if (!mounted) return;
+                subscribeChannels();
+              }, backoffDelay);
+            }
+          }
+        };
+
+        const subscribeChannels = () => {
+          if (roomChannelRef.current) void supabase.removeChannel(roomChannelRef.current);
+          if (playersChannelRef.current) void supabase.removeChannel(playersChannelRef.current);
+          if (movesChannelRef.current) void supabase.removeChannel(movesChannelRef.current);
+
+          roomChannelRef.current = supabase
+            .channel(`one_vs_one_rooms:${roomId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'one_vs_one_rooms',
+                filter: `id=eq.${roomId}`,
+              },
+              () => {
+                if (!mounted) return;
+                markRealtimeActivity();
+                void loadRoom();
+              },
+            )
+            .subscribe((status, err) => handleChannelStatus('rooms', status, err));
+
+          playersChannelRef.current = supabase
+            .channel(`one_vs_one_players:${roomId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'one_vs_one_players',
+                filter: `room_id=eq.${roomId}`,
+              },
+              () => {
+                if (!mounted) return;
+                markRealtimeActivity();
                 void refreshPlayers();
-              }
-            },
-          )
-          .subscribe((status, err) => {
-            if (!mounted) return;
-            if (status === 'SUBSCRIBED') void loadRoom();
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              setError(err?.message ?? 'Realtime move sync failed');
-            }
-          });
+              },
+            )
+            .subscribe((status, err) => handleChannelStatus('players', status, err));
+
+          movesChannelRef.current = supabase
+            .channel(`one_vs_one_moves:${roomId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'one_vs_one_moves',
+                filter: `room_id=eq.${roomId}`,
+              },
+              (payload) => {
+                if (!mounted) return;
+                markRealtimeActivity();
+                void loadRoom();
+                if ((payload.new as any)?.action === 'manual_leave_takeover') {
+                  void refreshPlayers();
+                }
+              },
+            )
+            .subscribe((status, err) => handleChannelStatus('moves', status, err));
+        };
+
+        subscribeChannels();
 
         if (mounted) setLoading(false);
       } catch (err: any) {
@@ -318,6 +379,11 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
     return () => {
       mounted = false;
+
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
 
       if (roomChannelRef.current) {
         void supabase.removeChannel(roomChannelRef.current);
@@ -333,9 +399,31 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         void supabase.removeChannel(movesChannelRef.current);
         movesChannelRef.current = null;
       }
-
     };
   }, [roomId, applySnapshot, refreshSnapshot, refreshPlayers]);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void Promise.all([
+          refreshSnapshot(),
+          refreshPlayers(false),
+        ])
+          .then(() => {
+            lastRealtimeActivityRef.current = Date.now();
+          })
+          .catch((err) => {
+            console.warn('1v1 AppState reconcile failed', err);
+          });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [roomId, refreshSnapshot, refreshPlayers]);
 
   useEffect(() => {
     if (!roomId || !currentUserId) return;
@@ -348,7 +436,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     };
 
     void heartbeat();
-    const interval = setInterval(() => void heartbeat(), 10_000);
+    const interval = setInterval(() => void heartbeat(), 30_000);
     return () => clearInterval(interval);
   }, [roomId, currentUserId]);
 
@@ -388,27 +476,31 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   useEffect(() => {
     if (
       !roomId ||
+      loading ||
       rawState?.roundWinnerPlayerId ||
       rawState?.winningTeamId ||
       rawState?.status === 'finished'
     ) return;
 
-    const pollSnapshot = async () => {
+    const pollFallbackWatchdog = async () => {
       if (pollInFlightRef.current) return;
+      const silentMs = Date.now() - lastRealtimeActivityRef.current;
+      if (silentMs < 12_000) return;
 
       pollInFlightRef.current = true;
       try {
         await Promise.all([refreshSnapshot(), refreshPlayers(false)]);
+        lastRealtimeActivityRef.current = Date.now();
       } catch (err) {
-        console.warn('1v1 snapshot polling failed', err);
+        console.warn('1v1 snapshot fallback watchdog failed', err);
       } finally {
         pollInFlightRef.current = false;
       }
     };
 
     const interval = setInterval(() => {
-      void pollSnapshot();
-    }, 1000);
+      void pollFallbackWatchdog();
+    }, 5000);
 
     return () => {
       clearInterval(interval);
@@ -416,6 +508,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     };
   }, [
     roomId,
+    loading,
     rawState?.status,
     rawState?.roundWinnerPlayerId,
     rawState?.winningTeamId,
@@ -433,7 +526,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     const turnStartedAt = Date.parse(rawState?.turnStartedAt ?? rawState?.updated_at ?? '');
     const updateTimer = () => {
       const elapsed = Number.isFinite(turnStartedAt)
-        ? Math.floor((Date.now() - turnStartedAt) / 1000)
+        ? Math.floor((Date.now() + serverClockOffsetMsRef.current - turnStartedAt) / 1000)
         : 0;
       setTurnTimeLeft(Math.max(0, PLAYER_TURN_DURATION_SECONDS - elapsed));
     };
@@ -619,7 +712,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
         level: profile?.level,
-        cups: profile?.cups,
+        points: profile?.points,
       };
     });
   }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft]);
@@ -788,26 +881,153 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     });
   };
 
-  useEffect(() => {
-    if (!roomId || turnTimeLeft > 0 || roundWinnerPlayerId || winningTeamId) return;
-    if (timeoutPassInFlightRef.current) return;
+  const syncServerClock = useCallback((serverNow: unknown) => {
+    if (typeof serverNow !== 'string') return false;
+    const serverNowMs = Date.parse(serverNow);
+    if (!Number.isFinite(serverNowMs)) return false;
+    serverClockOffsetMsRef.current = serverNowMs - Date.now();
+    return true;
+  }, []);
+
+  const scheduleTimeoutRetry = useCallback((
+    claim: TurnTimeoutClaim,
+    turnKey: string,
+    claimRoomId: string,
+    expiresAt: unknown,
+  ) => {
+    clearTimeoutRetry();
+    if (
+      roomIdRef.current !== claimRoomId ||
+      activeTurnKeyRef.current !== turnKey ||
+      typeof expiresAt !== 'string'
+    ) return;
+
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs)) {
+      console.warn('submit_one_vs_one timeout response has no valid expiresAt');
+      return;
+    }
+
+    const synchronizedNow = Date.now() + serverClockOffsetMsRef.current;
+    const retryInMs = Math.max(0, expiresAtMs - synchronizedNow);
+    timeoutRetryTurnKeyRef.current = turnKey;
+    timeoutRetryRef.current = setTimeout(() => {
+      timeoutRetryRef.current = null;
+      timeoutRetryTurnKeyRef.current = null;
+      if (
+        roomIdRef.current === claimRoomId &&
+        activeTurnKeyRef.current === turnKey
+      ) {
+        timeoutSubmitRef.current?.(claim, turnKey, claimRoomId);
+      }
+    }, retryInMs);
+  }, [clearTimeoutRetry]);
+
+  const submitTimeoutClaim = useCallback(async (
+    claim: TurnTimeoutClaim,
+    turnKey: string,
+    claimRoomId: string,
+  ) => {
+    if (
+      timeoutPassInFlightRef.current ||
+      roomIdRef.current !== claimRoomId ||
+      activeTurnKeyRef.current !== turnKey
+    ) return;
+
     timeoutPassInFlightRef.current = true;
-    void submitOneVsOnePass(roomId, true)
-      .then((result) => {
-        if (!result?.ok) return;
-        if (
-          result.state?.myHandOwnerId &&
-          result.state.myHandOwnerId !== currentUserId
-        ) {
-          console.warn('Ignored 1v1 timeout response with mismatched hand owner');
+    try {
+      const result = await submitOneVsOnePass(claimRoomId, true, claim);
+      syncServerClock(result?.serverNow);
+      if (
+        roomIdRef.current !== claimRoomId ||
+        activeTurnKeyRef.current !== turnKey
+      ) return;
+
+      clearTimeoutRetry();
+      if (
+        result.state?.myHandOwnerId &&
+        result.state.myHandOwnerId !== currentUserIdRef.current
+      ) {
+        console.warn('Ignored 1v1 timeout response with mismatched hand owner');
+      }
+      await refreshSnapshot();
+    } catch (caught) {
+      const requestError = caught instanceof MultiplayerRequestError ? caught : null;
+      const code = requestError?.code;
+      const response = requestError?.details;
+      syncServerClock(response?.serverNow);
+
+      if (code === 'turn_timer_not_expired') {
+        scheduleTimeoutRetry(
+          claim,
+          turnKey,
+          claimRoomId,
+          response?.expiresAt,
+        );
+        return;
+      }
+
+      if (code === 'stale_timeout' || code === 'already_processed') {
+        clearTimeoutRetry();
+        if (roomIdRef.current === claimRoomId) {
+          await refreshSnapshot().catch(() => undefined);
         }
-        return refreshSnapshot();
-      })
-      .catch(() => refreshSnapshot().catch(() => undefined))
-      .finally(() => {
-        timeoutPassInFlightRef.current = false;
-      });
-  }, [roomId, turnTimeLeft, roundWinnerPlayerId, winningTeamId, currentTurnPlayerId, currentUserId, refreshSnapshot]);
+        return;
+      }
+
+      if (roomIdRef.current === claimRoomId) {
+        await refreshSnapshot().catch(() => undefined);
+      }
+    } finally {
+      timeoutPassInFlightRef.current = false;
+    }
+  }, [clearTimeoutRetry, refreshSnapshot, scheduleTimeoutRetry, syncServerClock]);
+
+  useEffect(() => {
+    timeoutSubmitRef.current = (claim, turnKey, claimRoomId) => {
+      void submitTimeoutClaim(claim, turnKey, claimRoomId);
+    };
+    return () => {
+      timeoutSubmitRef.current = null;
+    };
+  }, [submitTimeoutClaim]);
+
+  useEffect(() => {
+    if (
+      !roomId ||
+      turnTimeLeft > 0 ||
+      roundWinnerPlayerId ||
+      winningTeamId ||
+      timeoutPassInFlightRef.current ||
+      timeoutRetryRef.current
+    ) return;
+
+    const expectedVersion = getSnapshotVersion(rawState);
+    const expectedTurnStartedAt = rawState?.turnStartedAt ?? rawState?.updated_at;
+    if (
+      expectedVersion < 0 ||
+      typeof expectedTurnStartedAt !== 'string' ||
+      typeof currentTurnPlayerId !== 'string' ||
+      !currentTurnPlayerId
+    ) return;
+
+    const claim: TurnTimeoutClaim = {
+      expectedVersion,
+      expectedTurnStartedAt,
+      expectedTurnPlayerId: currentTurnPlayerId,
+    };
+    const turnKey = `${expectedVersion}:${expectedTurnStartedAt}:${currentTurnPlayerId}`;
+    if (activeTurnKeyRef.current !== turnKey) return;
+    void submitTimeoutClaim(claim, turnKey, roomId);
+  }, [
+    roomId,
+    turnTimeLeft,
+    roundWinnerPlayerId,
+    winningTeamId,
+    currentTurnPlayerId,
+    rawState,
+    submitTimeoutClaim,
+  ]);
 
   return {
     loading,

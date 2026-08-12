@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { createContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -26,9 +27,10 @@ type SendChipPopupController = {
   ) => void;
 };
 
-export const SendChipPopupContext = createContext<SendChipPopupController>({
-  showSendChipPopup: () => {},
-});
+export const SendChipPopupContext =
+  createContext<SendChipPopupController>({
+    showSendChipPopup: () => {},
+  });
 
 export function SendChipPopup({
   visible,
@@ -41,6 +43,34 @@ export function SendChipPopup({
   const [submitting, setSubmitting] = useState(false);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+
+useEffect(() => {
+  if (visible) return;
+
+  Keyboard.dismiss();
+  setAmount("");
+  setError(null);
+  setSubmitting(false);
+}, [visible]);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      "keyboardDidShow",
+      () => setKeyboardVisible(true),
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      "keyboardDidHide",
+      () => setKeyboardVisible(false),
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -76,13 +106,29 @@ export function SendChipPopup({
 
   if (!visible || !friend) return null;
 
-  const parsedAmount = Number(amount.replace(/[^0-9.]/g, ""));
+  const parsedAmount = Number(
+    amount.replace(/[^0-9.]/g, ""),
+  );
+
   const isSendDisabled =
-    submitting || loadingBalance || !parsedAmount || parsedAmount <= 0;
+    submitting ||
+    loadingBalance ||
+    !parsedAmount ||
+    parsedAmount <= 0;
+
+  const handleBackdropPress = () => {
+    if (keyboardVisible) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    onClose();
+  };
 
   const handleSend = async () => {
     if (isSendDisabled) return;
 
+    Keyboard.dismiss();
     setError(null);
 
     if (parsedAmount > mcBalance) {
@@ -99,11 +145,16 @@ export function SendChipPopup({
       setMcBalance(wallet.balances.mc);
 
       notifyWalletRefresh();
+
       setAmount("");
       onTransferSuccess?.();
       onClose();
     } catch (err) {
-      console.error("[SendChipPopup] MC transfer failed:", err);
+      console.error(
+        "[SendChipPopup] MC transfer failed:",
+        err,
+      );
+
       setError("گواستنەوەکە سەرکەوتوو نەبوو.");
     } finally {
       setSubmitting(false);
@@ -112,13 +163,28 @@ export function SendChipPopup({
 
   return (
     <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={handleBackdropPress}
+      />
 
-      <Pressable style={styles.cardShell} onPress={() => {}}>
-        <LinearGradient colors={["#22114a", "#0b1027"]} style={styles.popup}>
-          <Text style={styles.title}>گواستنەوەی ئەزنیف بۆ</Text>
-          <Text style={styles.playerId} numberOfLines={1}>
-            {friend.name}
+      <Pressable
+        style={styles.cardShell}
+        onPress={() => {}}
+      >
+        <LinearGradient
+          colors={["#22114a", "#0b1027"]}
+          style={styles.popup}
+        >
+          <Text style={styles.title}>
+            گواستنەوەی ئەزنیف بۆ
+          </Text>
+
+          <Text
+            style={styles.playerId}
+            numberOfLines={1}
+          >
+            ( {friend.name} )
           </Text>
 
           <TextInput
@@ -128,26 +194,39 @@ export function SendChipPopup({
               setError(null);
             }}
             placeholder="0"
-            placeholderTextColor="rgba(255,255,255,0.38)"
-            keyboardType="numeric"
+            placeholderTextColor="rgba(255,255,255,0.22)"
+            keyboardType="number-pad"
+            returnKeyType="done"
+            blurOnSubmit
+            onSubmitEditing={Keyboard.dismiss}
             style={styles.input}
           />
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? (
+            <Text style={styles.errorText}>
+              {error}
+            </Text>
+          ) : null}
 
           <View style={styles.footer}>
             <Pressable
               style={[
                 styles.sendButton,
-                isSendDisabled && styles.sendButtonDisabled,
+                isSendDisabled &&
+                  styles.sendButtonDisabled,
               ]}
               onPress={handleSend}
               disabled={isSendDisabled}
             >
               {submitting ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator
+                  color="#ffffff"
+                  size="small"
+                />
               ) : (
-                <Text style={styles.sendText}>بینێرە</Text>
+                <Text style={styles.sendText}>
+                  بینێرە
+                </Text>
               )}
             </Pressable>
           </View>
@@ -160,67 +239,95 @@ export function SendChipPopup({
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
+
     zIndex: 9999,
     elevation: 9999,
+
     alignItems: "center",
     justifyContent: "center",
+
     backgroundColor: "rgba(2, 4, 15, 0.78)",
-    paddingHorizontal: 24,
   },
 
   cardShell: {
-    width: "100%",
-    maxWidth: 310,
+    width: 360,
+    maxWidth: "88%",
   },
 
   popup: {
     width: "100%",
-    borderRadius: 10,
-    padding: 24,
+
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 18,
+
     alignItems: "center",
+
+    borderRadius: 16,
+
     shadowColor: "#000",
     shadowOpacity: 0.5,
     shadowRadius: 20,
+
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+
     elevation: 16,
   },
 
   title: {
     color: "#ffffff",
-    fontSize: 12,
+
+    fontSize: 16,
     fontFamily: "SpedaBold",
+
     textAlign: "center",
+    writingDirection: "rtl",
   },
 
   playerId: {
-    marginTop: 8,
+    marginTop: 7,
     marginBottom: 16,
-    color: "#aaa7bc",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
+
+    color: "#ffffff",
+
+    fontSize: 15,
+    lineHeight: 20,
+
     textAlign: "center",
   },
 
   input: {
     width: "100%",
     height: 36,
+
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.32)",
+    borderColor: "rgba(255,255,255,0.14)",
+
     backgroundColor: "rgba(0,0,0,0.22)",
     color: "#ffffff",
+
     paddingHorizontal: 14,
     paddingVertical: 0,
+
     fontSize: 16,
-    fontFamily: "SpedaBold",
+
     textAlign: "center",
   },
 
   errorText: {
+    marginTop: 12,
+
     color: "#ff8a8a",
+
     fontSize: 12,
     fontFamily: "SpedaBold",
+
     textAlign: "center",
-    marginTop: 12,
+    writingDirection: "rtl",
   },
 
   footer: {
@@ -230,11 +337,11 @@ const styles = StyleSheet.create({
 
   sendButton: {
     width: "100%",
-    height: 34,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(221, 214, 254, 0.6)",
+    height: 40,
+
+    borderRadius: 10,
     backgroundColor: "#7c3aed",
+
     alignItems: "center",
     justifyContent: "center",
   },
@@ -245,7 +352,11 @@ const styles = StyleSheet.create({
 
   sendText: {
     color: "#ffffff",
-    fontSize: 12,
+
+    fontSize: 13,
     fontFamily: "SpedaBold",
+
+    textAlign: "center",
+    writingDirection: "rtl",
   },
 });

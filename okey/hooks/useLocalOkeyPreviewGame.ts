@@ -41,7 +41,8 @@ import {
 } from "@/okey/match/okey-match-state";
 
 
-const BOT_TURN_DELAY_MS = 3000;
+const BOT_TURN_DURATION_MS = 20000;
+const BOT_ACTION_DELAY_MS = 1200;
 const FINISH_REVEAL_MS = 5350;
 
 
@@ -113,30 +114,42 @@ export function useLocalOkeyPreviewGame(): OkeyGameController {
   // BOT TURN
   // --------------------------------------------------
 
-  useEffect(() => {
-    const player =
-      match.roundState.players[
-        match.roundState.currentPlayerIndex
-      ];
+useEffect(() => {
+  const player =
+    match.roundState.players[
+      match.roundState.currentPlayerIndex
+    ];
 
+  if (
+    match.roundState.phase !== "playing" ||
+    !isOkeyBotControlled(player)
+  ) {
+    return;
+  }
+
+  const startedAt = Date.now();
+
+  const timer = setInterval(() => {
     if (
-      match.roundState.phase !== "playing" ||
-      !isOkeyBotControlled(player)
+      Date.now() - startedAt >=
+      BOT_TURN_DURATION_MS
     ) {
+      clearInterval(timer);
       return;
     }
 
-    const timer = setTimeout(() => {
-      updateRound((state) =>
-        playBotTurn(state),
-      );
-    }, BOT_TURN_DELAY_MS);
+    updateRound((state) =>
+      playBotTurn(state),
+    );
+  }, BOT_ACTION_DELAY_MS);
 
-    return () => clearTimeout(timer);
-  }, [
-    match.roundState,
-    updateRound,
-  ]);
+  return () =>
+    clearInterval(timer);
+}, [
+  match.roundState.currentPlayerIndex,
+  match.roundState.phase,
+  updateRound,
+]);
 
 
   // --------------------------------------------------
@@ -321,11 +334,12 @@ export function useLocalOkeyPreviewGame(): OkeyGameController {
     useCallback<
       OkeyGameController["declareKonkan"]
     >(
-      () =>
+      (orderedRunTileIds) =>
         updateRound((state) =>
           declareKonkanOpen(
             state,
             0,
+            orderedRunTileIds,
           ),
         ),
       [updateRound],

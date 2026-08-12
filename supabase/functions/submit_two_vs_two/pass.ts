@@ -20,6 +20,25 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function timeoutResponse(
+  code: "turn_timer_not_expired" | "stale_timeout" | "already_processed",
+  message: string,
+  room: any,
+  extra: Record<string, unknown> = {},
+) {
+  return json({
+    ok: false,
+    code,
+    error: message,
+    serverNow: new Date().toISOString(),
+    roomVersion: Number(room?.version ?? -1),
+    turnStartedAt: room?.state?.turnStartedAt ?? room?.updated_at ?? null,
+    currentTurnPlayerId:
+      room?.state?.currentTurnPlayerId ?? room?.current_turn_player_id ?? null,
+    ...extra,
+  }, 409);
+}
+
 export default async function handler(req: Request) {
   try {
     if (req.method !== "POST")
@@ -34,7 +53,13 @@ export default async function handler(req: Request) {
       return json({ error: "Invalid auth token" }, 401);
 
     const user = userData.user;
-    const { room_id, timed_out: timedOut = false } = await req.json();
+    const {
+      room_id,
+      timed_out: timedOut = false,
+      expected_version: expectedVersionRaw,
+      expected_turn_started_at: expectedTurnStartedAt,
+      expected_turn_player_id: expectedTurnPlayerId,
+    } = await req.json();
     if (!room_id) return json({ error: "Missing room_id" }, 400);
 
     const { data: room, error: roomErr } = await svc
@@ -44,14 +69,56 @@ export default async function handler(req: Request) {
       .maybeSingle();
     if (roomErr) throw roomErr;
     if (!room) return json({ error: "2v2 room not found" }, 404);
-    if (room.status !== "active")
-      return json({ error: "2v2 room is not active" }, 400);
 
     const state = room.state || {};
+    const expectedVersion = Number(expectedVersionRaw);
+    if (timedOut) {
+      if (
+        !Number.isInteger(expectedVersion) ||
+        typeof expectedTurnStartedAt !== "string" ||
+        typeof expectedTurnPlayerId !== "string"
+      ) {
+        return timeoutResponse(
+          "stale_timeout",
+          "Timeout claim is missing its turn identity",
+          room,
+        );
+      }
+      if (expectedVersion !== Number(room.version)) {
+        return timeoutResponse(
+          expectedVersion < Number(room.version)
+            ? "already_processed"
+            : "stale_timeout",
+          expectedVersion < Number(room.version)
+            ? "This turn timeout was already processed"
+            : "Timeout claim does not match the room version",
+          room,
+        );
+      }
+      if (
+        expectedTurnStartedAt !== (state.turnStartedAt ?? room.updated_at ?? null) ||
+        expectedTurnPlayerId !==
+          (state.currentTurnPlayerId ?? room.current_turn_player_id ?? null)
+      ) {
+        return timeoutResponse(
+          "stale_timeout",
+          "Timeout claim does not match the active turn",
+          room,
+        );
+      }
+    }
+
+    if (room.status !== "active")
+      return timedOut
+        ? timeoutResponse("already_processed", "This turn is no longer active", room)
+        : json({ error: "2v2 room is not active" }, 400);
+
     if (!timedOut && !state.board?.centerTile)
       return json({ error: "Cannot pass before opening move" }, 400);
     if (state.winningTeamId)
-      return json({ error: "2v2 match is already finished" }, 400);
+      return timedOut
+        ? timeoutResponse("already_processed", "This turn is already complete", room)
+        : json({ error: "2v2 match is already finished" }, 400);
 
     const { data: players, error: playersErr } = await svc
       .from("two_vs_two_players")
@@ -78,11 +145,23 @@ export default async function handler(req: Request) {
       const turnStartedAt = Date.parse(
         state.turnStartedAt ?? room.updated_at ?? "",
       );
-      if (
-        !Number.isFinite(turnStartedAt) ||
-        Date.now() - turnStartedAt < TURN_DURATION_MS
-      )
-        return json({ error: "Turn timer has not expired" }, 409);
+      const serverNowMs = Date.now();
+      const expiresAtMs = turnStartedAt + TURN_DURATION_MS;
+      if (!Number.isFinite(turnStartedAt) || serverNowMs < expiresAtMs) {
+        return timeoutResponse(
+          "turn_timer_not_expired",
+          "Turn timer has not expired",
+          room,
+          {
+            expiresAt: Number.isFinite(expiresAtMs)
+              ? new Date(expiresAtMs).toISOString()
+              : null,
+            retryAfterMs: Number.isFinite(expiresAtMs)
+              ? Math.max(0, expiresAtMs - serverNowMs)
+              : null,
+          },
+        );
+      }
     } else if (currentTurnPlayerId !== user.id)
       return json({ error: "Not your turn" }, 403);
 
@@ -152,8 +231,29 @@ export default async function handler(req: Request) {
       },
     );
     if (commitError) {
-      if (commitError.message?.includes("STALE_GAME_STATE"))
+      if (commitError.message?.includes("STALE_GAME_STATE")) {
+        if (timedOut) {
+          const { data: latestRoom, error: latestRoomError } = await svc
+            .from("two_vs_two_rooms")
+            .select("id, status, state, version, current_turn_player_id, updated_at")
+            .eq("id", room_id)
+            .maybeSingle();
+          if (latestRoomError) throw latestRoomError;
+          if (latestRoom && Number(latestRoom.version) > expectedVersion) {
+            return timeoutResponse(
+              "already_processed",
+              "This turn timeout was already processed",
+              latestRoom,
+            );
+          }
+          return timeoutResponse(
+            "stale_timeout",
+            "Timeout claim became stale before commit",
+            latestRoom ?? room,
+          );
+        }
         return json({ error: "Stale 2v2 state, please retry" }, 409);
+      }
       throw commitError;
     }
 
@@ -166,6 +266,7 @@ export default async function handler(req: Request) {
           myHandOwnerId: user.id,
         },
         room: updatedRoom,
+        serverNow: new Date().toISOString(),
       },
       200,
     );

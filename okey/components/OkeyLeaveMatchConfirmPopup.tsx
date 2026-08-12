@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import {
   ActivityIndicator,
@@ -6,8 +7,8 @@ import {
   Text,
   View,
 } from "react-native";
-
 export type OkeyMatchMode = "fun" | "aznif";
+
 
 type OkeyLeaveMatchConfirmPopupProps = {
   visible: boolean;
@@ -17,11 +18,17 @@ type OkeyLeaveMatchConfirmPopupProps = {
   onConfirm: () => void;
 };
 
-const LEAVE_TITLE = "\u0644\u06d5 \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06a9\u06d5 \u062f\u06d5\u0686\u06cc\u062a\u06d5 \u062f\u06d5\u0631\u06d5\u0648\u06d5\u061f";
-const FUN_BODY = "\u0626\u06d5\u06af\u06d5\u0631 \u062f\u06d5\u0631\u0686\u06cc\u062a\u060c \u062f\u06d5\u0631\u0686\u0648\u0648\u0646\u06d5\u06a9\u06d5\u062a \u0628\u06c6 \u0626\u06d5\u0645 \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06cc Okey Fun \u062a\u06c6\u0645\u0627\u0631 \u062f\u06d5\u06a9\u0631\u06ce\u062a.";
-const AZNIF_BODY = "\u062a\u06c6 \u062e\u06d5\u0631\u06cc\u06a9\u06cc \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06a9\u06cc Okey Aznif \u062c\u06ce\u0628\u0647\u06ce\u0695\u06cc\u062a. \u062f\u06d5\u0631\u0686\u0648\u0648\u0646\u06d5\u06a9\u06d5\u062a \u0628\u06d5\u067e\u06ce\u06cc \u06cc\u0627\u0633\u0627\u06a9\u0627\u0646\u06cc \u0647\u06d5\u0645\u0627\u0646 Match \u062a\u06c6\u0645\u0627\u0631 \u062f\u06d5\u06a9\u0631\u06ce\u062a.";
-const CANCEL_TEXT = "\u067e\u0627\u0634\u06af\u06d5\u0632\u0628\u0648\u0648\u0646\u06d5\u0648\u06d5";
-const CONFIRM_TEXT = "\u062f\u06d5\u0631\u0686\u0648\u0648\u0646 \u0644\u06d5 \u06cc\u0627\u0631\u06cc";
+const LEAVE_TITLE =
+  "دڵنیایت لە یارییەکە دەچیتە دەرەوە؟";
+
+const FUN_BODY =
+  "بەجێهێشتنی یاری پێش کۆتایی وەک دۆڕان تۆمار دەکرێت و پوینت لەدەست دەدەیت.";
+  
+const AZNIF_BODY =
+  "بەجێهێشتنی یاری پێش کۆتایی وەک دۆڕان تۆمار دەکرێت و ئەنجامەکە بە پێی یاساکانی یارییەکە هەژمار دەکرێت.";
+  
+const CANCEL_TEXT = "پاشگەزبوونەوە";
+const CONFIRM_TEXT = "دەرچوون لە یاری";
 
 export default function OkeyLeaveMatchConfirmPopup({
   visible,
@@ -38,6 +45,15 @@ export default function OkeyLeaveMatchConfirmPopup({
     <View style={styles.overlay}>
       <View style={styles.scrim} />
       <BlurView intensity={45} tint="dark" style={styles.modal}>
+
+
+<View style={styles.warningIconCircle}>
+  <Ionicons
+    name="warning-outline"
+    size={28}
+    color="#facc15"
+  />
+</View>
         <Text style={styles.title}>{LEAVE_TITLE}</Text>
         <Text style={[styles.body, isAznif && styles.aznifBody]}>
           {isAznif ? AZNIF_BODY : FUN_BODY}
@@ -82,7 +98,7 @@ const styles = StyleSheet.create({
   },
   modal: {
     width: "86%",
-    maxWidth: 400,
+    maxWidth: 480,
     minHeight: 180,
     borderRadius: 6,
     overflow: "hidden",
@@ -109,7 +125,7 @@ const styles = StyleSheet.create({
   body: {
     marginTop: 10,
     color: "rgba(255,255,255,0.82)",
-    fontSize: 13,
+    fontSize: 14,
     lineHeight: 21,
     fontFamily: "SpedaBold",
     textAlign: "center",
@@ -124,8 +140,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cancelButton: {
-    minWidth: 112,
-    height: 32,
+    minWidth: 140,
+    height: 40,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
@@ -134,13 +150,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
   },
   confirmButton: {
-    minWidth: 128,
-    height: 32,
+    minWidth: 140,
+    height: 40,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#dc2626",
-    borderWidth: 1,
     borderColor: "rgba(255,255,255,0.22)",
   },
   buttonDisabled: {
@@ -148,12 +163,23 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: "#f8f3df",
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: "SpedaBold",
   },
   confirmText: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: "SpedaBold",
   },
+warningIconCircle: {
+  width: 54,
+  height: 54,
+  marginBottom: 12,
+  borderRadius: 27,
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "rgba(250, 204, 21, 0.10)",
+  borderWidth: 1,
+  borderColor: "rgba(250, 204, 21, 0.65)",
+},
 });

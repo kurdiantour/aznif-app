@@ -25,10 +25,7 @@ async function applyImmersiveFullscreen() {
   setStatusBarBackgroundColor("transparent", false);
 
   try {
-    await NavigationBar.setPositionAsync("absolute");
-    await NavigationBar.setBackgroundColorAsync("#00000000");
     await NavigationBar.setButtonStyleAsync("light");
-    await NavigationBar.setBehaviorAsync("overlay-swipe");
     await NavigationBar.setStyle("dark");
     await NavigationBar.setVisibilityAsync("hidden");
   } catch (error) {
@@ -90,16 +87,30 @@ export default function Layout() {
               <Stack.Screen name="auth-callback" />
               <Stack.Screen name="reset-password" />
               <Stack.Screen name="delete-account" />
-              <Stack.Screen name="profile" />
-              <Stack.Screen name="settings" />
+              <Stack.Screen
+                name="profile"
+                options={{
+                  presentation: "transparentModal",
+                  animation: "none",
+                  contentStyle: { backgroundColor: "transparent" },
+                }}
+              />
+              <Stack.Screen
+                name="settings"
+                options={{
+                  presentation: "transparentModal",
+                  animation: "none",
+                  contentStyle: { backgroundColor: "transparent" },
+                }}
+              />
               <Stack.Screen name="privacy" />
               <Stack.Screen name="support" />
-              <Stack.Screen name="game" />
+              <Stack.Screen name="domino/game" />
               <Stack.Screen name="okey/index" />
               <Stack.Screen name="okey/game" />
               <Stack.Screen name="create-room" />
-              <Stack.Screen name="matchmaking" />
-              <Stack.Screen name="play-ai" />
+              <Stack.Screen name="domino/matchmaking" />
+              <Stack.Screen name="domino/play-ai" />
               <Stack.Screen name="wallet-history" />
               <Stack.Screen name="(tabs)" />
             </Stack>

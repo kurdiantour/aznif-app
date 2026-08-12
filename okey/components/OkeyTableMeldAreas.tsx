@@ -9,7 +9,7 @@ import { styles } from "./okeyStyles";
 import { OkeyTileBack, OkeyTileFace } from "./OkeyTileFace";
 
 const MELD_ENTRY_STAGGER_MS = 300;
-const MELD_ENTRY_DURATION_MS = 850;
+const MELD_ENTRY_DURATION_MS = 950;
 const MELD_META_ENTRY_DELAY_MS = MELD_ENTRY_DURATION_MS + 100;
 type MeldRect = { x: number; y: number; width: number; height: number };
 type MeldOffset = { x: number; y: number };
@@ -37,12 +37,12 @@ function AnimatedSpentTile({
 
     progress.setValue(0);
 
-    const animation = Animated.timing(progress, {
-      toValue: 1,
-      duration: 620,
-      easing: Easing.bezier(0.16, 0.72, 0.2, 1),
-      useNativeDriver: true,
-    });
+const animation = Animated.timing(progress, {
+  toValue: 1,
+  duration: 1250,
+  easing: Easing.inOut(Easing.quad),
+  useNativeDriver: true,
+});
 
     animation.start(({ finished }) => {
       if (finished) setIsAnimating(false);

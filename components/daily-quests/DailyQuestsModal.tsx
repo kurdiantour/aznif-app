@@ -284,4 +284,5 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     fontVariant: ["tabular-nums"],
   },
+
 });

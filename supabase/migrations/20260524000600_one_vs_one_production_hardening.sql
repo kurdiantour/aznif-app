@@ -248,25 +248,39 @@ CREATE OR REPLACE FUNCTION public.cancel_one_vs_one_matchmaking(p_room_id uuid D
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user_id uuid := auth.uid();
+  v_remaining_count integer := 0;
 BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
+  IF v_user_id IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
+
+  IF p_room_id IS NOT NULL THEN
+    PERFORM 1 FROM public.one_vs_one_rooms WHERE id=p_room_id FOR UPDATE;
+    IF FOUND THEN
+      IF EXISTS(SELECT 1 FROM public.one_vs_one_private_states WHERE room_id=p_room_id) THEN
+        RAISE EXCEPTION 'match_already_started';
+      END IF;
+      DELETE FROM public.one_vs_one_players
+      WHERE room_id=p_room_id AND user_id=v_user_id;
+      SELECT count(*) INTO v_remaining_count
+      FROM public.one_vs_one_players WHERE room_id=p_room_id;
+      UPDATE public.one_vs_one_rooms
+      SET player_count=GREATEST(1,v_remaining_count),
+          status=CASE WHEN v_remaining_count=0 THEN 'cancelled' ELSE 'waiting' END,
+          current_turn_player_id=NULL,version=version+1,updated_at=now()
+      WHERE id=p_room_id;
+    END IF;
   END IF;
 
   UPDATE public.one_vs_one_matchmaking_queue
-  SET status = 'cancelled',
-      ended_at = now()
-  WHERE user_id = v_user_id
-    AND status IN ('searching', 'matched');
-
-  IF p_room_id IS NOT NULL THEN
-    PERFORM public.cancel_one_vs_one_room(p_room_id);
-  END IF;
-
-  RETURN jsonb_build_object('status', 'cancelled');
+  SET status='cancelled',matched_room_id=NULL,ended_at=now(),updated_at=now()
+  WHERE user_id=v_user_id AND status IN ('searching','matched');
+  UPDATE public.user_presence
+  SET status='online_available',last_seen_at=now(),updated_at=now()
+  WHERE user_id=v_user_id;
+  RETURN jsonb_build_object('status','cancelled','remaining_count',v_remaining_count);
 END;
 $$;
 CREATE OR REPLACE FUNCTION public.start_one_vs_one_game(p_room_id uuid)

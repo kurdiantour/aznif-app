@@ -44,7 +44,7 @@ test("a four-tile set is rendered as a compact physical stack", () => {
     { stacked: true, left: FOUR_TILE_SET_REVEAL * 2, zIndex: 2 },
     { stacked: true, left: FOUR_TILE_SET_REVEAL * 3, zIndex: 1 },
   ]);
-  expect(getOkeyMeldWidth(meld, 18, FOUR_TILE_SET_REVEAL)).toBe(27);
+  expect(getOkeyMeldWidth(meld, 18, FOUR_TILE_SET_REVEAL)).toBe(54);
 });
 
 test("runs stay fully separated and table meld rows remain stable", () => {

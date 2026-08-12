@@ -28,19 +28,25 @@ const PresenceContext = createContext<PresenceContextValue | null>(null);
 
 const ONLINE_WINDOW_MS = 35_000;
 
-// TODO: Okey presence is intentionally not handled here for now.
-// Revisit this together with the full Friends / Game Invite flow.
 function routeStatus(pathname: string): PresenceStatus {
   if (
     pathname === "/domino/game" ||
-    pathname.startsWith("/domino/game/")
+    pathname.startsWith("/domino/game/") ||
+    pathname === "/okey/game" ||
+    pathname.startsWith("/okey/game/") ||
+    pathname === "/okey/aznif" ||
+    pathname.startsWith("/okey/aznif/") ||
+    pathname === "/okey/fun" ||
+    pathname.startsWith("/okey/fun/")
   ) {
     return "in_game";
   }
 
   if (
     pathname === "/domino/matchmaking" ||
-    pathname.startsWith("/domino/matchmaking/")
+    pathname.startsWith("/domino/matchmaking/") ||
+    pathname === "/okey/matchmaking" ||
+    pathname.startsWith("/okey/matchmaking/")
   ) {
     return "matchmaking";
   }

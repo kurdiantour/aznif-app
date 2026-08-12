@@ -13,6 +13,7 @@ import {
 
 import GameChatDrawer, { type GameChatTransport } from "@/components/game/GameChatDrawer";
 import type { GameChatMessage } from "@/lib/gameChat";
+import { useGameParty } from "@/lib/gameInvitesProvider";
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
 import ConnectionOverlay from "@/okey/components/ConnectionOverlay";
 import GameControls from "@/okey/components/GameControls";
@@ -35,6 +36,7 @@ import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import { styles } from "@/okey/components/okeyStyles";
 import { canDeclareKonkanOpen, canLockKonkanSet, canSpendTileOnMeld, getRequiredOpenScore, getRoundResultScoreDetails, MAX_PLAYER_MELDS } from "@/okey/engine/okey-engine";
+import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
 import type { OkeyGameController } from "@/okey/controllers/okey-game-controller";
@@ -100,6 +102,7 @@ function getRouteParam(
 
 function OkeyGameTableSceneContent({ controller, preview = false }: OkeyGameTableSceneProps) {
   const router = useRouter();
+  const { party } = useGameParty();
   const params = useLocalSearchParams<{
   matchId?: string | string[];
   tableId?: string | string[];
@@ -184,8 +187,26 @@ useEffect(() => {
   };
 }, [onlineMatchId, preview]);
 
+useEffect(() => {
+  if (
+    preview ||
+    !onlineMatchId ||
+    !currentUserId ||
+    !party ||
+    party.leaderId === currentUserId ||
+    party.flowStatus !== "idle"
+  ) {
+    return;
+  }
+
+  setOnlineRoom(null);
+  router.replace("/okey");
+}, [currentUserId, onlineMatchId, party, preview, router]);
 const handleCancelWaiting = useCallback(async () => {
-  if (!onlineMatchId || leavingWaitingRoom || onlineRoom?.countdownEndsAt) {
+  if (
+    !onlineMatchId || leavingWaitingRoom || onlineRoom?.countdownEndsAt ||
+    (party && party.leaderId !== currentUserId)
+  ) {
     return;
   }
 
@@ -209,6 +230,8 @@ const handleCancelWaiting = useCallback(async () => {
   leavingWaitingRoom,
   onlineMatchId,
   onlineRoom?.countdownEndsAt,
+  party,
+  currentUserId,
   router,
 ]);
 
@@ -373,7 +396,7 @@ const dealLifecycleKey = onlineGameplayReady
   : "waiting";
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [rackSetScore, setRackSetScore] = useState(0);
-  const [openableRackMelds, setOpenableRackMelds] = useState<{ melds: OkeyMeld[]; score: number }>({ melds: [], score: 0 });
+  const [openableRackMelds, setOpenableRackMelds] = useState<{ melds: OkeyMeld[]; score: number; contiguousGroups: OkeyTile[][] }>({ melds: [], score: 0, contiguousGroups: [] });
   const [previewMelds, setPreviewMelds] = useState<OkeyMeld[]>([]);
   const [tableMeldOffsets, setTableMeldOffsets] = useState<Record<string, MeldOffset>>({});
   const [showScoreDetails, setShowScoreDetails] = useState(false);
@@ -413,6 +436,7 @@ const dealLifecycleKey = onlineGameplayReady
   const opponentSeatRectsRef = useRef<Record<string, ScreenRect>>({});
   const previousDiscardCountRef = useRef(state.discardPile.length);
   const previousDeckCountRef = useRef(state.deck.length);
+  const pendingOpponentWallDrawsRef = useRef(0);
   const pendingOpponentDiscardAfterDrawRef = useRef<QueuedOpponentDiscardFlight | null>(null);
   const queuedOpponentDiscardFlightsRef = useRef<QueuedOpponentDiscardFlight[]>([]);
   const suppressNextOpponentDiscardFlightTileIdRef = useRef<string | null>(null);
@@ -462,9 +486,13 @@ const dealLifecycleKey = onlineGameplayReady
   const previewScore = previewMelds.reduce((total, meld) => total + meld.score, 0);
   const activeOpenMelds = [...previewMelds, ...openableRackMelds.melds];
   const activeOpenScore = previewScore + openableRackMelds.score;
+  const orderedKonkanRunTileIds = useMemo(() => {
+    return getOrderedKonkanRunCandidates(openableRackMelds.contiguousGroups)
+      .find((tileIds) => canDeclareKonkanOpen(state, 0, tileIds)) ?? null;
+  }, [openableRackMelds.contiguousGroups, state]);
   const remainingMeldSlots = Math.max(0, MAX_PLAYER_MELDS - humanPlayer.melds.length);
   const canOpenActiveMelds = isHumanTurn && !humanPlayer.eliminated && (humanPlayer.konkan
-    ? canDeclareKonkanOpen(state, 0)
+    ? orderedKonkanRunTileIds !== null
     : activeOpenMelds.length > 0 &&
       activeOpenMelds.length <= remainingMeldSlots &&
       (humanPlayer.opened || activeOpenScore >= requiredOpenScore));
@@ -560,17 +588,23 @@ const displayRoundResults = useMemo(
   [opponentTeamId, roundResults, viewerTeamId],
 );
 
+const playerNamesById = useMemo(
+  () =>
+    state.players.reduce<Record<string, string>>(
+      (names, player) => ({
+        ...names,
+        [player.id]: player.name,
+      }),
+      {},
+    ),
+  [state.players],
+);
+
 const rawCurrentScoreDetails =
   currentRoundResult
     ?.scoreDetails ??
   roundScoreDetails;
 
-const currentRoundWinnerName =
-  currentRoundResult?.winnerId
-    ? state.players.find(
-        (player) => player.id === currentRoundResult.winnerId,
-      )?.name ?? null
-    : null;
 
 const displayCurrentRoundScoreDetails =
   useMemo(
@@ -1092,15 +1126,25 @@ requestAnimationFrame(() => {
     const previousCount = previousDiscardCountRef.current;
     const nextCount = state.discardPile.length;
     previousDiscardCountRef.current = nextCount;
-    let remainingWallDraws = Math.max(0, previousDeckCountRef.current - state.deck.length);
+    const wallDrawsThisUpdate = Math.max(0, previousDeckCountRef.current - state.deck.length);
     previousDeckCountRef.current = state.deck.length;
 
-    if (nextCount <= previousCount) return;
+    if (nextCount <= previousCount) {
+      // Bot draw and discard are separate state updates. Preserve the wall draw
+      // until the later discard update so the scene can animate both stages.
+      if (state.currentPlayerIndex !== 0) {
+        pendingOpponentWallDrawsRef.current += wallDrawsThisUpdate;
+      }
+      return;
+    }
+
+    let remainingWallDraws = pendingOpponentWallDrawsRef.current + wallDrawsThisUpdate;
 
     const newOpponentDiscards: QueuedOpponentDiscardFlight[] = [];
     for (let index = previousCount; index < nextCount; index += 1) {
       const owner = state.discardOwners[index];
       const discardedTile = state.discardPile[index];
+      const animateWallDraw = !!owner && owner.playerIndex !== 0 && remainingWallDraws-- > 0;
       if (discardedTile && suppressNextOpponentDiscardFlightTileIdRef.current === discardedTile.id) {
         suppressNextOpponentDiscardFlightTileIdRef.current = null;
         continue;
@@ -1110,9 +1154,11 @@ requestAnimationFrame(() => {
         tile: discardedTile,
         ownerPlayerId: owner.playerId,
         discardCount: index + 1,
-        animateWallDraw: remainingWallDraws-- > 0,
+        animateWallDraw,
       });
     }
+
+    pendingOpponentWallDrawsRef.current = Math.max(0, remainingWallDraws);
 
 if (newOpponentDiscards.length === 0) return;
 
@@ -1542,7 +1588,11 @@ if (
   currency={onlineRoom?.currency ?? "fun"}
   members={onlineRoom?.members ?? []}
   countdownEndsAt={onlineRoom?.countdownEndsAt ?? null}
-  canCancel={!countdownInProgress && !initialStartTransitionPending}
+  canCancel={
+    !countdownInProgress &&
+    !initialStartTransitionPending &&
+    (!party || party.leaderId === currentUserId)
+  }
   loading={leavingWaitingRoom}
   onCancel={handleCancelWaiting}
 />
@@ -1690,18 +1740,11 @@ if (
   visible={shouldShowScorePopup}
   onClose={showRoundResultPopup ? undefined : () => setShowScoreDetails(false)}
   scoreDetails={displayCurrentRoundScoreDetails}
-  finishedMessage={
-    showRoundResultPopup && currentRoundResult?.endReason === "win"
-      ? "خولەکە تەواو بوو"
-      : undefined
-  }
   round={currentRoundResult?.round ?? currentRound}
-  winnerName={currentRoundWinnerName}
+  playerNamesById={playerNamesById}
   maxRounds={maxRounds}
   roundResults={displayRoundResults}
   matchScores={teamScores}
-  matchFinished={matchFinished}
-  matchWinnerTeamId={displayMatchWinnerTeamId}
   countdownRemaining={roundResultCountdownRemaining}
   isTileCycleLimit={
     showRoundResultPopup &&
@@ -1737,7 +1780,7 @@ if (
           onOpen={() => {
             if (!canOpenActiveMelds) return;
             if (humanPlayer.konkan) {
-              declareKonkan();
+              if (orderedKonkanRunTileIds) declareKonkan(orderedKonkanRunTileIds);
             } else {
               openMelds(activeOpenMelds, activeOpenScore);
             }

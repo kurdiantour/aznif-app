@@ -10,7 +10,7 @@ import { getBalance } from "@/lib/wallet";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
 import { subscribeWalletRefresh } from "@/lib/walletEvents";
-import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -151,7 +151,7 @@ export function LobbyHeader() {
                 style={styles.balancePillCoin}
               >
                 <View style={styles.balanceIconCircleCoin}>
-                  <FontAwesome name="circle" size={13} color="#F5C542" />
+                  <Text style={styles.currencyEmoji}>{"\u{1FA99}"}</Text>
                 </View>
                 <Text style={styles.balanceText}>
   {coinBalance} <Text style={styles.balanceTextKurdish}>سکە</Text>
@@ -164,7 +164,7 @@ export function LobbyHeader() {
                 style={styles.balancePill}
               >
                 <View style={styles.balanceIconCircle}>
-                  <FontAwesome name="circle" size={13} color="#F5C542" />
+                  <Text style={styles.currencyEmoji}>{"\u2728"}</Text>
                 </View>
 
                 <Text style={styles.balanceText}>
@@ -181,7 +181,7 @@ export function LobbyHeader() {
                     style={styles.balancePillSecondary}
                   >
                     <View style={styles.balanceIconCircleGold}>
-                      <Ionicons name="diamond" size={14} color="#C084FC" />
+                      <Text style={styles.currencyEmoji}>{"\u{1F48E}"}</Text>
                     </View>
 
 <Text style={styles.balanceText}>
@@ -201,7 +201,7 @@ export function LobbyHeader() {
                   style={styles.balancePillSecondary}
                 >
                   <View style={styles.balanceIconCircleGold}>
-                    <Ionicons name="diamond" size={14} color="#C084FC" />
+                    <Text style={styles.currencyEmoji}>{"\u{1F48E}"}</Text>
                   </View>
 
                   <Text style={styles.balanceText}>
@@ -362,6 +362,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(245,197,66,0.32)",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  currencyEmoji: {
+    fontSize: 14,
   },
 
   balancePillSecondary: {

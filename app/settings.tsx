@@ -1,14 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LogoutConfirmPopup } from "@/components/profile/LogoutConfirmPopup";
 import {
   getCurrentLeaderboardVisibility,
   setCurrentLeaderboardVisibility,
 } from "@/lib/leaderboardVisibility";
 import { useProfile } from "@/lib/profile";
+import { signOut } from "@/lib/supabaseAuth";
 import { useOkeyFeedbackPreferences } from "@/okey/hooks/useOkeyFeedbackPreferences";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Switch,
@@ -26,7 +30,37 @@ export default function SettingsScreen() {
   const { soundEnabled, hapticsEnabled, setSoundEnabled, setHapticsEnabled } = useOkeyFeedbackPreferences();
   const [leaderboardVisible, setLeaderboardVisible] = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const modalProgress = useRef(new Animated.Value(0)).current;
+  const isClosing = useRef(false);
   const isWideLayout = width >= 720;
+
+  useEffect(() => {
+    Animated.timing(modalProgress, {
+      toValue: 1,
+      duration: 310,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    return () => modalProgress.stopAnimation();
+  }, [modalProgress]);
+
+  const closeSettings = useCallback(() => {
+    if (isClosing.current) return;
+    isClosing.current = true;
+
+    Animated.timing(modalProgress, {
+      toValue: 0,
+      duration: 190,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) router.back();
+      else isClosing.current = false;
+    });
+  }, [modalProgress, router]);
 
   useEffect(() => {
     let isMounted = true;
@@ -69,14 +103,57 @@ export default function SettingsScreen() {
     }
   }
 
+  async function performLogout() {
+    setLoggingOut(true);
+
+    try {
+      await signOut();
+      router.replace("/login");
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
   return (
-    <View style={styles.background}>
+    <Animated.View style={[styles.background, { opacity: modalProgress }]}>
       <View style={styles.fixedContent}>
-        <View style={[styles.panel, isWideLayout && styles.panelWide]}>
+        <Animated.View
+          style={[
+            styles.panel,
+            isWideLayout && styles.panelWide,
+            {
+              transform: [
+                {
+                  translateY: modalProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [16, 0],
+                  }),
+                },
+                {
+                  scale: modalProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.96, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View pointerEvents="none" style={styles.topGlow} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close settings"
+            hitSlop={10}
+            onPress={closeSettings}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && styles.closePressed,
+            ]}
+          >
+            <Ionicons name="close" size={20} color="#f8d675" />
+          </Pressable>
+
           <View style={styles.topRow}>
-            <Pressable style={styles.iconButton} onPress={() => router.back()}>
-              <Ionicons name="arrow-forward" size={20} color="#ffffff" />
-            </Pressable>
             <Text style={styles.screenTitle}>ڕێکخستنەکان</Text>
             <View style={styles.iconButtonPlaceholder} />
           </View>
@@ -100,6 +177,12 @@ export default function SettingsScreen() {
                 label="سڕینەوەی هەژمار"
                 danger
                 onPress={() => router.push("/delete-account")}
+              />
+              <SettingRow
+                icon="log-out-outline"
+                label="دەرچوون"
+                danger
+                onPress={() => setIsLogoutConfirmOpen(true)}
               />
             </View>
 
@@ -134,9 +217,16 @@ export default function SettingsScreen() {
               ) : null}
             </View>
           </View>
-        </View>
+        </Animated.View>
       </View>
-    </View>
+
+      <LogoutConfirmPopup
+        visible={isLogoutConfirmOpen}
+        loading={loggingOut}
+        onCancel={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={() => void performLogout()}
+      />
+    </Animated.View>
   );
 }
 
@@ -163,7 +253,7 @@ function SettingSwitch({
         <Switch
           value={value}
           onValueChange={onValueChange}
-          trackColor={{ false: "#334155", true: "#1d4ed8" }}
+          trackColor={{ false: "#34303e", true: "#d39c23" }}
           thumbColor="#ffffff"
           ios_backgroundColor="#334155"
         />
@@ -219,7 +309,7 @@ function SettingIcon({
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    backgroundColor: "#020617",
+    backgroundColor: "rgba(5,4,12,0.8)",
   },
   fixedContent: {
     flex: 1,
@@ -230,42 +320,66 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: "100%",
-    maxWidth: 430,
-    borderRadius: 6,
-    borderWidth: 0,
-    backgroundColor: "transparent",
-    padding: 12,
+    maxWidth: 800,
+    height: 360,
+    overflow: "hidden",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,212,92,0.52)",
+    backgroundColor: "#14121d",
+    paddingTop: 22,
+    paddingHorizontal: 18,
+    paddingBottom: 17,
     gap: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.46,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 20,
   },
   panelWide: {
-    maxWidth: 760,
+    maxWidth: 800,
+  },
+  topGlow: {
+    position: "absolute",
+    top: -55,
+    left: "23%",
+    width: "54%",
+    height: 110,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,202,68,0.1)",
   },
   topRow: {
     minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    paddingHorizontal: 50,
   },
   screenTitle: {
-    color: "#ffffff",
+    color: "#fff6d8",
     fontSize: 18,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
+    transform: [{ translateY: -10 }],
   },
   iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 6,
+    position: "absolute",
+    top: 12,
+    right: 13,
+    zIndex: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
-    borderColor: "rgba(248, 215, 116, 0.24)",
-    backgroundColor: "rgba(248, 215, 116, 0.1)",
+    borderColor: "rgba(255,212,92,0.22)",
+    backgroundColor: "rgba(255,212,92,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   iconButtonPlaceholder: {
-    width: 38,
-    height: 38,
+    display: "none",
   },
   contentRow: {
     flexDirection: "row",
@@ -278,10 +392,10 @@ const styles = StyleSheet.create({
   sectionCard: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 6,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(248, 215, 116, 0.18)",
-    backgroundColor: "rgba(15, 23, 42, 0.66)",
+    borderColor: "#34303e",
+    backgroundColor: "#201d29",
     padding: 14,
     gap: 10,
   },
@@ -314,13 +428,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 6,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(148, 163, 184, 0.18)",
-    backgroundColor: "rgba(2, 6, 23, 0.36)",
+    borderColor: "#34303e",
+    backgroundColor: "#292235",
   },
   pressed: {
     opacity: 0.82,
+  },
+  closePressed: {
+    opacity: 0.72,
   },
   settingIconBox: {
     width: 30,

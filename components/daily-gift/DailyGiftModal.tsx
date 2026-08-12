@@ -27,40 +27,40 @@ type Props = {
 
 type GiftDay = {
   day: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
   reward: string;
   status: "done" | "current" | "lock";
 };
 
 const days: GiftDay[] = [
-  { day: "یەکەم", icon: "cash-outline", reward: "500 سکه", status: "done" },
+  { day: "یەکەم", icon: "\u{1FA99}", reward: "500 سکه", status: "done" },
   {
     day: "دووەم",
-    icon: "cash-outline",
+    icon: "\u{1FA99}",
     reward: "1,000 سکه",
     status: "current",
   },
   {
     day: "سێیەم",
-    icon: "diamond-outline",
+    icon: "\u{1F48E}",
     reward: "30 گەوهەر",
     status: "lock",
   },
   {
     day: "چوارەم",
-    icon: "cash-outline",
+    icon: "\u{1FA99}",
     reward: "1,500 سکه",
     status: "lock",
   },
   {
     day: "پێنجەم",
-    icon: "diamond-outline",
+    icon: "\u{1F48E}",
     reward: "70 گەوهەر",
     status: "lock",
   },
   {
     day: "شەشەم",
-    icon: "sparkles-outline",
+    icon: "\u2728",
     reward: "1 ئەزنیف",
     status: "lock",
   },
@@ -376,15 +376,7 @@ useEffect(
                       styles.activeRewardIcon,
                   ]}
                 >
-                  <Ionicons
-                    name={item.icon}
-                    size={27}
-                    color={
-                      isLocked
-                        ? "#827b8d"
-                        : "#ffd45c"
-                    }
-                  />
+                  <Text style={styles.rewardEmoji}>{item.icon}</Text>
                 </View>
 
                 <Text
@@ -468,6 +460,9 @@ useEffect(
 }
 
 const styles = StyleSheet.create({
+  rewardEmoji: {
+    fontSize: 27,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 5000,

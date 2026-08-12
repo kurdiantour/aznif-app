@@ -1,9 +1,15 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { GameInvite } from "@/lib/gameInvites";
 import { LinearGradient } from "expo-linear-gradient";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-type Props = {
+type GameInvitePopupProps = {
   invite: GameInvite | null;
   busy: boolean;
   error: string | null;
@@ -11,21 +17,68 @@ type Props = {
   onDecline: () => void;
 };
 
-export function GameInvitePopup({ invite, busy, error, onAccept, onDecline }: Props) {
+export function GameInvitePopup({
+  invite,
+  busy,
+  error,
+  onAccept,
+  onDecline,
+}: GameInvitePopupProps) {
   if (!invite) return null;
+
   return (
     <View style={styles.backdrop}>
-      <LinearGradient colors={["#24134b", "#090d21"]} style={styles.card}>
-        <PlayerAvatar avatarId={invite.senderAvatarId} size={62} style={styles.avatar} />
-        <Text style={styles.title}>بانگهێشتی یاری</Text>
-        <Text style={styles.message}>{invite.senderName} بانگهێشتی یاری 1v1 کردوویت.</Text>
+      <LinearGradient
+        colors={["#24134b", "#090d21"]}
+        style={styles.card}
+      >
+        <PlayerAvatar
+          avatarId={invite.senderAvatarId}
+          size={58}
+          style={styles.avatar}
+        />
+
+        <Text style={styles.title}>{invite.senderName}</Text>
+
+        <Text style={styles.message}>
+          بانگهێشتی کردوویت بۆ یاری.
+        </Text>
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
         <View style={styles.actions}>
-          <Pressable style={[styles.button, styles.decline]} disabled={busy} onPress={onDecline}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="ڕەتکردنەوەی بانگهێشت"
+            disabled={busy}
+            onPress={onDecline}
+            style={({ pressed }) => [
+              styles.button,
+              styles.declineButton,
+              pressed && !busy && styles.buttonPressed,
+              busy && styles.buttonDisabled,
+            ]}
+          >
             <Text style={styles.buttonText}>ڕەتکردنەوە</Text>
           </Pressable>
-          <Pressable style={[styles.button, styles.accept]} disabled={busy} onPress={onAccept}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>قبوڵکردن</Text>}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="قبووڵکردنی بانگهێشت"
+            disabled={busy}
+            onPress={onAccept}
+            style={({ pressed }) => [
+              styles.button,
+              styles.acceptButton,
+              pressed && !busy && styles.buttonPressed,
+              busy && styles.buttonDisabled,
+            ]}
+          >
+            {busy ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Text style={styles.buttonText}>قبووڵکردن</Text>
+            )}
           </Pressable>
         </View>
       </LinearGradient>
@@ -34,15 +87,95 @@ export function GameInvitePopup({ invite, busy, error, onAccept, onDecline }: Pr
 }
 
 const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, zIndex: 1000, backgroundColor: "rgba(0,0,0,0.72)", alignItems: "center", justifyContent: "center" },
-  card: { width: 340, maxWidth: "88%", borderRadius: 18, padding: 22, alignItems: "center", borderWidth: 1, borderColor: "rgba(168,85,247,0.6)" },
-  avatar: { borderWidth: 3, borderColor: "#22c55e", borderRadius: 34 },
-  title: { marginTop: 12, color: "#fff", fontFamily: "SpedaBold", fontSize: 18 },
-  message: { marginTop: 7, color: "#d9d5e8", fontFamily: "SpedaBold", fontSize: 12, textAlign: "center" },
-  error: { marginTop: 8, color: "#ff8a8a", fontFamily: "SpedaBold", fontSize: 11 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 18, width: "100%" },
-  button: { flex: 1, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  accept: { backgroundColor: "#16a34a" },
-  decline: { backgroundColor: "#4b5563" },
-  buttonText: { color: "#fff", fontFamily: "SpedaBold", fontSize: 12 },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+  },
+
+  card: {
+    width: 360,
+    maxWidth: "88%",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 18,
+    alignItems: "center",
+    borderRadius: 16,
+  },
+
+  avatar: {
+    borderWidth: 1,
+    borderColor: "#22c55e",
+    borderRadius: 31,
+  },
+
+  title: {
+    marginTop: 14,
+    color: "#ffffff",
+    fontSize: 16,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  message: {
+    marginTop: 7,
+    color: "#d9d5e8",
+    fontFamily: "SpedaBold",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  error: {
+    marginTop: 8,
+    color: "#ff8a8a",
+    fontFamily: "SpedaBold",
+    fontSize: 11,
+    lineHeight: 18,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  actions: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+  },
+
+  button: {
+    flex: 1,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+
+  acceptButton: {
+    backgroundColor: "#16a34a",
+  },
+
+  declineButton: {
+    backgroundColor: "#4b5563",
+  },
+
+  buttonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.98 }],
+  },
+
+  buttonDisabled: {
+    opacity: 0.55,
+  },
+
+  buttonText: {
+    color: "#ffffff",
+    fontFamily: "SpedaBold",
+    fontSize: 13,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
 });

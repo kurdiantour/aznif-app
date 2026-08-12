@@ -3,6 +3,7 @@ import {
   submitTwoVsTwoMove,
   submitTwoVsTwoPass,
   MultiplayerRequestError,
+  type TurnTimeoutClaim,
 } from '@/lib/multiplayer/multiplayerApi';
 import {
   boardContainsMove,
@@ -19,6 +20,7 @@ import type {
     TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handHasPlayableTile } from './gameRuleQueries';
 import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
@@ -56,13 +58,38 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const latestVersionRef = useRef(-1);
   const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
   const timeoutPassInFlightRef = useRef(false);
+  const timeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeTurnKeyRef = useRef<string | null>(null);
+  const serverClockOffsetMsRef = useRef(0);
+  const roomIdRef = useRef(roomId);
+  const timeoutSubmitRef = useRef<((claim: TurnTimeoutClaim, turnKey: string, claimRoomId: string) => void) | null>(null);
+  const lastRealtimeActivityRef = useRef<number>(Date.now());
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef<number>(0);
 
+
+  const clearTimeoutRetry = useCallback(() => {
+    if (timeoutRetryRef.current) {
+      clearTimeout(timeoutRetryRef.current);
+      timeoutRetryRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
+    roomIdRef.current = roomId;
     latestVersionRef.current = -1;
     pendingMoveRef.current = null;
+    activeTurnKeyRef.current = null;
+    timeoutPassInFlightRef.current = false;
+    clearTimeoutRetry();
     setPendingMove(null);
-  }, [roomId]);
+
+    return () => {
+      activeTurnKeyRef.current = null;
+      timeoutPassInFlightRef.current = false;
+      clearTimeoutRetry();
+    };
+  }, [roomId, clearTimeoutRetry]);
 
   const applySnapshot = useCallback((snapshot: any) => {
     const version = getSnapshotVersion(snapshot);
@@ -78,6 +105,13 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       currentTurnPlayerId:
         state?.currentTurnPlayerId ?? room?.current_turn_player_id ?? null,
     };
+    const turnStartedAt = nextRawState.turnStartedAt ?? nextRawState.updated_at ?? null;
+    const currentTurnPlayerId = nextRawState.currentTurnPlayerId ?? null;
+    activeTurnKeyRef.current =
+      version >= 0 && typeof turnStartedAt === 'string' && typeof currentTurnPlayerId === 'string'
+        ? `${version}:${turnStartedAt}:${currentTurnPlayerId}`
+        : null;
+    clearTimeoutRetry();
     setRawState(nextRawState);
     const pending = pendingMoveRef.current;
     if (
@@ -89,7 +123,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       setPendingMove(null);
     }
     return true;
-  }, []);
+  }, [clearTimeoutRetry]);
 
   const refreshSnapshot = useCallback(async () => {
     if (!roomId) throw new Error('No 2v2 room id');
@@ -134,7 +168,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       if (userIds.length) {
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, username, full_name, avatar_id, level, cups')
+          .select('id, username, full_name, avatar_id, level, points')
           .in('id', userIds);
 
         if (mounted) {
@@ -163,51 +197,78 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
         await Promise.all([loadRoom(), loadPlayers()]);
 
-        roomChannelRef.current = supabase
-          .channel(`two_vs_two_rooms:${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'two_vs_two_rooms',
-              filter: `id=eq.${roomId}`,
-            },
-            () => {
-              if (!mounted) return;
-              void loadRoom();
-            },
-          )
-          .subscribe((status, err) => {
-            if (!mounted) return;
-            if (status === 'SUBSCRIBED') void loadRoom();
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              setError(err?.message ?? 'Realtime sync failed');
-            }
-          });
+        const markRealtimeActivity = () => {
+          lastRealtimeActivityRef.current = Date.now();
+        };
 
-        playersChannelRef.current = supabase
-          .channel(`two_vs_two_players:${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'two_vs_two_players',
-              filter: `room_id=eq.${roomId}`,
-            },
-            () => {
-              if (!mounted) return;
-              void loadPlayers();
-            },
-          )
-          .subscribe((status, err) => {
-            if (!mounted) return;
-            if (status === 'SUBSCRIBED') void loadPlayers();
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              setError(err?.message ?? 'Realtime player sync failed');
+        const handleChannelStatus = (channelName: string, status: string, err?: any) => {
+          if (!mounted) return;
+          if (status === 'SUBSCRIBED') {
+            reconnectAttemptRef.current = 0;
+            markRealtimeActivity();
+            setError(null);
+            void loadRoom();
+            void loadPlayers();
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn(`2v2 Realtime ${channelName} status: ${status}`, err);
+            const backoffDelay = Math.min(
+              1000 * Math.pow(2, reconnectAttemptRef.current),
+              15000,
+            );
+            reconnectAttemptRef.current += 1;
+
+            if (!reconnectTimerRef.current && mounted && roomId) {
+              reconnectTimerRef.current = setTimeout(() => {
+                reconnectTimerRef.current = null;
+                if (!mounted) return;
+                subscribeChannels();
+              }, backoffDelay);
             }
-          });
+          }
+        };
+
+        const subscribeChannels = () => {
+          if (roomChannelRef.current) void supabase.removeChannel(roomChannelRef.current);
+          if (playersChannelRef.current) void supabase.removeChannel(playersChannelRef.current);
+
+          roomChannelRef.current = supabase
+            .channel(`two_vs_two_rooms:${roomId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'two_vs_two_rooms',
+                filter: `id=eq.${roomId}`,
+              },
+              () => {
+                if (!mounted) return;
+                markRealtimeActivity();
+                void loadRoom();
+              },
+            )
+            .subscribe((status, err) => handleChannelStatus('rooms', status, err));
+
+          playersChannelRef.current = supabase
+            .channel(`two_vs_two_players:${roomId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'two_vs_two_players',
+                filter: `room_id=eq.${roomId}`,
+              },
+              () => {
+                if (!mounted) return;
+                markRealtimeActivity();
+                void loadPlayers();
+              },
+            )
+            .subscribe((status, err) => handleChannelStatus('players', status, err));
+        };
+
+        subscribeChannels();
 
         if (mounted) setLoading(false);
       } catch (err: any) {
@@ -222,6 +283,11 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     return () => {
       mounted = false;
 
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+
       if (roomChannelRef.current) {
         void supabase.removeChannel(roomChannelRef.current);
         roomChannelRef.current = null;
@@ -235,26 +301,55 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   }, [roomId, applySnapshot, refreshSnapshot]);
 
   useEffect(() => {
-    if (!roomId || rawState?.status === 'finished' || rawState?.winningTeamId) return;
+    if (!roomId) return;
 
-    const pollSnapshot = async () => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshSnapshot()
+          .then(() => {
+            lastRealtimeActivityRef.current = Date.now();
+          })
+          .catch((err) => {
+            console.warn('2v2 AppState reconcile failed', err);
+          });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [roomId, refreshSnapshot]);
+
+  useEffect(() => {
+    if (
+      !roomId ||
+      loading ||
+      rawState?.status === 'finished' ||
+      rawState?.winningTeamId
+    ) return;
+
+    const pollFallbackWatchdog = async () => {
       if (pollInFlightRef.current) return;
+      const silentMs = Date.now() - lastRealtimeActivityRef.current;
+      if (silentMs < 12_000) return;
+
       pollInFlightRef.current = true;
       try {
         await refreshSnapshot();
+        lastRealtimeActivityRef.current = Date.now();
       } catch (err) {
-        console.warn('2v2 snapshot polling failed', err);
+        console.warn('2v2 snapshot fallback watchdog failed', err);
       } finally {
         pollInFlightRef.current = false;
       }
     };
 
-    const interval = setInterval(() => void pollSnapshot(), 2000);
+    const interval = setInterval(() => void pollFallbackWatchdog(), 5000);
     return () => {
       clearInterval(interval);
       pollInFlightRef.current = false;
     };
-  }, [roomId, rawState?.status, rawState?.winningTeamId, refreshSnapshot]);
+  }, [roomId, loading, rawState?.status, rawState?.winningTeamId, refreshSnapshot]);
 
   useEffect(() => {
     if (!roomId || !currentUserId) return;
@@ -267,7 +362,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     };
 
     void heartbeat();
-    const interval = setInterval(() => void heartbeat(), 10_000);
+    const interval = setInterval(() => void heartbeat(), 30_000);
     return () => clearInterval(interval);
   }, [roomId, currentUserId]);
 
@@ -328,7 +423,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
         level: profile?.level,
-        cups: profile?.cups,
+        points: profile?.points,
       };
     });
   }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft]);
@@ -346,7 +441,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     const turnStartedAt = Date.parse(rawState?.turnStartedAt ?? rawState?.updated_at ?? '');
     const updateTimer = () => {
       const elapsed = Number.isFinite(turnStartedAt)
-        ? Math.floor((Date.now() - turnStartedAt) / 1000)
+        ? Math.floor((Date.now() + serverClockOffsetMsRef.current - turnStartedAt) / 1000)
         : 0;
       setTurnTimeLeft(Math.max(0, PLAYER_TURN_DURATION_SECONDS - elapsed));
     };
@@ -511,26 +606,140 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     });
   };
 
-  useEffect(() => {
-    if (!roomId || turnTimeLeft > 0 || rawState?.roundWinnerPlayerId || rawState?.winningTeamId) return;
-    if (timeoutPassInFlightRef.current) return;
+  const syncServerClock = useCallback((serverNow: unknown) => {
+    if (typeof serverNow !== 'string') return false;
+    const serverNowMs = Date.parse(serverNow);
+    if (!Number.isFinite(serverNowMs)) return false;
+    serverClockOffsetMsRef.current = serverNowMs - Date.now();
+    return true;
+  }, []);
+
+  const scheduleTimeoutRetry = useCallback((
+    claim: TurnTimeoutClaim,
+    turnKey: string,
+    claimRoomId: string,
+    expiresAt: unknown,
+  ) => {
+    clearTimeoutRetry();
+    if (
+      roomIdRef.current !== claimRoomId ||
+      activeTurnKeyRef.current !== turnKey ||
+      typeof expiresAt !== 'string'
+    ) return;
+
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs)) {
+      console.warn('submit_two_vs_two timeout response has no valid expiresAt');
+      return;
+    }
+
+    const synchronizedNow = Date.now() + serverClockOffsetMsRef.current;
+    timeoutRetryRef.current = setTimeout(() => {
+      timeoutRetryRef.current = null;
+      if (
+        roomIdRef.current === claimRoomId &&
+        activeTurnKeyRef.current === turnKey
+      ) {
+        timeoutSubmitRef.current?.(claim, turnKey, claimRoomId);
+      }
+    }, Math.max(0, expiresAtMs - synchronizedNow));
+  }, [clearTimeoutRetry]);
+
+  const submitTimeoutClaim = useCallback(async (
+    claim: TurnTimeoutClaim,
+    turnKey: string,
+    claimRoomId: string,
+  ) => {
+    if (
+      timeoutPassInFlightRef.current ||
+      roomIdRef.current !== claimRoomId ||
+      activeTurnKeyRef.current !== turnKey
+    ) return;
+
     timeoutPassInFlightRef.current = true;
-    void submitTwoVsTwoPass(roomId, true)
-      .then((result) => {
-        if (!result?.ok) return;
-        if (
-          result.state?.myHandOwnerId &&
-          result.state.myHandOwnerId !== currentUserId
-        ) {
-          console.warn('Ignored 2v2 timeout response with mismatched hand owner');
+    try {
+      const result = await submitTwoVsTwoPass(claimRoomId, true, claim);
+      syncServerClock(result?.serverNow);
+      if (
+        roomIdRef.current !== claimRoomId ||
+        activeTurnKeyRef.current !== turnKey
+      ) return;
+      clearTimeoutRetry();
+      if (
+        result.state?.myHandOwnerId &&
+        result.state.myHandOwnerId !== currentUserId
+      ) {
+        console.warn('Ignored 2v2 timeout response with mismatched hand owner');
+      }
+      await refreshSnapshot();
+    } catch (caught) {
+      const requestError = caught instanceof MultiplayerRequestError ? caught : null;
+      const code = requestError?.code;
+      const response = requestError?.details;
+      syncServerClock(response?.serverNow);
+
+      if (code === 'turn_timer_not_expired') {
+        scheduleTimeoutRetry(claim, turnKey, claimRoomId, response?.expiresAt);
+        return;
+      }
+      if (code === 'stale_timeout' || code === 'already_processed') {
+        clearTimeoutRetry();
+        if (roomIdRef.current === claimRoomId) {
+          await refreshSnapshot().catch(() => undefined);
         }
-        return refreshSnapshot();
-      })
-      .catch(() => refreshSnapshot().catch(() => undefined))
-      .finally(() => {
-        timeoutPassInFlightRef.current = false;
-      });
-  }, [roomId, turnTimeLeft, currentTurnPlayerId, currentUserId, rawState?.roundWinnerPlayerId, rawState?.winningTeamId, refreshSnapshot]);
+        return;
+      }
+      if (roomIdRef.current === claimRoomId) {
+        await refreshSnapshot().catch(() => undefined);
+      }
+    } finally {
+      timeoutPassInFlightRef.current = false;
+    }
+  }, [clearTimeoutRetry, currentUserId, refreshSnapshot, scheduleTimeoutRetry, syncServerClock]);
+
+  useEffect(() => {
+    timeoutSubmitRef.current = (claim, turnKey, claimRoomId) => {
+      void submitTimeoutClaim(claim, turnKey, claimRoomId);
+    };
+    return () => {
+      timeoutSubmitRef.current = null;
+    };
+  }, [submitTimeoutClaim]);
+
+  useEffect(() => {
+    if (
+      !roomId ||
+      turnTimeLeft > 0 ||
+      rawState?.roundWinnerPlayerId ||
+      rawState?.winningTeamId ||
+      timeoutPassInFlightRef.current ||
+      timeoutRetryRef.current
+    ) return;
+
+    const expectedVersion = getSnapshotVersion(rawState);
+    const expectedTurnStartedAt = rawState?.turnStartedAt ?? rawState?.updated_at;
+    if (
+      expectedVersion < 0 ||
+      typeof expectedTurnStartedAt !== 'string' ||
+      typeof currentTurnPlayerId !== 'string' ||
+      !currentTurnPlayerId
+    ) return;
+
+    const claim: TurnTimeoutClaim = {
+      expectedVersion,
+      expectedTurnStartedAt,
+      expectedTurnPlayerId: currentTurnPlayerId,
+    };
+    const turnKey = `${expectedVersion}:${expectedTurnStartedAt}:${currentTurnPlayerId}`;
+    if (activeTurnKeyRef.current !== turnKey) return;
+    void submitTimeoutClaim(claim, turnKey, roomId);
+  }, [
+    roomId,
+    turnTimeLeft,
+    currentTurnPlayerId,
+    rawState,
+    submitTimeoutClaim,
+  ]);
 
   const startNextRound = useCallback(async () => {
     if (!roomId) return;

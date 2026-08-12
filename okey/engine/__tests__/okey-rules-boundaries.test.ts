@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   canDeclareBasicWin,
+  canDeclareKonkanOpen,
   canDeclareKonkanWin,
   createInitialOkeyGame,
   discardTile,
@@ -79,6 +80,24 @@ test("all five official Konkan runs accept a valid completion meld", () => {
     assert.equal(canDeclareKonkanWin([...run(pattern), ...run([2, 3, 4], "yellow")], okeyTile), true);
   }
   assert.equal(canDeclareKonkanWin([...run([1, 2, 3, 4, 5, 6, 7, 8, 9, 11]), ...run([2, 3, 4], "yellow")], okeyTile), false);
+});
+
+test("Konkan declaration requires the submitted ten-tile run in exact rack order", () => {
+  const state = createInitialOkeyGame(0);
+  const officialRun = run([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const completion = run([2, 3, 4], "yellow");
+  const prepared: OkeyGameState = {
+    ...state,
+    currentPlayerIndex: 0,
+    okeyTile,
+    players: state.players.map((player, index) => index === 0
+      ? { ...player, konkan: true, konkanEntryReason: "discard-pick", hand: [...officialRun, ...completion] }
+      : player),
+  };
+  const orderedIds = officialRun.map((entry) => entry.id);
+  assert.equal(canDeclareKonkanOpen(prepared, 0, orderedIds), true);
+  assert.equal(canDeclareKonkanOpen(prepared, 0, [orderedIds[0], orderedIds[2], orderedIds[1], ...orderedIds.slice(3)]), false);
+  assert.equal(canDeclareKonkanOpen(prepared, 0), false);
 });
 
 test("opening thresholds cover initial, teammate, own-team, and opponent-first cases", () => {

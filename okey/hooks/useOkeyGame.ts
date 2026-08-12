@@ -113,32 +113,34 @@ const viewerIndex =
       : createPlaceholderHand(player.id, player.handCount)
     : [];
 
-      return {
-        id: player.id,
-        name: player.name,
-        kind: player.kind,
-        botDifficulty:
-          player.botDifficulty,
-        controlledByBot:
-          player.controlledByBot,
-        botNumber:
-          player.botNumber,
-        teamId: player.teamId,
-        hand,
-        opened: player.opened,
-        melds: player.melds,
-        scoreOpened:
-          player.scoreOpened,
-        konkan: player.konkan,
-        konkanEntryReason:
-          player.konkanEntryReason,
-        pendingKonkanFromDiscard:
-          player.pendingKonkanFromDiscard ??
-          false,
-        eliminated:
-          player.eliminated,
-      };
-    });
+return {
+  id: player.id,
+  name: player.name,
+  kind: player.kind,
+  botDifficulty:
+    player.botDifficulty,
+  controlledByBot:
+    player.controlledByBot,
+  botNumber:
+    player.botNumber,
+  teamId: player.teamId,
+  hand,
+  opened: player.opened,
+  melds: player.melds,
+  scoreOpened:
+    player.scoreOpened,
+  firstOpenScore:
+    player.firstOpenScore ?? null,
+  konkan: player.konkan,
+  konkanEntryReason:
+    player.konkanEntryReason,
+  pendingKonkanFromDiscard:
+    player.pendingKonkanFromDiscard ??
+    false,
+  eliminated:
+    player.eliminated,
+};
+});
 
   const reorderedPlayers =
     viewerIndex > 0
@@ -1210,10 +1212,11 @@ export function useOkeyGame(
   );
 
   const declareKonkan =
-    useCallback(() => {
+    useCallback((orderedRunTileIds: string[]) => {
       if (isOnline) {
         void dispatchOnline({
           type: "declare-konkan",
+          orderedRunTileIds,
         });
 
         return;
@@ -1225,6 +1228,7 @@ export function useOkeyGame(
           {
             type: "declare-konkan",
             playerIndex: 0,
+            orderedRunTileIds,
           },
         ),
       );

@@ -9,11 +9,12 @@ export type AiPracticeRewardClaim = {
 
 /**
  * AI Practice reward policy
- * -------------------------
+ *
  * This game mode is intentionally client-side and is designed as a lightweight
  * practice/fallback mode when no human opponent is available.
  *
  * Product decisions:
+ *
  * - AI Practice matches are intentionally NOT server-authoritative.
  * - Players may play AI Practice an unlimited number of times per day.
  * - Each AI Practice win awards only +1 progression point.
@@ -31,23 +32,9 @@ export type AiPracticeRewardClaim = {
 export async function awardAiPracticeWin(
   practiceMatchId: string,
 ): Promise<AiPracticeRewardClaim | null> {
-  console.log("[AI practice reward] awardAiPracticeWin entered", {
-    practiceMatchId,
-  });
-
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-
-  console.log("[AI practice reward] auth state before RPC", {
-    userId: authData.user?.id ?? null,
-    authError,
-  });
-
   const { data, error } = await supabase.rpc("award_ai_practice_win", {
     p_practice_match_id: practiceMatchId,
   });
-
-  console.log("[AI practice reward] RPC result data", data);
-  console.log("[AI practice reward] RPC error", error);
 
   if (error) {
     throw error;
@@ -56,18 +43,15 @@ export async function awardAiPracticeWin(
   const claim = Array.isArray(data) ? data[0] : data;
 
   if (!claim) {
-    console.log("[AI practice reward] RPC returned no claim row");
     return null;
   }
 
-  const mappedClaim: AiPracticeRewardClaim = {
+  return {
     claim_id: claim.claim_id ?? null,
     user_id: claim.rewarded_user_id ?? claim.user_id,
-    points: Number(claim.awarded_cup ?? claim.points ?? 0),
+    points: Number(
+      claim.awarded_points ?? claim.awarded_cup ?? claim.points ?? 0,
+    ),
     already_claimed: Boolean(claim.already_claimed),
   };
-
-  console.log("[AI practice reward] mapped claim", mappedClaim);
-
-  return mappedClaim;
 }

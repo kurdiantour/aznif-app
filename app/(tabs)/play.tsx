@@ -101,10 +101,9 @@ export default function PlayScreen() {
       <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
         <GameCard
           isTablet={isTablet}
-          title="Domino"
-          subtitle="Lobby, 1v1, 2v2, and private rooms."
+          title="ئەزنیف"
           icon="grid-outline"
-          image={require("@/assets/images/lobby/create-room.webp")}
+          image={require("@/assets/images/lobby/aznif-card-v3.png")}
           onPress={() => router.push("/domino")}
         />
 
@@ -116,14 +115,24 @@ export default function PlayScreen() {
           onPress={() => router.push("/okey")}
         />
 
-        <View
-          style={[
-            styles.card,
-            styles.cardPlaceholder,
-            isTablet && styles.cardTablet,
-          ]}
-          pointerEvents="none"
-        />
+        {__DEV__ ? (
+          <GameCard
+            isTablet={isTablet}
+            title="Okey Preview"
+            subtitle="Demo Game"
+            icon="flask-outline"
+            onPress={() => router.push("/okey/preview")}
+          />
+        ) : (
+          <View
+            style={[
+              styles.card,
+              styles.cardPlaceholder,
+              isTablet && styles.cardTablet,
+            ]}
+            pointerEvents="none"
+          />
+        )}
 
         <View
           style={[

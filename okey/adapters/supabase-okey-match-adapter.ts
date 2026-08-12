@@ -74,6 +74,8 @@ export class SupabaseOkeyMatchAdapter
     | string
     | null = null;
 
+  private serverClockOffsetMs = 0;
+
   constructor(
     private readonly matchId: string,
   ) {}
@@ -235,6 +237,35 @@ export class SupabaseOkeyMatchAdapter
           );
 
         if (error) {
+          let errorBody: {
+            code?: string;
+            error?: string;
+            serverNow?: string;
+            expiresAt?: string;
+          } | null = null;
+
+          try {
+            if ("context" in error && error.context) {
+              errorBody = await error.context.json();
+            }
+          } catch {
+            errorBody = null;
+          }
+
+          this.syncServerClock(errorBody?.serverNow);
+
+          if (
+            errorBody?.code === "turn_timer_not_expired" &&
+            typeof errorBody.expiresAt === "string" &&
+            this.snapshot
+          ) {
+            this.scheduleTimeout({
+              ...this.snapshot,
+              turnDeadlineAt: errorBody.expiresAt,
+            });
+            return;
+          }
+
           try {
             await this.refresh();
           } catch {
@@ -254,6 +285,13 @@ export class SupabaseOkeyMatchAdapter
     return this.resolveTimeoutPromise;
   }
 
+
+  private syncServerClock(serverNow: unknown): void {
+    if (typeof serverNow !== "string") return;
+    const serverNowMs = Date.parse(serverNow);
+    if (!Number.isFinite(serverNowMs)) return;
+    this.serverClockOffsetMs = serverNowMs - Date.now();
+  }
 
   private clearTimeoutTimer(): void {
     if (this.timeoutTimer) {
@@ -311,8 +349,7 @@ export class SupabaseOkeyMatchAdapter
       Math.max(
         0,
         deadlineMs -
-          Date.now() +
-          150,
+          (Date.now() + this.serverClockOffsetMs),
       );
 
     this.timeoutTimer =
@@ -421,7 +458,10 @@ export class SupabaseOkeyMatchAdapter
     const response = data as {
       projection?: OkeyMatchServerProjection | null;
       settlement?: OkeyMatchServerProjection["settlement"];
+      serverNow?: string;
     };
+
+    this.syncServerClock(response.serverNow);
 
     if (!response.projection) {
       return;

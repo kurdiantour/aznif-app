@@ -9,11 +9,15 @@ import {
 } from "react-native";
 
 import DailyGiftButton from "@/components/daily-gift/DailyGiftButton";
+import { GamePartyChip } from "@/components/friends/GamePartyChip";
 import DailyGiftModal from "@/components/daily-gift/DailyGiftModal";
 import DailyQuestsButton from "@/components/daily-quests/DailyQuestsButton";
-import DailyQuestsModal from "@/components/daily-quests/DailyQuestsModal";
+import DailyQuestsModal from "@/components/daily-quests/ConnectedDailyQuestsModal";
 import { useDailyGift } from "@/hooks/useDailyGift";
+import { useDailyQuests } from "@/hooks/useDailyQuests";
+import { useGameParty } from "@/lib/gameInvitesProvider";
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
+import { useProfile } from "@/lib/profile";
 
 export type BottomNavKey =
   "home"
@@ -67,6 +71,9 @@ export function BottomNav({
   const [dailyQuestsVisible, setDailyQuestsVisible] =
     useState(false);
   const dailyGift = useDailyGift();
+  const dailyQuests = useDailyQuests();
+  const { profile } = useProfile();
+  const { party, cancelParty, cancellingParty, partyError } = useGameParty();
 
   const routeActive: BottomNavKey =
     pathname.includes("leaderboard")
@@ -102,6 +109,15 @@ export function BottomNav({
     <>
       <View style={styles.wrapper}>
         <View style={styles.row}>
+          {party && profile?.id ? (
+            <GamePartyChip
+              party={party}
+              currentUserId={profile.id}
+              cancelling={cancellingParty}
+              error={partyError}
+              onCancel={() => void cancelParty()}
+            />
+          ) : null}
           {/* Daily Gift Button */}
 
           <DailyGiftButton
@@ -113,9 +129,11 @@ export function BottomNav({
           />
 
           <DailyQuestsButton
-            onPress={() =>
-              setDailyQuestsVisible(true)
-            }
+            claimableCount={dailyQuests.claimableCount}
+            onPress={() => {
+              setDailyQuestsVisible(true);
+              void dailyQuests.refresh();
+            }}
           />
 
           {/* Main Navigation */}
@@ -183,6 +201,13 @@ export function BottomNav({
 
       <DailyQuestsModal
         visible={dailyQuestsVisible}
+        quests={dailyQuests.status?.quests}
+        nextResetAt={dailyQuests.status?.nextResetAt}
+        loading={dailyQuests.loading}
+        error={dailyQuests.error}
+        claimingId={dailyQuests.claimingId}
+        onClaim={dailyQuests.claim}
+        onRetry={dailyQuests.refresh}
         onClose={() =>
           setDailyQuestsVisible(false)
         }
@@ -221,7 +246,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
 
-    borderRadius: 999,
+    borderRadius: 12,
 
     borderWidth: 1,
 
@@ -237,7 +262,7 @@ const styles = StyleSheet.create({
 
     paddingHorizontal: 18,
 
-    borderRadius: 999,
+    borderRadius: 12,
 
     flexDirection: "row",
 

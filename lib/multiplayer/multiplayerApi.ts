@@ -9,12 +9,25 @@ type Tile = {
 
 type RequestBody = Record<string, unknown>;
 const MULTIPLAYER_REQUEST_TIMEOUT_MS = 15_000;
+const EXPECTED_MULTIPLAYER_CODES = new Set([
+  "turn_timer_not_expired",
+  "stale_timeout",
+  "already_processed",
+]);
+
+export type TurnTimeoutClaim = {
+  expectedVersion: number;
+  expectedTurnStartedAt: string;
+  expectedTurnPlayerId: string;
+};
 
 export class MultiplayerRequestError extends Error {
   constructor(
     message: string,
     readonly status: number | null,
     readonly ambiguous: boolean,
+    readonly code: string | null = null,
+    readonly details: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = "MultiplayerRequestError";
@@ -84,18 +97,26 @@ async function submitMultiplayerRequest(
   }
 
   if (!res.ok) {
-    console.warn(`${functionName} failed`, {
-      status: res.status,
-      statusText: res.statusText,
-      error: json?.error ?? null,
-      details: json?.details ?? null,
-      rawResponse: responseText,
-    });
+    const code = typeof json?.code === "string" ? json.code : null;
+    const expected = code !== null && EXPECTED_MULTIPLAYER_CODES.has(code);
+
+    if (!expected) {
+      console.warn(`${functionName} failed`, {
+        status: res.status,
+        statusText: res.statusText,
+        code,
+        error: json?.error ?? null,
+        details: json?.details ?? null,
+        rawResponse: responseText,
+      });
+    }
 
     throw new MultiplayerRequestError(
       json?.error || responseText || `${functionName} failed`,
       res.status,
       false,
+      code,
+      json && typeof json === "object" ? json : null,
     );
   }
 
@@ -115,11 +136,22 @@ export async function submitOneVsOneMove(
   });
 }
 
-export async function submitOneVsOnePass(roomId: string, timedOut = false) {
+export async function submitOneVsOnePass(
+  roomId: string,
+  timedOut = false,
+  timeoutClaim?: TurnTimeoutClaim,
+) {
   return submitMultiplayerRequest("submit_one_vs_one", {
     action: "pass",
     room_id: roomId,
     timed_out: timedOut,
+    ...(timeoutClaim
+      ? {
+          expected_version: timeoutClaim.expectedVersion,
+          expected_turn_started_at: timeoutClaim.expectedTurnStartedAt,
+          expected_turn_player_id: timeoutClaim.expectedTurnPlayerId,
+        }
+      : {}),
   });
 }
 
@@ -143,10 +175,21 @@ export async function submitTwoVsTwoMove(
   });
 }
 
-export async function submitTwoVsTwoPass(roomId: string, timedOut = false) {
+export async function submitTwoVsTwoPass(
+  roomId: string,
+  timedOut = false,
+  timeoutClaim?: TurnTimeoutClaim,
+) {
   return submitMultiplayerRequest("submit_two_vs_two", {
     action: "pass",
     room_id: roomId,
     timed_out: timedOut,
+    ...(timeoutClaim
+      ? {
+          expected_version: timeoutClaim.expectedVersion,
+          expected_turn_started_at: timeoutClaim.expectedTurnStartedAt,
+          expected_turn_player_id: timeoutClaim.expectedTurnPlayerId,
+        }
+      : {}),
   });
 }

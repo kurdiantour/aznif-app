@@ -1,25 +1,14 @@
-import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import DominoWaitingPlayersPopup from "@/components/game/DominoWaitingPlayersPopup";
+import { useGameParty } from "@/lib/gameInvitesProvider";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentProfile } from "@/lib/profile";
-import {
-  calculateLevelFromPoints,
-  getRankTitleFromLevel,
-} from "@/lib/progression";
+import { calculateLevelFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
 import { prepareMultiplayerGameLaunch } from "@/lib/game/gameLaunchPreload";
-import * as Clipboard from "expo-clipboard";
-import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  Animated,
-  ImageBackground,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { BackHandler, ImageBackground, StyleSheet, View } from "react-native";
 
 type MatchType = "bot" | "duo" | "squad" | "private";
 
@@ -35,119 +24,6 @@ type MatchPlayer = {
   kind?: string | null;
 };
 
-type PlayerCardProps = {
-  name: string;
-  level?: number;
-  filled?: boolean;
-  delay?: number;
-  avatarId?: AvatarId;
-};
-
-function PlayerCard({
-  name,
-  level,
-  filled,
-  delay = 0,
-  avatarId,
-}: PlayerCardProps) {
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (filled) return;
-
-    let loop: Animated.CompositeAnimation | null = null;
-
-    const timeout = setTimeout(() => {
-      loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, {
-            toValue: 1.04,
-            duration: 750,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulse, {
-            toValue: 1,
-            duration: 750,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-      loop.start();
-    }, delay);
-
-    return () => {
-      clearTimeout(timeout);
-      loop?.stop();
-    };
-  }, [delay, filled, pulse]);
-
-  return (
-    <Animated.View
-      style={[styles.playerCard, { transform: [{ scale: pulse }] }]}
-    >
-      <LinearGradient
-        colors={["rgba(57,18,105,0.92)", "rgba(12,8,28,0.96)"]}
-        style={styles.playerGradient}
-      >
-        <View style={styles.avatarRing}>
-          {filled && avatarId ? (
-            <PlayerAvatar
-              avatarId={avatarId}
-              size={44}
-              style={styles.avatarCircle}
-            />
-          ) : (
-            <View style={[styles.avatarCircle, styles.emptyAvatar]}>
-              <Text style={styles.emptyAvatarText}>?</Text>
-            </View>
-          )}
-
-          {filled && <View style={styles.onlineDot} />}
-        </View>
-
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={styles.playerName}
-        >
-          {name}
-        </Text>
-
-        <Text style={styles.playerRating}>
-          {filled ? getRankTitleFromLevel(level) : "گەڕان..."}
-        </Text>
-      </LinearGradient>
-    </Animated.View>
-  );
-}
-
-function renderPlayerSlot(
-  player: MatchPlayer | null,
-  index: number,
-  delayOffset = 0,
-) {
-  if (!player) {
-    return (
-      <PlayerCard
-        key={`empty-${index}`}
-        name="?"
-        delay={delayOffset + index * 200}
-      />
-    );
-  }
-
-  return (
-    <PlayerCard
-      key={player.id}
-      name={player.name}
-      level={player.level}
-      filled
-      avatarId={player.avatarId}
-    />
-  );
-}
-
 function normalizeMode(value: unknown): "1v1" | "2v2" {
   return String(value ?? "") === "1v1" ? "1v1" : "2v2";
 }
@@ -159,12 +35,14 @@ function getRequiredPlayers(mode: "1v1" | "2v2", matchType: MatchType) {
 
 export default function MatchmakingScreen() {
   const router = useRouter();
+  const { party } = useGameParty();
   const {
     mode,
     matchmaking_status: initialStatus,
     room_id,
-    room_code,
     matchType,
+    playMode,
+    entryFee,
   } = useLocalSearchParams();
 
   const gameMode = normalizeMode(mode);
@@ -173,8 +51,9 @@ export default function MatchmakingScreen() {
   const requiredPlayers = getRequiredPlayers(gameMode, currentMatchType);
 
   const initialRoomId = String(room_id ?? "");
-  const privateRoomCode = String(room_code ?? "");
   const initialMatchmakingStatus = String(initialStatus ?? "searching");
+  const waitingCurrency: "fun" | "aznif" = String(playMode ?? "fun") === "aznif" ? "aznif" : "fun";
+  const waitingEntryFee = Math.max(0, Number(entryFee) || 0);
 
   const [localPlayer, setLocalPlayer] = useState<MatchPlayer | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -184,10 +63,7 @@ export default function MatchmakingScreen() {
     initialMatchmakingStatus,
   );
   const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
-  const [copyMessage, setCopyMessage] = useState("");
 
-  const pulse = useRef(new Animated.Value(1)).current;
-  const rotate = useRef(new Animated.Value(0)).current;
   const statusCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -196,7 +72,23 @@ export default function MatchmakingScreen() {
   );
   const countdownSecondsRef = useRef<number | null>(null);
   const navigationStartedRef = useRef(false);
+  const cancellationStartedRef = useRef(false);
+  const matchLockedRef = useRef(false);
   const gamePreparationRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    if (
+      currentMatchType !== "squad" ||
+      !localPlayer?.userId ||
+      !party ||
+      party.leaderId === localPlayer.userId ||
+      party.flowStatus !== "idle"
+    ) {
+      return;
+    }
+
+    navigationStartedRef.current = true;
+    router.replace("/(tabs)/play");
+  }, [currentMatchType, localPlayer?.userId, party, router]);
 
   useEffect(() => {
     let mounted = true;
@@ -310,7 +202,10 @@ export default function MatchmakingScreen() {
           return;
         }
 
-      const userIds = (playerRows ?? [])
+      const connectedPlayerRows = (playerRows ?? []).filter(
+        (row: any) => row.connected !== false,
+      );
+      const userIds = connectedPlayerRows
         .map((row: any) => row.user_id)
         .filter(Boolean);
 
@@ -333,7 +228,7 @@ export default function MatchmakingScreen() {
 
       if (!mounted) return;
 
-      const mappedPlayers: MatchPlayer[] = (playerRows ?? []).map(
+      const mappedPlayers: MatchPlayer[] = connectedPlayerRows.map(
         (row: any, index: number) => {
           const profile = row.user_id ? profileById.get(row.user_id) : null;
 
@@ -372,7 +267,16 @@ export default function MatchmakingScreen() {
           table: isOneVsOne ? "one_vs_one_players" : "two_vs_two_players",
           filter: `room_id=eq.${currentRoomId}`,
         },
-        () => {
+        (payload) => {
+          const changed = (payload.new ?? payload.old) as {
+            id?: string;
+            connected?: boolean;
+          };
+          if (payload.eventType === "DELETE" || changed.connected === false) {
+            setPlayers((current) =>
+              current.filter((player) => player.id !== String(changed.id ?? "")),
+            );
+          }
           void loadPlayers();
         },
       )
@@ -399,66 +303,21 @@ export default function MatchmakingScreen() {
     };
   }, [currentRoomId, isOneVsOne]);
 
-  useEffect(() => {
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.04,
-          duration: 850,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 850,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
+  const publicWaitingPlayers = useMemo(() => {
+    const waitingPlayers = players.map((player) => ({
+      playerIndex: player.playerIndex,
+      avatarId: player.avatarId,
+    }));
+    const localAlreadyIncluded = localPlayer
+      ? players.some((player) => player.userId === localPlayer.userId)
+      : true;
 
-    const rotateLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(rotate, {
-          toValue: 1,
-          duration: 3800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(rotate, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
+    if (!localAlreadyIncluded && localPlayer) {
+      waitingPlayers.push({ playerIndex: 0, avatarId: localPlayer.avatarId });
+    }
 
-    pulseLoop.start();
-    rotateLoop.start();
-
-    return () => {
-      pulseLoop.stop();
-      rotateLoop.stop();
-    };
-  }, [pulse, rotate]);
-
-  const orderedSlots = useMemo(() => {
-    const slots: (MatchPlayer | null)[] = Array.from(
-      { length: requiredPlayers },
-      () => null,
-    );
-
-    players.forEach((player, fallbackIndex) => {
-      const index =
-        typeof player.playerIndex === "number"
-          ? Math.max(0, Math.min(requiredPlayers - 1, player.playerIndex))
-          : fallbackIndex;
-
-      slots[index] = player;
-    });
-
-    return slots;
-  }, [players, requiredPlayers]);
-
-  const leftSlots = orderedSlots.slice(0, isOneVsOne ? 1 : 2);
-  const rightSlots = orderedSlots.slice(isOneVsOne ? 1 : 2);
+    return waitingPlayers;
+  }, [localPlayer, players]);
 
   const playersReady =
     currentMatchType === "bot"
@@ -466,115 +325,66 @@ export default function MatchmakingScreen() {
       : currentMatchType === "private"
         ? players.length >= requiredPlayers
         : matchmakingStatus === "matched" && players.length >= requiredPlayers;
+  const matchLocked = isOneVsOne && matchmakingStatus === "matched";
+  matchLockedRef.current = matchLocked;
 
-  const isMatched = playersReady;
+  const leaveWaitingRoom = useCallback(async () => {
+    const { error } = isOneVsOne
+      ? await supabase.rpc("cancel_one_vs_one_matchmaking", {
+          p_room_id: currentRoomId || null,
+        })
+      : await supabase.rpc("cancel_two_vs_two_matchmaking", {
+          p_room_id: currentRoomId || null,
+        });
+    if (error) throw error;
+  }, [currentRoomId, isOneVsOne]);
 
-  const handleCancel = async () => {
-    if (currentMatchType === "private") {
-      if (currentRoomId) {
-        try {
-          const { error } = await supabase.rpc("leave_one_vs_one_match", {
-            p_room_id: currentRoomId,
-          });
-          if (error) throw error;
-        } catch (error) {
-          console.warn("Failed to leave private room", error);
-        }
-      }
-      router.replace("/(tabs)/play");
-      return;
-    }
+  const handleCancel = useCallback(async () => {
+    if (matchLockedRef.current) return;
+    if (party && party.leaderId !== localPlayer?.userId) return;
+    if (cancellationStartedRef.current) return;
+    cancellationStartedRef.current = true;
 
     try {
-      if (isOneVsOne) {
-        await supabase.rpc("cancel_one_vs_one_matchmaking", {
-          p_room_id: currentRoomId || null,
-        });
-      } else {
-        await supabase.rpc("cancel_two_vs_two_matchmaking", {
-          p_room_id: currentRoomId || null,
-        });
+      await leaveWaitingRoom();
+      setPlayers((current) =>
+        current.filter((player) => player.userId !== localPlayer?.userId),
+      );
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
       }
-    } catch (err) {
-      console.warn("Failed to cancel matchmaking", err);
+      setCountdownSeconds(null);
+      router.replace("/(tabs)/play");
+    } catch (error) {
+      cancellationStartedRef.current = false;
+      console.warn("Failed to leave Domino waiting room", error);
     }
-
-    // stop any local countdown
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-
-    setCountdownSeconds(null);
-
-    router.replace("/(tabs)/play");
-  };
+  }, [leaveWaitingRoom, localPlayer?.userId, party, router]);
 
   useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (matchLockedRef.current) return true;
+      void handleCancel();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [handleCancel]);
+  useEffect(() => {
     return () => {
-      if (navigationStartedRef.current) return;
+      if (
+        navigationStartedRef.current ||
+        cancellationStartedRef.current ||
+        (!currentRoomId && matchmakingStatus !== "searching")
+      ) return;
 
-      if (currentMatchType !== "private" && matchmakingStatus === "searching") {
-        void (async () => {
-          try {
-            if (isOneVsOne) {
-              await supabase.rpc("cancel_one_vs_one_matchmaking", {
-                p_room_id: null,
-              });
-            } else {
-              await supabase.rpc("cancel_two_vs_two_matchmaking", {
-                p_room_id: null,
-              });
-            }
-          } catch {
-            // Ignore cleanup errors.
-          }
-        })();
-      }
+      cancellationStartedRef.current = true;
+      void leaveWaitingRoom().catch((error) => {
+        console.warn("Failed to clean up Domino waiting room", error);
+      });
     };
-  }, [
-    currentMatchType,
-    matchmakingStatus,
-    isMatched,
-    currentRoomId,
-    isOneVsOne,
-  ]);
-
-  const spin = rotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
-
-  const isSearching =
-    currentMatchType !== "private" && matchmakingStatus === "searching";
+  }, [currentRoomId, leaveWaitingRoom, matchmakingStatus]);
   const isMatchFound = playersReady;
-  const isPrivateWaiting = currentMatchType === "private" && !playersReady;
-
-  const centerTitle = isPrivateWaiting
-    ? "چاوەڕوانی"
-    : isSearching
-      ? "گەڕان بە دوای یاریزان"
-      : isMatchFound
-        ? "دۆزرایەوە"
-        : "گەڕان";
-
-  const centerSubtitle = isPrivateWaiting
-    ? ""
-    : isSearching
-      ? ""
-      : isMatchFound
-        ? countdownSeconds !== null
-          ? `Starting in ${countdownSeconds}`
-          : "Starting in 5"
-        : "";
-
-  const copyPrivateRoomCode = async () => {
-    if (!privateRoomCode) return;
-    await Clipboard.setStringAsync(privateRoomCode);
-    setCopyMessage("Room code copied");
-  };
-
-  // Trigger countdown when a match is found
   useEffect(() => {
     if (!isMatchFound) {
       if (countdownIntervalRef.current) {
@@ -654,69 +464,18 @@ export default function MatchmakingScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.overlay} />
 
-        <View style={styles.matchArea}>
-          <View style={styles.sidePlayers}>
-            {leftSlots.map((player, index) => {
-              // If slot empty, show local player immediately on the left-most slot
-              const alreadyInPlayers =
-                localPlayer &&
-                players.some((p) => p.userId === localPlayer.userId);
-
-              const displayPlayer =
-                player ??
-                (index === 0 && localPlayer && !alreadyInPlayers
-                  ? localPlayer
-                  : null);
-
-              return renderPlayerSlot(displayPlayer, index);
-            })}
-          </View>
-
-          <View style={styles.centerColumn}>
-            <View style={styles.centerWrap}>
-              <Animated.View
-                style={[styles.outerRing, { transform: [{ rotate: spin }] }]}
-              >
-                <View style={styles.ringGlow} />
-              </Animated.View>
-
-              <Animated.View
-                style={[styles.centerCircle, { transform: [{ scale: pulse }] }]}
-              >
-                <Text
-                  style={
-                    isMatched || playersReady ? styles.matchText : styles.timer
-                  }
-                >
-                  {centerTitle}
-                </Text>
-                <Text style={styles.waitText}>{centerSubtitle}</Text>
-              </Animated.View>
-            </View>
-
-            {isPrivateWaiting && privateRoomCode ? (
-              <Pressable
-                style={styles.roomCodeCard}
-                onPress={() => void copyPrivateRoomCode()}
-              >
-                <Text style={styles.roomCodeValue}>{privateRoomCode}</Text>
-                <Text style={styles.roomCodeHint}>
-                  {copyMessage || "Tap to copy"}
-                </Text>
-              </Pressable>
-            ) : null}
-
-            <Pressable style={styles.cancelButton} onPress={handleCancel}>
-              <Text style={styles.cancelButtonText}>پاشگەزبوونەوە</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.sidePlayers}>
-            {rightSlots.map((player, index) =>
-              renderPlayerSlot(player, index, 150),
-            )}
-          </View>
-        </View>
+        <DominoWaitingPlayersPopup
+          visible={currentMatchType !== "private"}
+          playerCount={isOneVsOne ? 2 : 4}
+          entryFee={waitingEntryFee}
+          currency={waitingCurrency}
+          players={publicWaitingPlayers}
+          countdownSeconds={countdownSeconds}
+          canCancel={
+            !matchLocked && (!party || party.leaderId === localPlayer?.userId)
+          }
+          onCancel={handleCancel}
+        />
       </SafeAreaView>
     </ImageBackground>
   );
@@ -740,207 +499,5 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(3,0,15,0.54)",
-  },
-
-  matchArea: {
-    flex: 1,
-    paddingHorizontal: 70,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 34,
-  },
-
-  sidePlayers: {
-    flexDirection: "row",
-    gap: 16,
-  },
-
-  playerCard: {
-    width: 106,
-    height: 152,
-    borderRadius: 15,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#a855f7",
-    backgroundColor: "rgba(17,7,35,0.88)",
-  },
-
-  playerGradient: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 9,
-  },
-
-  avatarRing: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    borderWidth: 2,
-    borderColor: "#a855f7",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 9,
-  },
-
-  avatarCircle: {
-    width: 51,
-    height: 51,
-    borderRadius: 26,
-    backgroundColor: "#f8d17b",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  emptyAvatar: {
-    backgroundColor: "rgba(0,0,0,0.42)",
-  },
-
-  emptyAvatarText: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontFamily: "RobotoMedium",
-  },
-
-  onlineDot: {
-    position: "absolute",
-    right: 0,
-    bottom: 6,
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: "#22c55e",
-  },
-
-  playerName: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontFamily: "RobotoMedium",
-    marginBottom: 5,
-    maxWidth: 88,
-    textAlign: "center",
-  },
-
-  playerRating: {
-    color: "#d7c9ef",
-    fontSize: 10,
-    fontFamily: "RobotoMedium",
-  },
-
-  centerColumn: {
-    width: 185,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  centerWrap: {
-    width: 170,
-    height: 170,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  outerRing: {
-    position: "absolute",
-    width: 164,
-    height: 164,
-    borderRadius: 82,
-    borderWidth: 3,
-    borderColor: "rgba(168,85,247,0.55)",
-    borderTopColor: "#e9d5ff",
-    borderRightColor: "#7c3aed",
-  },
-
-  ringGlow: {
-    position: "absolute",
-    top: -4,
-    left: 70,
-    width: 24,
-    height: 8,
-    borderRadius: 99,
-    backgroundColor: "#c084fc",
-  },
-
-  centerCircle: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    backgroundColor: "rgba(12,5,35,0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(216,180,254,0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
-
-  roomCodeCard: {
-    marginTop: 14,
-    minWidth: 190,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    backgroundColor: "rgba(19, 8, 48, 0.94)",
-    borderWidth: 1,
-    borderColor: "#a855f7",
-  },
-  roomCodeLabel: { color: "#d8b4fe", fontFamily: "RobotoMedium", fontSize: 12 },
-  roomCodeValue: {
-    color: "#ffffff",
-    fontFamily: "RobotoMedium",
-    fontSize: 20,
-    letterSpacing: 3,
-    marginTop: 3,
-  },
-  roomCodeHint: {
-    color: "#b7c8e8",
-    fontFamily: "RobotoMedium",
-    fontSize: 12,
-    marginTop: 3,
-  },
-
-  timer: {
-    color: "#ffffff",
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    paddingHorizontal: 12,
-  },
-
-  matchText: {
-    color: "#ffffff",
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    paddingHorizontal: 12,
-  },
-
-  waitText: {
-    color: "#d7c9ef",
-    fontSize: 15,
-    fontFamily: "SpedaBold",
-    marginTop: 6,
-  },
-
-  cancelButton: {
-    marginTop: 22,
-    height: 38,
-    minWidth: 110,
-    paddingHorizontal: 22,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  cancelButtonText: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
   },
 });

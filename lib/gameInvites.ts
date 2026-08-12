@@ -5,7 +5,6 @@ export type GameInvite = {
   id: string;
   senderId: string;
   recipientId: string;
-  mode: "1v1";
   status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
   roomId: string | null;
   createdAt: string;
@@ -22,7 +21,6 @@ export async function getPendingGameInvites(): Promise<GameInvite[]> {
     id: row.id,
     senderId: row.sender_id,
     recipientId: row.recipient_id,
-    mode: row.mode,
     status: row.status,
     roomId: row.room_id,
     createdAt: row.created_at,
@@ -36,9 +34,8 @@ export async function getPendingGameInvites(): Promise<GameInvite[]> {
 export async function sendGameInvite(recipientId: string) {
   const { data, error } = await supabase.rpc("send_game_invite", {
     p_recipient_id: recipientId,
-    p_mode: "1v1",
   });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data;
 }
 
@@ -48,7 +45,7 @@ export async function respondGameInvite(inviteId: string, accept: boolean) {
     p_accept: accept,
   });
   if (error) throw error;
-  return data as { status: string; room_id?: string };
+  return data as { status: string; party_id?: string; leader_id?: string };
 }
 
 export async function cancelGameInvite(inviteId: string) {

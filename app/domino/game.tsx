@@ -314,44 +314,6 @@ export default function GameScreen() {
     !isLocalGame && gameMode === "1v1"
       ? !!localCurrentUserId && game.currentTurnPlayerId === localCurrentUserId
       : !!humanPlayer && game.currentTurnPlayerId === humanPlayer.id;
-  const debugMyPlayerIndex = (game as any).myPlayerIndex ?? null;
-  const debugOpponentPlayerIndex = (game as any).opponentPlayerIndex ?? null;
-
-  useEffect(() => {
-    if (isLocalGame || gameLoading) return;
-
-    console.log("[1v1 game screen turn]", {
-      roomId,
-      frontendCurrentUserId: localCurrentUserId,
-      gameCurrentTurnPlayerId: game.currentTurnPlayerId,
-      humanPlayerId: humanPlayer?.id ?? null,
-      isMyTurn,
-      myPlayerIndex: debugMyPlayerIndex,
-      opponentPlayerIndex: debugOpponentPlayerIndex,
-      myHandIds: game.myHand.map((tile) => tile.id),
-      activePlayerIds: game.players
-        .filter((player) => player.isActive)
-        .map((player) => player.id),
-      players: game.players.map((player) => ({
-        id: player.id,
-        seat: player.seat,
-        isActive: player.isActive,
-        tileCount: player.tileCount,
-      })),
-    });
-  }, [
-    isLocalGame,
-    gameLoading,
-    roomId,
-    localCurrentUserId,
-    game.currentTurnPlayerId,
-    humanPlayer?.id,
-    isMyTurn,
-    debugMyPlayerIndex,
-    debugOpponentPlayerIndex,
-    game.myHand,
-    game.players,
-  ]);
 
   const playableTileIds =
     isMyTurn && !game.canDrawTile
@@ -652,65 +614,29 @@ export default function GameScreen() {
     [didWinMatch, game.winningTeamId, isPracticeMode, profile],
   );
 
-  useEffect(() => {
-    console.log("[AI practice reward] reward effect evaluated", {
-      isPracticeMode,
-      winningTeamId: game.winningTeamId,
-      didWinMatch,
-      humanPlayerId: humanPlayer?.id ?? null,
-      humanTeamId: humanPlayer?.teamId ?? null,
-      showGameOverPopup,
-      hasPracticeWinReward: !!practiceWinReward,
-      alreadyRequested: practiceRewardSettlementRequestedRef.current,
-      practiceMatchId: practiceMatchIdRef.current,
-      hasProfile: !!profile,
-    });
+useEffect(() => {
+  if (!practiceWinReward) return;
+  if (!showGameOverPopup) return;
+  if (practiceRewardSettlementRequestedRef.current) return;
 
-    if (!practiceWinReward) return;
-    if (!showGameOverPopup) return;
-    if (practiceRewardSettlementRequestedRef.current) return;
+  practiceRewardSettlementRequestedRef.current = true;
 
-    practiceRewardSettlementRequestedRef.current = true;
+  const persistPracticeReward = async () => {
+    try {
+      await awardAiPracticeWin(practiceMatchIdRef.current);
+      await refreshProfile();
+    } catch (error) {
+      practiceRewardSettlementRequestedRef.current = false;
+      console.warn("Unable to persist AI practice win reward", error);
+    }
+  };
 
-    const persistPracticeReward = async () => {
-      try {
-        console.log("[AI practice reward] before awardAiPracticeWin call", {
-          practiceMatchId: practiceMatchIdRef.current,
-          rewardPoints: practiceWinReward.points,
-          winningTeamId: game.winningTeamId,
-          humanTeamId: humanPlayer?.teamId ?? null,
-        });
-
-        const claim = await awardAiPracticeWin(practiceMatchIdRef.current);
-
-        console.log("[AI practice reward] after awardAiPracticeWin call", {
-          claim,
-        });
-
-        const refreshedProfile = await refreshProfile();
-
-        console.log("[AI practice reward] after refreshProfile", {
-          profileId: refreshedProfile?.id ?? null,
-          profileCoin: refreshedProfile?.coin ?? null,
-        });
-      } catch (error) {
-        practiceRewardSettlementRequestedRef.current = false;
-        console.warn("Unable to persist AI practice win reward", error);
-      }
-    };
-
-    void persistPracticeReward();
-  }, [
-    didWinMatch,
-    game.winningTeamId,
-    humanPlayer?.id,
-    humanPlayer?.teamId,
-    isPracticeMode,
-    practiceWinReward,
-    profile,
-    showGameOverPopup,
-    refreshProfile,
-  ]);
+  void persistPracticeReward();
+}, [
+  practiceWinReward,
+  showGameOverPopup,
+  refreshProfile,
+]);
 
   useEffect(() => {
     setBlockedIntroComplete(false);
@@ -1004,6 +930,7 @@ export default function GameScreen() {
     !shouldShowRoundResultReveal
   }
   didWin={didWinMatch}
+  isPracticeMode={isPracticeMode}
   reward={practiceWinReward ?? onlineMatchResultReward}
   finishReason={(game as any).rawState?.finishReason ?? null}
   teamScores={{

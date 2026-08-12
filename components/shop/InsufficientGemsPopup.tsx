@@ -1,6 +1,5 @@
-import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { createContext, type ReactNode } from "react";
+import { createContext } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 type PurchaseConfirmation = {
@@ -31,20 +30,25 @@ export function InsufficientGemsPopup({
 
   return (
     <View style={styles.backdrop}>
-      <PopupCard>
-        <View style={styles.gemIcon}>
-          <Ionicons name="diamond" size={20} color="#d8a7ff" />
-        </View>
-
+      <LinearGradient
+        colors={["#24134b", "#090d21"]}
+        style={styles.popup}
+      >
         <Text style={styles.title}>گەوهەری زیاتر پێویستە</Text>
 
-        <Pressable
-          style={[styles.singleButton, styles.primaryButton]}
-          onPress={onClose}
-        >
-          <Text style={styles.primaryButtonText}>تێگەیشتم</Text>
-        </Pressable>
-      </PopupCard>
+        <View style={styles.singleButtonRow}>
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [
+              styles.singleButton,
+              styles.primaryButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.buttonText}>تێگەیشتم</Text>
+          </Pressable>
+        </View>
+      </LinearGradient>
     </View>
   );
 }
@@ -67,40 +71,42 @@ export function PurchaseConfirmationPopup({
 
   return (
     <View style={styles.backdrop}>
-      <PopupCard>
+      <LinearGradient
+        colors={["#24134b", "#090d21"]}
+        style={styles.popup}
+      >
         <Text style={styles.title}>دڵنیایت لەم کڕینە؟</Text>
 
-        <View style={styles.priceRow}>
-          <Text style={styles.priceText}>
-            {confirmation.price.toLocaleString()} گەوهەر لە هەژمارەکەت کەم دەبێتەوە
-          </Text>
-        </View>
+        <Text style={styles.message}>
+          {confirmation.price.toLocaleString()} گەوهەر لە هەژمارەکەت کەم
+          دەبێتەوە
+        </Text>
 
         <View style={styles.buttonRow}>
           <Pressable
-            style={[styles.actionButton, styles.secondaryButton]}
             onPress={onClose}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.secondaryButton,
+              pressed && styles.buttonPressed,
+            ]}
           >
-            <Text style={styles.secondaryButtonText}>داخستن</Text>
+            <Text style={styles.buttonText}>داخستن</Text>
           </Pressable>
 
           <Pressable
-            style={[styles.actionButton, styles.primaryButton]}
             onPress={handleConfirm}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.primaryButton,
+              pressed && styles.buttonPressed,
+            ]}
           >
-            <Text style={styles.primaryButtonText}>کڕین</Text>
+            <Text style={styles.buttonText}>کڕین</Text>
           </Pressable>
         </View>
-      </PopupCard>
+      </LinearGradient>
     </View>
-  );
-}
-
-function PopupCard({ children }: { children: ReactNode }) {
-  return (
-    <LinearGradient colors={["#22114a", "#0b1027"]} style={styles.popup}>
-      {children}
-    </LinearGradient>
   );
 }
 
@@ -111,86 +117,86 @@ const styles = StyleSheet.create({
     elevation: 1000,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(2, 4, 15, 0.78)",
-    paddingHorizontal: 24,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
   },
+
   popup: {
-    width: "100%",
-    maxWidth: 310,
-    borderRadius: 10,
-    padding: 24,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 16,
-  },
-  gemIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 360,
+    height: 180,
+    maxWidth: "88%",
+    paddingHorizontal: 20,
+    paddingVertical: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(168, 85, 247, 0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(216, 180, 254, 0.42)",
+    borderRadius: 16,
   },
+
   title: {
-    marginTop: 16,
-    color: "#fff",
-    fontSize: 12,
+    color: "#ffffff",
+    fontSize: 16,
     fontFamily: "SpedaBold",
     textAlign: "center",
+    writingDirection: "rtl",
   },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    marginTop: 14,
-  },
-  priceText: {
-    color: "#ffffff",
-    fontSize: 12,
+
+  message: {
+    marginTop: 7,
+    color: "#d9d5e8",
+    fontSize: 14,
+    lineHeight: 20,
     fontFamily: "SpedaBold",
+    textAlign: "center",
+    writingDirection: "rtl",
   },
-  singleButton: {
+
+  singleButtonRow: {
     width: "100%",
-    height: 34,
-    marginTop: 18,
-    borderRadius: 6,
-    alignItems: "center",
+    flexDirection: "row",
     justifyContent: "center",
+    marginTop: 18,
   },
+
   buttonRow: {
     width: "100%",
     flexDirection: "row",
     gap: 10,
     marginTop: 18,
   },
-  actionButton: {
-    flex: 1,
-    height: 34,
-    borderRadius: 6,
+
+  singleButton: {
+    width: "48%",
+    height: 40,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
+
+  actionButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   primaryButton: {
     backgroundColor: "#7c3aed",
-    borderWidth: 1,
-    borderColor: "rgba(221, 214, 254, 0.6)",
   },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-  },
+
   secondaryButton: {
-    borderWidth: 1,
-    borderColor: "rgba(221, 214, 254, 0.38)",
+    backgroundColor: "#4b5563",
   },
-  secondaryButtonText: {
-    color: "#e9ddff",
-    fontSize: 12,
+
+  buttonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.98 }],
+  },
+
+  buttonText: {
+    color: "#ffffff",
     fontFamily: "SpedaBold",
+    fontSize: 13,
+    textAlign: "center",
+    writingDirection: "rtl",
   },
 });

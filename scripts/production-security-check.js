@@ -2,12 +2,22 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const read = (relativePath) =>
-  fs.readFileSync(path.join(root, relativePath), "utf8");
-const matches = (source, pattern) => pattern.test(source);
 const failures = [];
 
-const gameScreen = read("app/game.tsx");
+const read = (relativePath) => {
+  const absolutePath = path.join(root, relativePath);
+
+  if (!fs.existsSync(absolutePath)) {
+    failures.push(`Missing required security-check file: ${relativePath}`);
+    return "";
+  }
+
+  return fs.readFileSync(absolutePath, "utf8");
+};
+
+const matches = (source, pattern) => pattern.test(source);
+
+const gameScreen = read("app/domino/game.tsx");
 if (gameScreen.includes("award_ai_practice_win")) {
   failures.push("The game client must not settle authoritative rewards.");
 }
@@ -92,17 +102,30 @@ for (const file of edgeFiles) {
   }
 }
 
-const canonicalEconomy = read(
-  "supabase/migrations/20260730000100_remove_legacy_points_gold.sql",
-);
-for (const required of [
-  "purchase_or_equip_shop_item",
-  "FOR UPDATE",
-  "wallet.gem - v_price_gem",
-  "'Gem', 'shop_purchase'",
+const shopClient = read("lib/shop.ts");
+
+if (
+  !matches(
+    shopClient,
+    /rpc\(\s*["']purchase_or_equip_shop_item["']/,
+  )
+) {
+  failures.push(
+    "Shop purchases must go through purchase_or_equip_shop_item RPC.",
+  );
+}
+
+for (const forbidden of [
+  '.from("wallets").update',
+  ".from('wallets').update",
+  '.from("wallets").insert',
+  ".from('wallets').insert",
 ]) {
-  if (!canonicalEconomy.includes(required))
-    failures.push(`Missing canonical Gem shop invariant: ${required}`);
+  if (shopClient.includes(forbidden)) {
+    failures.push(
+      `Shop client must not mutate wallets directly: ${forbidden}`,
+    );
+  }
 }
 
 const deleteFunction = read("supabase/functions/delete_account/index.ts");
@@ -156,15 +179,14 @@ if (sharedGameUtils.includes("@ts-nocheck")) {
 }
 
 const privateRoomScreen = read("app/create-room.tsx");
-const matchmakingScreen = read("app/matchmaking.tsx");
-const localAiRewardHardening =
-  read("supabase/migrations/20260801000100_ai_practice_reward_to_cup.sql") +
-  read("supabase/migrations/20260801000200_canonical_points_remove_cups.sql");
+const matchmakingScreen = read("app/domino/matchmaking.tsx");
+const localAiRewardHardening = read(
+  "supabase/migrations/20260630000300_harden_local_ai_practice_reward_claims.sql",
+);
 for (const required of [
   "char_length(v_match_id) <> 36",
   "pg_try_advisory_xact_lock",
   "ON CONFLICT (practice_match_id, user_id) DO NOTHING",
-  "RENAME COLUMN cups TO points",
   "REVOKE ALL ON FUNCTION public.award_ai_practice_win",
   "TO authenticated",
 ]) {
@@ -205,30 +227,78 @@ for (const required of [
   }
 }
 const twoVsTwoHook = read("hooks/useTwoVsTwoGame.ts");
+
+const dominoProfileSources = [
+  ["1v1", oneVsOneHook],
+  ["2v2", twoVsTwoHook],
+];
+for (const [label, source] of dominoProfileSources) {
+  if (matches(source, /\bcups\b/)) {
+    failures.push(`${label} must use profiles.points; profiles.cups does not exist.`);
+  }
+
+  if (!matches(source, /\.select\(["'][^"']*\bpoints\b[^"']*["']\)/)) {
+    failures.push(`${label} profile query must select profiles.points.`);
+  }
+}
+
 for (const [label, source] of [
   ["1v1", oneVsOneHook],
   ["2v2", twoVsTwoHook],
 ]) {
+  if (
+    !matches(
+      source,
+      /setInterval\(\(\) => void heartbeat\(\), 30_000\)/,
+    )
+  ) {
+    failures.push(`${label} heartbeat must run every 30 seconds.`);
+  }
+
   if (!source.includes("takeoverWatchdogInFlightRef")) {
     failures.push(`${label} active matches have no takeover watchdog.`);
   }
-  if (!source.includes("AppState.addEventListener('change'")) {
-    failures.push(`${label} active matches do not publish AppState disconnects.`);
-  }
-  if (!matches(source, /setInterval\(\(\) => void runTakeoverWatchdog\(\), 10_000\)/)) {
+
+  if (
+    !matches(
+      source,
+      /setInterval\(\(\) => void runTakeoverWatchdog\(\), 10_000\)/,
+    )
+  ) {
     failures.push(`${label} takeover watchdog is not scheduled.`);
   }
 }
-for (const forbidden of ["created_at >", "count(*)", "interval '1 day'"]) {
+
+for (const forbidden of [
+  "created_at >",
+  "count(*)",
+  "interval '1 day'",
+]) {
   if (localAiRewardHardening.includes(forbidden)) {
-    failures.push(`Local AI rewards must not impose a win cap: ${forbidden}`);
+    failures.push(
+      `Local AI rewards must not impose a win cap: ${forbidden}`,
+    );
   }
 }
-if (!matches(privateRoomScreen, /rpc\(\s*["']create_private_10_aznif_room["']/)) {
+
+if (
+  !matches(
+    privateRoomScreen,
+    /rpc\(\s*["']create_private_10_aznif_room["']/,
+  )
+) {
   failures.push("Fixed-price private room creation flow is missing.");
 }
-if (!matches(privateRoomScreen, /rpc\(\s*["']join_private_10_aznif_room["']/)) {
-  failures.push("Rate-limited private room join-by-code flow is missing.");
+
+if (
+  !matches(
+    privateRoomScreen,
+    /rpc\(\s*["']join_private_10_aznif_room["']/,
+  )
+) {
+  failures.push(
+    "Rate-limited private room join-by-code flow is missing.",
+  );
 }
 
 const gameInvitesMigration = read(

@@ -595,6 +595,7 @@ export type OkeyAuthoritativeCommand =
     }
   | {
       type: "declare-konkan";
+      orderedRunTileIds: string[];
     }
   | {
       type: "spend-meld";
@@ -747,6 +748,7 @@ export function applyAuthoritativeOkeyCommand(
       next = declareKonkanOpen(
         state,
         actorPlayerIndex,
+        command.orderedRunTileIds,
       );
       break;
 

@@ -1,7 +1,7 @@
 import DominoTile from "@/components/game/DominoTile";
 import { createPlacedTile } from "@/lib/game/kozel-engine";
 import { DominoTileData, GameState, KozelBranch } from "@/types/game";
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
 type Direction = "right" | "left" | "down" | "up";
@@ -142,7 +142,6 @@ function BranchTile({ position, tileWidth, tileHeight, zIndex = 20 }: { position
   const preview = "__placementPreview" in position.tile;
   const previewTile = position.tile as BoardTile & { __previewBranch?: KozelBranch; __onPreviewPress?: (branch: KozelBranch) => void };
   const size = slotSize(position.tile, position.direction, tileWidth, tileHeight);
-  useEffect(() => { if (winning?.tileId === position.tile.id) console.log("[winning tile beat] board tile found", { tileId: position.tile.id }); }, [position.tile.id, winning?.tileId]);
   return <Pressable pointerEvents={preview ? "auto" : "none"} onPress={previewTile.__previewBranch ? () => previewTile.__onPreviewPress?.(previewTile.__previewBranch!) : undefined} style={[styles.tile, preview && styles.preview, { width: size.width, height: size.height, left: "50%", top: "50%", marginLeft: position.x - size.width / 2, marginTop: position.y - size.height / 2, zIndex }]}>
     <DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} />
     {winning?.tileId === position.tile.id && <Animated.View pointerEvents="none" style={[styles.winner, { width: size.width, height: size.height, opacity: winning.emphasisOpacity, transform: [{ translateX: Animated.multiply(winning.centerProgress, -position.x) }, { translateY: Animated.add(Animated.multiply(winning.centerProgress, -position.y), winning.translateY) }, { rotate: winning.rotation.interpolate({ inputRange: [0, 1080], outputRange: ["0deg", "1080deg"] }) }, { scale: winning.scale }] }]}><DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} /></Animated.View>}

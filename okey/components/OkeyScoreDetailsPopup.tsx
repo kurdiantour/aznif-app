@@ -44,11 +44,10 @@ type Props = {
   scoreDetails:
     OkeyRoundScoreDetails;
 
-  finishedMessage?: string;
 
   round?: number;
 
-  winnerName?: string | null;
+  playerNamesById: Readonly<Record<string, string>>;
 
   maxRounds?: number;
 
@@ -58,29 +57,25 @@ type Props = {
   matchScores?:
     Record<OkeyTeamId, number>;
 
-  matchFinished?: boolean;
-
-  matchWinnerTeamId?:
-    OkeyTeamId | null;
-
   countdownRemaining?:
     number | null;
 
   isTileCycleLimit?: boolean;
 };
 
+function formatRoundScore(score: number) {
+  return score >= 0 ? `+${score}` : String(score);
+}
+
 export function OkeyScoreDetailsPopup({
   visible,
   onClose,
   scoreDetails,
-  finishedMessage,
   round,
-  winnerName = null,
+  playerNamesById,
   maxRounds = 7,
   roundResults = [],
   matchScores,
-  matchFinished = false,
-  matchWinnerTeamId = null,
   countdownRemaining = null,
   isTileCycleLimit = false,
 }: Props) {
@@ -91,15 +86,8 @@ export function OkeyScoreDetailsPopup({
   const currentRound =
     round ?? 1;
 
-  const title =
-    isTileCycleLimit
-      ? "براوە نییە"
-      : finishedMessage ??
-        (
-          matchFinished
-            ? `ئەنجامی یاری ${currentRound}/${maxRounds}`
-            : `خولی ${currentRound}/${maxRounds}`
-        );
+  const title = "خشتەی خولەکان";
+
 
   const resultsByRound =
     new Map(
@@ -138,34 +126,18 @@ export function OkeyScoreDetailsPopup({
         : scoreDetails.scores
     );
 
-  const finalMessage =
-    matchFinished
-      ? matchWinnerTeamId ===
-        "teamA"
-        ? "تیمی تۆ براوەی یارییە"
-        : matchWinnerTeamId ===
-            "teamB"
-          ? "تیمی بەرامبەر براوەی یارییە"
-          : "یاری بە یەکسانی کۆتایی هات"
-      : null;
-
-  const countdownMessage =
-    countdownRemaining === null
-      ? ""
-      : isTileCycleLimit
-        ? `ئەم خولە دوای ${Math.max(
-            0,
-            countdownRemaining,
-          )} چرکە دەست پێ دەکاتەوە`
-        : matchFinished
-          ? `ئەنجامی کۆتایی دوای ${Math.max(
-              0,
-              countdownRemaining,
-            )} چرکە دەکرێتەوە`
-          : `خولی داهاتوو دوای ${Math.max(
-              0,
-              countdownRemaining,
-            )} چرکە دەست پێ دەکات`;
+const countdownMessage =
+  countdownRemaining === null
+    ? ""
+    : isTileCycleLimit
+      ? `ئەم خولە دوای ${Math.max(
+          0,
+          countdownRemaining,
+        )} چرکە دەست پێ دەکاتەوە`
+      : `خولی داهاتوو دوای ${Math.max(
+          0,
+          countdownRemaining,
+        )} چرکە دەست پێ دەکات`;
 
   return (
     <View
@@ -182,31 +154,15 @@ export function OkeyScoreDetailsPopup({
         accessibilityViewIsModal
         style={styles.card}
       >
-        <Text
-          accessibilityRole="header"
-          accessibilityLiveRegion="assertive"
-          style={styles.title}
-        >
-          {title}
-        </Text>
-
-        {finalMessage ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={styles.finalMessage}
-          >
-            {finalMessage}
-          </Text>
-        ) : null}
-
-        {winnerName && !isTileCycleLimit ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={styles.winnerMessage}
-          >
-            {`براوە: ${winnerName}`}
-          </Text>
-        ) : null}
+<View style={styles.titleBadge}>
+  <Text
+    accessibilityRole="header"
+    accessibilityLiveRegion="assertive"
+    style={styles.title}
+  >
+    {title}
+  </Text>
+</View>
 
         {isTileCycleLimit ? (
           <View
@@ -278,23 +234,6 @@ export function OkeyScoreDetailsPopup({
                   roundNumber,
                 );
 
-              const yourScore =
-                result
-                  ? String(
-                      result
-                        .scoreDetails
-                        .scores.teamA,
-                    )
-                  : "-";
-
-              const opponentScore =
-                result
-                  ? String(
-                      result
-                        .scoreDetails
-                        .scores.teamB,
-                    )
-                  : "-";
 
               const yourTeamWon =
                 result
@@ -305,6 +244,25 @@ export function OkeyScoreDetailsPopup({
                 result
                   ?.winnerTeamId ===
                 "teamB";
+
+              const winnerName =
+                result?.winnerId
+                  ? playerNamesById[result.winnerId]
+                  : undefined;
+
+              const yourValue =
+                yourTeamWon
+                  ? winnerName ?? "-"
+                  : opponentTeamWon
+                    ? formatRoundScore(result.scoreDetails.scores.teamA)
+                    : "-";
+
+              const opponentValue =
+                opponentTeamWon
+                  ? winnerName ?? "-"
+                  : yourTeamWon
+                    ? formatRoundScore(result.scoreDetails.scores.teamB)
+                    : "-";
 
               return (
                 <View
@@ -342,7 +300,7 @@ export function OkeyScoreDetailsPopup({
                           : null,
                       ]}
                     >
-                      {yourScore}
+                      {yourValue}
                     </Text>
                   </View>
 
@@ -361,7 +319,7 @@ export function OkeyScoreDetailsPopup({
                           : null,
                       ]}
                     >
-                      {opponentScore}
+                      {opponentValue}
                     </Text>
                   </View>
                 </View>
@@ -456,42 +414,32 @@ const styles = StyleSheet.create({
     elevation: 1000,
   },
 
-  title: {
-    color: "#000000",
+titleBadge: {
+  alignSelf: "center",
 
-    fontSize: 14,
-    fontFamily: "SpedaBold",
+  minWidth: 96,
 
-    textAlign: "center",
+  paddingHorizontal: 100,
+  paddingVertical: 7,
+  marginBottom: 10,
+  borderRadius: 999,
+  backgroundColor: "rgba(0,0,0,0.08)",
+  borderColor: "rgba(0,0,0,0.10)",
 
-    marginBottom: 8,
-  },
+  alignItems: "center",
+  justifyContent: "center",
+},
 
-  finalMessage: {
-    color: "#151515",
+title: {
+  color: "#000000",
 
-    fontSize: 12,
-    lineHeight: 18,
+  fontSize: 14,
+  lineHeight: 18,
 
-    fontFamily: "SpedaBold",
+  fontFamily: "SpedaBold",
 
-    textAlign: "center",
-
-    marginBottom: 8,
-  },
-
-  winnerMessage: {
-    color: "#151515",
-
-    fontSize: 12,
-    lineHeight: 18,
-
-    fontFamily: "SpedaBold",
-
-    textAlign: "center",
-
-    marginBottom: 8,
-  },
+  textAlign: "center",
+},
 
   historyBox: {
     height: 208,
@@ -561,31 +509,21 @@ const styles = StyleSheet.create({
 
   headerText: {
     color: "#000000",
-
-    fontSize: 11,
-
+    fontSize: 15,
     fontFamily: "SpedaBold",
-
     textAlign: "center",
   },
 
   bodyText: {
     color: "#000000",
-
-    fontSize: 13,
-
-    fontFamily:
-      "SpedaRegular",
-
+    fontSize: 15,
     textAlign: "center",
   },
 
-  winnerScore: {
-    fontFamily: "SpedaBold",
-
-    textDecorationLine:
-      "underline",
-  },
+winnerScore: {
+  fontSize: 15,
+  lineHeight: 20,
+},
 
   roundCell: {
     width: 36,
@@ -622,7 +560,7 @@ const styles = StyleSheet.create({
     color:
       "rgba(0,0,0,0.62)",
 
-    fontSize: 11,
+    fontSize: 15,
 
     fontFamily: "SpedaBold",
 

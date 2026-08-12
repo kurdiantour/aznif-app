@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
 
 type Props = {
   visible: boolean;
@@ -76,15 +77,9 @@ export default function WaitingPlayersPopup({
           style={styles.card}
         >
           <View style={styles.entryFee}>
-            <Ionicons
-              name={
-                currency === "aznif"
-                  ? "diamond"
-                  : "game-controller-outline"
-              }
-              size={20}
-              color="#f8d774"
-            />
+            <Text style={styles.currencyEmoji}>
+              {currency === "aznif" ? "\u2728" : "\u{1FA99}"}
+            </Text>
 
             <Text style={styles.entryFeeText}>
               تێچووی یاری:{" "}
@@ -110,6 +105,10 @@ export default function WaitingPlayersPopup({
                 );
 
                 const active = !!member;
+                const avatarId = member?.avatarUrl &&
+                    AVATAR_IDS.includes(member.avatarUrl as AvatarId)
+                  ? member.avatarUrl as AvatarId
+                  : undefined;
 
                 return (
                   <View
@@ -125,10 +124,8 @@ export default function WaitingPlayersPopup({
                     >
                       {member ? (
                         <PlayerAvatar
-                          avatarUrl={
-                            member.avatarUrl ??
-                            undefined
-                          }
+                          avatarId={avatarId}
+                          avatarUrl={avatarId ? undefined : member.avatarUrl ?? undefined}
                           size={42}
                         />
                       ) : (
@@ -194,6 +191,7 @@ export default function WaitingPlayersPopup({
 }
 
 const styles = StyleSheet.create({
+  currencyEmoji: { fontSize: 20 },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1201,

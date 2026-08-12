@@ -1,5 +1,10 @@
 import type { MatchReward } from "@/types/game";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 type Props = {
   visible: boolean;
@@ -22,21 +27,42 @@ const MAX_X_PER_ROAD = 4;
 const MAX_O_PER_ROAD = 4;
 
 function clampScore(score: number) {
-  return Math.max(0, Math.floor(score / 5) * 5);
+  return Math.max(
+    0,
+    Math.floor(score / 5) * 5,
+  );
 }
 
 function buildRoads(score: number) {
   const safeScore = clampScore(score);
 
-  return Array.from({ length: ROAD_COUNT }).map((_, roadIndex) => {
-    const roadStart = roadIndex * ROAD_VALUE;
-    const roadScore = Math.max(0, Math.min(ROAD_VALUE, safeScore - roadStart));
+  return Array.from({
+    length: ROAD_COUNT,
+  }).map((_, roadIndex) => {
+    const roadStart =
+      roadIndex * ROAD_VALUE;
 
-    const xCount = Math.min(MAX_X_PER_ROAD, Math.floor(roadScore / X_VALUE));
-    const remainingAfterX = roadScore - xCount * X_VALUE;
+    const roadScore = Math.max(
+      0,
+      Math.min(
+        ROAD_VALUE,
+        safeScore - roadStart,
+      ),
+    );
+
+    const xCount = Math.min(
+      MAX_X_PER_ROAD,
+      Math.floor(roadScore / X_VALUE),
+    );
+
+    const remainingAfterX =
+      roadScore - xCount * X_VALUE;
+
     const oCount = Math.min(
       MAX_O_PER_ROAD,
-      Math.floor(remainingAfterX / O_VALUE),
+      Math.floor(
+        remainingAfterX / O_VALUE,
+      ),
     );
 
     return {
@@ -46,14 +72,26 @@ function buildRoads(score: number) {
   });
 }
 
-function RoadMarks({ xCount, oCount }: { xCount: number; oCount: number }) {
+function RoadMarks({
+  xCount,
+  oCount,
+}: {
+  xCount: number;
+  oCount: number;
+}) {
   return (
     <View style={styles.road}>
       <View style={styles.markLine}>
-        {Array.from({ length: MAX_X_PER_ROAD }).map((_, index) => (
+        {Array.from({
+          length: MAX_X_PER_ROAD,
+        }).map((_, index) => (
           <Text
             key={`x-${index}`}
-            style={[styles.xMark, index >= xCount && styles.hiddenMark]}
+            style={[
+              styles.xMark,
+              index >= xCount &&
+                styles.hiddenMark,
+            ]}
           >
             X
           </Text>
@@ -61,10 +99,16 @@ function RoadMarks({ xCount, oCount }: { xCount: number; oCount: number }) {
       </View>
 
       <View style={styles.markLine}>
-        {Array.from({ length: MAX_O_PER_ROAD }).map((_, index) => (
+        {Array.from({
+          length: MAX_O_PER_ROAD,
+        }).map((_, index) => (
           <Text
             key={`o-${index}`}
-            style={[styles.oMark, index >= oCount && styles.hiddenMark]}
+            style={[
+              styles.oMark,
+              index >= oCount &&
+                styles.hiddenMark,
+            ]}
           >
             O
           </Text>
@@ -74,7 +118,11 @@ function RoadMarks({ xCount, oCount }: { xCount: number; oCount: number }) {
   );
 }
 
-function ScoreRoads({ score }: { score: number }) {
+function ScoreRoads({
+  score,
+}: {
+  score: number;
+}) {
   const roads = buildRoads(score);
 
   return (
@@ -100,58 +148,104 @@ export default function ScorePopup({
   teamAName,
   teamBName,
 }: Props) {
-  const teamA = teamAName ?? "Team A";
-  const teamB = teamBName ?? "Team B";
+  const teamA =
+    teamAName ?? "تیمی تۆ";
+
+  const teamB =
+    teamBName ?? "بەرامبەر";
 
   if (!visible) {
     return null;
   }
 
   return (
-    <View style={styles.overlayRoot} pointerEvents="box-none">
+    <View
+      style={styles.overlayRoot}
+      pointerEvents="box-none"
+    >
       <View style={styles.backdrop}>
-        <Pressable style={styles.backdropPressable} onPress={onClose} />
+        <Pressable
+          style={styles.backdropPressable}
+          onPress={onClose}
+        />
       </View>
 
-      <View style={styles.card}>
+      <View
+        accessibilityViewIsModal
+        style={styles.card}
+      >
+        <View style={styles.titleBadge}>
+          <Text
+            accessibilityRole="header"
+            style={styles.title}
+          >
+            خشتەی خاڵەکان
+          </Text>
+        </View>
+
         <View style={styles.scoreBoard}>
           <View style={styles.teamSide}>
-            <Text style={styles.teamName} numberOfLines={1}>
+            <Text
+              style={styles.teamName}
+              numberOfLines={1}
+            >
               {teamA}
             </Text>
 
-            <ScoreRoads score={teamAScore} />
+            <ScoreRoads
+              score={teamAScore}
+            />
 
-            <Text style={styles.numericScore}>{clampScore(teamAScore)}</Text>
+            <Text style={styles.numericScore}>
+              {clampScore(teamAScore)}
+            </Text>
           </View>
 
-          <View style={styles.verticalDivider} />
+          <View
+            style={styles.verticalDivider}
+          />
 
           <View style={styles.teamSide}>
-            <Text style={styles.teamName} numberOfLines={1}>
+            <Text
+              style={styles.teamName}
+              numberOfLines={1}
+            >
               {teamB}
             </Text>
 
-            <ScoreRoads score={teamBScore} />
+            <ScoreRoads
+              score={teamBScore}
+            />
 
-            <Text style={styles.numericScore}>{clampScore(teamBScore)}</Text>
+            <Text style={styles.numericScore}>
+              {clampScore(teamBScore)}
+            </Text>
           </View>
         </View>
 
         {winnerTeamId ? (
           <>
             <Text style={styles.winnerText}>
-              {winnerTeamId === "teamA" ? teamA : teamB} wins
+              {winnerTeamId === "teamA"
+                ? teamA
+                : teamB}{" "}
+              wins
             </Text>
 
             {matchReward ? (
               <View style={styles.rewardRow}>
-                <Text style={styles.rewardTitle}>
+                <Text
+                  style={styles.rewardTitle}
+                >
                   Free match reward
                 </Text>
 
-                <Text style={styles.rewardDetail}>
-                  +{matchReward.coin} Coin · +{matchReward.gem} Gem · +{matchReward.points} Points
+                <Text
+                  style={styles.rewardDetail}
+                >
+                  +{matchReward.coin} Coin · +
+                  {matchReward.gem} Gem · +
+                  {matchReward.points} Points
                 </Text>
               </View>
             ) : null}
@@ -160,7 +254,9 @@ export default function ScorePopup({
 
         <View style={styles.bottomDivider} />
 
-        <Text style={styles.target}>ئامانج: {TARGET_SCORE} خاڵ</Text>
+        <Text style={styles.target}>
+          ئامانج: {TARGET_SCORE} خاڵ
+        </Text>
       </View>
     </View>
   );
@@ -177,7 +273,8 @@ const styles = StyleSheet.create({
 
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.65)",
+    backgroundColor:
+      "rgba(0,0,0,0.65)",
   },
 
   backdropPressable: {
@@ -185,20 +282,46 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    width: 290,
-    height: 270,
-    borderRadius: 10,
-    paddingHorizontal: 30,
-    paddingTop: 18,
-    paddingBottom: 12,
-    backgroundColor: "rgba(223, 223, 223, 0.95)",
+    width: 380,
+    maxWidth: "92%",
+    minHeight: 340,
+    maxHeight: "90%",
+    borderRadius: 14,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor:
+      "rgba(235,235,235,0.97)",
     zIndex: 1000,
     elevation: 1000,
   },
 
+  titleBadge: {
+    alignSelf: "center",
+    minWidth: 96,
+    paddingHorizontal: 100,
+    paddingVertical: 7,
+    marginBottom: 10,
+    borderRadius: 999,
+    backgroundColor:
+      "rgba(0,0,0,0.08)",
+    borderColor:
+      "rgba(0,0,0,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  title: {
+    color: "#000000",
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
   scoreBoard: {
     flexDirection: "row",
-    height: 210,
+    height: 208,
   },
 
   teamSide: {
@@ -208,20 +331,20 @@ const styles = StyleSheet.create({
 
   teamName: {
     width: "100%",
+    height: 26,
     color: "#000000",
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: "SpedaBold",
-    marginBottom: 8,
     textAlign: "center",
   },
 
   verticalDivider: {
-    width: 1.5,
+    width: 1,
     height: 180,
-    borderRadius: 999,
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
     marginHorizontal: 10,
-    marginTop: 24,
+    marginTop: 10,
+    backgroundColor:
+      "rgba(0,0,0,0.18)",
   },
 
   roadsBox: {
@@ -251,8 +374,12 @@ const styles = StyleSheet.create({
     fontFamily: "RobotoMedium",
     lineHeight: 14,
     textAlign: "center",
-    textShadowColor: "rgba(0, 0, 0, 0.35)",
-    textShadowOffset: { width: 0, height: 0 },
+    textShadowColor:
+      "rgba(0,0,0,0.35)",
+    textShadowOffset: {
+      width: 0,
+      height: 0,
+    },
     textShadowRadius: 5,
   },
 
@@ -263,8 +390,12 @@ const styles = StyleSheet.create({
     fontFamily: "RobotoMedium",
     lineHeight: 14,
     textAlign: "center",
-    textShadowColor: "rgba(0, 0, 0, 0.3)",
-    textShadowOffset: { width: 0, height: 0 },
+    textShadowColor:
+      "rgba(0,0,0,0.30)",
+    textShadowOffset: {
+      width: 0,
+      height: 0,
+    },
     textShadowRadius: 4,
   },
 
@@ -273,15 +404,16 @@ const styles = StyleSheet.create({
   },
 
   numericScore: {
-    marginTop: 30,
+    marginTop: 40,
     color: "#000000",
-    fontSize: 16,
-    fontFamily: "RobotoMedium",
+    fontSize: 18,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 
   winnerText: {
     color: "#000000",
-    fontSize: 12,
+    fontSize: 16,
     fontFamily: "SpedaBold",
     textAlign: "center",
     marginTop: 8,
@@ -294,27 +426,31 @@ const styles = StyleSheet.create({
 
   rewardTitle: {
     color: "#000000",
-    fontSize: 13,
+    fontSize: 16,
     fontFamily: "SpedaBold",
   },
 
   rewardDetail: {
     marginTop: 4,
     color: "#000000",
-    fontSize: 12,
+    fontSize: 15,
     fontFamily: "RobotoMedium",
-  },
-
-  bottomDivider: {
-    height: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.18)",
-    marginBottom: 9,
-  },
-
-  target: {
-    color: "#000000",
-    fontSize: 11,
-    fontFamily: "SpedaBold",
     textAlign: "center",
   },
+
+bottomDivider: {
+  height: 1,
+  backgroundColor: "rgba(0,0,0,0.18)",
+  marginTop: 10,
+  marginBottom: 10,
+},
+
+target: {
+  minHeight: 18,
+  marginTop: 7,
+  color: "#000000",
+  fontSize: 14,
+  fontFamily: "SpedaBold",
+  textAlign: "center",
+},
 });

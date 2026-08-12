@@ -3,7 +3,6 @@ import type { AudioPlayer } from "expo-audio";
 import {
   setAudioModeAsync,
   useAudioPlayer,
-  useAudioPlayerStatus,
 } from "expo-audio";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
@@ -15,14 +14,9 @@ const PLACEMENT_SOURCES = [
   require("@/assets/audio/game/tile-placement-4.mp3"),
   require("@/assets/audio/game/tile-placement-5.mp3"),
 ] as const;
+
 const BONEYARD_SOURCE = require("@/assets/audio/game/boneyard-draw.mp3");
 const PASS_SOURCE = require("@/assets/audio/game/pass.mp3");
-
-console.log("[game-audio] asset modules resolved", {
-  placements: PLACEMENT_SOURCES,
-  boneyard: BONEYARD_SOURCE,
-  pass: PASS_SOURCE,
-});
 
 const PLACEMENT_SEGMENTS = [
   { start: 0, durationMs: 900, volume: 1.0 },
@@ -32,8 +26,17 @@ const PLACEMENT_SEGMENTS = [
   { start: 0, durationMs: 900, volume: 1.0 },
 ] as const;
 
-const BONEYARD_SEGMENT = { start: 0, durationMs: 750, volume: 1.0 };
-const PASS_SEGMENT = { start: 0, durationMs: 500, volume: 1.0 };
+const BONEYARD_SEGMENT = {
+  start: 0,
+  durationMs: 750,
+  volume: 1.0,
+};
+
+const PASS_SEGMENT = {
+  start: 0,
+  durationMs: 500,
+  volume: 1.0,
+};
 
 function getBoardTileCount(board: KozelBoardState) {
   return (
@@ -47,28 +50,25 @@ function getBoardTileCount(board: KozelBoardState) {
 
 async function playSegment(
   player: AudioPlayer,
-  segment: { start: number; durationMs: number; volume: number },
+  segment: {
+    start: number;
+    durationMs: number;
+    volume: number;
+  },
   stopTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
 ) {
-  if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+  if (stopTimerRef.current) {
+    clearTimeout(stopTimerRef.current);
+  }
 
   player.pause();
   player.volume = segment.volume;
 
   try {
-    console.log("[game-audio] preparing segment", {
-      playerId: player.id,
-      loaded: player.isLoaded,
-      duration: player.duration,
-      segment,
-    });
     await player.seekTo(segment.start, 0, 0);
-    console.log("[game-audio] calling play()", {
-      playerId: player.id,
-      start: segment.start,
-      volume: player.volume,
-    });
+
     player.play();
+
     stopTimerRef.current = setTimeout(() => {
       player.pause();
       stopTimerRef.current = null;
@@ -94,15 +94,9 @@ export function useGameSounds({
   const placementPlayer3 = useAudioPlayer(PLACEMENT_SOURCES[2]);
   const placementPlayer4 = useAudioPlayer(PLACEMENT_SOURCES[3]);
   const placementPlayer5 = useAudioPlayer(PLACEMENT_SOURCES[4]);
+
   const boneyardPlayer = useAudioPlayer(BONEYARD_SOURCE);
   const passPlayer = useAudioPlayer(PASS_SOURCE);
-  const placementStatus1 = useAudioPlayerStatus(placementPlayer1);
-  const placementStatus2 = useAudioPlayerStatus(placementPlayer2);
-  const placementStatus3 = useAudioPlayerStatus(placementPlayer3);
-  const placementStatus4 = useAudioPlayerStatus(placementPlayer4);
-  const placementStatus5 = useAudioPlayerStatus(placementPlayer5);
-  const boneyardStatus = useAudioPlayerStatus(boneyardPlayer);
-  const passStatus = useAudioPlayerStatus(passPlayer);
 
   const placementPlayers = useMemo(
     () => [
@@ -120,11 +114,13 @@ export function useGameSounds({
       placementPlayer5,
     ],
   );
+
   const placementTimer1 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placementTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placementTimer3 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placementTimer4 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placementTimer5 = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const placementTimers = useMemo(
     () => [
       placementTimer1,
@@ -135,11 +131,14 @@ export function useGameSounds({
     ],
     [],
   );
+
   const boneyardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const passTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const previousBoardCountRef = useRef<number | null>(null);
   const previousBoneyardCountRef = useRef<number | null>(null);
   const previousPassKeyRef = useRef<string | null>(null);
+
   const hasInitializedPassRef = useRef(false);
   const lastPlacementIndexRef = useRef<number | null>(null);
 
@@ -148,55 +147,22 @@ export function useGameSounds({
       playsInSilentMode: false,
       shouldPlayInBackground: false,
       interruptionMode: "mixWithOthers",
-    })
-      .then(() => console.log("[game-audio] audio mode configured"))
-      .catch((error) => console.warn("[game-audio] audio mode failed", error));
+    }).catch((error) =>
+      console.warn("[game-audio] audio mode failed", error),
+    );
   }, []);
-
-  useEffect(() => {
-    console.log("[game-audio] placement assets load status", [
-      placementStatus1,
-      placementStatus2,
-      placementStatus3,
-      placementStatus4,
-      placementStatus5,
-    ].map(({ id, isLoaded, duration, playbackState }) => ({
-      id,
-      isLoaded,
-      duration,
-      playbackState,
-    })));
-  }, [
-    placementStatus1,
-    placementStatus2,
-    placementStatus3,
-    placementStatus4,
-    placementStatus5,
-  ]);
-
-  useEffect(() => {
-    console.log("[game-audio] shuffle assets load status", {
-      boneyard: {
-        id: boneyardStatus.id,
-        isLoaded: boneyardStatus.isLoaded,
-        duration: boneyardStatus.duration,
-        playbackState: boneyardStatus.playbackState,
-      },
-      pass: {
-        id: passStatus.id,
-        isLoaded: passStatus.isLoaded,
-        duration: passStatus.duration,
-        playbackState: passStatus.playbackState,
-      },
-    });
-  }, [boneyardStatus, passStatus]);
 
   const playRandomPlacement = useCallback(() => {
     let index = Math.floor(Math.random() * PLACEMENT_SEGMENTS.length);
+
     if (index === lastPlacementIndexRef.current) {
-      index = (index + 1 + Math.floor(Math.random() * 4)) % PLACEMENT_SEGMENTS.length;
+      index =
+        (index + 1 + Math.floor(Math.random() * 4)) %
+        PLACEMENT_SEGMENTS.length;
     }
+
     lastPlacementIndexRef.current = index;
+
     void playSegment(
       placementPlayers[index],
       PLACEMENT_SEGMENTS[index],
@@ -207,38 +173,38 @@ export function useGameSounds({
   useEffect(() => {
     const boardCount = getBoardTileCount(board);
     const previousCount = previousBoardCountRef.current;
+
     previousBoardCountRef.current = boardCount;
 
-    // Hydration/reconnect and round resets are silent. Only authoritative board
-    // growth represents a confirmed placement.
+    // Hydration/reconnect and round resets are silent.
+    // Only authoritative board growth represents a confirmed placement.
     if (previousCount !== null && boardCount > previousCount) {
-      console.log("[game-audio] tile placement trigger", {
-        previousCount,
-        boardCount,
-      });
       playRandomPlacement();
     }
   }, [board, playRandomPlacement]);
 
   useEffect(() => {
     const previousCount = previousBoneyardCountRef.current;
+
     previousBoneyardCountRef.current = boneyardCount;
 
     if (previousCount !== null && boneyardCount < previousCount) {
-      console.log("[game-audio] boneyard draw trigger", {
-        previousCount,
-        boneyardCount,
-      });
-      void playSegment(boneyardPlayer, BONEYARD_SEGMENT, boneyardTimerRef);
+      void playSegment(
+        boneyardPlayer,
+        BONEYARD_SEGMENT,
+        boneyardTimerRef,
+      );
     }
   }, [boneyardCount, boneyardPlayer]);
 
   useEffect(() => {
     if (!hasInitializedPassRef.current) {
       hasInitializedPassRef.current = true;
+
       previousPassKeyRef.current = lastPassedPlayerId
         ? `${lastPassedPlayerId}:${currentTurnPlayerId}`
         : null;
+
       return;
     }
 
@@ -248,21 +214,34 @@ export function useGameSounds({
     }
 
     const passKey = `${lastPassedPlayerId}:${currentTurnPlayerId}`;
-    if (previousPassKeyRef.current === passKey) return;
+
+    if (previousPassKeyRef.current === passKey) {
+      return;
+    }
 
     previousPassKeyRef.current = passKey;
-    console.log("[game-audio] pass trigger", {
-      lastPassedPlayerId,
-      currentTurnPlayerId,
-      passKey,
-    });
-    void playSegment(passPlayer, PASS_SEGMENT, passTimerRef);
-  }, [currentTurnPlayerId, lastPassedPlayerId, passPlayer]);
+
+    void playSegment(
+      passPlayer,
+      PASS_SEGMENT,
+      passTimerRef,
+    );
+  }, [
+    currentTurnPlayerId,
+    lastPassedPlayerId,
+    passPlayer,
+  ]);
 
   useEffect(
     () => () => {
-      [...placementTimers, boneyardTimerRef, passTimerRef].forEach((timerRef) => {
-        if (timerRef.current) clearTimeout(timerRef.current);
+      [
+        ...placementTimers,
+        boneyardTimerRef,
+        passTimerRef,
+      ].forEach((timerRef) => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+        }
       });
     },
     [placementTimers],

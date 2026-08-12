@@ -1,4 +1,5 @@
 import { Redirect } from "expo-router";
+import { StyleSheet, View } from "react-native";
 
 import { useLocalOkeyPreviewGame } from "@/okey/hooks/useLocalOkeyPreviewGame";
 import OkeyGameTableScene from "@/okey/scenes/OkeyGameTableScene";
@@ -10,5 +11,18 @@ export default function OkeyPreviewScreen() {
     return <Redirect href="/okey" />;
   }
 
-  return <OkeyGameTableScene controller={controller} preview />;
+  return (
+    <View style={styles.container}>
+      <OkeyGameTableScene
+        controller={controller}
+        preview
+      />
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});

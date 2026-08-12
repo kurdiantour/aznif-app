@@ -40,7 +40,11 @@ const corsHeaders = {
 };
 
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
+  const responseBody =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? { ...body, serverNow: new Date().toISOString() }
+      : body;
+  return new Response(JSON.stringify(responseBody), {
     status,
     headers: {
       ...corsHeaders,
@@ -508,6 +512,31 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       commandType = "manual-leave";
       acceptedCommand = { type: "manual-leave" };
     } else if (action === "resolve-timeout") {
+      const deadlineMs = Date.parse(bundle.turn_deadline_at ?? "");
+      const serverNowMs = Date.now();
+      if (!Number.isFinite(deadlineMs)) {
+        return json(
+          {
+            error: "stale_timeout",
+            code: "stale_timeout",
+            version: bundle.version,
+          },
+          409,
+        );
+      }
+      if (serverNowMs < deadlineMs) {
+        return json(
+          {
+            error: "turn_timer_not_expired",
+            code: "turn_timer_not_expired",
+            version: bundle.version,
+            expiresAt: bundle.turn_deadline_at,
+            retryAfterMs: Math.max(0, deadlineMs - serverNowMs),
+          },
+          409,
+        );
+      }
+
       nextState =
         resolveAuthoritativeMatchDeadline(
           state,
@@ -635,8 +664,13 @@ const commit =
     return json(
       {
         error: conflict
-          ? "version_conflict"
+          ? action === "resolve-timeout"
+            ? "already_processed"
+            : "version_conflict"
           : "commit_failed",
+        code: conflict && action === "resolve-timeout"
+          ? "already_processed"
+          : undefined,
         details: commitError?.message,
       },
       conflict ? 409 : 500,

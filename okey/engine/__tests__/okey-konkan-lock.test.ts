@@ -98,6 +98,19 @@ test("Spend/Lock is limited to once per KonKan player", () => {
   assert.equal(canLockKonkanSet(next, 0, secondTile.id, next.players[2].id, secondTarget.id), false);
 });
 
+test("an ordinary KonKan Spend consumes the Lock", () => {
+  const state = lockState();
+  const first = spendTileOnMeld(state, 0, "lock-tile", state.players[1].id, "target-meld");
+  const locked = first.players[1].melds[0];
+  assert.equal(locked.locked, true);
+  assert.equal(locked.lockedByPlayerId, first.players[0].id);
+  assert.equal(locked.lockedTileId, "lock-tile");
+
+  const secondTile = tile("second-lock", "black", 7);
+  const next = { ...first, players: first.players.map((player, index) => index === 0 ? { ...player, hand: [...player.hand, secondTile] } : player) };
+  assert.equal(canSpendTileOnMeld(next, 0, secondTile.id, next.players[1].id, "target-meld"), false);
+  assert.equal(canLockKonkanSet(next, 0, secondTile.id, next.players[1].id, "target-meld"), false);
+});
 test("non-KonKan, wrong turn, unopened target, and incompatible tile are rejected", () => {
   const notKonkan = lockState({ actorKonkan: false });
   assert.equal(canLockKonkanSet(notKonkan, 0, "lock-tile", notKonkan.players[1].id, "target-meld"), false);
@@ -137,11 +150,11 @@ test("a locked run blocks only the locked endpoint", () => {
 
   const twelve = tile("red-12", "red", 12);
   const six = tile("red-6", "red", 6);
-  const spendState = { ...locked, players: locked.players.map((player, index) => index === 0 ? { ...player, opened: true, hand: [twelve, six] } : player) };
+  const spendState = { ...locked, currentPlayerIndex: 2, players: locked.players.map((player, index) => index === 2 ? { ...player, opened: true, hand: [twelve, six] } : player) };
 
-  assert.equal(canSpendTileOnMeld(spendState, 0, twelve.id, spendState.players[1].id, "descending-run"), false);
-  assert.equal(canSpendTileOnMeld(spendState, 0, six.id, spendState.players[1].id, "descending-run"), true);
-  const spent = spendTileOnMeld(spendState, 0, six.id, spendState.players[1].id, "descending-run");
+  assert.equal(canSpendTileOnMeld(spendState, 2, twelve.id, spendState.players[1].id, "descending-run"), false);
+  assert.equal(canSpendTileOnMeld(spendState, 2, six.id, spendState.players[1].id, "descending-run"), true);
+  const spent = spendTileOnMeld(spendState, 2, six.id, spendState.players[1].id, "descending-run");
   assert.deepEqual(spent.players[1].melds[0].tiles.map((entry) => entry.value), [11, 10, 9, 8, 7, 6]);
   assert.equal(spent.players[1].melds[0].lockedTileId, lockTile.id);
 });

@@ -487,7 +487,18 @@ function getMeldWithTileAdded(
   return best;
 }
 
+function hasKonkanLock(state: OkeyGameState, playerId: string): boolean {
+  return state.players.some((entry) =>
+    entry.melds.some((meld) => meld.locked && meld.lockedByPlayerId === playerId),
+  );
+}
+
 function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: OkeyTile): SpendTarget | null {
+  const player = state.players[playerIndex];
+  if (!player) return null;
+  const requiresKonkanLock = player.konkan;
+  const alreadyLocked = requiresKonkanLock && hasKonkanLock(state, player.id);
+
   for (const targetPlayerIndex of getSpendCandidatePlayerIndexes(state, playerIndex)) {
     const targetPlayer = state.players[targetPlayerIndex];
     if (!targetPlayer.opened) continue;
@@ -500,6 +511,8 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
         const delta = replaced.score - meld.score;
         return { targetPlayerIndex, meldIndex, tiles: replaced.tiles, score: replaced.score, delta, releasedTile: replaced.releasedTile };
       }
+
+      if (requiresKonkanLock && (alreadyLocked || meld.locked)) continue;
 
       const added = getMeldWithTileAdded(meld, tile, state.okeyTile);
       if (!added) continue;
@@ -558,6 +571,8 @@ function findSpecificSpendTarget(
     };
   }
 
+  if (player.konkan && (hasKonkanLock(state, player.id) || meld.locked)) return null;
+
   const added = getMeldWithTileAdded(meld, tile, state.okeyTile);
   if (!added) return null;
 
@@ -602,9 +617,7 @@ function findKonkanSetLockTarget(
 ): KonkanSetLockTarget | null {
   const player = state.players[playerIndex];
   if (!player?.konkan) return null;
-  const alreadyLocked = state.players.some((entry) =>
-    entry.melds.some((meld) => meld.locked && meld.lockedByPlayerId === player.id),
-  );
+  const alreadyLocked = hasKonkanLock(state, player.id);
   if (alreadyLocked) return null;
 
   const targetPlayerIndex = state.players.findIndex((entry) => entry.id === targetPlayerId);
@@ -689,6 +702,7 @@ function spendTileOnTarget(
   target: SpendTarget,
 ): OkeyGameState {
   const player = state.players[playerIndex];
+  const locksKonkanSpend = !target.releasedTile && player.konkan;
   const spentTiles = target.tiles.map((tile) =>
     tile.id === tileId ? { ...tile, spentByPlayerId: player.id } : tile,
   );
@@ -700,7 +714,19 @@ function spendTileOnTarget(
     const nextMelds = index === target.targetPlayerIndex
       ? entry.melds.map((meld, meldIndex) =>
           meldIndex === target.meldIndex
-            ? { ...meld, tiles: spentTiles, score: target.score }
+            ? {
+                ...meld,
+                tiles: spentTiles,
+                score: target.score,
+                ...(locksKonkanSpend
+                  ? {
+                      locked: true,
+                      lockedByPlayerId: player.id,
+                      lockedTileId: tileId,
+                      originalOwnerPlayerId: meld.ownerId || entry.id,
+                    }
+                  : {}),
+              }
             : meld,
         )
       : entry.melds;
@@ -1023,6 +1049,17 @@ function isOfficialKonkanRun(tiles: OkeyTile[], okeyTile: OkeyTile): boolean {
   });
 }
 
+function isOrderedOfficialKonkanRun(tiles: OkeyTile[], okeyTile: OkeyTile): boolean {
+  if (tiles.length !== OKEY_RULESET_V1.konkan.officialRunSize) return false;
+  const regularTiles = tiles.filter((tile) => !isOkeyWildcard(tile, okeyTile));
+  if (!regularTiles.length) return false;
+  const color = getEffectiveTile(regularTiles[0], okeyTile).color;
+  if (!regularTiles.every((tile) => getEffectiveTile(tile, okeyTile).color === color)) return false;
+  return OKEY_RULESET_V1.konkan.officialRunPatterns.some((pattern) =>
+    tiles.every((tile, index) => isOkeyWildcard(tile, okeyTile) || getEffectiveTile(tile, okeyTile).value === pattern[index]),
+  );
+}
+
 function hasSmallKonkanMeld(tiles: OkeyTile[], okeyTile: OkeyTile): boolean {
   for (
     let size = OKEY_RULESET_V1.konkan.completionMeldMinimumSize;
@@ -1065,19 +1102,46 @@ export function canDeclareKonkanWin(hand: OkeyTile[], okeyTile: OkeyTile, locked
     return hasSmallKonkanMeld(remainingTiles, okeyTile) || hasLockedSet;
   });
 }
-export function canDeclareKonkanOpen(state: OkeyGameState, playerIndex: number): boolean {
+export function findKonkanDeclarationRunTileIds(hand: OkeyTile[], okeyTile: OkeyTile, lockedSets: OkeyMeld[] = []): string[] | null {
+  const hasLockedSet = hasLockedKonkanSet(lockedSets, okeyTile);
+  const indexedTiles = hand.map((tile, index) => ({ tile, index }));
+  for (const candidate of getCombinations(indexedTiles, OKEY_RULESET_V1.konkan.officialRunSize)) {
+    const candidateTiles = candidate.map((entry) => entry.tile);
+    if (!isOfficialKonkanRun(candidateTiles, okeyTile)) continue;
+    const indexes = new Set(candidate.map((entry) => entry.index));
+    const remaining = hand.filter((_, index) => !indexes.has(index));
+    if (!hasLockedSet && !hasSmallKonkanMeld(remaining, okeyTile)) continue;
+    const wildcards = candidateTiles.filter((tile) => isOkeyWildcard(tile, okeyTile));
+    const regularByValue = new Map(candidateTiles.filter((tile) => !isOkeyWildcard(tile, okeyTile)).map((tile) => [getEffectiveTile(tile, okeyTile).value, tile]));
+    for (const pattern of OKEY_RULESET_V1.konkan.officialRunPatterns) {
+      let wildcardIndex = 0;
+      const ordered = pattern.map((value) => regularByValue.get(value) ?? wildcards[wildcardIndex++]).filter(Boolean) as OkeyTile[];
+      if (ordered.length === OKEY_RULESET_V1.konkan.officialRunSize && isOrderedOfficialKonkanRun(ordered, okeyTile)) return ordered.map((tile) => tile.id);
+    }
+  }
+  return null;
+}
+
+export function findKonkanDeclarationForPlayer(state: OkeyGameState, playerIndex: number): string[] | null {
+  const player = state.players[playerIndex];
+  return player ? findKonkanDeclarationRunTileIds(player.hand, state.okeyTile, getLockedKonkanSetsForPlayer(state, player.id)) : null;
+}
+
+export function canDeclareKonkanOpen(state: OkeyGameState, playerIndex: number, orderedRunTileIds: string[] = []): boolean {
   if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return false;
   const player = state.players[playerIndex];
   if (!player?.konkan || player.eliminated) return false;
-  return canDeclareKonkanWin(
-    player.hand,
-    state.okeyTile,
-    getLockedKonkanSetsForPlayer(state, player.id),
-  );
+  if (orderedRunTileIds.length !== OKEY_RULESET_V1.konkan.officialRunSize || new Set(orderedRunTileIds).size !== orderedRunTileIds.length) return false;
+  const tileById = new Map(player.hand.map((tile) => [tile.id, tile]));
+  const orderedRun = orderedRunTileIds.map((tileId) => tileById.get(tileId));
+  if (orderedRun.some((tile) => !tile) || !isOrderedOfficialKonkanRun(orderedRun as OkeyTile[], state.okeyTile)) return false;
+  const runIds = new Set(orderedRunTileIds);
+  const remaining = player.hand.filter((tile) => !runIds.has(tile.id));
+  return hasSmallKonkanMeld(remaining, state.okeyTile) || hasLockedKonkanSet(getLockedKonkanSetsForPlayer(state, player.id), state.okeyTile);
 }
 
-export function declareKonkanOpen(state: OkeyGameState, playerIndex: number): OkeyGameState {
-  if (!canDeclareKonkanOpen(state, playerIndex)) return state;
+export function declareKonkanOpen(state: OkeyGameState, playerIndex: number, orderedRunTileIds: string[] = []): OkeyGameState {
+  if (!canDeclareKonkanOpen(state, playerIndex, orderedRunTileIds)) return state;
   const player = state.players[playerIndex];
   return {
     ...state,

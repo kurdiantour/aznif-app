@@ -82,7 +82,7 @@ export function OkeyPlayerRack({
   onMoveTile: (tileId: string, targetIndex: number) => void;
   onMoveTiles?: (tileIds: string[], targetIndex: number) => void;
   onRackScoreChange?: (score: number) => void;
-  onOpenableMeldsChange?: (payload: { melds: OkeyMeld[]; score: number }) => void;
+  onOpenableMeldsChange?: (payload: { melds: OkeyMeld[]; score: number; contiguousGroups: OkeyTile[][] }) => void;
   stagedTileIds?: string[];
   onDropMeldGroup?: (meld: OkeyMeld, point: { x: number; y: number }) => boolean;
   onDropTile?: (tileId: string, point: { x: number; y: number }) => boolean;
@@ -102,7 +102,9 @@ export function OkeyPlayerRack({
   externalHoverPoint?: { x: number; y: number } | null;
   eliminated?: boolean;
 }) {
-const [rackSlots, setRackSlots] = useState<RackSlots>(() => getInitialRackSlots(tiles));
+const [committedRackSlots, setCommittedRackSlots] = useState<RackSlots>(() => getInitialRackSlots(tiles));
+const [previewRackSlots, setPreviewRackSlots] = useState<RackSlots | null>(null);
+const rackSlots = previewRackSlots ?? committedRackSlots;
 
 const [flippedTileIds, setFlippedTileIds] = useState<Set<string>>(
   () => new Set<string>(),
@@ -171,6 +173,11 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
     rackSlotsRef.current = rackSlots;
   }, [rackSlots]);
 
+  const committedRackSlotsRef = useRef(committedRackSlots);
+  useEffect(() => {
+    committedRackSlotsRef.current = committedRackSlots;
+  }, [committedRackSlots]);
+
   const tileByIdRef = useRef(tileById);
   useEffect(() => {
     tileByIdRef.current = tileById;
@@ -196,16 +203,18 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
 
       livePreviewKeyRef.current = previewKey;
       setCurrentInsertionTarget(target);
-      configureRackReflowAnimation();
 
-      setRackSlots(
-        target
-          ? getPreviewSlotsForDrag(
-              target.nextSlots,
-              dragStartSlotsRef.current,
-              draggedTileIds,
-            )
-          : dragStartSlotsRef.current ?? rackSlotsRef.current,
+      if (!target) {
+        setPreviewRackSlots(null);
+        return;
+      }
+
+      setPreviewRackSlots(
+        getPreviewSlotsForDrag(
+          target.nextSlots,
+          dragStartSlotsRef.current,
+          draggedTileIds,
+        ),
       );
     },
     [setCurrentInsertionTarget],
@@ -217,6 +226,11 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
   const onDropMeldGroupRef = useRef(onDropMeldGroup);
   const onDropTileRef = useRef(onDropTile);
   const onTileDragPointChangeRef = useRef(onTileDragPointChange);
+  const dragPointFrameRef = useRef<number | null>(null);
+  const pendingDragPointRef = useRef<{
+    tileId: string | null;
+    point: { x: number; y: number } | null;
+  } | null>(null);
   const onExternalDropPlacedRef = useRef(onExternalDropPlaced);
   const tileRectsRef = useRef<Record<string, { x: number; y: number; width: number; height: number }>>({});
   const tilePanHandlersRef = useRef<Record<string, any>>({});
@@ -231,6 +245,34 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
     onExternalDropPlacedRef.current = onExternalDropPlaced;
   }, [onSelectTile, onMoveTile, onMoveTiles, onDropMeldGroup, onDropTile, onTileDragPointChange, onExternalDropPlaced]);
 
+  const scheduleDragPointChange = useCallback(
+    (tileId: string | null, point: { x: number; y: number } | null) => {
+      pendingDragPointRef.current = { tileId, point };
+
+      if (dragPointFrameRef.current !== null) return;
+
+      dragPointFrameRef.current = requestAnimationFrame(() => {
+        dragPointFrameRef.current = null;
+        const pending = pendingDragPointRef.current;
+        pendingDragPointRef.current = null;
+
+        if (!pending) return;
+
+        onTileDragPointChangeRef.current?.(pending.tileId, pending.point);
+      });
+    },
+    [],
+  );
+
+  const cancelScheduledDragPointChange = useCallback(() => {
+    if (dragPointFrameRef.current !== null) {
+      cancelAnimationFrame(dragPointFrameRef.current);
+      dragPointFrameRef.current = null;
+    }
+
+    pendingDragPointRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (initialTileIdsRef.current.length === 0) return;
     const timeout = setTimeout(() => {
@@ -244,7 +286,7 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
   }, []);
 
   useEffect(() => {
-    setRackSlots((current) => syncSlotsWithTiles(current, tiles, fixedDrawTileId));
+    setCommittedRackSlots((current) => syncSlotsWithTiles(current, tiles, fixedDrawTileId));
   }, [fixedDrawTileId, tiles]);
 
 useEffect(() => {
@@ -291,8 +333,15 @@ useEffect(() => {
     enterAnimationTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
     enterAnimationTimeoutsRef.current = [];
   }, []);
+
+  useEffect(
+    () => () => {
+      cancelScheduledDragPointChange();
+    },
+    [cancelScheduledDragPointChange],
+  );
   useEffect(() => {
-    const scoringSlots = rackSlots;
+    const scoringSlots = committedRackSlots;
     const rows = ROW_ORDER.map((row) => {
       const rowSets: OkeyTile[][] = [];
       let currentSet: OkeyTile[] = [];
@@ -314,8 +363,8 @@ useEffect(() => {
     const displayScore = getRackDisplayScore(rows, okeyTile);
     const openableMelds = getOpenableRackLayout(rows, okeyTile);
     onRackScoreChange?.(displayScore);
-    onOpenableMeldsChange?.(openableMelds);
-  }, [okeyTile, onOpenableMeldsChange, onRackScoreChange, rackSlots, stagedTileIdSet, tileById]);
+    onOpenableMeldsChange?.({ ...openableMelds, contiguousGroups: rows });
+  }, [okeyTile, onOpenableMeldsChange, onRackScoreChange, committedRackSlots, stagedTileIdSet, tileById]);
 
   const availableRackTileWidth =
     rackViewportWidth > 0
@@ -365,12 +414,19 @@ const getTouchPoint = (
 const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
   const viewport = viewportOriginRef.current;
   const touchedTileIndex = draggingMeldRef.current?.touchedTileIndex ?? 0;
+  const currentTileStride = rackTileStrideRef.current;
+
   latestDragPointRef.current = { x: moveX, y: moveY };
+
   dragPosition.setValue({
-    x: moveX - viewport.x - dragTouchOffsetRef.current.x - touchedTileIndex * rackTileStride,
+    x:
+      moveX -
+      viewport.x -
+      dragTouchOffsetRef.current.x -
+      touchedTileIndex * currentTileStride,
     y: moveY - viewport.y - dragTouchOffsetRef.current.y,
   });
-}, [dragPosition, rackTileStride]);
+}, [dragPosition]);
 
   const animateDragBack = useCallback((tileIds: string[], originalSlots: RackSlots, onDone: () => void) => {
     const firstTileId = tileIds[0];
@@ -389,6 +445,36 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
       useNativeDriver: true,
     }).start(({ finished }) => { if (finished) onDone(); });
   }, [dragPosition, rackTileStride]);
+
+  const animateDragToTarget = useCallback(
+  (
+    target: InsertionTarget,
+    onDone: () => void,
+  ) => {
+    const rowLayout = rowLayoutsRef.current[target.row];
+
+    if (!rowLayout) {
+      onDone();
+      return;
+    }
+
+    const currentTileStride = rackTileStrideRef.current;
+
+    Animated.timing(dragPosition, {
+      toValue: {
+        x: target.slotIndex * currentTileStride,
+        y: rowLayout.y,
+      },
+      duration: 80,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        onDone();
+      }
+    });
+  },
+  [dragPosition],
+);
 
   const measureViewport = useCallback((onMeasured?: () => void) => {
     if (!viewportRef.current) {
@@ -410,60 +496,121 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
     rowLayoutsRef.current[row] = event.nativeEvent.layout;
   };
 
-  const getDropRow = useCallback((localY: number): RackRow | null => {
-    const topLayout = rowLayoutsRef.current.top;
-    const bottomLayout = rowLayoutsRef.current.bottom;
-    if (!topLayout || !bottomLayout) return null;
-    if (localY >= topLayout.y && localY <= topLayout.y + topLayout.height) return "top";
-    if (localY >= bottomLayout.y && localY <= bottomLayout.y + bottomLayout.height) return "bottom";
-    const snapPadding = rackTileHeight * ROW_SNAP_PADDING_RATIO;
-    const candidates = (["top", "bottom"] as RackRow[])
-      .map((row) => {
-        const layout = rowLayoutsRef.current[row]!;
-        const insideSnapBand = localY >= layout.y - snapPadding && localY <= layout.y + layout.height + snapPadding;
-        return { row, insideSnapBand, distance: Math.abs(localY - (layout.y + layout.height / 2)) };
-      })
-      .filter((candidate) => candidate.insideSnapBand)
-      .sort((left, right) => left.distance - right.distance);
-    return candidates[0]?.row ?? null;
-  }, [rackTileHeight]);
+const getDropRow = useCallback((localY: number): RackRow | null => {
+  const topLayout = rowLayoutsRef.current.top;
+  const bottomLayout = rowLayoutsRef.current.bottom;
 
-  const getInsertionTarget = useCallback(
-    (tileId: string, gesture: { moveX: number; moveY: number }, sourceSlots?: RackSlots) => {
-      const actualSourceSlots = sourceSlots ?? rackSlotsRef.current;
-      const viewport = viewportOriginRef.current;
-      if (viewport.width <= 0 || viewport.height <= 0) return null;
+  if (!topLayout || !bottomLayout) return null;
 
-      const localX = gesture.moveX - viewport.x;
-      const localY = gesture.moveY - viewport.y;
-      const targetRow = getDropRow(localY);
-      if (!targetRow) return null;
+  if (
+    localY >= topLayout.y &&
+    localY <= topLayout.y + topLayout.height
+  ) {
+    return "top";
+  }
 
-      const rowStartX = 0;
-      const rowEndX = rowStartX + (RACK_ROW_CAPACITY - 1) * rackTileStride + rackTileWidth;
-      if (localX < rowStartX - rackTileWidth / 2 || localX > rowEndX + rackTileWidth / 2) {
-        return null;
-      }
+  if (
+    localY >= bottomLayout.y &&
+    localY <= bottomLayout.y + bottomLayout.height
+  ) {
+    return "bottom";
+  }
 
-      const insertionX = localX - rowStartX;
-      const rawSlotIndex = Math.floor((insertionX + rackTileWidth / 2) / rackTileStride);
-      let slotIndex = Math.max(0, Math.min(RACK_ROW_CAPACITY - 1, rawSlotIndex));
-      const activeTarget = insertionTargetRef.current;
-      if (activeTarget?.row === targetRow) {
-        const activeCenterX = activeTarget.slotIndex * rackTileStride + rackTileWidth / 2;
-        if (Math.abs(localX - activeCenterX) <= rackTileStride * SLOT_TARGET_HYSTERESIS_RATIO) {
-          slotIndex = activeTarget.slotIndex;
-        }
-      }
-      const moveTarget = moveTileIntoSlot(actualSourceSlots, tileId, targetRow, slotIndex);
-      if (!moveTarget) return null;
+  const snapPadding =
+    rackTileHeightRef.current * ROW_SNAP_PADDING_RATIO;
 
-      const flatIndex = getFlatIndexForSlot(moveTarget.slots, moveTarget.row, moveTarget.slotIndex);
+  const candidates = (["top", "bottom"] as RackRow[])
+    .map((row) => {
+      const rowLayout = rowLayoutsRef.current[row]!;
 
-      return { row: moveTarget.row, slotIndex: moveTarget.slotIndex, flatIndex, nextSlots: moveTarget.slots };
-    },
-    [getDropRow, rackTileStride, rackTileWidth],
-  );
+      const insideSnapBand =
+        localY >= rowLayout.y - snapPadding &&
+        localY <= rowLayout.y + rowLayout.height + snapPadding;
+
+      return {
+        row,
+        insideSnapBand,
+        distance: Math.abs(
+          localY - (rowLayout.y + rowLayout.height / 2),
+        ),
+      };
+    })
+    .filter((candidate) => candidate.insideSnapBand)
+    .sort((left, right) => left.distance - right.distance);
+
+  return candidates[0]?.row ?? null;
+}, []);
+
+const getInsertionTarget = useCallback(
+  (
+    tileId: string,
+    gesture: { moveX: number; moveY: number },
+    sourceSlots?: RackSlots,
+  ) => {
+    const actualSourceSlots = sourceSlots ?? rackSlotsRef.current;
+    const viewport = viewportOriginRef.current;
+
+    if (viewport.width <= 0 || viewport.height <= 0) return null;
+
+    const currentTileWidth = rackTileWidthRef.current;
+    const currentTileStride = rackTileStrideRef.current;
+
+    const localX = gesture.moveX - viewport.x;
+    const localY = gesture.moveY - viewport.y;
+    const draggedTileLeftX =
+      localX - dragTouchOffsetRef.current.x;
+    const draggedTileCenterX =
+      draggedTileLeftX + currentTileWidth / 2;
+
+    const targetRow = getDropRow(localY);
+    if (!targetRow) return null;
+
+    const rowStartX = 0;
+    const firstSlotCenterX = rowStartX + currentTileWidth / 2;
+    const lastSlotCenterX =
+      firstSlotCenterX +
+      (RACK_ROW_CAPACITY - 1) * currentTileStride;
+
+    if (
+      draggedTileCenterX < firstSlotCenterX - currentTileWidth / 2 ||
+      draggedTileCenterX > lastSlotCenterX + currentTileWidth / 2
+    ) {
+      return null;
+    }
+
+    const rawSlotIndex = Math.round(
+      (draggedTileCenterX - firstSlotCenterX) / currentTileStride,
+    );
+
+    let slotIndex = Math.max(
+      0,
+      Math.min(RACK_ROW_CAPACITY - 1, rawSlotIndex),
+    );
+
+    const moveTarget = moveTileIntoSlot(
+      actualSourceSlots,
+      tileId,
+      targetRow,
+      slotIndex,
+    );
+
+    if (!moveTarget) return null;
+
+    const flatIndex = getFlatIndexForSlot(
+      moveTarget.slots,
+      moveTarget.row,
+      moveTarget.slotIndex,
+    );
+
+    return {
+      row: moveTarget.row,
+      slotIndex: moveTarget.slotIndex,
+      flatIndex,
+      nextSlots: moveTarget.slots,
+    };
+  },
+  [getDropRow],
+);
 
   const getExternalDropTarget = useCallback((tileId: string, point: { x: number; y: number }) => {
     const viewport = viewportOriginRef.current;
@@ -479,7 +626,7 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
 
     const rawSlotIndex = Math.floor((localX + rackTileWidth / 2) / rackTileStride);
     const desiredSlotIndex = Math.max(0, Math.min(RACK_ROW_CAPACITY - 1, rawSlotIndex));
-    const nextSlots = cloneSlots(rackSlotsRef.current);
+    const nextSlots = cloneSlots(committedRackSlotsRef.current);
     for (const row of ROW_ORDER) {
       const originIndex = nextSlots[row].findIndex((entry) => entry === tileId);
       if (originIndex >= 0) nextSlots[row][originIndex] = null;
@@ -519,46 +666,124 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
       next.delete(externalDropPlacement.tileId);
       return next;
     });
-    setRackSlots(target.nextSlots);
+    setCommittedRackSlots(target.nextSlots);
+    setPreviewRackSlots(null);
     onExternalDropPlaced?.(externalDropPlacement.tileId, target.flatIndex);
   }, [externalDropPlacement, getExternalDropTarget, onExternalDropPlaced, tileById]);
+
   const getGroupInsertionTarget = useCallback(
-    (tileIds: string[], gesture: { moveX: number; moveY: number }, sourceSlots?: RackSlots) => {
-      const actualSourceSlots = sourceSlots ?? rackSlotsRef.current;
-      const viewport = viewportOriginRef.current;
-      if (viewport.width <= 0 || viewport.height <= 0 || tileIds.length === 0) return null;
+  (
+    tileIds: string[],
+    gesture: { moveX: number; moveY: number },
+    sourceSlots?: RackSlots,
+  ) => {
+    const actualSourceSlots =
+      sourceSlots ?? rackSlotsRef.current;
 
-      const localX = gesture.moveX - viewport.x;
-      const localY = gesture.moveY - viewport.y;
-      const targetRow = getDropRow(localY);
-      if (!targetRow) return null;
+    const viewport = viewportOriginRef.current;
 
-      const groupWidth = tileIds.length * rackTileStride - RACK_TILE_GAP;
-      const rowStartX = 0;
-      const rowEndX = rowStartX + (RACK_ROW_CAPACITY - 1) * rackTileStride + rackTileWidth;
-      if (localX < rowStartX - groupWidth / 2 || localX > rowEndX + groupWidth / 2) return null;
+    if (
+      viewport.width <= 0 ||
+      viewport.height <= 0 ||
+      tileIds.length === 0
+    ) {
+      return null;
+    }
 
-      const touchedTileOffset = (draggingMeldRef.current?.touchedTileIndex ?? 0) * rackTileStride;
-      const insertionX = localX - rowStartX - touchedTileOffset;
-      const rawSlotIndex = Math.floor((insertionX + rackTileWidth / 2) / rackTileStride);
-      let slotIndex = Math.max(0, Math.min(RACK_ROW_CAPACITY - tileIds.length, rawSlotIndex));
-      const activeTarget = insertionTargetRef.current;
-      if (activeTarget?.row === targetRow) {
-        const activeTouchedCenterX =
-          (activeTarget.slotIndex + (draggingMeldRef.current?.touchedTileIndex ?? 0)) * rackTileStride
-          + rackTileWidth / 2;
-        if (Math.abs(localX - activeTouchedCenterX) <= rackTileStride * SLOT_TARGET_HYSTERESIS_RATIO) {
-          slotIndex = activeTarget.slotIndex;
-        }
+    const currentTileWidth = rackTileWidthRef.current;
+    const currentTileStride = rackTileStrideRef.current;
+
+    const localX = gesture.moveX - viewport.x;
+    const localY = gesture.moveY - viewport.y;
+
+    const targetRow = getDropRow(localY);
+
+    if (!targetRow) {
+      return null;
+    }
+
+    const groupWidth =
+      tileIds.length * currentTileStride - RACK_TILE_GAP;
+
+    const rowStartX = 0;
+
+    const rowEndX =
+      rowStartX +
+      (RACK_ROW_CAPACITY - 1) * currentTileStride +
+      currentTileWidth;
+
+    if (
+      localX < rowStartX - groupWidth / 2 ||
+      localX > rowEndX + groupWidth / 2
+    ) {
+      return null;
+    }
+
+    const touchedTileIndex =
+      draggingMeldRef.current?.touchedTileIndex ?? 0;
+
+    const touchedTileOffset =
+      touchedTileIndex * currentTileStride;
+
+    const insertionX =
+      localX - rowStartX - touchedTileOffset;
+
+    const rawSlotIndex = Math.floor(
+      (insertionX + currentTileWidth / 2) /
+        currentTileStride,
+    );
+
+    let slotIndex = Math.max(
+      0,
+      Math.min(
+        RACK_ROW_CAPACITY - tileIds.length,
+        rawSlotIndex,
+      ),
+    );
+
+    const activeTarget = insertionTargetRef.current;
+
+    if (activeTarget?.row === targetRow) {
+      const activeTouchedCenterX =
+        (activeTarget.slotIndex + touchedTileIndex) *
+          currentTileStride +
+        currentTileWidth / 2;
+
+      if (
+        Math.abs(localX - activeTouchedCenterX) <=
+        currentTileStride *
+          SLOT_TARGET_HYSTERESIS_RATIO
+      ) {
+        slotIndex = activeTarget.slotIndex;
       }
-      const moveTarget = moveTilesIntoSlot(actualSourceSlots, tileIds, targetRow, slotIndex);
-      if (!moveTarget) return null;
+    }
 
-      const flatIndex = getFlatIndexForSlot(moveTarget.slots, moveTarget.row, moveTarget.slotIndex);
-      return { row: moveTarget.row, slotIndex: moveTarget.slotIndex, flatIndex, nextSlots: moveTarget.slots };
-    },
-    [getDropRow, rackTileStride, rackTileWidth],
-  );
+    const moveTarget = moveTilesIntoSlot(
+      actualSourceSlots,
+      tileIds,
+      targetRow,
+      slotIndex,
+    );
+
+    if (!moveTarget) {
+      return null;
+    }
+
+    const flatIndex = getFlatIndexForSlot(
+      moveTarget.slots,
+      moveTarget.row,
+      moveTarget.slotIndex,
+    );
+
+    return {
+      row: moveTarget.row,
+      slotIndex: moveTarget.slotIndex,
+      flatIndex,
+      nextSlots: moveTarget.slots,
+    };
+  },
+  [getDropRow],
+);
 
   useEffect(() => {
     if (!externalHoverPoint || externalDropPlacement) {
@@ -644,7 +869,8 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
       onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, gesture) => Math.hypot(gesture.dx, gesture.dy) >= DRAG_ACTIVATION_DISTANCE,
       onMoveShouldSetPanResponderCapture: () => false,
-      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminationRequest: () =>
+        !dragStartedRef.current && !draggingMeldRef.current,
       onShouldBlockNativeResponder: () => true,
       onPanResponderGrant: (event, gesture) => {
         dragStartedRef.current = false;
@@ -654,7 +880,7 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
         setDraggingMeld(null);
         setCurrentInsertionTarget(null);
         livePreviewKeyRef.current = null;
-        dragStartSlotsRef.current = cloneSlots(rackSlotsRef.current);
+        dragStartSlotsRef.current = cloneSlots(committedRackSlotsRef.current);
         const startPoint = getTouchPoint(event, gesture, true);
         latestDragPointRef.current = startPoint;
         dragTouchOffsetRef.current = { x: rackTileWidthRef.current / 2, y: rackTileHeightRef.current / 2 };
@@ -694,7 +920,10 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
         setDragPositionFromTouch(point.x, point.y);
 
         const currentDraggingMeld = draggingMeldRef.current;
-        onTileDragPointChangeRef.current?.(currentDraggingMeld ? null : tileId, currentDraggingMeld ? null : point);
+        scheduleDragPointChange(
+          currentDraggingMeld ? null : tileId,
+          currentDraggingMeld ? null : point,
+        );
         const sourceSlots = dragStartSlotsRef.current ?? rackSlotsRef.current;
         const target = currentDraggingMeld
           ? getGroupInsertionTarget(currentDraggingMeld.tileIds, { moveX: point.x, moveY: point.y }, sourceSlots)
@@ -716,16 +945,18 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
           setDraggingTileId(null);
           setDraggingMeld(null);
           setCurrentInsertionTarget(null);
+          setPreviewRackSlots(null);
           dragStartedRef.current = false;
           dragStartSlotsRef.current = null;
           livePreviewKeyRef.current = null;
+          cancelScheduledDragPointChange();
           onTileDragPointChangeRef.current?.(null, null);
         };
 
         if (currentDraggingMeld && moved) {
           if (target) {
+            setCommittedRackSlots(target.nextSlots);
             clearDragState();
-            setRackSlots(target.nextSlots);
             onMoveTilesRef.current?.(currentDraggingMeld.tileIds, target.flatIndex);
             return;
           }
@@ -733,7 +964,6 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
           if (!dropped && originalSlots) {
             animateDragBack(currentDraggingMeld.tileIds, originalSlots, () => {
               configureRackReflowAnimation();
-              setRackSlots(originalSlots);
               clearDragState();
             });
             return;
@@ -761,7 +991,6 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
           if (!dropped && originalSlots) {
             animateDragBack([tileId], originalSlots, () => {
               configureRackReflowAnimation();
-              setRackSlots(originalSlots);
               clearDragState();
             });
             return;
@@ -770,9 +999,10 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
           return;
         }
 
+        setCommittedRackSlots(target.nextSlots);
         clearDragState();
-        setRackSlots(target.nextSlots);
         onMoveTileRef.current(tileId, target.flatIndex);
+        
       },
       onPanResponderTerminate: () => {
         clearLongPressTimer();
@@ -784,17 +1014,18 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
         setCurrentInsertionTarget(null);
         if (originalSlots) {
           configureRackReflowAnimation();
-          setRackSlots(originalSlots);
         }
+        setPreviewRackSlots(null);
         dragStartSlotsRef.current = null;
         livePreviewKeyRef.current = null;
+        cancelScheduledDragPointChange();
         onTileDragPointChangeRef.current?.(null, null);
       },
     }).panHandlers;
 
     tilePanHandlersRef.current[tileId] = panHandlers;
     return panHandlers;
-  }, [applyLiveInsertionTarget, animateDragBack, clearLongPressTimer, getGroupInsertionTarget, getInsertionTarget, measureViewport, setCurrentInsertionTarget, setDragPositionFromTouch, startMeldLongPressTimer]);
+  }, [applyLiveInsertionTarget, animateDragBack, cancelScheduledDragPointChange, clearLongPressTimer, getGroupInsertionTarget, getInsertionTarget, measureViewport, scheduleDragPointChange, setCurrentInsertionTarget, setDragPositionFromTouch, startMeldLongPressTimer]);
 
     const renderRackTile = (tileId: string, row: RackRow, slotIndex: number) => {
     const tile = tileById.get(tileId);
@@ -830,17 +1061,6 @@ const setDragPositionFromTouch = useCallback((moveX: number, moveY: number) => {
       <View
         ref={(node) => { tileRefs.current[tile.id] = node; }}
         collapsable={false}
-        onLayout={() => {
-          // Avoid expensive measurements while an active drag is in progress.
-          // Measurements are still performed outside of drag via the measureRackTile
-          // effect to keep tile rects up-to-date for flights and drops.
-          if (dragStartedRef.current) return;
-          tileRefs.current[tile.id]?.measureInWindow((x, y, width, height) => {
-            const rect = { x, y, width, height };
-            tileRectsRef.current[tile.id] = rect;
-            onTileMeasured?.(tile.id, rect);
-          });
-        }}
         style={shouldHideTile ? styles.hiddenRackTile : undefined}
       >
         {returningJokerTileIds.has(tile.id) && !shouldHideTile ? (

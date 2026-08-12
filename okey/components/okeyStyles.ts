@@ -155,7 +155,7 @@ playerSetScoreCurrent: {
   rackWrap: { position: "absolute", left: 0, right: 0, bottom: RACK_BOTTOM_BASE, height: RACK_HEIGHT, paddingHorizontal: RACK_DEFAULT_PADDING_HORIZONTAL, alignItems: "center", zIndex: 50 },
   playerRack: { width: "100%", maxWidth: 575, aspectRatio: 2014 / 510, position: "relative", overflow: "visible", direction: "ltr", shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 20 },
   rackImage: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
-rackTileViewport: {
+  rackTileViewport: {
   position: "absolute",
   left: "3%",
   right: "3%",
@@ -163,6 +163,7 @@ rackTileViewport: {
   height: "88%",
   overflow: "visible",
   zIndex: 4,
+  elevation: 4,
   direction: "ltr",
 },
   activeRackDragViewport: { zIndex: 200, elevation: 200 },
@@ -181,7 +182,19 @@ tileFlightOverlay: {
   position: "absolute",
   zIndex: 800,
   elevation: 800,
-},  turnTimerTrack: { position: "absolute", overflow: "hidden", backgroundColor: "rgba(36,8,8,0.62)", borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,180,180,0.28)", zIndex: 120, elevation: 120 },
+}, 
+ 
+turnTimerTrack: {
+  position: "absolute",
+  overflow: "hidden",
+  backgroundColor: "rgba(36,8,8,0.62)",
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "rgba(255,180,180,0.28)",
+
+  zIndex: 3,
+  elevation: 3,
+},
   turnTimerTrackHorizontal: { flexDirection: "row", alignItems: "stretch" },
   turnTimerTrackVertical: { flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
   turnTimerReverseHorizontal: { flexDirection: "row-reverse" },

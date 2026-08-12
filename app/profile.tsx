@@ -1,6 +1,5 @@
 import { AvatarPickerModal } from "@/components/player/AvatarPickerModal";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { LogoutConfirmPopup } from "@/components/profile/LogoutConfirmPopup";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentLeaderboardRank, useProfile } from "@/lib/profile";
 import {
@@ -10,13 +9,14 @@ import {
   MAX_LEVEL,
   POINTS_PER_LEVEL,
 } from "@/lib/progression";
-import { signOut } from "@/lib/supabaseAuth";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { Redirect, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -29,14 +29,40 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { profile, loading, updateProfile } = useProfile();
   const { width } = useWindowDimensions();
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
+  const modalProgress = useRef(new Animated.Value(0)).current;
+  const isClosing = useRef(false);
+
+  useEffect(() => {
+    Animated.timing(modalProgress, {
+      toValue: 1,
+      duration: 310,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    return () => modalProgress.stopAnimation();
+  }, [modalProgress]);
+
+  const closeProfile = useCallback(() => {
+    if (isClosing.current) return;
+    isClosing.current = true;
+
+    Animated.timing(modalProgress, {
+      toValue: 0,
+      duration: 190,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) router.back();
+      else isClosing.current = false;
+    });
+  }, [modalProgress, router]);
 
   useEffect(() => {
     setDraftName(profile?.displayName ?? "");
@@ -75,7 +101,7 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <ProfileShell>
+      <ProfileShell progress={modalProgress}>
         <ActivityIndicator color="#f8d774" />
       </ProfileShell>
     );
@@ -100,20 +126,6 @@ export default function ProfileScreen() {
   const gamesPlayed = Math.max(currentProfile.gamesPlayed ?? 0, 0);
   const gamesWon = Math.max(currentProfile.gamesWon ?? 0, 0);
   const gamesLost = Math.max(currentProfile.gamesLost ?? 0, 0);
-
-  async function performLogout() {
-    setLoggingOut(true);
-    try {
-      await signOut();
-      router.replace("/login");
-    } finally {
-      setLoggingOut(false);
-    }
-  }
-
-  function handleLogout() {
-    setIsLogoutConfirmOpen(true);
-  }
 
   function startEditingName() {
     setDraftName(currentProfile.displayName);
@@ -166,12 +178,44 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ProfileShell>
-      <View style={[styles.panel, isWideLayout && styles.panelWide]}>
+    <ProfileShell progress={modalProgress}>
+      <Animated.View
+        style={[
+          styles.panel,
+          isWideLayout && styles.panelWide,
+          {
+            transform: [
+              {
+                translateY: modalProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [16, 0],
+                }),
+              },
+              {
+                scale: modalProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.96, 1],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <View pointerEvents="none" style={styles.topGlow} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close profile"
+          hitSlop={10}
+          onPress={closeProfile}
+          style={({ pressed }) => [
+            styles.iconButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="close" size={20} color="#f8d675" />
+        </Pressable>
+
         <View style={styles.topRow}>
-          <Pressable style={styles.iconButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-forward" size={20} color="#ffffff" />
-          </Pressable>
           <Text style={styles.screenTitle}>پڕۆفایل</Text>
           <View style={styles.iconButtonPlaceholder} />
         </View>
@@ -236,22 +280,6 @@ export default function ProfileScreen() {
                 <Text style={styles.telegramText}>بەشداری تیلیگراممان بە</Text>
               </Pressable>
 
-                <Pressable
-                style={[styles.actionButton, loggingOut && styles.disabled]}
-                onPress={handleLogout}
-              disabled={loggingOut}
-            >
-              {loggingOut ? (
-                <ActivityIndicator color="#fca5a5" />
-                ) : (
-                  <>
-                    <View style={styles.logoutIconBox}>
-                      <Ionicons name="log-out-outline" size={14} color="#fca5a5" />
-                    </View>
-                    <Text style={styles.logoutText}>دەرچوون</Text>
-                  </>
-                )}
-            </Pressable>
           </View>
 
           <View style={styles.detailsColumn}>
@@ -289,14 +317,7 @@ export default function ProfileScreen() {
 
             </View>
         </View>
-      </View>
-
-      <LogoutConfirmPopup
-        visible={isLogoutConfirmOpen}
-        loading={loggingOut}
-        onCancel={() => setIsLogoutConfirmOpen(false)}
-        onConfirm={() => void performLogout()}
-      />
+      </Animated.View>
 
       <AvatarPickerModal
         visible={isAvatarPickerOpen}
@@ -321,18 +342,24 @@ function StatCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ProfileShell({ children }: { children: React.ReactNode }) {
+function ProfileShell({
+  children,
+  progress,
+}: {
+  children: React.ReactNode;
+  progress: Animated.Value;
+}) {
   return (
-    <View style={styles.background}>
+    <Animated.View style={[styles.background, { opacity: progress }]}>
       <View style={styles.fixedContent}>{children}</View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    backgroundColor: "#020617",
+    backgroundColor: "rgba(5,4,12,0.8)",
   },
   fixedContent: {
     flex: 1,
@@ -343,21 +370,41 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: "100%",
-    maxWidth: 430,
-    borderRadius: 6,
-    borderWidth: 0,
-    backgroundColor: "transparent",
-    padding: 12,
+    maxWidth: 800,
+    height: 360,
+    overflow: "hidden",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,212,92,0.52)",
+    backgroundColor: "#14121d",
+    paddingTop: 22,
+    paddingHorizontal: 18,
+    paddingBottom: 17,
     gap: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.46,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 20,
   },
   panelWide: {
-    maxWidth: 760,
+    maxWidth: 800,
+  },
+  topGlow: {
+    position: "absolute",
+    top: -55,
+    left: "23%",
+    width: "54%",
+    height: 110,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,202,68,0.1)",
   },
   topRow: {
     minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    paddingHorizontal: 50,
   },
   screenTitle: {
     color: "#ffffff",
@@ -365,20 +412,27 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
+    transform: [{ translateY: -10 }],
   },
   iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 6,
+    position: "absolute",
+    top: 12,
+    right: 13,
+    zIndex: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
-    borderColor: "rgba(248, 215, 116, 0.24)",
-    backgroundColor: "rgba(248, 215, 116, 0.1)",
+    borderColor: "rgba(255,212,92,0.22)",
+    backgroundColor: "rgba(255,212,92,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   iconButtonPlaceholder: {
-    width: 38,
-    height: 38,
+    display: "none",
+  },
+  pressed: {
+    opacity: 0.72,
   },
   contentRow: {
     flexDirection: "row",
