@@ -7,19 +7,14 @@ import {
 } from "react-native";
 
 import type { OkeyTeamId } from "@/okey/types/okey";
-
-type MatchRewards = {
-  currencyLabel: "Coin" | "MC";
-  currencyDelta: number;
-  gem: number;
-  point: number;
-};
+import type { OkeyMatchPopupRewards } from "@/okey/presentation/okey-match-rewards";
 
 type Props = {
   visible: boolean;
   winnerTeamId: OkeyTeamId | null;
   matchScores: Record<OkeyTeamId, number>;
-  rewards?: MatchRewards | null;
+  rewards?: OkeyMatchPopupRewards | null;
+  rewardsLoading?: boolean;
   onNewMatch: () => void;
 };
 
@@ -28,6 +23,7 @@ export function OkeyMatchResultPopup({
   winnerTeamId,
   matchScores,
   rewards,
+  rewardsLoading = false,
   onNewMatch,
 }: Props) {
   if (!visible) {
@@ -138,7 +134,14 @@ export function OkeyMatchResultPopup({
             </View>
           </View>
 
-          {rewards ? (
+          {rewardsLoading ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>خەڵاتەکان</Text>
+              <View style={styles.rewardLoadingCard}>
+                <Text style={styles.rewardLoadingText}>خەڵاتەکانت ئامادە دەکرێن…</Text>
+              </View>
+            </View>
+          ) : rewards ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 خەڵاتەکان
@@ -403,6 +406,21 @@ const styles = StyleSheet.create({
     color: "#ff8585",
     fontSize: 24,
     fontFamily: "RobotoMedium",
+  },
+
+  rewardLoadingCard: {
+    minHeight: 58,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+
+  rewardLoadingText: {
+    color: "rgba(248, 243, 223, 0.82)",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 
   rewardRow: {

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getOkeyCountdownStartCheckDelay } from "@/okey/multiplayer/okey-room-start-timing";
 
 export type OkeyRoomMember = {
   userId: string;
@@ -166,6 +167,19 @@ export function subscribeOkeyRoom(
   let active = true;
   let refreshInFlight: Promise<void> | null = null;
   let heartbeatInFlight: Promise<void> | null = null;
+  let countdownStartTimer: ReturnType<typeof setTimeout> | null = null;
+  let scheduledCountdownDeadline: string | null = null;
+
+  const clearCountdownStartTimer = () => {
+    if (countdownStartTimer) clearTimeout(countdownStartTimer);
+    countdownStartTimer = null;
+    scheduledCountdownDeadline = null;
+  };
+
+  const deliver = (room: OkeyRoomSnapshot) => {
+    scheduleCountdownStartCheck(room);
+    listener(room);
+  };
 
   const reportError = (error: unknown) => {
     if (!active || !onError) {
@@ -187,7 +201,7 @@ export function subscribeOkeyRoom(
     refreshInFlight = getOkeyRoomStatus(matchId)
       .then((room) => {
         if (active) {
-          listener(room);
+          deliver(room);
         }
       })
       .catch(reportError)
@@ -206,7 +220,7 @@ export function subscribeOkeyRoom(
     heartbeatInFlight = heartbeatOkeyRoom(matchId)
       .then((room) => {
         if (active) {
-          listener(room);
+          deliver(room);
         }
       })
       .catch(reportError)
@@ -216,6 +230,32 @@ export function subscribeOkeyRoom(
 
     return heartbeatInFlight;
   };
+
+  const runCountdownStartCheck = async () => {
+    const pendingHeartbeat = heartbeatInFlight;
+    if (pendingHeartbeat) await pendingHeartbeat;
+    if (active) await heartbeat();
+  };
+
+  function scheduleCountdownStartCheck(room: OkeyRoomSnapshot) {
+    if (room.status !== "waiting" || !room.countdownEndsAt) {
+      clearCountdownStartTimer();
+      return;
+    }
+
+    if (scheduledCountdownDeadline === room.countdownEndsAt && countdownStartTimer) return;
+    clearCountdownStartTimer();
+
+    const delay = getOkeyCountdownStartCheckDelay(room.countdownEndsAt);
+    if (delay === null) return;
+
+    scheduledCountdownDeadline = room.countdownEndsAt;
+    countdownStartTimer = setTimeout(() => {
+      countdownStartTimer = null;
+      scheduledCountdownDeadline = null;
+      void runCountdownStartCheck();
+    }, delay);
+  }
 
   const channel = supabase
     .channel(`okey-room:${matchId}`)
@@ -236,11 +276,12 @@ export function subscribeOkeyRoom(
 
   const heartbeatTimer = setInterval(() => {
     void heartbeat();
-  }, 1_500);
+  }, 60_000);
 
   return () => {
     active = false;
     clearInterval(heartbeatTimer);
+    clearCountdownStartTimer();
     void supabase.removeChannel(channel);
   };
 }
@@ -256,7 +297,21 @@ export async function getActiveOkeyMemberships(): Promise<OkeyActiveMembership[]
   });
 
   if (error) {
-    throw error;
+    let errorBody: { error?: string; details?: string } | null = null;
+
+    try {
+      if ("context" in error && error.context) {
+        errorBody = await error.context.json();
+      }
+    } catch {
+      errorBody = null;
+    }
+
+    throw new Error(
+      errorBody?.details
+        ? (errorBody.error ?? "okey_active_memberships_failed") + ": " + errorBody.details
+        : errorBody?.error ?? error.message ?? "okey_active_memberships_failed",
+    );
   }
 
   if (!data || !Array.isArray(data.memberships)) {

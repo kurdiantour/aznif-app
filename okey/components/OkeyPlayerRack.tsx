@@ -273,41 +273,37 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
     pendingDragPointRef.current = null;
   }, []);
 
-  useEffect(() => {
-    if (initialTileIdsRef.current.length === 0) return;
-    const timeout = setTimeout(() => {
-      setEnteringTileIds((current) => {
-        const next = new Set(current);
-        initialTileIdsRef.current.forEach((tileId) => next.delete(tileId));
-        return next;
-      });
-    }, RACK_TILE_ENTER_MS + RACK_DEAL_BATCH_STAGGER_MS * 6 + 120);
-    enterAnimationTimeoutsRef.current.push(timeout);
-  }, []);
+
 
   useEffect(() => {
     setCommittedRackSlots((current) => syncSlotsWithTiles(current, tiles, fixedDrawTileId));
   }, [fixedDrawTileId, tiles]);
 
 useEffect(() => {
-  // dealResetKey may change because of server updates.
-  // Do not restart the enter animation for tiles already on the rack.
   if (!dealResetKey) return;
 
-  const currentTileIds = new Set(tiles.map((tile) => tile.id));
+  enterAnimationTimeoutsRef.current.forEach(clearTimeout);
+  enterAnimationTimeoutsRef.current = [];
 
-  setEnteringTileIds((current) => {
-    const next = new Set<string>();
+  const dealTileIds = tiles.map((tile) => tile.id);
+  initialTileIdsRef.current = dealTileIds;
+  setEnteringTileIds(new Set(dealTileIds));
 
-    for (const tileId of current) {
-      if (currentTileIds.has(tileId)) {
-        next.add(tileId);
-      }
-    }
+  if (dealTileIds.length === 0) return;
+  const timeout = setTimeout(() => {
+    setEnteringTileIds((current) => {
+      const next = new Set(current);
+      dealTileIds.forEach((tileId) => next.delete(tileId));
+      return next;
+    });
+  }, RACK_TILE_ENTER_MS + RACK_DEAL_BATCH_STAGGER_MS * 6 + 120);
+  enterAnimationTimeoutsRef.current.push(timeout);
 
-    return next;
-  });
-}, [dealResetKey, tiles]);
+  return () => {
+    clearTimeout(timeout);
+    enterAnimationTimeoutsRef.current = enterAnimationTimeoutsRef.current.filter((entry) => entry !== timeout);
+  };
+}, [dealResetKey]);
 
   useEffect(() => {
     const previousTileIds = previousTileIdsRef.current;

@@ -808,6 +808,15 @@ function finishTileCycleLimit(state: OkeyGameState): OkeyGameState {
   };
 }
 
+function isCompleteFourColorSet(meld: OkeyMeld) {
+  if (meld.kind !== "set" || meld.tiles.length !== OKEY_RULESET_V1.meld.maximumSetSize) return false;
+  if (meld.tiles.some((tile) => tile.isFakeJoker)) return false;
+
+  const value = meld.tiles[0]?.value;
+  return value !== undefined
+    && meld.tiles.every((tile) => tile.value === value)
+    && new Set(meld.tiles.map((tile) => tile.color)).size === COLORS.length;
+}
 function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
   if (state.deck.length > 0) return state;
   if (state.reshuffleCount >= MAX_DRAW_PILE_RESHUFFLES) return finishTileCycleLimit(state);
@@ -821,11 +830,21 @@ function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
       const owner = state.discardOwners[index];
       return !owner || !state.players[owner.playerIndex]?.eliminated;
     });
-  if (discardPool.length === 0) return finishTileCycleLimit(state);
+  const completedSetTiles = state.players.flatMap((player) =>
+    player.melds
+      .filter((meld) => isCompleteFourColorSet(meld))
+      .flatMap((meld) => meld.tiles),
+  );
+  const rebuildPool = [...discardPool, ...completedSetTiles];
+  if (rebuildPool.length === 0) return finishTileCycleLimit(state);
 
   return {
     ...state,
-    deck: shuffle(discardPool),
+    players: state.players.map((player) => ({
+      ...player,
+      melds: player.melds.filter((meld) => !isCompleteFourColorSet(meld)),
+    })),
+    deck: shuffle(rebuildPool),
     discardPile: topDiscard ? [topDiscard] : [],
     discardOwners: topDiscard ? [topDiscardOwner] : [],
     reshuffleCount: state.reshuffleCount + 1,

@@ -370,13 +370,13 @@ export function settleAuthoritativeOkeyRound(
       throw new Error("missing_pending_okey_team_forfeit");
     }
 
-    const remainingHumans = finishedRound.players.filter(
+    const remainingMembers = finishedRound.players.filter(
       (player) => !(match.manualLeftPlayerIds ?? []).includes(player.id),
     );
 
     if (
-      remainingHumans.some((player) => player.teamId === pendingForfeitTeamId) ||
-      !remainingHumans.some((player) => player.teamId === forfeitWinnerTeamId)
+      remainingMembers.some((player) => player.teamId === pendingForfeitTeamId) ||
+      !remainingMembers.some((player) => player.teamId === forfeitWinnerTeamId)
     ) {
       throw new Error("invalid_pending_okey_team_forfeit");
     }
@@ -787,10 +787,44 @@ export function applyAuthoritativeOkeyCommand(
   return next;
 }
 
+function reconcileAuthoritativeHumanControl(
+  match: OkeyAuthoritativeMatchState,
+): OkeyAuthoritativeMatchState {
+  if (match.matchFinished) return match;
+
+  const remainingMembers = match.roundState.players.filter(
+    (player) => !(match.manualLeftPlayerIds ?? []).includes(player.id),
+  );
+
+  if (remainingMembers.length === 0) {
+    return {
+      ...match,
+      pendingForfeitTeamId: null,
+      leaveTerminationReason: "no-humans",
+      matchFinished: true,
+      matchWinnerTeamId: null,
+    };
+  }
+
+  const remainingTeamIds = new Set(
+    remainingMembers.map((player) => player.teamId),
+  );
+  const pendingForfeitTeamId: OkeyTeamId | null =
+    remainingTeamIds.size === 1
+      ? remainingMembers[0].teamId === "teamA" ? "teamB" : "teamA"
+      : null;
+
+  return {
+    ...match,
+    pendingForfeitTeamId,
+    leaveTerminationReason: pendingForfeitTeamId ? "team-forfeit" : null,
+  };
+}
+
 function continueAuthoritativeBotTurns(
   match: OkeyAuthoritativeMatchState,
 ): OkeyAuthoritativeMatchState {
-  let current = match;
+  let current = reconcileAuthoritativeHumanControl(match);
 
   for (let action = 0; action < 32; action += 1) {
     if (current.matchFinished) {
@@ -816,6 +850,10 @@ function continueAuthoritativeBotTurns(
           "normal",
         ),
       };
+      current = reconcileAuthoritativeHumanControl(current);
+      if (current.matchFinished) {
+        break;
+      }
       player = current.roundState.players[current.roundState.currentPlayerIndex];
     }
 
@@ -866,23 +904,9 @@ export function applyAuthoritativeManualLeave(
     ? match.manualLeftPlayerIds
     : [...(match.manualLeftPlayerIds ?? []), player.id];
 
-  const remainingHumans = match.roundState.players.filter(
-    (entry) => !manualLeftPlayerIds.includes(entry.id),
-  );
-  const remainingHumanTeamIds = new Set(
-    remainingHumans.map((entry) => entry.teamId),
-  );
-
-  const pendingForfeitTeamId: OkeyTeamId | null =
-    remainingHumans.length > 0 && remainingHumanTeamIds.size === 1
-      ? remainingHumans[0].teamId === "teamA" ? "teamB" : "teamA"
-      : null;
-
-  const takeoverMatch: OkeyAuthoritativeMatchState = {
+  const takeoverMatch = reconcileAuthoritativeHumanControl({
     ...match,
     manualLeftPlayerIds,
-    pendingForfeitTeamId,
-    leaveTerminationReason: pendingForfeitTeamId ? "team-forfeit" : null,
     roundState: isOkeyBotControlled(player)
       ? match.roundState
       : handSeatToBot(
@@ -890,19 +914,11 @@ export function applyAuthoritativeManualLeave(
           actorPlayerIndex,
           "normal",
         ),
-  };
+  });
 
-  if (remainingHumans.length === 0) {
-    return {
-      ...takeoverMatch,
-      pendingForfeitTeamId: null,
-      leaveTerminationReason: "no-humans",
-      matchFinished: true,
-      matchWinnerTeamId: null,
-    };
-  }
-
-  return continueAuthoritativeBotTurns(takeoverMatch);
+  return takeoverMatch.matchFinished
+    ? takeoverMatch
+    : continueAuthoritativeBotTurns(takeoverMatch);
 }
 export function applyAuthoritativeOkeyMatchCommand(
   match:
@@ -1186,14 +1202,9 @@ const lastTimeoutDiscardEvent:
 return continueAuthoritativeBotTurns(
   settleAuthoritativeOkeyRound({
     ...match,
-
-    timeoutCountsByPlayerId:
-      nextTimeoutCounts,
-
+    timeoutCountsByPlayerId: nextTimeoutCounts,
     lastTimeoutDiscardEvent,
-
-    roundState:
-      nextRoundState,
+    roundState: nextRoundState,
   }),
 );
 }

@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const baseSql = readFileSync(
-  "supabase/okey/migrations/20260802000100_okey_authoritative_core.sql",
+  "supabase/migrations/20260802000100_okey_authoritative_core.sql",
   "utf8",
 ).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const sql = readFileSync(
-  "supabase/okey/migrations/20260802000200_okey_multiplayer_rooms.sql",
+  "supabase/migrations/20260802000200_okey_multiplayer_rooms.sql",
   "utf8",
 ).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
@@ -39,16 +39,30 @@ test("four connected seats start only after the server countdown", () => {
   assert.match(sql, /insert into okey\.match_private_states/);
 });
 
-test("disconnect or leave cancels the countdown", () => {
-  assert.match(sql, /last_seen_at < now\(\) - interval '4 seconds'/);
+test("a stale waiting-room heartbeat disconnects the seat and cancels the countdown", () => {
+  assert.match(sql, /if v_match\.status = 'waiting' then update okey\.match_seats set connected = false where match_id = v_match\.id and connected = true and last_seen_at/);
+  assert.match(sql, /last_seen_at < now\(\) - interval '150 seconds'/);
   assert.match(sql, /set countdown_deadline_at = null/);
   assert.doesNotMatch(sql, /\bready\b|ready_count/);
 });
 
-test("manual leave is excluded from reconnect and future matchmaking", () => {
-  assert.match(sql, /state->'manualleftplayerids'/);
-  assert.match(sql, /manual_leave_is_final/);
-  assert.match(sql, /not exists \( select 1 from okey\.match_private_states/);
+test("stale heartbeat expiration never mutates a playing match or takeover state", () => {
+  const expirationBlock = sql.match(
+    /if v_match\.status = 'waiting' then update okey\.match_seats set connected = false[\s\S]*?last_seen_at < now\(\) - interval '150 seconds'; end if;/,
+  )?.[0] ?? "";
+
+  assert.notEqual(expirationBlock, "");
+  assert.doesNotMatch(expirationBlock, /status in \('waiting', 'playing'\)|status = 'playing'/);
+  assert.doesNotMatch(
+    expirationBlock,
+    /controlledbybot|bot_since|manualleftplayerids|manual.leave|takeover|private_states|public_projection|turn_deadline_at/i,
+  );
+});
+
+test("released membership is excluded from reconnect and future matchmaking", () => {
+  assert.match(sql, /membership_released_at is null/);
+  assert.match(sql, /membership_released/);
+  assert.doesNotMatch(sql, /state->'manualleftplayerids'/);
   assert.match(matchFunction, /manualLeftPlayerIds/);
   assert.match(matchFunction, /manual_leave_is_final/);
 });
@@ -79,6 +93,7 @@ test("room gateway is service-role only and supports reconnect", () => {
   assert.match(sql, /revoke all on function public\.okey_room_action[^;]+from public, anon, authenticated/);
   assert.match(sql, /grant execute on function public\.okey_room_action[^;]+to service_role/);
   assert.match(sql, /reconnect/);
+  assert.match(roomFunction, /action !== "matchmake"\s*&&\s*action !== "active-memberships"/);
 });
 
 test("Realtime carries invalidation only, never authoritative state", () => {

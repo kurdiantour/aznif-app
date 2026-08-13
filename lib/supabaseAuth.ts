@@ -203,25 +203,16 @@ export async function signInWithGoogle() {
   return { data, error: null };
 }
 
-export async function signOut() {
-  return supabase.auth.signOut();
+export async function signOut(scope: "global" | "local" = "global") {
+  return supabase.auth.signOut({ scope });
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  try {
-    const { data: sessionData } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getSession();
 
-    if (sessionData.session?.user) {
-      return sessionData.session.user;
-    }
+  if (error) throw error;
 
-    const { data, error } = await supabase.auth.getUser();
-    if (error) return null;
-    return data.user ?? null;
-  } catch (error) {
-    console.warn("[supabase] getCurrentUser failed", error);
-    return null;
-  }
+  return data.session?.user ?? null;
 }
 
 export async function getOrCreateProfile(): Promise<Profile | null> {

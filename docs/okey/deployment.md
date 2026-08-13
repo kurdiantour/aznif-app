@@ -1,6 +1,6 @@
 # Okey production deployment
 
-1. Apply only `supabase/okey/migrations` using `scripts/apply-okey-migrations.ps1`; do not run these files through the Domino migration stream.
+1. Apply database changes through the standard `supabase/migrations` stream with `supabase db push`; Okey objects remain isolated in the `okey` schema.
 2. Deploy `okey_room`, `okey_match`, `okey_chat`, and `okey_maintenance` with JWT verification enabled. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` only as Edge Function secrets; the service key must never be in Expo variables.
 3. Enable Realtime Broadcast for authenticated clients. Okey channels carry only `{ event: "invalidate", matchId, version }`; clients fetch their own projection from `okey_match` after every notification.
 4. Invoke `okey_maintenance` from a protected scheduler every five seconds, passing `x-okey-worker-key: $OKEY_WORKER_SECRET`. It resolves expired turns and hands stale seats to the deterministic Bot worker; its command commits are versioned and idempotent.

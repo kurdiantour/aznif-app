@@ -16,7 +16,7 @@ import {
   resolveAuthoritativeMatchDeadline,
   settleAuthoritativeOkeyRound,
 } from "../okey-authoritative.ts";
-import { isOkeyBotControlled } from "../../engine/okey-bot-policy.ts";
+import { handSeatToBot, isOkeyBotControlled } from "../../engine/okey-bot-policy.ts";
 
 test("viewer projection exposes only the viewer hand and never the deck", () => {
   const state = createInitialOkeyGame(0);
@@ -144,9 +144,28 @@ test("the turn after two misses starts with immediate bot takeover and no third 
   assert.notEqual(controlledPlayer.name, originalPlayer.name);
   assert.ok((controlledPlayer.botNumber ?? 0) >= 300);
   assert.notEqual(match.roundState.currentPlayerIndex, playerIndex);
+  assert.deepEqual(match.manualLeftPlayerIds, []);
+  assert.equal(match.pendingForfeitTeamId, null);
+  assert.equal(match.leaveTerminationReason, null);
   assert.equal(getNextOkeyMatchTurnDeadline(forcePlayerTurn(match, playerIndex)), null);
 });
 
+test("timeout takeover never becomes manual leave, forfeit, or no-humans", () => {
+  let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  const playerIndex = 0;
+  const playerId = match.roundState.players[playerIndex].id;
+  match = {
+    ...forcePlayerTurn(match, playerIndex),
+    timeoutCountsByPlayerId: { ...match.timeoutCountsByPlayerId, [playerId]: 1 },
+  };
+
+  const takenOver = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
+
+  assert.equal(takenOver.timeoutCountsByPlayerId[playerId], 2);
+  assert.deepEqual(takenOver.manualLeftPlayerIds, []);
+  assert.equal(takenOver.pendingForfeitTeamId, null);
+  assert.equal(takenOver.leaveTerminationReason, null);
+});
 test("manual leave finalizes an already bot-controlled takeover seat", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   const playerIndex = 1;
@@ -285,6 +304,35 @@ test("a whole-team leave finishes the match after the current round", () => {
   assert.equal(finished.roundState.phase, "finished");
 });
 
+test("manual leave remains intentional while a teammate timeout stays non-forfeiting", () => {
+  let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  match = applyAuthoritativeManualLeave(match, 1);
+  match = {
+    ...forcePlayerTurn(match, 3),
+    timeoutCountsByPlayerId: { ...match.timeoutCountsByPlayerId, "player-3": 1 },
+  };
+
+  match = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
+
+  assert.deepEqual(match.manualLeftPlayerIds, ["player-1"]);
+  assert.equal(match.pendingForfeitTeamId, null);
+  assert.equal(match.leaveTerminationReason, null);
+});
+
+test("two timeout takeovers on one team do not create a team forfeit", () => {
+  let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  match = {
+    ...match,
+    roundState: handSeatToBot(match.roundState, 1, "normal"),
+    timeoutCountsByPlayerId: { ...match.timeoutCountsByPlayerId, "player-1": 2, "player-3": 1 },
+  };
+  match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, 3), expiredDeadline, afterDeadline);
+
+  assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);
+  assert.deepEqual(match.manualLeftPlayerIds, []);
+  assert.equal(match.pendingForfeitTeamId, null);
+  assert.equal(match.leaveTerminationReason, null);
+});
 test("round three completes before the sole remaining human wins and round four is not created", () => {
   let match = {
     ...createAuthoritativeOkeyMatch(matchPlayers, 0),
@@ -327,6 +375,10 @@ test("zero remaining humans terminate immediately without winner or bot continua
   const prepared = {
     ...initial,
     manualLeftPlayerIds: ["player-0", "player-1", "player-2"],
+    roundState: [0, 1, 2].reduce(
+      (state, playerIndex) => handSeatToBot(state, playerIndex, "normal"),
+      initial.roundState,
+    ),
   };
 
   const finished = applyAuthoritativeManualLeave(prepared, 3);

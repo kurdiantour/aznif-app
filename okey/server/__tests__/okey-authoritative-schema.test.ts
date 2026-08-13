@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const sql = readFileSync(
-  "supabase/okey/migrations/20260802000100_okey_authoritative_core.sql",
+  "supabase/migrations/20260802000100_okey_authoritative_core.sql",
   "utf8",
 ).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 

@@ -2,7 +2,6 @@ import { useProfile } from "@/lib/profile";
 import { markPendingLeaderboardConsent } from "@/lib/leaderboardVisibility";
 import {
   getCurrentUser,
-  getOrCreateProfile,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
@@ -27,7 +26,6 @@ import {
 } from "react-native";
 
 const SAVED_EMAIL_KEY = "domino_saved_email";
-const SESSION_CHECK_TIMEOUT_MS = 8000;
 const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
 
 function isRecentlyCreatedUser(createdAt?: string) {
@@ -39,21 +37,9 @@ function isRecentlyCreatedUser(createdAt?: string) {
     Date.now() - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      reject(new Error("Session check timed out."));
-    }, timeoutMs);
-
-    promise
-      .then(resolve, reject)
-      .finally(() => clearTimeout(timeoutId));
-  });
-}
-
 export default function LoginScreen() {
   const router = useRouter();
-  const { refreshProfile } = useProfile();
+  const { refreshProfile, session, authLoading } = useProfile();
   const { width } = useWindowDimensions();
 
   const [username, setUsername] = useState("");
@@ -62,48 +48,28 @@ export default function LoginScreen() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [isLoading, setIsLoading] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function verifySession() {
-      try {
-        const savedEmail = await AsyncStorage.getItem(SAVED_EMAIL_KEY);
-
-        if (savedEmail && isMounted) {
-          setEmail(savedEmail);
-        }
-
-        const user = await withTimeout(
-          getCurrentUser(),
-          SESSION_CHECK_TIMEOUT_MS,
-        );
-
-        if (user && isMounted) {
-          await withTimeout(
-            getOrCreateProfile(),
-            SESSION_CHECK_TIMEOUT_MS,
-          );
-          router.replace("/(tabs)/play");
-          return;
-        }
-      } catch {
-        // Ignore session errors and show auth form.
-      } finally {
-        if (isMounted) {
-          setCheckingSession(false);
-        }
-      }
+    async function loadSavedEmail() {
+      const savedEmail = await AsyncStorage.getItem(SAVED_EMAIL_KEY);
+      if (savedEmail && isMounted) setEmail(savedEmail);
     }
 
-    verifySession();
+    void loadSavedEmail();
 
     return () => {
       isMounted = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!authLoading && session) {
+      router.replace("/(tabs)/play");
+    }
+  }, [authLoading, router, session]);
 
   const handleAuth = async (authMode = mode) => {
     const cleanEmail = email.trim().toLowerCase();
@@ -147,19 +113,14 @@ export default function LoginScreen() {
         return;
       }
 
-      const profile = await getOrCreateProfile();
-
-      if (!profile) {
-        setMessage(
-          "نەتوانرا پڕۆفایلەکەت ئامادە بکرێت. تکایە ئیمەیڵەکەت پشتڕاست بکەرەوە و دووبارە هەوڵ بدەوە.",
-        );
-        return;
-      }
-
       if (authMode === "signup") {
-        await updateMyProfile({ username: cleanUsername });
-        await refreshProfile();
-        await markPendingLeaderboardConsent();
+        try {
+          await updateMyProfile({ username: cleanUsername });
+          await refreshProfile();
+          await markPendingLeaderboardConsent();
+        } catch (error) {
+          console.warn("[auth] Signed in, but profile setup failed", error);
+        }
       }
 
       await AsyncStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
@@ -172,7 +133,7 @@ export default function LoginScreen() {
     }
   };
 
-  if (checkingSession) {
+  if (authLoading || session) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color="#f8d774" size="large" />
@@ -195,20 +156,17 @@ export default function LoginScreen() {
         return;
       }
 
-      const profile = await getOrCreateProfile();
-
-      if (!profile) {
-        setMessage("چوونەژوورەوە بە Google سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە.");
-        return;
-      }
-
       const user = await getCurrentUser();
 
       if (isRecentlyCreatedUser(user?.created_at)) {
         await markPendingLeaderboardConsent();
       }
 
-      await refreshProfile();
+      try {
+        await refreshProfile();
+      } catch (error) {
+        console.warn("[auth] Signed in, but profile refresh failed", error);
+      }
       router.replace("/(tabs)/play");
     } catch (error) {
       console.warn("[auth] Google sign-in failed", error);

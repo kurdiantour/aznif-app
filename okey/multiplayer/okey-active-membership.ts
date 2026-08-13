@@ -28,7 +28,9 @@ export async function releaseTakenOverOkeyMemberships(): Promise<void> {
     const viewer = projection?.players[membership.playerIndex];
 
     if (viewer?.controlledByBot === true || viewer?.kind === "bot") {
-      await adapter.leave();
+      // A timeout takeover has already ended Human control. It is not a
+      // manual leave, so this cleanup must not submit a manual-leave command.
+      continue;
     }
   }
 }

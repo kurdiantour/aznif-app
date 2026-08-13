@@ -1,4 +1,5 @@
 import type { Profile, ProfileUpdate } from "@/types/profile";
+import type { Session } from "@supabase/supabase-js";
 import {
   createContext,
   useCallback,
@@ -244,6 +245,9 @@ export async function updateCurrentProfile(
 type ProfileContextValue = {
   profile: Profile | null;
   loading: boolean;
+  session: Session | null;
+  authLoading: boolean;
+  authError: Error | null;
   refreshProfile: () => Promise<Profile | null>;
   updateProfile: (changes: ProfileUpdate) => Promise<Profile>;
 };
@@ -252,13 +256,68 @@ const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<Error | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    let profileLoadTimer: ReturnType<typeof setTimeout> | null = null;
 
     if (!isSupabaseConfigured) {
+      setSession(null);
+      setAuthLoading(false);
+      return;
+    }
+
+    async function restoreSession() {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (isMounted) {
+          setSession(data.session);
+          setAuthError(null);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAuthError(
+            error instanceof Error
+              ? error
+              : new Error("Unable to restore auth session."),
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      }
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setSession(nextSession);
+      setAuthError(null);
+      setAuthLoading(false);
+    });
+
+    void restoreSession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!session?.user) {
       setProfile(null);
       setLoading(false);
       return;
@@ -267,65 +326,26 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     async function loadProfile() {
       try {
         setLoading(true);
-
         const nextProfile = await withTimeout(
           getCurrentProfile(),
           PROFILE_LOAD_TIMEOUT_MS,
         );
 
-        if (isMounted) {
-          setProfile(nextProfile);
-        }
+        if (isMounted) setProfile(nextProfile);
       } catch (error) {
         console.warn("[ProfileProvider] Failed to load profile:", error);
-
-        if (isMounted) {
-          setProfile(null);
-        }
+        if (isMounted) setProfile(null);
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
-    }
-
-    function scheduleProfileLoad() {
-      if (profileLoadTimer) {
-        clearTimeout(profileLoadTimer);
-      }
-
-      profileLoadTimer = setTimeout(() => {
-        profileLoadTimer = null;
-        void loadProfile();
-      }, 0);
     }
 
     void loadProfile();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!isMounted) {
-        return;
-      }
-
-      if (!session?.user) {
-        setProfile(null);
-        setLoading(false);
-        return;
-      }
-
-      scheduleProfileLoad();
-    });
-
     return () => {
       isMounted = false;
-      if (profileLoadTimer) {
-        clearTimeout(profileLoadTimer);
-      }
-      subscription.unsubscribe();
     };
-  }, []);
+  }, [session?.user.id]);
 
   const refreshProfile = useCallback(async () => {
     const nextProfile = await getCurrentProfile();
@@ -348,6 +368,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       value={{
         profile,
         loading,
+        session,
+        authLoading,
+        authError,
         refreshProfile,
         updateProfile,
       }}

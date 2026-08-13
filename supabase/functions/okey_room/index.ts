@@ -246,6 +246,7 @@ serve(async (req) => {
 
   if (
     action !== "matchmake" &&
+    action !== "active-memberships" &&
     !isUuid(body.matchId)
   ) {
     return json(
@@ -282,66 +283,42 @@ const displayName = String(
     },
   );
 
-  if (action === "active-memberships") {
-    const { data: seatRows, error: seatsError } = await service
+  if (["heartbeat", "reconnect"].includes(action)) {
+    const { data: membership, error: membershipError } = await service
       .schema("okey")
       .from("match_seats")
-      .select("match_id, player_index")
-      .eq("user_id", authData.user.id);
+      .select("membership_released_at, membership_release_reason")
+      .eq("match_id", body.matchId)
+      .eq("user_id", authData.user.id)
+      .maybeSingle();
 
-    if (seatsError) {
-      return json({ error: "active_memberships_failed", details: seatsError.message }, 500);
+    if (membershipError) {
+      return json({ error: "membership_lookup_failed", details: membershipError.message }, 500);
     }
 
-    const seatByMatchId = new Map(
-      (seatRows ?? []).map((seat) => [String(seat.match_id), Number(seat.player_index)]),
+    if (membership?.membership_released_at) {
+      return json({
+        error: "membership_released",
+        reason: membership.membership_release_reason,
+      }, 403);
+    }
+  }
+  if (action === "active-memberships") {
+    const { data: membershipRows, error: membershipsError } = await service.rpc(
+      "get_active_okey_memberships",
+      { p_user_id: authData.user.id },
     );
-    const matchIds = [...seatByMatchId.keys()];
 
-    if (matchIds.length === 0) {
-      return json({ memberships: [] });
+    if (membershipsError) {
+      return json({ error: "active_memberships_failed", details: membershipsError.message }, 500);
     }
-
-    const { data: matchRows, error: matchesError } = await service
-      .schema("okey")
-      .from("matches")
-      .select("id, status")
-      .in("id", matchIds)
-      .in("status", ["waiting", "playing"]);
-
-    if (matchesError) {
-      return json({ error: "active_memberships_failed", details: matchesError.message }, 500);
-    }
-
-    const activeMatchIds = (matchRows ?? []).map((match) => String(match.id));
-    const { data: privateRows, error: privateError } = await service
-      .schema("okey")
-      .from("match_private_states")
-      .select("match_id, state")
-      .in("match_id", activeMatchIds);
-
-    if (privateError) {
-      return json({ error: "active_memberships_failed", details: privateError.message }, 500);
-    }
-
-    const manuallyLeftMatchIds = new Set(
-      (privateRows ?? [])
-        .filter((row) => {
-          const state = row.state as { manualLeftPlayerIds?: unknown } | null;
-          return Array.isArray(state?.manualLeftPlayerIds) &&
-            state.manualLeftPlayerIds.includes(authData.user.id);
-        })
-        .map((row) => String(row.match_id)),
-    );
 
     return json({
-      memberships: (matchRows ?? [])
-        .filter((match) => !manuallyLeftMatchIds.has(String(match.id)))
-        .map((match) => ({
-          matchId: String(match.id),
-          playerIndex: seatByMatchId.get(String(match.id)) ?? -1,
-          status: match.status,
-        })),
+      memberships: (membershipRows ?? []).map((membership) => ({
+        matchId: String(membership.match_id),
+        playerIndex: Number(membership.player_index),
+        status: membership.status,
+      })),
     });
   }
   let activeParty: {

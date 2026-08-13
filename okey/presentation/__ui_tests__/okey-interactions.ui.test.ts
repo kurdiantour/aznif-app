@@ -1,4 +1,5 @@
 import { expect, test } from "@jest/globals";
+import { createOkeyMeldPresentationFrames, isOkeyTurnPresentationBlocked } from "../okey-game-presentation";
 import {
   createOpponentDiscardFlight,
   findClosestMeldDropTarget,
@@ -50,4 +51,55 @@ test("rack drag preview moves a tile or a complete meld without duplication", ()
   const preview = getPreviewSlotsForDrag(group!.slots, slots, ["a", "b", "c"]);
   expect(preview.bottom.slice(0, 3)).toEqual(["a", "b", "c"]);
   expect(preview.top.slice(3, 6)).toEqual([null, null, null]);
+});
+
+test("turn timer stays blocked until the active tile flight lands", () => {
+  expect(isOkeyTurnPresentationBlocked({
+    opponentTransitionActive: false,
+    hasUnpresentedOpponentDiscard: false,
+    hasTileFlight: true,
+  })).toBe(true);
+
+  expect(isOkeyTurnPresentationBlocked({
+    opponentTransitionActive: false,
+    hasUnpresentedOpponentDiscard: false,
+    hasTileFlight: false,
+  })).toBe(false);
+
+  expect(isOkeyTurnPresentationBlocked({
+    opponentTransitionActive: false,
+    hasUnpresentedOpponentDiscard: false,
+    hasTileFlight: false,
+    hasPendingHumanHandRemoval: true,
+  })).toBe(true);
+});
+test("bot meld presentation reveals spent tiles one action at a time", () => {
+  const tile = (id: string, value: number) => ({ id, color: "red", value, copy: 1 });
+  const baseMeld = {
+    id: "meld",
+    kind: "run",
+    tiles: [tile("a", 1), tile("b", 2), tile("c", 3)],
+    score: 6,
+  };
+  const player = (melds: unknown[]) => ({
+    id: "bot",
+    name: "Bot",
+    kind: "bot",
+    teamId: "teamB",
+    hand: [],
+    melds,
+    opened: true,
+    scoreOpened: 0,
+    konkan: false,
+    eliminated: false,
+  });
+
+  const frames = createOkeyMeldPresentationFrames(
+    [player([baseMeld]) as never],
+    [player([{ ...baseMeld, tiles: [...baseMeld.tiles, tile("d", 4), tile("e", 5)], score: 15 }]) as never],
+  );
+
+  expect(frames).toHaveLength(2);
+  expect(frames[0][0].melds[0].tiles.map((entry) => entry.id)).toEqual(["a", "b", "c", "d"]);
+  expect(frames[1][0].melds[0].tiles.map((entry) => entry.id)).toEqual(["a", "b", "c", "d", "e"]);
 });

@@ -79,6 +79,15 @@ function createLocalPreviewMatch(): OkeyMatchState {
 }
 
 
+export function getNextLocalPreviewDealerIndex(
+  state: OkeyMatchState["roundState"],
+) {
+  return state.endReason === "tile-cycle-limit"
+    ? state.dealerIndex
+    : getNextRoundDealerIndex(state);
+}
+
+
 export function useLocalOkeyPreviewGame(): OkeyGameController {
   const [match, setMatch] =
     useState<OkeyMatchState>(() =>
@@ -230,7 +239,7 @@ useEffect(() => {
 
           roundState:
             createLocalPreviewRound(
-              getNextRoundDealerIndex(
+              getNextLocalPreviewDealerIndex(
                 current.roundState,
               ),
             ),

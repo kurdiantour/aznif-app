@@ -18,9 +18,9 @@ BEGIN
  AND EXISTS(SELECT 1 FROM public.domino_party_members pm WHERE pm.party_id=p.id AND pm.user_id=p_member_id) FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'party_not_active' USING errcode='P0001'; END IF;
  SELECT s.* INTO v_l FROM okey.match_seats s JOIN okey.matches m ON m.id=s.match_id
-  WHERE s.user_id=p_leader_id AND m.status IN('waiting','playing') ORDER BY m.created_at DESC LIMIT 1 FOR UPDATE OF m,s;
+  WHERE s.user_id=p_leader_id AND s.membership_released_at IS NULL AND m.status IN('waiting','playing') ORDER BY m.created_at DESC LIMIT 1 FOR UPDATE OF m,s;
  SELECT s.* INTO v_m FROM okey.match_seats s JOIN okey.matches m ON m.id=s.match_id
-  WHERE s.user_id=p_member_id AND m.status IN('waiting','playing') ORDER BY m.created_at DESC LIMIT 1 FOR UPDATE OF m,s;
+  WHERE s.user_id=p_member_id AND s.membership_released_at IS NULL AND m.status IN('waiting','playing') ORDER BY m.created_at DESC LIMIT 1 FOR UPDATE OF m,s;
  IF v_l.match_id IS NOT NULL AND v_m.match_id=v_l.match_id AND v_m.team_id=v_l.team_id THEN
   SELECT * INTO v_match FROM okey.matches WHERE id=v_l.match_id AND status='waiting' AND table_id=trim(p_table_id) FOR UPDATE;
   IF FOUND THEN RETURN v_match.id; END IF;

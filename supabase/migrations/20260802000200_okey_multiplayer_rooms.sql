@@ -41,7 +41,11 @@ alter table okey.match_seats
     not null default true,
 
   add column if not exists last_seen_at timestamptz
-    not null default now();
+    not null default now(),
+
+  add column if not exists membership_released_at timestamptz,
+
+  add column if not exists membership_release_reason text;
 
 
 -- Every generated room code must be unique.
@@ -147,17 +151,8 @@ begin
     from okey.match_seats seat
     join okey.matches match
       on match.id = seat.match_id
-    where seat.user_id = p_user_id
+    where seat.user_id = p_user_id AND seat.membership_released_at IS NULL
       and match.status in ('waiting', 'playing')
-      and not exists (
-        select 1
-        from okey.match_private_states private_state
-        where private_state.match_id = match.id
-          and coalesce(
-            private_state.state->'manualLeftPlayerIds',
-            '[]'::jsonb
-          ) ? p_user_id::text
-      )
     order by
       case
         when match.status = 'playing' then 0
@@ -383,22 +378,13 @@ left(
     end if;
 
 
-    if p_action in (
-      'status',
-      'heartbeat',
-      'reconnect',
-      'start'
-    ) and exists (
-      select 1
-      from okey.match_private_states private_state
-      where private_state.match_id = v_match.id
-        and coalesce(
-          private_state.state->'manualLeftPlayerIds',
-          '[]'::jsonb
-        ) ? p_user_id::text
+    if p_action in ('status', 'heartbeat', 'reconnect', 'start') and exists (
+      select 1 from okey.match_seats released_seat
+      where released_seat.match_id = v_match.id
+        and released_seat.user_id = p_user_id
+        and released_seat.membership_released_at is not null
     ) then
-      raise exception 'manual_leave_is_final'
-        using errcode = '42501';
+      raise exception 'membership_released' using errcode = '42501';
     end if;
 
 
@@ -443,8 +429,9 @@ left(
 
 
       /*
-       * During a match, the seat remains and the player becomes disconnected.
-       * Maintenance may later hand the seat to a Bot.
+       * During a match, the seat remains and only its room-presence state is
+       * marked disconnected. Authoritative gameplay and Bot control are
+       * unaffected by this presence update.
        */
       elsif v_match.status = 'playing' then
 
@@ -490,13 +477,13 @@ left(
   -- Presence expiration
   -- ==========================================================================
 
-  if v_match.status in ('waiting', 'playing') then
+  if v_match.status = 'waiting' then
     update okey.match_seats
     set connected = false
     where match_id = v_match.id
       and connected = true
       and last_seen_at <
-        now() - interval '4 seconds';
+        now() - interval '150 seconds';
   end if;
 
 

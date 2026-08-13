@@ -32,6 +32,7 @@ export default function SettingsScreen() {
   const [leaderboardVisible, setLeaderboardVisible] = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const logoutStartedRef = useRef(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const modalProgress = useRef(new Animated.Value(0)).current;
   const isClosing = useRef(false);
@@ -105,15 +106,28 @@ export default function SettingsScreen() {
   }
 
   async function performLogout() {
+    if (logoutStartedRef.current) return;
+    logoutStartedRef.current = true;
     setLoggingOut(true);
 
     try {
-      await leaveAllActiveOkeyMemberships();
+      try {
+        await leaveAllActiveOkeyMemberships();
+      } catch (error) {
+        console.warn("Unable to clean up active Okey matches before sign out:", error);
+      }
+
       const { error } = await signOut();
-      if (error) throw error;
+      if (error) {
+        console.warn("Unable to revoke the remote session; signing out locally:", error);
+        const { error: localError } = await signOut("local");
+        if (localError) throw localError;
+      }
+
       router.replace("/login");
     } catch (error) {
-      console.warn("Unable to sign out cleanly:", error);
+      console.warn("Unable to sign out:", error);
+      logoutStartedRef.current = false;
     } finally {
       setLoggingOut(false);
     }
