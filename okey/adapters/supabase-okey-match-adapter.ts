@@ -76,6 +76,8 @@ export class SupabaseOkeyMatchAdapter
 
   private serverClockOffsetMs = 0;
 
+  private closed = false;
+
   constructor(
     private readonly matchId: string,
   ) {}
@@ -480,7 +482,7 @@ export class SupabaseOkeyMatchAdapter
       | null
       | undefined,
   ): void {
-    if (!snapshot) {
+    if (this.closed || !snapshot) {
       return;
     }
 
@@ -507,6 +509,8 @@ export class SupabaseOkeyMatchAdapter
   }
 
   private openRealtimeChannel(): void {
+    this.closed = false;
+
     if (this.channel) {
       return;
     }
@@ -522,19 +526,20 @@ export class SupabaseOkeyMatchAdapter
         },
         () => {
 
-          void this.refresh();
+          void this.refresh().catch(() => {});
         },
       )
       .subscribe((status) => {
         if (
           status === "SUBSCRIBED"
         ) {
-          void this.refresh();
+          void this.refresh().catch(() => {});
         }
       });
   }
 
   private closeRealtimeChannel(): void {
+    this.closed = true;
     this.clearTimeoutTimer();
 
     if (!this.channel) {

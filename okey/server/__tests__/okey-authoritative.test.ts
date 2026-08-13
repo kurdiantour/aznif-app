@@ -147,6 +147,39 @@ test("the turn after two misses starts with immediate bot takeover and no third 
   assert.equal(getNextOkeyMatchTurnDeadline(forcePlayerTurn(match, playerIndex)), null);
 });
 
+test("manual leave finalizes an already bot-controlled takeover seat", () => {
+  let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  const playerIndex = 1;
+  match = forcePlayerTurn(match, playerIndex);
+  const originalPlayerId = match.roundState.players[playerIndex].id;
+
+  match = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
+  match = resolveAuthoritativeMatchDeadline(
+    forcePlayerTurn(match, playerIndex),
+    expiredDeadline,
+    afterDeadline,
+  );
+
+  const precedingIndex = 0;
+  match = forcePlayerTurn(match, precedingIndex);
+  match = {
+    ...match,
+    roundState: { ...match.roundState, hasDrawnThisTurn: true },
+  };
+  const discardId = match.roundState.players[precedingIndex].hand[0].id;
+  match = applyAuthoritativeOkeyMatchCommand(match, precedingIndex, {
+    type: "discard",
+    tileId: discardId,
+  });
+
+  const botBeforeFinalLeave = match.roundState.players[playerIndex];
+  assert.equal(isOkeyBotControlled(botBeforeFinalLeave), true);
+
+  const finalized = applyAuthoritativeManualLeave(match, playerIndex);
+
+  assert.ok(finalized.manualLeftPlayerIds.includes(originalPlayerId));
+  assert.strictEqual(finalized.roundState.players[playerIndex], botBeforeFinalLeave);
+});
 test("a valid human move resets consecutive timeout counts", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = resolveAuthoritativeMatchDeadline(

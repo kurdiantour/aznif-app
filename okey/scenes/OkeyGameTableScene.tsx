@@ -351,6 +351,26 @@ const {
   leaveOnlineMatch,
 } = controller ?? onlineController;
 
+const takeoverExitStartedRef = useRef(false);
+
+useEffect(() => {
+  if (preview || !onlineMatchId || !onlineReady || !onlineProjection) return;
+
+  const viewer = onlineProjection.players.find((player) =>
+    Array.isArray(player.hand),
+  );
+
+  if (
+    (viewer?.controlledByBot === true || viewer?.kind === "bot") &&
+    !takeoverExitStartedRef.current
+  ) {
+    takeoverExitStartedRef.current = true;
+    void leaveOnlineMatch()
+      .catch((error) => console.warn("Unable to release taken-over Okey seat:", error))
+      .finally(() => router.replace("/okey"));
+  }
+}, [leaveOnlineMatch, onlineMatchId, onlineProjection, onlineReady, preview, router]);
+
 const handleConfirmLeaveMatch = useCallback(async () => {
   if (isLeavingMatch) return;
 
@@ -392,7 +412,7 @@ useEffect(() => {
 }, [initialStartTransitionMatchId, onlineGameplayReady, onlineMatchId]);
 
 const dealLifecycleKey = onlineGameplayReady
-  ? `playing-${currentRound}-${onlineRoom?.version ?? 0}`
+  ? `playing-${onlineMatchId ?? "preview"}-${currentRound}`
   : "waiting";
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [rackSetScore, setRackSetScore] = useState(0);

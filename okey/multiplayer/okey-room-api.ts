@@ -244,3 +244,24 @@ export function subscribeOkeyRoom(
     void supabase.removeChannel(channel);
   };
 }
+export type OkeyActiveMembership = {
+  matchId: string;
+  playerIndex: number;
+  status: "waiting" | "playing";
+};
+
+export async function getActiveOkeyMemberships(): Promise<OkeyActiveMembership[]> {
+  const { data, error } = await supabase.functions.invoke("okey_room", {
+    body: { action: "active-memberships" },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data || !Array.isArray(data.memberships)) {
+    throw new Error("okey_active_memberships_response_invalid");
+  }
+
+  return data.memberships as OkeyActiveMembership[];
+}

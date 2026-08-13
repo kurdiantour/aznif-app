@@ -205,6 +205,7 @@ serve(async (req) => {
       "heartbeat",
       "reconnect",
       "leave",
+      "active-memberships",
     ].includes(action)
   ) {
     return json(
@@ -281,6 +282,68 @@ const displayName = String(
     },
   );
 
+  if (action === "active-memberships") {
+    const { data: seatRows, error: seatsError } = await service
+      .schema("okey")
+      .from("match_seats")
+      .select("match_id, player_index")
+      .eq("user_id", authData.user.id);
+
+    if (seatsError) {
+      return json({ error: "active_memberships_failed", details: seatsError.message }, 500);
+    }
+
+    const seatByMatchId = new Map(
+      (seatRows ?? []).map((seat) => [String(seat.match_id), Number(seat.player_index)]),
+    );
+    const matchIds = [...seatByMatchId.keys()];
+
+    if (matchIds.length === 0) {
+      return json({ memberships: [] });
+    }
+
+    const { data: matchRows, error: matchesError } = await service
+      .schema("okey")
+      .from("matches")
+      .select("id, status")
+      .in("id", matchIds)
+      .in("status", ["waiting", "playing"]);
+
+    if (matchesError) {
+      return json({ error: "active_memberships_failed", details: matchesError.message }, 500);
+    }
+
+    const activeMatchIds = (matchRows ?? []).map((match) => String(match.id));
+    const { data: privateRows, error: privateError } = await service
+      .schema("okey")
+      .from("match_private_states")
+      .select("match_id, state")
+      .in("match_id", activeMatchIds);
+
+    if (privateError) {
+      return json({ error: "active_memberships_failed", details: privateError.message }, 500);
+    }
+
+    const manuallyLeftMatchIds = new Set(
+      (privateRows ?? [])
+        .filter((row) => {
+          const state = row.state as { manualLeftPlayerIds?: unknown } | null;
+          return Array.isArray(state?.manualLeftPlayerIds) &&
+            state.manualLeftPlayerIds.includes(authData.user.id);
+        })
+        .map((row) => String(row.match_id)),
+    );
+
+    return json({
+      memberships: (matchRows ?? [])
+        .filter((match) => !manuallyLeftMatchIds.has(String(match.id)))
+        .map((match) => ({
+          matchId: String(match.id),
+          playerIndex: seatByMatchId.get(String(match.id)) ?? -1,
+          status: match.status,
+        })),
+    });
+  }
   let activeParty: {
     id: string;
     leader_id: string;

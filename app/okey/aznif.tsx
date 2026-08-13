@@ -27,6 +27,7 @@ import {
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
 import { getBalance } from "@/lib/wallet";
+import { releaseTakenOverOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
 import {
   matchmakeOkeyRoom,
   type OkeyRoomSnapshot,
@@ -246,6 +247,8 @@ export default function OkeyAznifScreen() {
       setJoiningTableId(table.id);
 
       try {
+        await releaseTakenOverOkeyMemberships();
+
         const room =
           await matchmakeOkeyRoom(table.id);
 

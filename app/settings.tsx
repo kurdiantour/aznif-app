@@ -6,6 +6,7 @@ import {
 } from "@/lib/leaderboardVisibility";
 import { useProfile } from "@/lib/profile";
 import { signOut } from "@/lib/supabaseAuth";
+import { leaveAllActiveOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
 import { useOkeyFeedbackPreferences } from "@/okey/hooks/useOkeyFeedbackPreferences";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -107,8 +108,12 @@ export default function SettingsScreen() {
     setLoggingOut(true);
 
     try {
-      await signOut();
+      await leaveAllActiveOkeyMemberships();
+      const { error } = await signOut();
+      if (error) throw error;
       router.replace("/login");
+    } catch (error) {
+      console.warn("Unable to sign out cleanly:", error);
     } finally {
       setLoggingOut(false);
     }

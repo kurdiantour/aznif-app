@@ -856,16 +856,15 @@ export function applyAuthoritativeManualLeave(
   const player =
     match.roundState.players[actorPlayerIndex];
 
-  if (!player || isOkeyBotControlled(player)) {
+  if (!player) {
     throw new OkeyCommandError(
       "command_rejected",
     );
   }
 
-  const manualLeftPlayerIds = [
-    ...(match.manualLeftPlayerIds ?? []),
-    player.id,
-  ];
+  const manualLeftPlayerIds = (match.manualLeftPlayerIds ?? []).includes(player.id)
+    ? match.manualLeftPlayerIds
+    : [...(match.manualLeftPlayerIds ?? []), player.id];
 
   const remainingHumans = match.roundState.players.filter(
     (entry) => !manualLeftPlayerIds.includes(entry.id),
@@ -884,11 +883,13 @@ export function applyAuthoritativeManualLeave(
     manualLeftPlayerIds,
     pendingForfeitTeamId,
     leaveTerminationReason: pendingForfeitTeamId ? "team-forfeit" : null,
-    roundState: handSeatToBot(
-      match.roundState,
-      actorPlayerIndex,
-      "normal",
-    ),
+    roundState: isOkeyBotControlled(player)
+      ? match.roundState
+      : handSeatToBot(
+          match.roundState,
+          actorPlayerIndex,
+          "normal",
+        ),
   };
 
   if (remainingHumans.length === 0) {
