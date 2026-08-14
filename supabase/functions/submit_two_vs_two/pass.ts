@@ -2,7 +2,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { canAnyPlayerMove, canHandMove } from "../_shared/kozel-engine.ts";
-import { getNextClockwisePlayer } from "../../../lib/game/turn-order.ts";
+import { getNextOkeyOrderPlayer } from "../../../lib/game/turn-order.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
@@ -202,7 +202,7 @@ export default async function handler(req: Request) {
     }
 
     const nextPlayerId =
-      getNextClockwisePlayer(players, players[playerIndex])?.user_id ?? null;
+      getNextOkeyOrderPlayer(players, players[playerIndex])?.user_id ?? null;
     const nextState = {
       ...state,
       currentTurnPlayerId: nextPlayerId,

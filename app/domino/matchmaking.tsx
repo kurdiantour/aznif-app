@@ -104,7 +104,7 @@ export default function MatchmakingScreen() {
             id: profile.id,
             userId: profile.id,
             name: profile.displayName ?? profile.id,
-            level: profile.level ?? calculateLevelFromPoints(profile.points),
+            level: calculateLevelFromPoints(profile.points),
             avatarId: profile.avatarId as AvatarId | undefined,
             playerIndex: 0,
           });
@@ -214,7 +214,7 @@ export default function MatchmakingScreen() {
       if (userIds.length > 0) {
         const { data: profileRows, error: profilesError } = await supabase
           .from("profiles")
-          .select("id, username, full_name, avatar_id, level, points")
+          .select("id, username, avatar_id, points")
           .in("id", userIds);
 
         if (profilesError) {
@@ -235,8 +235,8 @@ export default function MatchmakingScreen() {
           return {
             id: String(row.id ?? row.user_id ?? `player-${index}`),
             userId: row.user_id ?? null,
-            name: (profile?.full_name || profile?.username) ?? `یاریزان ${index + 1}`,
-            level: profile?.level ?? calculateLevelFromPoints(profile?.points),
+            name: profile?.username ?? `یاریزان ${index + 1}`,
+            level: calculateLevelFromPoints(profile?.points),
             avatarId: profile?.avatar_id as AvatarId | undefined,
             playerIndex:
               typeof row.player_index === "number" ? row.player_index : index,
@@ -370,20 +370,28 @@ export default function MatchmakingScreen() {
     });
     return () => subscription.remove();
   }, [handleCancel]);
-  useEffect(() => {
-    return () => {
-      if (
-        navigationStartedRef.current ||
-        cancellationStartedRef.current ||
-        (!currentRoomId && matchmakingStatus !== "searching")
-      ) return;
+const leaveWaitingRoomRef = useRef(leaveWaitingRoom);
 
-      cancellationStartedRef.current = true;
-      void leaveWaitingRoom().catch((error) => {
-        console.warn("Failed to clean up Domino waiting room", error);
-      });
-    };
-  }, [currentRoomId, leaveWaitingRoom, matchmakingStatus]);
+useEffect(() => {
+  leaveWaitingRoomRef.current = leaveWaitingRoom;
+}, [leaveWaitingRoom]);
+
+useEffect(() => {
+  return () => {
+    if (
+      navigationStartedRef.current ||
+      cancellationStartedRef.current
+    ) {
+      return;
+    }
+
+    cancellationStartedRef.current = true;
+
+    void leaveWaitingRoomRef.current().catch((error) => {
+      console.warn("Failed to clean up Domino waiting room", error);
+    });
+  };
+}, []);
   const isMatchFound = playersReady;
   useEffect(() => {
     if (!isMatchFound) {

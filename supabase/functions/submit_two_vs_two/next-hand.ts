@@ -53,7 +53,10 @@ export default async function handler(req: Request) {
     if (!room || room.status !== "active") return json({ error: "2v2 room is not active" }, 400);
 
     const state = room.state || {};
-    if (!state.roundWinnerPlayerId || state.winningTeamId) {
+    if (!state.roundWinnerPlayerId && !state.winningTeamId) {
+      return json({ ok: true, alreadyStarted: true });
+    }
+    if (state.winningTeamId) {
       return json({ error: "No completed round is waiting to start" }, 400);
     }
     const { data: players, error: playersError } = await svc
@@ -106,7 +109,26 @@ export default async function handler(req: Request) {
       p_current_turn_player_id: leaderPlayerId, p_status: "active",
       p_player_id: userData.user.id, p_action: "start_next_hand", p_payload: {},
     });
-    if (commitError) throw commitError;
+    if (commitError) {
+      // Every client finishes the presentation at nearly the same moment.
+      // One atomic commit wins; concurrent callers should observe that new
+      // hand as success instead of surfacing three expected HTTP failures.
+      const { data: latestRoom, error: latestRoomError } = await svc
+        .from("two_vs_two_rooms")
+        .select("state, version")
+        .eq("id", room_id)
+        .maybeSingle();
+      if (
+        !latestRoomError &&
+        latestRoom &&
+        Number(latestRoom.version) > Number(room.version) &&
+        !latestRoom.state?.roundWinnerPlayerId &&
+        !latestRoom.state?.winningTeamId
+      ) {
+        return json({ ok: true, alreadyStarted: true, room: latestRoom });
+      }
+      throw commitError;
+    }
     return json({ ok: true, room: updatedRoom });
   } catch (error) {
     console.error("submit_two_vs_two action=next_hand error", error);

@@ -91,7 +91,7 @@ export default function LoginScreen() {
     try {
       const result =
         authMode === "signup"
-          ? await signUpWithEmail(cleanEmail, password)
+          ? await signUpWithEmail(cleanEmail, password, cleanUsername)
           : await signInWithEmail(cleanEmail, password);
 
       if (result.error) {

@@ -20,10 +20,8 @@ type DbProfile = {
   id: string;
   player_id: string;
   username: string;
-  full_name: string | null;
   avatar_id: string;
   avatar_url: string | null;
-  level?: number;
   points?: number;
   games_played?: number;
   games_won?: number;
@@ -34,7 +32,7 @@ type DbProfile = {
 };
 
 const PROFILE_SELECT =
-  "id, player_id, username, full_name, avatar_id, avatar_url, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+  "id, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
 const PROFILE_LOAD_TIMEOUT_MS = 8000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -61,7 +59,7 @@ function mapDbProfile(
     id: profile.id,
     playerId: profile.player_id,
     username: profile.username,
-    displayName: profile.full_name || profile.username,
+    displayName: profile.username,
     avatarId: profile.avatar_id as unknown as Profile["avatarId"],
     avatarUrl: profile.avatar_url ?? undefined,
     email,
@@ -111,7 +109,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
 export type LeaderboardProfile = Pick<
   Profile,
-  "id" | "displayName" | "avatarId" | "avatarUrl" | "level" | "coin" | "points"
+  "id" | "displayName" | "avatarId" | "avatarUrl" | "coin" | "points"
 > & {
   rank: number;
   aznif: number;
@@ -137,7 +135,6 @@ export async function getLeaderboardProfiles(
       displayName: profile.display_name,
       avatarId: profile.avatar_id as Profile["avatarId"],
       avatarUrl: profile.avatar_url ?? undefined,
-      level: calculateLevelFromPoints(points),
       coin: Number(profile.coin ?? 0),
       points,
       rank: Number(profile.rank ?? 0),

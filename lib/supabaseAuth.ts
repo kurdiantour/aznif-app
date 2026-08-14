@@ -8,10 +8,8 @@ export type Profile = {
   email: string | null;
   player_id: string;
   username: string;
-  full_name: string | null;
   avatar_id: string;
   avatar_url: string | null;
-  level?: number;
   points?: number;
   games_played?: number;
   games_won?: number;
@@ -23,11 +21,11 @@ export type Profile = {
 
 export type PublicProfile = Pick<
   Profile,
-  "username" | "full_name" | "avatar_id" | "avatar_url" | "player_id"
+  "username" | "avatar_id" | "avatar_url" | "player_id"
 >;
 
 const PROFILE_SELECT =
-  "id, email, player_id, username, full_name, avatar_id, avatar_url, level, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+  "id, email, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
 const PROFILE_CREATE_RETRIES = 3;
 const APP_SCHEME = "dominoapp";
 const AUTH_CALLBACK_URL = `${APP_SCHEME}://auth-callback`;
@@ -122,12 +120,10 @@ function generatePlayerId() {
 
 function googleProfileFromUser(user: User) {
   const metadata = user.user_metadata ?? {};
-  const fullName =
-    typeof metadata.full_name === "string" && metadata.full_name.trim()
-      ? metadata.full_name.trim()
-      : typeof metadata.name === "string" && metadata.name.trim()
-        ? metadata.name.trim()
-        : null;
+  const name =
+    typeof metadata.name === "string" && metadata.name.trim()
+      ? metadata.name.trim()
+      : null;
   const avatarUrl =
     typeof metadata.avatar_url === "string" && metadata.avatar_url.trim()
       ? metadata.avatar_url.trim()
@@ -135,14 +131,17 @@ function googleProfileFromUser(user: User) {
         ? metadata.picture.trim()
         : null;
 
-  return { fullName, avatarUrl };
+  return { name, avatarUrl };
 }
 
-export async function signUpWithEmail(email: string, password: string) {
+export async function signUpWithEmail(email: string, password: string, username: string) {
   return supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: authRedirectUrl("email") },
+    options: {
+      emailRedirectTo: authRedirectUrl("email"),
+      data: { username: username.trim() },
+    },
   });
 }
 
@@ -242,8 +241,7 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
         id: user.id,
         email: user.email ?? null,
         player_id: generatePlayerId(),
-        username: usernameForUser(user, googleProfile.fullName, attempt),
-        full_name: googleProfile.fullName,
+        username: usernameForUser(user, googleProfile.name, attempt),
         avatar_id: randomDefaultAvatarId(),
         avatar_url: googleProfile.avatarUrl,
       })
@@ -319,7 +317,7 @@ export async function getPublicProfile(
 ): Promise<PublicProfile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("username, full_name, avatar_id, avatar_url, player_id")
+    .select("username, avatar_id, avatar_url, player_id")
     .eq("id", userId)
     .maybeSingle<PublicProfile>();
 

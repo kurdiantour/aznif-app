@@ -5,7 +5,7 @@ import {
   getNextHandKingIndex,
   NEXT_HAND_OPENING_STATE,
 } from "../../../lib/game/king-rules.ts";
-import { getNextClockwisePlayer } from "../../../lib/game/turn-order.ts";
+import { getNextOkeyOrderPlayer } from "../../../lib/game/turn-order.ts";
 import {
   applyMove,
   canAnyPlayerMove,
@@ -247,7 +247,7 @@ export default async function handler(req: Request) {
     }
 
     let nextTurnPlayerId =
-      getNextClockwisePlayer(players, players[playerIndex])?.user_id ?? null;
+      getNextOkeyOrderPlayer(players, players[playerIndex])?.user_id ?? null;
     let finalHands = nextHands;
     let finalBoneyard = [];
     let nextStatus = "active";

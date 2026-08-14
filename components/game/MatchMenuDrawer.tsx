@@ -1,8 +1,5 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import {
-  getRankTitleFromLevel,
-  getRankTitleFromPoints,
-} from "@/lib/progression";
+import { getRankTitleFromPoints } from "@/lib/progression";
 import { BlurView } from "expo-blur";
 import {
   Animated,
@@ -26,16 +23,13 @@ function getPlayerRankLabel(player: any) {
     return "بۆت";
   }
 
-  if (typeof player.points === "number") {
-    return getRankTitleFromPoints(player.points);
-  }
-
-  return getRankTitleFromLevel(player.level);
+  return getRankTitleFromPoints(player.points);
 }
 
 export default function MatchMenuDrawer({
   visible,
   players,
+  humanPlayer,
   translateX,
   onClose,
   onLeavePress,
@@ -44,15 +38,21 @@ export default function MatchMenuDrawer({
     return null;
   }
 
-  const myTeamPlayers = [
-    players[0],
-    players[1],
-  ].filter(Boolean);
+  const myTeamId = humanPlayer?.teamId ?? players[0]?.teamId;
+  const opponentTeamId = myTeamId === "teamA" ? "teamB" : "teamA";
+  const hasAuthoritativeTeams =
+    !!myTeamId && players.some((player) => !!player?.teamId);
 
-  const opponentTeamPlayers = [
-    players[2],
-    players[3],
-  ].filter(Boolean);
+  // 2v2 teammates occupy opposite indexes (0 + 2 and 1 + 3). The waiting
+  // popup displays those same pairs together, so the drawer must group by
+  // the authoritative team id instead of grouping adjacent array entries.
+  const myTeamPlayers = hasAuthoritativeTeams
+    ? players.filter((player) => player?.teamId === myTeamId)
+    : [players[0], players[2]].filter(Boolean);
+
+  const opponentTeamPlayers = hasAuthoritativeTeams
+    ? players.filter((player) => player?.teamId === opponentTeamId)
+    : [players[1], players[3]].filter(Boolean);
 
   const teams = [
     {

@@ -110,6 +110,12 @@ export default function AuthCallbackScreen() {
           return;
         }
 
+        if (flow === "email") {
+          await getOrCreateProfile();
+          router.replace("/(tabs)/play");
+          return;
+        }
+
         router.replace("/verify-email");
       } catch (error) {
         if (active) {

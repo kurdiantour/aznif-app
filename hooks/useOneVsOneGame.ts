@@ -11,6 +11,7 @@ import {
   getSnapshotVersion,
   type PendingMultiplayerMove,
 } from '@/lib/multiplayer/optimisticMove';
+import { calculateLevelFromPoints } from '@/lib/progression';
 import { supabase } from '@/lib/supabase';
 import type {
     DominoTileData,
@@ -176,7 +177,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
 
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, username, full_name, avatar_id, level, points')
+      .select('id, username, avatar_id, points')
       .in('id', userIds);
 
     if (profilesError) throw profilesError;
@@ -195,17 +196,9 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     applySnapshot(actionSnapshot);
     setError(null);
 
-    const actionState = actionSnapshot.state;
-    const isTerminalAction =
-      actionSnapshot.status === 'finished' ||
-      actionState?.status === 'finished' ||
-      !!actionState?.winningTeamId;
 
-    if (isTerminalAction) return true;
-
-    await refreshSnapshot();
     return true;
-  }, [applySnapshot, refreshSnapshot]);
+  }, [applySnapshot]);
 
   useEffect(() => {
     if (!roomId) {
@@ -307,23 +300,78 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
           if (playersChannelRef.current) void supabase.removeChannel(playersChannelRef.current);
           if (movesChannelRef.current) void supabase.removeChannel(movesChannelRef.current);
 
-          roomChannelRef.current = supabase
-            .channel(`one_vs_one_rooms:${roomId}`)
-            .on(
-              'postgres_changes',
-              {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'one_vs_one_rooms',
-                filter: `id=eq.${roomId}`,
-              },
-              () => {
-                if (!mounted) return;
-                markRealtimeActivity();
-                void loadRoom();
-              },
-            )
-            .subscribe((status, err) => handleChannelStatus('rooms', status, err));
+roomChannelRef.current = supabase
+  .channel(`one_vs_one_rooms:${roomId}`)
+  .on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'one_vs_one_rooms',
+      filter: `id=eq.${roomId}`,
+    },
+    (payload) => {
+      if (!mounted) return;
+
+      markRealtimeActivity();
+
+const updatedRoom = payload.new as any;
+
+if (updatedRoom) {
+  const publicState = updatedRoom.state ?? {};
+  const version = getSnapshotVersion(updatedRoom);
+
+  if (version >= 0 && version < latestVersionRef.current) {
+    return;
+  }
+
+  if (version >= 0) {
+    latestVersionRef.current = version;
+  }
+
+  setRawState((previousState: any) => {
+    const nextRawState = {
+      ...(previousState ?? {}),
+      ...updatedRoom,
+      ...publicState,
+
+      // Realtime room rows contain public game state only.
+      // Keep this device's private hand from its authenticated snapshot.
+      myHand: previousState?.myHand ?? [],
+
+      mode: '1v1',
+
+      currentTurnPlayerId:
+        publicState.currentTurnPlayerId ??
+        updatedRoom.current_turn_player_id ??
+        previousState?.currentTurnPlayerId ??
+        null,
+    };
+
+    const turnStartedAt =
+      nextRawState.turnStartedAt ??
+      nextRawState.updated_at ??
+      null;
+
+    const nextTurnPlayerId =
+      nextRawState.currentTurnPlayerId ??
+      null;
+
+    activeTurnKeyRef.current =
+      version >= 0 &&
+      typeof turnStartedAt === 'string' &&
+      typeof nextTurnPlayerId === 'string'
+        ? `${version}:${turnStartedAt}:${nextTurnPlayerId}`
+        : null;
+
+    clearTimeoutRetry();
+
+    return nextRawState;
+  });
+}
+    },
+  )
+  .subscribe((status, err) => handleChannelStatus('rooms', status, err));
 
           playersChannelRef.current = supabase
             .channel(`one_vs_one_players:${roomId}`)
@@ -343,25 +391,26 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
             )
             .subscribe((status, err) => handleChannelStatus('players', status, err));
 
-          movesChannelRef.current = supabase
-            .channel(`one_vs_one_moves:${roomId}`)
-            .on(
-              'postgres_changes',
-              {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'one_vs_one_moves',
-                filter: `room_id=eq.${roomId}`,
-              },
-              (payload) => {
-                if (!mounted) return;
-                markRealtimeActivity();
-                void loadRoom();
-                if ((payload.new as any)?.action === 'manual_leave_takeover') {
-                  void refreshPlayers();
-                }
-              },
-            )
+movesChannelRef.current = supabase
+  .channel(`one_vs_one_moves:${roomId}`)
+  .on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'one_vs_one_moves',
+      filter: `room_id=eq.${roomId}`,
+    },
+    (payload) => {
+      if (!mounted) return;
+
+      markRealtimeActivity();
+
+      if ((payload.new as any)?.action === 'manual_leave_takeover') {
+        void refreshPlayers();
+      }
+    },
+  )
             .subscribe((status, err) => handleChannelStatus('moves', status, err));
         };
 
@@ -699,7 +748,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         id: playerId,
         name: row.bot_takeover
           ? 'رۆبوتی کاتی'
-          : (profile?.full_name || profile?.username) ?? (row.user_id ? 'Player' : 'Bot'),
+          : profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
         seat: getRelativeSeat(playerIndex, myPlayerIndex, 2),
         kind: row.kind,
         teamId: row.team_id,
@@ -711,7 +760,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
-        level: profile?.level,
+        level: calculateLevelFromPoints(profile?.points),
         points: profile?.points,
       };
     });

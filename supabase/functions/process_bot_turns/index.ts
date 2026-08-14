@@ -10,7 +10,7 @@ import {
   getPlayableBranches,
 } from "../_shared/kozel-engine.ts";
 import { resolveMatchOutcome } from "../../../lib/game/match-rules.ts";
-import { getNextClockwisePlayer } from "../../../lib/game/turn-order.ts";
+import { getNextOkeyOrderPlayer } from "../../../lib/game/turn-order.ts";
 import {
   handCounts,
   pipTotal,
@@ -237,7 +237,7 @@ serve(async (req) => {
     const botMove = pickBotMove(hand, state);
     const nextPlayerId =
       mode === "2v2"
-        ? (getNextClockwisePlayer(players, players[playerIndex])?.user_id ??
+        ? (getNextOkeyOrderPlayer(players, players[playerIndex])?.user_id ??
           null)
         : (players[(playerIndex + 1) % players.length]?.user_id ?? null);
     let nextHands = hands;

@@ -260,14 +260,6 @@ serve(async (req) => {
   const metadata =
     authData.user.user_metadata ?? {};
 
-const displayName = String(
-  metadata.display_name ??
-    metadata.full_name ??
-    metadata.name ??
-    authData.user.email?.split("@")[0] ??
-    "Player"
-).slice(0, 64);
-
   const avatarUrl =
     typeof metadata.avatar_url === "string"
       ? metadata.avatar_url
@@ -282,6 +274,16 @@ const displayName = String(
       },
     },
   );
+
+  const { data: currentProfile, error: currentProfileError } = await service
+    .from("profiles")
+    .select("username")
+    .eq("id", authData.user.id)
+    .maybeSingle();
+  if (currentProfileError) {
+    return json({ error: "profile_lookup_failed", details: currentProfileError.message }, 500);
+  }
+  const displayName = currentProfile?.username ?? "Player";
 
   if (["heartbeat", "reconnect"].includes(action)) {
     const { data: membership, error: membershipError } = await service
@@ -487,14 +489,14 @@ const displayName = String(
   if (action === "matchmake" && activeParty) {
     const teammate = partyMembers.find((member) => member.user_id !== authData.user.id);
     if (!teammate) return json({ error: "invalid_party_size" }, 409);
-    const teammateProfile = await service.from("profiles").select("username, full_name, avatar_id")
+    const teammateProfile = await service.from("profiles").select("username, avatar_id")
       .eq("id", teammate.user_id).maybeSingle();
     if (teammateProfile.error) return json({ error: "party_member_profile_failed" }, 500);
     const economy = TABLE_ECONOMY[String(body.tableId)];
     const allocation = await service.rpc("matchmake_okey_party", {
       p_party_id: activeParty.id, p_leader_id: authData.user.id, p_member_id: teammate.user_id,
       p_table_id: String(body.tableId), p_leader_name: displayName, p_leader_avatar: avatarUrl,
-      p_member_name: teammateProfile.data?.full_name ?? teammateProfile.data?.username ?? "Player",
+      p_member_name: teammateProfile.data?.username ?? "Player",
       p_member_avatar: teammateProfile.data?.avatar_id ?? null,
       p_currency: economy.currency, p_entry_fee: economy.entryFee,
     });
@@ -516,6 +518,40 @@ const displayName = String(
       },
       409,
     );
+  }
+
+
+  if (
+    room.status === "waiting" &&
+    room.memberCount === 4 &&
+    room.connectedCount === 4 &&
+    room.countdownEndsAt &&
+    Date.parse(room.countdownEndsAt) <= Date.now()
+  ) {
+    const confirmation = await service.rpc(
+      "okey_confirm_server_countdown",
+      { p_match_id: room.matchId },
+    );
+
+    if (confirmation.error) {
+      return json({
+        error: "countdown_confirmation_failed",
+        details: confirmation.error.message,
+      }, 500);
+    }
+
+    if (confirmation.data === true) {
+      const refreshed = await callRoomAction("status", {
+        p_match_id: room.matchId,
+      });
+      if (refreshed.error || !refreshed.data) {
+        return json({
+          error: "countdown_status_refresh_failed",
+          details: refreshed.error?.message,
+        }, 500);
+      }
+      room = refreshed.data;
+    }
   }
 
 

@@ -10,15 +10,12 @@ import {
   getLeaderboardProfiles,
   useProfile,
 } from "@/lib/profile";
-import { getRankTitleFromLevel } from "@/lib/progression";
+import { getRankTitleFromPoints } from "@/lib/progression";
 
 type LeaderboardPlayer = {
   id: string;
   name: string;
-  level: number;
   points: number;
-  aznif?: number;
-  coin?: number;
   gem?: number;
   avatarId?: AvatarId;
   avatarUrl?: string;
@@ -57,10 +54,7 @@ export default function LeaderboardScreen() {
           leaderboard.map((player) => ({
             id: player.id,
             name: player.displayName,
-            level: player.level,
             points: player.points,
-            aznif: player.aznif,
-            coin: player.coin,
             gem: player.gem,
             avatarId: player.avatarId as AvatarId | undefined,
             avatarUrl: player.avatarUrl,
@@ -119,9 +113,8 @@ export default function LeaderboardScreen() {
         <Text style={[styles.headerText, styles.rankHeader]}>پلە</Text>
         <Text style={[styles.headerText, styles.playersHeader]}>یاریزانان</Text>
         <Text style={[styles.headerText, styles.levelHeader]}>ئاست</Text>
-        <Text style={[styles.headerText, styles.pointsHeader]}>Points</Text>
-        <Text style={[styles.headerText, styles.aznifHeader]}>ئەزنیف</Text>
-        <Text style={[styles.headerText, styles.goldHeader]}>Gem</Text>
+        <Text style={[styles.headerText, styles.pointsHeader]}>خاڵ</Text>
+        <Text style={[styles.headerText, styles.goldHeader]}>گەوهەر</Text>
       </View>
 
       <ScrollView
@@ -163,7 +156,9 @@ export default function LeaderboardScreen() {
                     numberOfLines={1}
                   >
                     {player.name}
-                    {isCurrentUser ? " (تۆ)" : ""}
+                    {isCurrentUser ? (
+                      <Text style={styles.kurdishText}> (تۆ)</Text>
+                    ) : null}
                   </Text>
                 </View>
               </View>
@@ -175,7 +170,7 @@ export default function LeaderboardScreen() {
                     isCurrentUser && styles.currentUserText,
                   ]}
                 >
-                  {getRankTitleFromLevel(player.level)}
+                  {getRankTitleFromPoints(player.points)}
                 </Text>
               </View>
 
@@ -187,17 +182,6 @@ export default function LeaderboardScreen() {
                   ]}
                 >
                   {player.points.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.aznifColumn}>
-                <Text
-                  style={[
-                    styles.aznifText,
-                    isCurrentUser && styles.currentUserText,
-                  ]}
-                >
-                  {(player.aznif ?? 0).toLocaleString()}
                 </Text>
               </View>
 
@@ -235,26 +219,20 @@ export default function LeaderboardScreen() {
                 style={[styles.playerName, styles.currentUserText]}
                 numberOfLines={1}
               >
-                {profile.displayName} (تۆ)
+                {profile.displayName} <Text style={styles.kurdishText}>(تۆ)</Text>
               </Text>
             </View>
           </View>
 
           <View style={styles.levelColumn}>
             <Text style={[styles.levelText, styles.currentUserText]}>
-              {getRankTitleFromLevel(profile.level)}
+              {getRankTitleFromPoints(profile.points)}
             </Text>
           </View>
 
           <View style={styles.pointsColumn}>
             <Text style={[styles.pointsText, styles.currentUserText]}>
               {profile.points.toLocaleString()}
-            </Text>
-          </View>
-
-          <View style={styles.aznifColumn}>
-            <Text style={[styles.aznifText, styles.currentUserText]}>
-              {profile.coin.toLocaleString()}
             </Text>
           </View>
 
@@ -293,6 +271,7 @@ const styles = StyleSheet.create({
   headerText: {
     color: "#cbd5e1",
     fontSize: 13,
+    fontFamily: "SpedaBold",
     fontWeight: "700",
     letterSpacing: 0.7,
   },
@@ -315,11 +294,6 @@ const styles = StyleSheet.create({
 
   pointsHeader: {
     width: 68,
-    textAlign: "right",
-  },
-
-  aznifHeader: {
-    width: 64,
     textAlign: "right",
   },
 
@@ -386,6 +360,10 @@ const styles = StyleSheet.create({
     color: "#facc15",
   },
 
+  kurdishText: {
+    fontFamily: "SpedaBold",
+  },
+
   playerAvatar: {
     marginRight: 8,
     borderRadius: 14,
@@ -414,7 +392,7 @@ const styles = StyleSheet.create({
   levelText: {
     color: "#cbd5e1",
     fontSize: 13,
-    fontFamily: "RobotoMedium",
+    fontFamily: "SpedaBold",
     fontWeight: "400",
   },
 
@@ -425,18 +403,6 @@ const styles = StyleSheet.create({
 
   pointsText: {
     color: "#f97316",
-    fontSize: 13,
-    fontFamily: "RobotoMedium",
-    fontWeight: "500",
-  },
-
-  aznifColumn: {
-    width: 64,
-    alignItems: "flex-end",
-  },
-
-  aznifText: {
-    color: "#d6d3d1",
     fontSize: 13,
     fontFamily: "RobotoMedium",
     fontWeight: "500",

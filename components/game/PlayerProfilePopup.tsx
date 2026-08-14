@@ -1,14 +1,14 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
 import { sendFriendRequest } from "@/lib/friends";
-import { getRankTitleFromLevel } from "@/lib/progression";
+import { getRankTitleFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
 import type { Player } from "@/types/game";
 import { BlurView } from "expo-blur";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
-type Profile = { username: string; full_name?: string | null; player_id: string; avatar_id: AvatarId; level: number; points: number; coin: number; games_played: number; games_won: number; games_lost: number };
+type Profile = { username: string; player_id: string; avatar_id: AvatarId; points: number; coin: number; games_played: number; games_won: number; games_lost: number };
 type Balances = { mc: number; gem: number };
 type FriendState = "none" | "pending" | "accepted" | "self" | "unavailable";
 
@@ -63,19 +63,7 @@ export default function PlayerProfilePopup({
       ]);
       if (!active) return;
       const card = cards?.[0] ?? null;
-      let fullName: string | null = null;
-
-      if (card) {
-        const { data: profileRow } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", player.id)
-          .maybeSingle<{ full_name: string | null }>();
-
-        fullName = profileRow?.full_name ?? null;
-      }
-
-      setProfile(card ? ({ ...card, full_name: fullName } as Profile) : null);
+      setProfile(card ? (card as Profile) : null);
       setBalances(card ? { mc: Number(card.aznif) || 0, gem: Number(card.gems) || 0 } : null);
       const ownId = auth.user?.id;
       if (!ownId) setFriendState("unavailable");
@@ -106,10 +94,10 @@ export default function PlayerProfilePopup({
       <Animated.View style={[styles.card, { transform: [{ translateX }] }]}>
             <BlurView intensity={88} tint="dark" pointerEvents="none" style={StyleSheet.absoluteFill} />
             <PlayerAvatar avatarId={profile?.avatar_id ?? player.avatarId} size={72} style={styles.avatar} />
-            <Text style={styles.name}>{(profile?.full_name || profile?.username) ?? player.name}</Text>
+            <Text style={styles.name}>{profile?.username ?? player.name}</Text>
             {loading ? <ActivityIndicator color="#a855f7" style={styles.loader} /> : (
               <>
-                <Text style={styles.level}>{getRankTitleFromLevel(profile?.level ?? 1)}</Text>
+                <Text style={styles.level}>{getRankTitleFromPoints(profile?.points)}</Text>
                 <View style={styles.stats}>
                   <View style={styles.statBox}><Text style={styles.statValue}>{balances?.mc ?? 0}</Text><Text style={styles.statLabel}>ئەزنیف</Text></View>
                   <View style={styles.statBox}><Text style={styles.statValue}>{balances?.gem ?? 0}</Text><Text style={styles.statLabel}>گەوهەر</Text></View>

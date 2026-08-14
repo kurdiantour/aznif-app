@@ -1,25 +1,34 @@
 type SeatedPlayer = {
   seat?: string | null;
+  player_index?: number | null;
 };
 
-const CLOCKWISE_NEXT_SEAT: Record<string, string> = {
-  bottom: "right",
-  right: "top",
-  top: "left",
-  left: "bottom",
+const OKEY_NEXT_SEAT: Record<string, string> = {
+  bottom: "left",
+  left: "top",
+  top: "right",
+  right: "bottom",
 };
 
 /**
- * Returns the player occupying the clockwise seat after the active player.
- * Player indexes are intentionally not used: their persisted order is
- * bottom → left → top → right, which runs counter-clockwise on the table.
+ * Uses the same authoritative turn order as Okey: player indexes
+ * 0 -> 1 -> 2 -> 3 -> 0. Persisted Domino seats follow that order as
+ * bottom -> left -> top -> right.
  */
-export function getNextClockwisePlayer<T extends SeatedPlayer>(
+export function getNextOkeyOrderPlayer<T extends SeatedPlayer>(
   players: T[],
   currentPlayer: T | undefined,
 ): T | undefined {
+  if (typeof currentPlayer?.player_index === "number") {
+    const nextPlayerIndex = (currentPlayer.player_index + 1) % 4;
+    const indexedPlayer = players.find(
+      (player) => player.player_index === nextPlayerIndex,
+    );
+    if (indexedPlayer) return indexedPlayer;
+  }
+
   const nextSeat = currentPlayer?.seat
-    ? CLOCKWISE_NEXT_SEAT[currentPlayer.seat]
+    ? OKEY_NEXT_SEAT[currentPlayer.seat]
     : undefined;
 
   return nextSeat

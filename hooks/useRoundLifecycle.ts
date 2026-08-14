@@ -73,7 +73,10 @@ export function useRoundLifecycle({
       onCountdownStart: () => setPhase('next_round_countdown'),
       onCountdownComplete: () => {
         setPhase('dealing');
-        void Promise.resolve(startNextRound()).finally(resetRoundPresentation);
+        // Keep every client in the dealing phase until the authoritative
+        // snapshot clears roundWinnerPlayerId. Resetting here briefly renders
+        // the completed hand as "playing" and can revive stale turn actions.
+        void Promise.resolve(startNextRound());
       },
     });
   }, [

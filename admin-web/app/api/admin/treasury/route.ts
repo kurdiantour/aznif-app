@@ -1,11 +1,13 @@
-﻿import {
+import {
   accessCookieName,
   assertAdmin,
+  createAdminSupabase,
   createDevServiceSupabase,
   isDevBypassEnabled,
 } from "@/lib/supabase-server";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { includeGameCommissionBurns } from "@/lib/treasury-report";
 
 async function accessTokenFromCookies() {
   return (await cookies()).get(accessCookieName)?.value;
@@ -17,7 +19,7 @@ export async function GET() {
       const supabase = createDevServiceSupabase();
       const { data, error } = await supabase.rpc("admin_get_aznif_treasury", { p_limit: 50 });
       if (error) throw error;
-      return NextResponse.json({ treasury: data });
+      return NextResponse.json({ treasury: await includeGameCommissionBurns(supabase, data) });
     }
 
     const accessToken = await accessTokenFromCookies();
@@ -27,7 +29,8 @@ export async function GET() {
     const { data, error } = await supabase.rpc("admin_get_aznif_treasury", { p_limit: 50 });
     if (error) throw error;
 
-    return NextResponse.json({ treasury: data });
+    const service = createAdminSupabase();
+    return NextResponse.json({ treasury: await includeGameCommissionBurns(service, data) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load treasury";
     if (process.env.NODE_ENV !== "production") {

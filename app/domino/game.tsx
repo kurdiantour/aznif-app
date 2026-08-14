@@ -326,6 +326,7 @@ export default function GameScreen() {
     (game as any).phase === "playing" &&
     !game.roundWinnerPlayerId &&
     !game.winningTeamId &&
+    !!game.board?.centerTile &&
     !game.canDrawTile &&
     playableTileIds.length === 0;
 

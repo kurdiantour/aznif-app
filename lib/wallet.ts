@@ -55,21 +55,14 @@ export async function getTransactions(
 ): Promise<WalletTransaction[]> {
   const uid = await getUid(userId);
 
-  let query = supabase
-    .from("wallet_transactions")
-    .select("*")
-    .eq("user_id", uid)
-    .order("created_at", { ascending: false });
-
-  if (currency) {
-    query = query.eq("currency", currency);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await supabase.functions.invoke("wallet_history");
 
   if (error) throw error;
 
-  return (data ?? []) as WalletTransaction[];
+  const transactions = (data?.history ?? []) as WalletTransaction[];
+  return transactions.filter(
+    (transaction) => transaction.user_id === uid && (!currency || transaction.currency === currency),
+  );
 }
 
 export async function getCurrentUserId(): Promise<string> {

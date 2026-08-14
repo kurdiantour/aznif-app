@@ -244,7 +244,7 @@ export default function ScorePopup({
                   style={styles.rewardDetail}
                 >
                   +{matchReward.coin} Coin · +
-                  {matchReward.gem} Gem · +
+                  {matchReward.gem} گەوهەر · +
                   {matchReward.points} Points
                 </Text>
               </View>

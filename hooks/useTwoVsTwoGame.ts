@@ -10,6 +10,7 @@ import {
   getSnapshotVersion,
   type PendingMultiplayerMove,
 } from '@/lib/multiplayer/optimisticMove';
+import { calculateLevelFromPoints } from '@/lib/progression';
 import { supabase } from '@/lib/supabase';
 import type {
     DominoTileData,
@@ -168,7 +169,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
       if (userIds.length) {
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, username, full_name, avatar_id, level, points')
+          .select('id, username, avatar_id, points')
           .in('id', userIds);
 
         if (mounted) {
@@ -231,23 +232,97 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
           if (roomChannelRef.current) void supabase.removeChannel(roomChannelRef.current);
           if (playersChannelRef.current) void supabase.removeChannel(playersChannelRef.current);
 
-          roomChannelRef.current = supabase
-            .channel(`two_vs_two_rooms:${roomId}`)
-            .on(
-              'postgres_changes',
-              {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'two_vs_two_rooms',
-                filter: `id=eq.${roomId}`,
-              },
-              () => {
-                if (!mounted) return;
-                markRealtimeActivity();
-                void loadRoom();
-              },
-            )
-            .subscribe((status, err) => handleChannelStatus('rooms', status, err));
+roomChannelRef.current = supabase
+  .channel(`two_vs_two_rooms:${roomId}`)
+  .on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'two_vs_two_rooms',
+      filter: `id=eq.${roomId}`,
+    },
+    (payload) => {
+      if (!mounted) return;
+
+      markRealtimeActivity();
+
+      const updatedRoom = payload.new as any;
+
+      if (!updatedRoom) return;
+
+      const publicState = updatedRoom.state ?? {};
+      const version = getSnapshotVersion(updatedRoom);
+
+      if (version >= 0 && version < latestVersionRef.current) {
+        return;
+      }
+
+      if (version >= 0) {
+        latestVersionRef.current = version;
+      }
+
+      setRawState((previousState: any) => {
+        const nextRawState = {
+          ...(previousState ?? {}),
+          ...updatedRoom,
+          ...publicState,
+
+          // Realtime room updates contain public gameplay state.
+          // Preserve this device's authenticated private hand data.
+          privateHands: previousState?.privateHands,
+          debugPrivateHandsRaw: previousState?.debugPrivateHandsRaw,
+          myHand: previousState?.myHand ?? [],
+
+          mode: '2v2',
+
+          currentTurnPlayerId:
+            publicState.currentTurnPlayerId ??
+            updatedRoom.current_turn_player_id ??
+            previousState?.currentTurnPlayerId ??
+            null,
+        };
+
+        const turnStartedAt =
+          nextRawState.turnStartedAt ??
+          nextRawState.updated_at ??
+          null;
+
+        const nextTurnPlayerId =
+          nextRawState.currentTurnPlayerId ??
+          null;
+
+        activeTurnKeyRef.current =
+          version >= 0 &&
+          typeof turnStartedAt === 'string' &&
+          typeof nextTurnPlayerId === 'string'
+            ? `${version}:${turnStartedAt}:${nextTurnPlayerId}`
+            : null;
+
+        clearTimeoutRetry();
+
+        const pending = pendingMoveRef.current;
+
+        if (
+          pending &&
+          version > pending.baseVersion &&
+          boardContainsMove(
+            nextRawState.board,
+            pending.tile.id,
+            pending.branch,
+          )
+        ) {
+          pendingMoveRef.current = null;
+          setPendingMove(null);
+        }
+
+        return nextRawState;
+      });
+    },
+  )
+  .subscribe((status, err) =>
+    handleChannelStatus('rooms', status, err),
+  );
 
           playersChannelRef.current = supabase
             .channel(`two_vs_two_players:${roomId}`)
@@ -259,7 +334,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
                 table: 'two_vs_two_players',
                 filter: `room_id=eq.${roomId}`,
               },
-              () => {
+              (payload) => {
                 if (!mounted) return;
                 markRealtimeActivity();
                 void loadPlayers();
@@ -410,7 +485,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
         id: playerId,
         name: row.bot_takeover
           ? 'رۆبوتی کاتی'
-          : (profile?.full_name || profile?.username) ?? (row.user_id ? 'Player' : 'Bot'),
+          : profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
         seat: getRelativeSeat(playerIndex, myPlayerIndex, 4),
         kind: row.kind,
         teamId: row.team_id,
@@ -422,7 +497,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
-        level: profile?.level,
+        level: calculateLevelFromPoints(profile?.points),
         points: profile?.points,
       };
     });
@@ -598,6 +673,14 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const passTurn = async () => {
     if (!roomId) return false;
+    // A queued pass countdown from the previous hand can fire while the new
+    // empty board snapshot is arriving. Passing is never legal before the
+    // opening tile, so stop it locally instead of sending a stale request.
+    if (
+      !board.centerTile ||
+      rawState?.roundWinnerPlayerId ||
+      rawState?.winningTeamId
+    ) return false;
 
     return runMultiplayerAction({
       action: () => submitTwoVsTwoPass(roomId),

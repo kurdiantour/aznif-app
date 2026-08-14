@@ -169,6 +169,7 @@ export function subscribeOkeyRoom(
   let heartbeatInFlight: Promise<void> | null = null;
   let countdownStartTimer: ReturnType<typeof setTimeout> | null = null;
   let scheduledCountdownDeadline: string | null = null;
+  let countdownAwaitingStart = false;
 
   const clearCountdownStartTimer = () => {
     if (countdownStartTimer) clearTimeout(countdownStartTimer);
@@ -177,6 +178,8 @@ export function subscribeOkeyRoom(
   };
 
   const deliver = (room: OkeyRoomSnapshot) => {
+    countdownAwaitingStart =
+      room.status === "waiting" && room.countdownEndsAt !== null;
     scheduleCountdownStartCheck(room);
     listener(room);
   };
@@ -204,7 +207,10 @@ export function subscribeOkeyRoom(
           deliver(room);
         }
       })
-      .catch(reportError)
+      .catch((error) => {
+        reportError(error);
+        scheduleCountdownStartRetry();
+      })
       .finally(() => {
         refreshInFlight = null;
       });
@@ -223,7 +229,10 @@ export function subscribeOkeyRoom(
           deliver(room);
         }
       })
-      .catch(reportError)
+      .catch((error) => {
+        reportError(error);
+        scheduleCountdownStartRetry();
+      })
       .finally(() => {
         heartbeatInFlight = null;
       });
@@ -232,10 +241,20 @@ export function subscribeOkeyRoom(
   };
 
   const runCountdownStartCheck = async () => {
-    const pendingHeartbeat = heartbeatInFlight;
-    if (pendingHeartbeat) await pendingHeartbeat;
-    if (active) await heartbeat();
+    const pendingRefresh = refreshInFlight;
+    if (pendingRefresh) await pendingRefresh;
+    if (active) await refresh();
   };
+
+  function scheduleCountdownStartRetry() {
+    if (!active || !countdownAwaitingStart || countdownStartTimer) return;
+
+    scheduledCountdownDeadline = null;
+    countdownStartTimer = setTimeout(() => {
+      countdownStartTimer = null;
+      void runCountdownStartCheck();
+    }, 500);
+  }
 
   function scheduleCountdownStartCheck(room: OkeyRoomSnapshot) {
     if (room.status !== "waiting" || !room.countdownEndsAt) {

@@ -11,7 +11,7 @@ export const MATCH_TARGET_SCORE = 350;
 export const FREE_MATCH_WIN_REWARD: MatchReward = {
   coin: 20,
   gem: 5,
-  points: 25,
+  points: 35,
 };
 
 export const FREE_MATCH_LOSS_REWARD: MatchReward = {

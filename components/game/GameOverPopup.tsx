@@ -197,7 +197,7 @@ export default function GameOverPopup({
                         </Text>
 
                         <Text style={styles.rewardLabel}>
-                          Gem
+                          گەوهەر
                         </Text>
                       </View>
                   </View>

@@ -34,6 +34,9 @@ export default function WalletHistoryScreen() {
     if (item.transaction_type === "reward") {
       return "Reward";
     }
+    if (item.transaction_type === "reward_bonus" || item.transaction_type === "daily_quest_reward") {
+      return "Reward";
+    }
     if (
       item.transaction_type === "manual_purchase" ||
       item.transaction_type === "shop_purchase"
@@ -43,6 +46,9 @@ export default function WalletHistoryScreen() {
     if (item.transaction_type === "bet") {
       return "Create Room Bet";
     }
+    if (item.transaction_type === "entry_fee") return "Entry Fee";
+    if (item.transaction_type === "payout") return "Game Payout";
+    if (item.transaction_type === "refund") return "Refund";
     return item.transaction_type;
   };
 
@@ -54,8 +60,8 @@ export default function WalletHistoryScreen() {
     const counterparty = isOutgoing
       ? item.to_user_id
       : item.from_user_id || "System";
-    const sign =
-      item.transaction_type === "reward" ? "+" : isOutgoing ? "-" : "+";
+    const signedAmount = item.signed_amount ?? (isOutgoing ? -item.amount : item.amount);
+    const sign = signedAmount < 0 ? "-" : "+";
     const currencyLabel = item.currency === "Gem" ? "گەوهەر" : item.currency;
     const amountText = `${sign}${item.amount.toFixed(item.currency === "Gem" ? 0 : 2)} ${currencyLabel}`;
 
