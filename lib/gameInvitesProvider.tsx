@@ -1,5 +1,9 @@
 import { GameInvitePopup } from "@/components/friends/GameInvitePopup";
-import { cancelMyGameParty, getMyDominoParty, type DominoParty } from "@/lib/dominoParty";
+import {
+  cancelMyGameParty,
+  getMyDominoParty,
+  type DominoParty,
+} from "@/lib/dominoParty";
 import { useProfile } from "@/lib/profile";
 import { usePathname, useRouter } from "expo-router";
 import {
@@ -32,10 +36,12 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
   const { profile } = useProfile();
   const pathname = usePathname();
   const router = useRouter();
+
   const [invites, setInvites] = useState<GameInvite[]>([]);
   const [party, setParty] = useState<DominoParty | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [cancellingParty, setCancellingParty] = useState(false);
   const [partyError, setPartyError] = useState<string | null>(null);
 
@@ -70,7 +76,10 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
 
   const followPartyFlow = useCallback(
     (nextParty: DominoParty | null) => {
-      if (!profile?.id || !nextParty || nextParty.leaderId === profile.id) return;
+      if (!profile?.id || !nextParty || nextParty.leaderId === profile.id) {
+        return;
+      }
+
       if (
         nextParty.flowStatus !== "matchmaking" ||
         !nextParty.currentRoomId ||
@@ -81,7 +90,13 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       }
 
       if (nextParty.currentGame === "okey") {
-        if (!nextParty.currentTableId || pathname.startsWith("/okey/game")) return;
+        if (
+          !nextParty.currentTableId ||
+          pathname.startsWith("/okey/game")
+        ) {
+          return;
+        }
+
         router.replace({
           pathname: "/okey/game",
           params: {
@@ -91,6 +106,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
             matchId: nextParty.currentRoomId,
           },
         });
+
         return;
       }
 
@@ -116,10 +132,12 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
     },
     [pathname, profile?.id, router],
   );
+
   useEffect(() => {
     if (!profile?.id) return;
 
     void refreshInvites();
+
     void refreshParty().then((nextParty) => {
       if (
         nextParty &&
@@ -133,7 +151,11 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       .channel(`game-invites:${profile.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "game_invites" },
+        {
+          event: "*",
+          schema: "public",
+          table: "game_invites",
+        },
         () => {
           void refreshInvites();
           void refreshParty().then(followPartyFlow);
@@ -144,7 +166,12 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [followPartyFlow, profile?.id, refreshInvites, refreshParty]);
+  }, [
+    followPartyFlow,
+    profile?.id,
+    refreshInvites,
+    refreshParty,
+  ]);
 
   useEffect(() => {
     if (!profile?.id || !party?.id) return;
@@ -165,6 +192,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       )
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return;
+
         void refreshParty().then((nextParty) => {
           if (
             nextParty &&
@@ -183,34 +211,60 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       clearInterval(fallback);
       void supabase.removeChannel(channel);
     };
-  }, [followPartyFlow, party?.id, profile?.id, refreshParty]);
+  }, [
+    followPartyFlow,
+    party?.id,
+    profile?.id,
+    refreshParty,
+  ]);
 
   const cancelParty = useCallback(async () => {
     if (cancellingParty) return;
+
     setCancellingParty(true);
     setPartyError(null);
+
     try {
       await cancelMyGameParty();
+
       setParty(null);
-      await Promise.all([refreshParty(), refreshInvites()]);
+
+      await Promise.all([
+        refreshParty(),
+        refreshInvites(),
+      ]);
     } catch (reason) {
       setPartyError(
-        reason instanceof Error ? reason.message : "نەتوانرا پارتی هەڵبوەشێندرێتەوە.",
+        reason instanceof Error
+          ? reason.message
+          : "نەتوانرا پارتی هەڵبوەشێندرێتەوە.",
       );
+
       await refreshParty();
     } finally {
       setCancellingParty(false);
     }
-  }, [cancellingParty, refreshInvites, refreshParty]);
+  }, [
+    cancellingParty,
+    refreshInvites,
+    refreshParty,
+  ]);
+
   const respond = async (accept: boolean) => {
     const invite = invites[0];
+
     if (!invite) return;
 
     setBusy(true);
     setError(null);
+
     try {
       await respondGameInvite(invite.id, accept);
-      setInvites((current) => current.filter((item) => item.id !== invite.id));
+
+      setInvites((current) =>
+        current.filter((item) => item.id !== invite.id),
+      );
+
       await refreshParty();
     } catch (reason) {
       setError(
@@ -218,23 +272,46 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
           ? reason.message
           : "Unable to respond to the game invite.",
       );
+
       void refreshInvites();
     } finally {
       setBusy(false);
     }
   };
 
+  const expireCurrentInvite = useCallback(() => {
+    const invite = invites[0];
+
+    if (!invite) return;
+
+    setInvites((current) =>
+      current.filter((item) => item.id !== invite.id),
+    );
+
+    setError(null);
+
+    void refreshInvites();
+  }, [invites, refreshInvites]);
+
   return (
     <GamePartyContext.Provider
-      value={{ party, refreshParty, cancelParty, cancellingParty, partyError }}
+      value={{
+        party,
+        refreshParty,
+        cancelParty,
+        cancellingParty,
+        partyError,
+      }}
     >
       {children}
+
       <GameInvitePopup
         invite={invites[0] ?? null}
         busy={busy}
         error={error}
         onAccept={() => void respond(true)}
         onDecline={() => void respond(false)}
+        onExpire={expireCurrentInvite}
       />
     </GamePartyContext.Provider>
   );
@@ -242,8 +319,12 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
 
 export function useGameParty() {
   const context = useContext(GamePartyContext);
+
   if (!context) {
-    throw new Error("useGameParty must be used within GameInvitesProvider");
+    throw new Error(
+      "useGameParty must be used within GameInvitesProvider",
+    );
   }
+
   return context;
 }

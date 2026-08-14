@@ -134,6 +134,8 @@ const rackRef = useRef<View | null>(null);
   const enterAnimationTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const consumedExternalDropNonceRef = useRef<number | null>(null);
   const livePreviewKeyRef = useRef<string | null>(null);
+  const neighborShiftKeyRef = useRef<string | null>(null);
+  const tileShiftValuesRef = useRef<Record<string, Animated.ValueXY>>({});
   const [enteringTileIds, setEnteringTileIds] = useState<Set<string>>(() => new Set(initialTileIdsRef.current));
 const [returningJokerTileIds, setReturningJokerTileIds] = useState<Set<string>>(() => new Set());
 const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
@@ -192,6 +194,94 @@ const previousTileIdsRef = useRef(new Set(tiles.map((tile) => tile.id)));
     insertionTargetRef.current = target;
     setInsertionTarget(target);
   }, []);
+
+  const getTileShiftValue = useCallback((tileId: string) => {
+    const existing = tileShiftValuesRef.current[tileId];
+    if (existing) return existing;
+
+    const value = new Animated.ValueXY({ x: 0, y: 0 });
+    tileShiftValuesRef.current[tileId] = value;
+    return value;
+  }, []);
+
+  const resetNeighborShifts = useCallback((animated = false) => {
+    neighborShiftKeyRef.current = null;
+
+    for (const value of Object.values(tileShiftValuesRef.current)) {
+      value.stopAnimation();
+
+      if (!animated) {
+        value.setValue({ x: 0, y: 0 });
+        continue;
+      }
+
+      Animated.timing(value, {
+        toValue: { x: 0, y: 0 },
+        duration: 70,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, []);
+
+  const updateNeighborShifts = useCallback(
+    (target: InsertionTarget | null, draggedTileIds: string[]) => {
+      const sourceSlots = dragStartSlotsRef.current;
+
+      if (!target || !sourceSlots) {
+        resetNeighborShifts(true);
+        return;
+      }
+
+      const shiftKey = `${target.row}:${target.slotIndex}:${draggedTileIds.join(",")}`;
+      if (neighborShiftKeyRef.current === shiftKey) return;
+      neighborShiftKeyRef.current = shiftKey;
+
+      const draggedSet = new Set(draggedTileIds);
+      const nextPositions = new Map<string, { row: RackRow; slotIndex: number }>();
+
+      for (const row of ROW_ORDER) {
+        target.nextSlots[row].forEach((tileId, slotIndex) => {
+          if (tileId) nextPositions.set(tileId, { row, slotIndex });
+        });
+      }
+
+      for (const row of ROW_ORDER) {
+        sourceSlots[row].forEach((tileId, slotIndex) => {
+          if (!tileId) return;
+
+          const value = getTileShiftValue(tileId);
+          value.stopAnimation();
+
+          if (draggedSet.has(tileId)) {
+            value.setValue({ x: 0, y: 0 });
+            return;
+          }
+
+          const next = nextPositions.get(tileId);
+          if (!next) {
+            value.setValue({ x: 0, y: 0 });
+            return;
+          }
+
+          const sourceRowLayout = rowLayoutsRef.current[row];
+          const targetRowLayout = rowLayoutsRef.current[next.row];
+          const translateX =
+            (next.slotIndex - slotIndex) * rackTileStrideRef.current;
+          const translateY =
+            sourceRowLayout && targetRowLayout
+              ? targetRowLayout.y - sourceRowLayout.y
+              : 0;
+
+          Animated.timing(value, {
+            toValue: { x: translateX, y: translateY },
+            duration: 75,
+            useNativeDriver: true,
+          }).start();
+        });
+      }
+    },
+    [getTileShiftValue, resetNeighborShifts],
+  );
 
   const applyLiveInsertionTarget = useCallback(
     (target: InsertionTarget | null, draggedTileIds: string[]) => {
@@ -583,6 +673,19 @@ const getInsertionTarget = useCallback(
       Math.min(RACK_ROW_CAPACITY - 1, rawSlotIndex),
     );
 
+    const activeTarget = insertionTargetRef.current;
+    if (activeTarget?.row === targetRow) {
+      const activeCenterX =
+        firstSlotCenterX + activeTarget.slotIndex * currentTileStride;
+
+      if (
+        Math.abs(draggedTileCenterX - activeCenterX) <=
+        currentTileStride * SLOT_TARGET_HYSTERESIS_RATIO
+      ) {
+        slotIndex = activeTarget.slotIndex;
+      }
+    }
+
     const moveTarget = moveTileIntoSlot(
       actualSourceSlots,
       tileId,
@@ -876,6 +979,7 @@ const getInsertionTarget = useCallback(
         setDraggingMeld(null);
         setCurrentInsertionTarget(null);
         livePreviewKeyRef.current = null;
+        resetNeighborShifts(false);
         dragStartSlotsRef.current = cloneSlots(committedRackSlotsRef.current);
         const startPoint = getTouchPoint(event, gesture, true);
         latestDragPointRef.current = startPoint;
@@ -912,19 +1016,42 @@ const getInsertionTarget = useCallback(
             setDraggingTileId(tileId);
           }
         }
-        const point = getTouchPoint(event, gesture);
-        setDragPositionFromTouch(point.x, point.y);
+const point = getTouchPoint(event, gesture);
 
-        const currentDraggingMeld = draggingMeldRef.current;
-        scheduleDragPointChange(
-          currentDraggingMeld ? null : tileId,
-          currentDraggingMeld ? null : point,
-        );
-        const sourceSlots = dragStartSlotsRef.current ?? rackSlotsRef.current;
-        const target = currentDraggingMeld
-          ? getGroupInsertionTarget(currentDraggingMeld.tileIds, { moveX: point.x, moveY: point.y }, sourceSlots)
-          : getInsertionTarget(tileId, { moveX: point.x, moveY: point.y }, sourceSlots);
-        applyLiveInsertionTarget(target, currentDraggingMeld?.tileIds ?? [tileId]);
+// فقط Tile شناور را حرکت بده.
+// هیچ React state وسط drag تغییر نمی‌کند.
+setDragPositionFromTouch(point.x, point.y);
+
+const currentDraggingMeld = draggingMeldRef.current;
+const sourceSlots =
+  dragStartSlotsRef.current ?? committedRackSlotsRef.current;
+
+const target = currentDraggingMeld
+  ? getGroupInsertionTarget(
+      currentDraggingMeld.tileIds,
+      { moveX: point.x, moveY: point.y },
+      sourceSlots,
+    )
+  : getInsertionTarget(
+      tileId,
+      { moveX: point.x, moveY: point.y },
+      sourceSlots,
+    );
+
+// React state وسط Drag تغییر نمی‌کند.
+// فقط target ref و transform تایل‌های کناری آپدیت می‌شوند.
+insertionTargetRef.current = target;
+updateNeighborShifts(
+  target,
+  currentDraggingMeld?.tileIds ?? [tileId],
+);
+
+// Hover/Drop روی میز فقط وقتی pointer از Rack خارج شده بررسی می‌شود.
+if (target) {
+  scheduleDragPointChange(null, null);
+} else if (!currentDraggingMeld) {
+  scheduleDragPointChange(tileId, point);
+}
       },
       onPanResponderRelease: (event, gesture) => {
         clearLongPressTimer();
@@ -932,9 +1059,19 @@ const getInsertionTarget = useCallback(
         const currentDraggingMeld = draggingMeldRef.current;
         const point = getTouchPoint(event, gesture);
         const sourceSlots = dragStartSlotsRef.current ?? rackSlotsRef.current;
-        const target = insertionTargetRef.current ?? (currentDraggingMeld
-          ? getGroupInsertionTarget(currentDraggingMeld.tileIds, { moveX: point.x, moveY: point.y }, sourceSlots)
-          : getInsertionTarget(tileId, { moveX: point.x, moveY: point.y }, sourceSlots));
+        // Release must use the finger's real final position.
+        // The cached insertionTargetRef may belong to the previous move frame.
+        const target = currentDraggingMeld
+          ? getGroupInsertionTarget(
+              currentDraggingMeld.tileIds,
+              { moveX: point.x, moveY: point.y },
+              sourceSlots,
+            )
+          : getInsertionTarget(
+              tileId,
+              { moveX: point.x, moveY: point.y },
+              sourceSlots,
+            );
         const originalSlots = dragStartSlotsRef.current;
         const clearDragState = () => {
           draggingMeldRef.current = null;
@@ -945,6 +1082,7 @@ const getInsertionTarget = useCallback(
           dragStartedRef.current = false;
           dragStartSlotsRef.current = null;
           livePreviewKeyRef.current = null;
+          resetNeighborShifts(false);
           cancelScheduledDragPointChange();
           onTileDragPointChangeRef.current?.(null, null);
         };
@@ -984,6 +1122,8 @@ const getInsertionTarget = useCallback(
 
         if (!target) {
           const dropped = onDropTileRef.current?.(tileId, point) ?? false;
+
+          
           if (!dropped && originalSlots) {
             animateDragBack([tileId], originalSlots, () => {
               configureRackReflowAnimation();
@@ -995,9 +1135,13 @@ const getInsertionTarget = useCallback(
           return;
         }
 
-        setCommittedRackSlots(target.nextSlots);
-        clearDragState();
-        onMoveTileRef.current(tileId, target.flatIndex);
+        // Let the floating tile visually land on the exact final slot first.
+        // Commit the rack only after that short landing, avoiding the release snap.
+        animateDragToTarget(target, () => {
+          setCommittedRackSlots(target.nextSlots);
+          clearDragState();
+          onMoveTileRef.current(tileId, target.flatIndex);
+        });
         
       },
       onPanResponderTerminate: () => {
@@ -1014,6 +1158,7 @@ const getInsertionTarget = useCallback(
         setPreviewRackSlots(null);
         dragStartSlotsRef.current = null;
         livePreviewKeyRef.current = null;
+        resetNeighborShifts(false);
         cancelScheduledDragPointChange();
         onTileDragPointChangeRef.current?.(null, null);
       },
@@ -1021,7 +1166,7 @@ const getInsertionTarget = useCallback(
 
     tilePanHandlersRef.current[tileId] = panHandlers;
     return panHandlers;
-  }, [applyLiveInsertionTarget, animateDragBack, cancelScheduledDragPointChange, clearLongPressTimer, getGroupInsertionTarget, getInsertionTarget, measureViewport, scheduleDragPointChange, setCurrentInsertionTarget, setDragPositionFromTouch, startMeldLongPressTimer]);
+  }, [animateDragBack, cancelScheduledDragPointChange, clearLongPressTimer, getGroupInsertionTarget, getInsertionTarget, measureViewport, resetNeighborShifts, scheduleDragPointChange, setCurrentInsertionTarget, setDragPositionFromTouch, startMeldLongPressTimer, updateNeighborShifts]);
 
     const renderRackTile = (tileId: string, row: RackRow, slotIndex: number) => {
     const tile = tileById.get(tileId);
@@ -1053,33 +1198,39 @@ const getInsertionTarget = useCallback(
 />
     );
 
+    const neighborShift = getTileShiftValue(tile.id);
+
     return (
-      <View
-        ref={(node) => { tileRefs.current[tile.id] = node; }}
-        collapsable={false}
-        style={shouldHideTile ? styles.hiddenRackTile : undefined}
+      <Animated.View
+        style={{ transform: neighborShift.getTranslateTransform() }}
       >
-        {returningJokerTileIds.has(tile.id) && !shouldHideTile ? (
-          <ReturningJokerTile height={rackTileHeight}>{tileFace}</ReturningJokerTile>
-        ) : enteringTileIds.has(tile.id) && !shouldHideTile && !skipEnterAnimationTileIdSet.has(tile.id) ? (
-          <EnteringRackTile
-            height={rackTileHeight}
-            fromX={
-              dealOrigin
-                ? dealOrigin.x - (viewportOriginRef.current.x + (slotIndex + 0.5) * rackTileStride)
-                : rackViewportWidth / 2 - (slotIndex + 0.5) * rackTileStride
-            }
-            fromY={
-              dealOrigin
-                ? dealOrigin.y - (viewportOriginRef.current.y + (row === "top" ? rackTileHeight * 0.5 : rackTileHeight * 1.5))
-                : undefined
-            }
-            delay={getSlotEnterDelay(row, slotIndex, isDealer)}
-          >
-            {tileFace}
-          </EnteringRackTile>
-        ) : tileFace}
-      </View>
+        <View
+          ref={(node) => { tileRefs.current[tile.id] = node; }}
+          collapsable={false}
+          style={shouldHideTile ? styles.hiddenRackTile : undefined}
+        >
+          {returningJokerTileIds.has(tile.id) && !shouldHideTile ? (
+            <ReturningJokerTile height={rackTileHeight}>{tileFace}</ReturningJokerTile>
+          ) : enteringTileIds.has(tile.id) && !shouldHideTile && !skipEnterAnimationTileIdSet.has(tile.id) ? (
+            <EnteringRackTile
+              height={rackTileHeight}
+              fromX={
+                dealOrigin
+                  ? dealOrigin.x - (viewportOriginRef.current.x + (slotIndex + 0.5) * rackTileStride)
+                  : rackViewportWidth / 2 - (slotIndex + 0.5) * rackTileStride
+              }
+              fromY={
+                dealOrigin
+                  ? dealOrigin.y - (viewportOriginRef.current.y + (row === "top" ? rackTileHeight * 0.5 : rackTileHeight * 1.5))
+                  : undefined
+              }
+              delay={getSlotEnterDelay(row, slotIndex, isDealer)}
+            >
+              {tileFace}
+            </EnteringRackTile>
+          ) : tileFace}
+        </View>
+      </Animated.View>
     );
   };
 

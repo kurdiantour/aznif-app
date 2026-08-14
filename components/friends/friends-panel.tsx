@@ -8,6 +8,7 @@ import {
 import { sendGameInvite } from "@/lib/gameInvites";
 import { usePresence } from "@/lib/presence";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -117,16 +118,16 @@ function SearchResultRow({
       <Pressable
         style={[
           styles.smallButton,
-          !isFriend && !isPending && styles.acceptButton,
-          (isFriend || isPending) && styles.disabledButton,
+          !isPending && styles.acceptButton,
+          isPending && styles.disabledButton,
         ]}
-        disabled={busy || isFriend || isPending}
+        disabled={busy || isPending}
         onPress={() => (isFriend ? onSendChip(result) : onAdd(result))}
       >
         <Text
           style={[
             styles.buttonText,
-            (isFriend || isPending) && styles.disabledButtonText,
+            isPending && styles.disabledButtonText,
           ]}
         >
           {isFriend ? "ئەزنیف بنێرە" : label}
@@ -236,6 +237,54 @@ export function FriendsPanel({
       void refresh();
     }, [refresh]),
   );
+
+  useEffect(() => {
+    let mounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function subscribeToFriendships() {
+      const user = await getCurrentUser();
+      if (!mounted || !user) return;
+
+      channel = supabase
+        .channel(`friends-list:${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "friendships",
+            filter: `requester_id=eq.${user.id}`,
+          },
+          () => {
+            void refresh();
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "friendships",
+            filter: `addressee_id=eq.${user.id}`,
+          },
+          () => {
+            void refresh();
+          },
+        )
+        .subscribe();
+    }
+
+    void subscribeToFriendships();
+
+    return () => {
+      mounted = false;
+
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [refresh]);
 
   useEffect(() => {
     const ids = friends.map((friend) => friend.id);

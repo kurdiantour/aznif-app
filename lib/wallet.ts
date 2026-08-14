@@ -55,19 +55,27 @@ export async function getTransactions(
 ): Promise<WalletTransaction[]> {
   const uid = await getUid(userId);
 
-  const { data, error } = await supabase.functions.invoke("wallet_history");
+  let query = supabase
+    .from("wallet_transactions")
+    .select("*")
+    .eq("user_id", uid)
+    .order("created_at", { ascending: false });
+
+  if (currency) {
+    query = query.eq("currency", currency);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
-  const transactions = (data?.history ?? []) as WalletTransaction[];
-  return transactions.filter(
-    (transaction) => transaction.user_id === uid && (!currency || transaction.currency === currency),
-  );
+  return (data ?? []) as WalletTransaction[];
 }
 
 export async function getCurrentUserId(): Promise<string> {
   const user = await getCurrentUser();
   if (!user) throw new Error("User not authenticated");
+
   return user.id;
 }
 
@@ -95,6 +103,7 @@ export async function transferMc(recipientUserId: string, amount: number) {
 
 // Alias for compatibility
 export const transferFunds = transferMc;
+
 export const CURRENT_USER_ID =
   "DEPRECATED: use getCurrentUserId() async function";
 

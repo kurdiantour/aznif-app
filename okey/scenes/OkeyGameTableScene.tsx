@@ -348,6 +348,7 @@ const {
   commitPendingTimeoutDiscard,
   isAppActive,
   lifecycleResumeToken,
+  setTurnPresentationBlocked,
   isOnline,
   onlineReady,
   onlineProjection,
@@ -465,8 +466,9 @@ const dealLifecycleKey = onlineGameplayReady
   const discardTopRectRef = useRef<ScreenRect | null>(null);
   const opponentSeatRectsRef = useRef<Record<string, ScreenRect>>({});
   const previousDiscardCountRef = useRef(state.discardPile.length);
+  const previousDiscardTopTileRef = useRef<OkeyTile | null>(state.discardPile[state.discardPile.length - 1] ?? null);
   const previousDeckCountRef = useRef(state.deck.length);
-  const queuedOpponentWallDrawFlightsRef = useRef<{ ownerPlayerId: string; eventId: string }[]>([]);
+  const queuedOpponentWallDrawFlightsRef = useRef<{ ownerPlayerId: string; eventId: string; source: "deck" | "discard"; tile: OkeyTile | null }[]>([]);
   const pendingOpponentDiscardAfterDrawRef = useRef<QueuedOpponentDiscardFlight | null>(null);
   const queuedOpponentDiscardFlightsRef = useRef<QueuedOpponentDiscardFlight[]>([]);
   const pendingOpponentMeldTargetRef = useRef<typeof state.players | null>(null);
@@ -521,6 +523,10 @@ const dealLifecycleKey = onlineGameplayReady
     hasTileFlight: !!tileFlight,
     hasPendingHumanHandRemoval,
   });
+  useEffect(() => {
+    setTurnPresentationBlocked(turnPresentationBlocked);
+    return () => setTurnPresentationBlocked(false);
+  }, [setTurnPresentationBlocked, turnPresentationBlocked]);
   const isHumanTurn =
   state.phase === "playing" &&
   currentPlayer?.kind === "human" &&
@@ -776,6 +782,8 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
       setPresentedPlayers(targetPlayers);
       const discardFlight = buildOpponentDiscardFlight(pendingDiscard);
       if (!discardFlight) {
+        setHideDiscardTopTile(false);
+        setDiscardPresentationFallback(null);
         setOpponentTurnTransitionActive(false);
         return;
       }
@@ -804,21 +812,24 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
   const startNextQueuedOpponentDiscardFlight = useCallback(() => {
     const nextDraw = queuedOpponentWallDrawFlightsRef.current.shift();
     if (nextDraw) {
-      const deckRect = deckTopRectRef.current;
+      const sourceRect = nextDraw.source === "deck"
+        ? deckTopRectRef.current
+        : discardTopRectRef.current;
       const seatRect = opponentSeatRectsRef.current[nextDraw.ownerPlayerId] ?? null;
-      if (deckRect && seatRect) {
+      if (sourceRect && seatRect) {
         const landingRect = {
-          x: seatRect.x + seatRect.width / 2 - deckRect.width / 2,
-          y: seatRect.y + seatRect.height / 2 - deckRect.height / 2,
-          width: deckRect.width,
-          height: deckRect.height,
+          x: seatRect.x + seatRect.width / 2 - sourceRect.width / 2,
+          y: seatRect.y + seatRect.height / 2 - sourceRect.height / 2,
+          width: sourceRect.width,
+          height: sourceRect.height,
         };
-        setHideDeckTopTile(true);
+        if (nextDraw.source === "deck") setHideDeckTopTile(true);
+        else setHideDiscardTopTile(true);
         setTileFlight({
           id: `opponent-draw-${nextDraw.eventId}`,
-          tile: null,
-          face: "back",
-          from: toLocalRect(deckRect),
+          tile: nextDraw.tile,
+          face: nextDraw.source === "discard" ? "front" : "back",
+          from: toLocalRect(sourceRect),
           to: toLocalRect(landingRect),
         });
         return true;
@@ -854,7 +865,10 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
         }
       }
 
+      // The authoritative discard is already in state. Keep it hidden from the
+      // first presentation frame so it cannot appear on the pile before flying.
       setDiscardPresentationFallback(previousDiscard);
+      setHideDiscardTopTile(true);
       startOpponentPostDrawSequence(next);
       return true;
     }
@@ -1270,9 +1284,12 @@ requestAnimationFrame(() => {
 
   useLayoutEffect(() => {
     const previousCount = previousDiscardCountRef.current;
+    const previousDiscardTopTile = previousDiscardTopTileRef.current;
     const nextCount = state.discardPile.length;
     previousDiscardCountRef.current = nextCount;
+    previousDiscardTopTileRef.current = state.discardPile[nextCount - 1] ?? null;
     const wallDrawsThisUpdate = Math.max(0, previousDeckCountRef.current - state.deck.length);
+    const discardDrawsThisUpdate = Math.max(0, previousCount - nextCount);
     previousDeckCountRef.current = state.deck.length;
 
     if (nextCount <= previousCount) {
@@ -1281,10 +1298,13 @@ requestAnimationFrame(() => {
       const opponent = state.currentPlayerIndex === 0
         ? null
         : state.players[state.currentPlayerIndex] ?? null;
-      if (wallDrawsThisUpdate > 0 && opponent) {
+      if ((wallDrawsThisUpdate > 0 || discardDrawsThisUpdate > 0) && opponent) {
+        const source = discardDrawsThisUpdate > 0 ? "discard" as const : "deck" as const;
         queuedOpponentWallDrawFlightsRef.current.push({
           ownerPlayerId: opponent.id,
-          eventId: `${opponent.id}-${state.deck.length}`,
+          eventId: `${opponent.id}-${source}-${state.deck.length}-${nextCount}`,
+          source,
+          tile: source === "discard" ? previousDiscardTopTile : null,
         });
         setOpponentTurnTransitionActive(true);
         if (!tileFlight && !onlineTimeoutDiscardFlightRef.current) {

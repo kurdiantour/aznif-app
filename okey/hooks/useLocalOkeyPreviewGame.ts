@@ -21,11 +21,6 @@ import {
   getNextRoundDealerIndex,
 } from "@/okey/engine/okey-engine";
 
-import {
-  prepareTimeoutTurn,
-  resolveTimeoutTurn,
-} from "@/okey/engine/okey-timeout";
-
 import { playBotTurn } from "@/okey/engine/okey-bot-engine";
 
 import {
@@ -93,11 +88,10 @@ export function useLocalOkeyPreviewGame(): OkeyGameController {
     useState<OkeyMatchState>(() =>
       createLocalPreviewMatch(),
     );
+  const pendingTimeoutDiscardTileId: string | null = null;
 
-  const [
-    pendingTimeoutDiscardTileId,
-    setPendingTimeoutDiscardTileId,
-  ] = useState<string | null>(null);
+  const [turnPresentationBlocked, setTurnPresentationBlocked] =
+    useState(false);
 
 
   const updateRound = useCallback(
@@ -130,6 +124,7 @@ useEffect(() => {
     ];
 
   if (
+    turnPresentationBlocked ||
     match.roundState.phase !== "playing" ||
     !isOkeyBotControlled(player)
   ) {
@@ -155,6 +150,7 @@ useEffect(() => {
   return () =>
     clearInterval(timer);
 }, [
+  turnPresentationBlocked,
   match.roundState.currentPlayerIndex,
   match.roundState.phase,
   updateRound,
@@ -410,104 +406,16 @@ useEffect(() => {
   // --------------------------------------------------
   // HUMAN TURN TIMEOUT
   // --------------------------------------------------
+  // Preview never makes decisions for Player 0.
+  // Player 0 is controlled only by the user's input.
 
-  const beginTimeoutHumanTurn =
-    useCallback(() => {
-      let preparedTileId:
-        | string
-        | null = null;
+  const beginTimeoutHumanTurn = useCallback(() => {
+    return null;
+  }, []);
 
-      updateRound((current) => {
-        if (
-          current.phase !== "playing" ||
-          current.currentPlayerIndex !== 0
-        ) {
-          return current;
-        }
-
-        /*
-         * بازیکن قبلاً مهره کشیده،
-         * اما قبل از پایان زمان discard نکرده.
-         *
-         * Engine خودش آخرین مهره مناسب
-         * را discard می‌کند و نوبت جلو می‌رود.
-         */
-if (current.hasDrawnThisTurn) {
-  const player = current.players[0];
-
-  const timeoutDiscardTileId =
-    player?.hand[player.hand.length - 1]?.id ??
-    null;
-
-  preparedTileId =
-    timeoutDiscardTileId;
-
-  setPendingTimeoutDiscardTileId(
-    timeoutDiscardTileId,
-  );
-
-  // فعلاً State را جلو نمی‌بریم.
-  // Scene اول Discard animation را اجرا می‌کند.
-  return current;
-}
-
-        /*
-         * بازیکن اصلاً draw نکرده.
-         *
-         * فعلاً فقط Auto Draw انجام می‌دهیم
-         * تا Scene فرصت اجرای انیمیشن
-         * Deck -> Rack را داشته باشد.
-         */
-        const prepared =
-          prepareTimeoutTurn(
-            current,
-            0,
-          );
-
-        preparedTileId =
-          prepared.drawnTileId;
-
-        setPendingTimeoutDiscardTileId(
-          prepared.drawnTileId,
-        );
-
-        return prepared.state;
-      });
-
-      return preparedTileId;
-    }, [updateRound]);
-
-
-  /*
-   * بعد از اینکه Scene انیمیشن Auto Draw
-   * را تمام کرد، این تابع صدا زده می‌شود.
-   *
-   * همان مهره‌ای که به صورت خودکار Draw شد
-   * حالا Discard می‌شود.
-   */
-  const commitPendingTimeoutDiscard =
-    useCallback(() => {
-      const tileId =
-        pendingTimeoutDiscardTileId;
-
-      if (!tileId) {
-        return;
-      }
-
-      setPendingTimeoutDiscardTileId(
-        null,
-      );
-
-      updateRound((current) =>
-        discardTile(
-          current,
-          tileId,
-        ),
-      );
-    }, [
-      pendingTimeoutDiscardTileId,
-      updateRound,
-    ]);
+  const commitPendingTimeoutDiscard = useCallback(() => {
+    // Intentionally disabled in Preview.
+  }, []);
 
 
   // --------------------------------------------------
@@ -516,10 +424,6 @@ if (current.hasDrawnThisTurn) {
 
   const newGame =
     useCallback(() => {
-      setPendingTimeoutDiscardTileId(
-        null,
-      );
-
       setMatch(
         createLocalPreviewMatch(),
       );
@@ -595,6 +499,7 @@ if (current.hasDrawnThisTurn) {
 
     isAppActive: true,
     lifecycleResumeToken: 0,
+    setTurnPresentationBlocked,
 
     currentRound:
       match.currentRound,
@@ -653,7 +558,7 @@ if (current.hasDrawnThisTurn) {
 
     spendOrDiscardTile: noop,
 
-    // ✅ Timeout واقعی Preview
+    // Human timeout intentionally disabled in Preview.
     pendingTimeoutDiscardTileId,
 
     beginTimeoutHumanTurn,

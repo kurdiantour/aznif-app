@@ -1,9 +1,9 @@
 import { applyMove, createEmptyBoard } from '@/lib/game/kozel-engine';
 import {
+  MultiplayerRequestError,
   submitOneVsOneDraw,
   submitOneVsOneMove,
   submitOneVsOnePass,
-  MultiplayerRequestError,
   type TurnTimeoutClaim,
 } from '@/lib/multiplayer/multiplayerApi';
 import {
@@ -14,26 +14,26 @@ import {
 import { calculateLevelFromPoints } from '@/lib/progression';
 import { supabase } from '@/lib/supabase';
 import type {
-    DominoTileData,
-    KozelBoardState,
-    KozelBranch,
-    MatchReward,
-    ScoringEvent,
-    TeamId,
+  DominoTileData,
+  KozelBoardState,
+  KozelBranch,
+  MatchReward,
+  ScoringEvent,
+  TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import type { MockGameState } from './useGameBase';
 import { getAvailableBranches, handContainsTile, handHasPlayableTile } from './gameRuleQueries';
-import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
-import { runMultiplayerAction } from './multiplayerAction';
-import { buildRoundResult } from './roundResult';
-import { useRoundLifecycle } from './useRoundLifecycle';
 import {
   MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN,
   PLAYER_TURN_DURATION_SECONDS,
   ROUND_TRANSITION_SYNC_MS,
 } from './gameShared';
+import { runMultiplayerAction } from './multiplayerAction';
+import { getPlayerIndex, getRelativeSeat } from './multiplayerPlayerNormalization';
+import { buildRoundResult } from './roundResult';
+import type { MockGameState } from './useGameBase';
+import { useRoundLifecycle } from './useRoundLifecycle';
 
 type UseOneVsOneResult = Omit<MockGameState, 'playTile' | 'drawTile' | 'passTurn'> & {
   loading: boolean;

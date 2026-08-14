@@ -370,6 +370,9 @@ export function useOkeyGame(
     setLifecycleResumeToken,
   ] = useState(0);
 
+  // The scene reports active tile animation through this controller hook.
+  const [, setTurnPresentationBlocked] = useState(false);
+
   const matchRef = useRef(match);
   const onlineAdapterRef =
     useRef<SupabaseOkeyMatchAdapter | null>(
@@ -1537,6 +1540,7 @@ export function useOkeyGame(
 
     isAppActive,
     lifecycleResumeToken,
+    setTurnPresentationBlocked,
 
     currentRound:
       match.currentRound,

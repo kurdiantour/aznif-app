@@ -1,6 +1,6 @@
-import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { GameInvite } from "@/lib/gameInvites";
 import { LinearGradient } from "expo-linear-gradient";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,6 +15,7 @@ type GameInvitePopupProps = {
   error: string | null;
   onAccept: () => void;
   onDecline: () => void;
+  onExpire: () => void;
 };
 
 export function GameInvitePopup({
@@ -23,7 +24,40 @@ export function GameInvitePopup({
   error,
   onAccept,
   onDecline,
+  onExpire,
 }: GameInvitePopupProps) {
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!invite) {
+      setRemainingSeconds(0);
+      return;
+    }
+
+    const updateRemainingTime = () => {
+      const expiresAt = new Date(invite.expiresAt).getTime();
+
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((expiresAt - Date.now()) / 1000)
+      );
+
+      setRemainingSeconds(nextRemaining);
+
+      if (nextRemaining <= 0) {
+        onExpire();
+      }
+    };
+
+    updateRemainingTime();
+
+    const interval = setInterval(updateRemainingTime, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [invite, onExpire]);
+
   if (!invite) return null;
 
   return (
@@ -32,11 +66,9 @@ export function GameInvitePopup({
         colors={["#24134b", "#090d21"]}
         style={styles.card}
       >
-        <PlayerAvatar
-          avatarId={invite.senderAvatarId}
-          size={58}
-          style={styles.avatar}
-        />
+        <View style={styles.timerCircle}>
+          <Text style={styles.timerNumber}>{remainingSeconds}</Text>
+        </View>
 
         <Text style={styles.title}>{invite.senderName}</Text>
 
@@ -105,10 +137,22 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
 
-  avatar: {
-    borderWidth: 1,
+  timerCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
     borderColor: "#22c55e",
-    borderRadius: 31,
+    backgroundColor: "rgba(34, 197, 94, 0.10)",
+  },
+
+  timerNumber: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
   },
 
   title: {

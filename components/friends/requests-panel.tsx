@@ -1,6 +1,5 @@
 import {
   getFriendRequests,
-  getFriends,
   respondFriendRequest,
   type FriendRequest,
 } from "@/lib/friends";
@@ -153,7 +152,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
 
     try {
       await respondFriendRequest(request.friendshipId, accept);
-      await Promise.all([refresh(), getFriends()]);
+      await refresh();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to update friend request.",
