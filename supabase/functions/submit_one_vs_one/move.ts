@@ -373,7 +373,22 @@ export default async function handler(req: Request) {
       throw commitError;
     }
 
+
+    // ── Timeout-strike accounting (1v1 only) ────────────────────────────────
+    // A successful tile play is always a valid human action → reset strikes.
+    // Then check if the next turn player has ≥ 2 accumulated strikes and
+    // trigger bot takeover for them before their timer can start.
+    if (!roundWinnerPlayerId && !winningTeamId) {
+      await svc.rpc('process_one_vs_one_turn_strikes', {
+        p_room_id: room_id,
+        p_acting_user_id: user.id,
+        p_next_user_id: nextTurnPlayerId,
+        p_increment_acting: false,
+      });
+    }
+
     if (roundWinnerPlayerId && !winningTeamId) {
+
       const { error: forfeitErr } = await svc.rpc(
         "resolve_one_vs_one_round_leave_forfeits",
         {

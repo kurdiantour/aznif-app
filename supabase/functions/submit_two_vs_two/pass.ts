@@ -203,8 +203,24 @@ export default async function handler(req: Request) {
 
     const nextPlayerId =
       getNextOkeyOrderPlayer(players, players[playerIndex])?.user_id ?? null;
+
+    const openingTimeoutWaived =
+      timedOut &&
+      !state.board?.centerTile &&
+      (state.isOpeningRound ?? state.isFirstRound ?? true);
+
+    const turnRuleState = openingTimeoutWaived
+      ? {
+          ...state,
+          isOpeningRound: false,
+          isFirstRound: false,
+          openingDouble: null,
+          openingTileId: null,
+        }
+      : state;
+
     const nextState = {
-      ...state,
+      ...turnRuleState,
       currentTurnPlayerId: nextPlayerId,
       lastPassedPlayerId: currentTurnPlayerId,
       turnStartedAt: new Date().toISOString(),
@@ -255,6 +271,15 @@ export default async function handler(req: Request) {
         return json({ error: "Stale 2v2 state, please retry" }, 409);
       }
       throw commitError;
+    }
+
+    if (!nextState.winningTeamId) {
+      await svc.rpc("process_two_vs_two_turn_strikes", {
+        p_room_id: room_id,
+        p_acting_user_id: currentTurnPlayerId,
+        p_next_user_id: nextPlayerId,
+        p_increment_acting: Boolean(timedOut),
+      });
     }
 
     return json(

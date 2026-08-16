@@ -383,6 +383,14 @@ export default async function handler(req: Request) {
       throw commitError;
     }
 
+    if (!roundWinnerPlayerId && !nextState.winningTeamId) {
+      await svc.rpc("process_two_vs_two_turn_strikes", {
+        p_room_id: room_id,
+        p_acting_user_id: user.id,
+        p_next_user_id: nextTurnPlayerId,
+        p_increment_acting: false,
+      });
+    }
 
     return json(
       {

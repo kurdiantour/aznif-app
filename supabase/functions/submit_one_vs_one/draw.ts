@@ -355,6 +355,29 @@ export default async function handler(req: Request) {
       throw commitError;
     }
 
+    // ── Timeout-strike accounting (1v1 only) ────────────────────────────────
+    // A manual draw is valid human activity and resets the player's strikes.
+    // An automatic draw by itself does NOT count as a turn timeout because the
+    // same player's turn is still alive. Only an auto-draw that also auto-passes
+    // ends the inactive turn, so it counts as exactly one timeout strike.
+    if (timedOut) {
+      if (shouldAutoPass) {
+        await svc.rpc("process_one_vs_one_turn_strikes", {
+          p_room_id: room_id,
+          p_acting_user_id: currentTurnPlayerId,
+          p_next_user_id: finalTurnPlayerId,
+          p_increment_acting: true,
+        });
+      }
+    } else {
+      await svc.rpc("process_one_vs_one_turn_strikes", {
+        p_room_id: room_id,
+        p_acting_user_id: currentTurnPlayerId,
+        p_next_user_id: finalTurnPlayerId,
+        p_increment_acting: false,
+      });
+    }
+
     return json(
       {
         ok: true,

@@ -147,7 +147,7 @@ serve(async (req) => {
         : "process_two_vs_two_room_takeovers";
     const { error: takeoverError } = await svc.rpc(takeoverFunction, {
       p_room_id: room_id,
-      p_grace_seconds: 60,
+      p_grace_seconds: 120,
     });
     if (takeoverError) throw takeoverError;
 
@@ -574,7 +574,7 @@ serve(async (req) => {
       throw commitError;
     }
 
-    if (mode === "1v1" && nextState.roundWinnerPlayerId) {
+    if (nextState.roundWinnerPlayerId) {
       const { data: forfeit, error: forfeitErr } = await svc.rpc(
         names.resolveForfeits,
         { p_room_id: room_id },
@@ -593,7 +593,7 @@ serve(async (req) => {
         const { error: rewardErr } = await svc.rpc(
           "domino_settle_match",
           {
-            p_mode: "1v1",
+            p_mode: mode,
             p_room_id: room_id,
           },
         );

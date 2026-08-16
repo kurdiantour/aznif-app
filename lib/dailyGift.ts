@@ -55,3 +55,25 @@ export async function claimDailyGift(): Promise<DailyGiftClaimResult> {
   }
   return { ...row, ...status } as DailyGiftClaimResult;
 }
+
+export type OpenChestResult = {
+  success: boolean;
+  awardedCoins: number;
+  awardedGems: number;
+  awardedMc: number;
+  playerLevel: number;
+  balances: {
+    coinBefore: number;
+    coinAfter: number;
+    gemBefore: number;
+    gemAfter: number;
+    mcBefore: number;
+    mcAfter: number;
+  };
+};
+
+export async function openSpecialChest(): Promise<OpenChestResult> {
+  const { data, error } = await supabase.rpc("open_special_chest");
+  if (error) throw error;
+  return data as OpenChestResult;
+}

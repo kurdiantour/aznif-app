@@ -78,6 +78,12 @@ export default async function handler(req: Request) {
       return json({ error: "Match finished because a team left" }, 409);
     }
 
+    // Reset timeout-strike counters so the lock only covers the previous round.
+    await svc
+      .from("two_vs_two_players")
+      .update({ consecutive_timeout_strikes: 0 })
+      .eq("room_id", room_id);
+
     const hands = dealHands();
     const leaderIndex = getNextHandKingIndex(
       players,

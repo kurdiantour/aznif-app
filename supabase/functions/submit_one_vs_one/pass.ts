@@ -268,6 +268,25 @@ export default async function handler(req: Request) {
 
     const nextPlayerIndex = (playerIndex + 1) % 2;
     const nextPlayerId = players[nextPlayerIndex]?.user_id ?? null;
+
+    // If the required opening-double player times out before the first tile is
+    // played, waive the opening-double restriction for the rest of this round.
+    // The next player may start the board with any otherwise valid tile.
+    const openingTimeoutWaived =
+      timedOut &&
+      !state.board?.centerTile &&
+      (state.isOpeningRound ?? state.isFirstRound ?? true);
+
+    const turnRuleState = openingTimeoutWaived
+      ? {
+          ...state,
+          isOpeningRound: false,
+          isFirstRound: false,
+          openingDouble: null,
+          openingTileId: null,
+        }
+      : state;
+
     const blockedPasses = Array.from(
       new Set([...(state.blockedPasses ?? []), currentTurnPlayerId]),
     );
@@ -285,7 +304,7 @@ export default async function handler(req: Request) {
     const nextPhaseStartedAt = new Date().toISOString();
 
     let nextState = {
-      ...state,
+      ...turnRuleState,
       mode: "1v1",
       currentTurnPlayerId: nextPlayerId,
       canDrawTile: false,
@@ -298,7 +317,11 @@ export default async function handler(req: Request) {
       blockedPasses,
     };
 
-    const opponentCannotPlay = !hasPlayable(nextPlayerIndex, hands, state);
+    const opponentCannotPlay = !hasPlayable(
+      nextPlayerIndex,
+      hands,
+      turnRuleState,
+    );
 
     if (blockedPasses.length >= 2 && opponentCannotPlay) {
       const winnerIndex =
@@ -343,8 +366,8 @@ export default async function handler(req: Request) {
       nextStatus = finished.winningTeamId ? "finished" : "active";
     } else {
       const nextPlayerMustDraw = nextPlayerId
-        ? !hasPlayable(nextPlayerIndex, hands, state) &&
-          boneyardHasPlayable(boneyard, state) &&
+        ? !hasPlayable(nextPlayerIndex, hands, turnRuleState) &&
+          boneyardHasPlayable(boneyard, turnRuleState) &&
           boneyard.length > 0
         : false;
 
@@ -409,7 +432,24 @@ export default async function handler(req: Request) {
       throw commitError;
     }
 
+
+    // ── Timeout-strike accounting (1v1 only) ────────────────────────────────
+    // Runs only when the round is still ongoing (no winner yet).
+    // • timedOut=true  → increment acting player's consecutive_timeout_strikes.
+    // • timedOut=false → reset acting player's strikes (valid human pass).
+    // After updating, the function checks whether the NEXT turn player has
+    // accumulated ≥ 2 strikes and, if so, triggers bot takeover for them.
+    if (!nextState.roundWinnerPlayerId && !nextState.winningTeamId) {
+await svc.rpc('process_one_vs_one_turn_strikes', {
+  p_room_id: room_id,
+  p_acting_user_id: currentTurnPlayerId,
+  p_next_user_id: nextTurnPlayerId,
+  p_increment_acting: Boolean(timedOut),
+});
+    }
+
     if (nextState.roundWinnerPlayerId && nextStatus !== "finished") {
+
       const { error: forfeitErr } = await svc.rpc(
         "resolve_one_vs_one_round_leave_forfeits",
         { p_room_id: room_id },

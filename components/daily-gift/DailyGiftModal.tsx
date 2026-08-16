@@ -11,10 +11,39 @@ import {
   View,
 } from "react-native";
 
-import type {
-  DailyGiftCardStatus,
-  DailyGiftClaimResult,
+import {
+  openSpecialChest,
+  type DailyGiftCardStatus,
+  type DailyGiftClaimResult,
 } from "@/lib/dailyGift";
+
+import Svg, { Rect, Path, Circle } from "react-native-svg";
+
+function SpecialChestIcon({ size = 32 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <Rect x="4" y="14" width="24" height="13" rx="2" fill="#5c3c24" stroke="#ffd45c" strokeWidth="1.5" />
+      <Path d="M4 14C4 8.5 7 5 16 5C25 5 28 8.5 28 14H4Z" fill="#7a4f30" stroke="#ffd45c" strokeWidth="1.5" />
+      <Rect x="8" y="5" width="2" height="22" fill="#ffd45c" opacity="0.8" />
+      <Rect x="22" y="5" width="2" height="22" fill="#ffd45c" opacity="0.8" />
+      <Rect x="4" y="13" width="24" height="2" fill="#ffd45c" opacity="0.9" />
+      <Rect x="13" y="11" width="6" height="7" rx="1" fill="#f8d675" stroke="#b8860b" strokeWidth="1" />
+      <Circle cx="16" cy="14" r="1" fill="#14121d" />
+      <Path d="M15.5 14L15 17H17L16.5 14H15.5Z" fill="#14121d" />
+    </Svg>
+  );
+}
+
+function GoldCoinIcon({ size = 32 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <Circle cx="16" cy="16" r="13" fill="#b8860b" stroke="#ffd45c" strokeWidth="1.5" />
+      <Circle cx="16" cy="16" r="10" fill="#ffd45c" />
+      <Path d="M9 16C9 12.134 12.134 9 16 9" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+      <Path d="M16 11L17.2 13.8L20.2 14.1L17.9 16.1L18.6 19L16 17.5L13.4 19L14.1 16.1L11.8 14.1L14.8 13.8L16 11Z" fill="#b8860b" />
+    </Svg>
+  );
+}
 
 type Props = {
   visible: boolean;
@@ -33,10 +62,10 @@ type GiftDay = {
 };
 
 const days: GiftDay[] = [
-  { day: "یەکەم", icon: "\u{1FA99}", reward: "500 سکه", status: "done" },
+  { day: "یەکەم", icon: "gold_coin", reward: "500 سکه", status: "done" },
   {
     day: "دووەم",
-    icon: "\u{1FA99}",
+    icon: "gold_coin",
     reward: "1,000 سکه",
     status: "current",
   },
@@ -48,7 +77,7 @@ const days: GiftDay[] = [
   },
   {
     day: "چوارەم",
-    icon: "\u{1FA99}",
+    icon: "gold_coin",
     reward: "1,500 سکه",
     status: "lock",
   },
@@ -66,7 +95,7 @@ const days: GiftDay[] = [
   },
   {
     day: "حەفتەم",
-    icon: "gift-outline",
+    icon: "special_chest",
     reward: "سندووقی تایبەت",
     status: "lock",
   },
@@ -187,13 +216,43 @@ useEffect(
     [feedbackOpacity, rewardPlayer],
   );
 
+  const [chestOpening, setChestOpening] = useState(false);
+
   const handleClaim = useCallback(async () => {
-    if (!onClaim || claiming) return;
+    if (!onClaim || claiming || chestOpening) return;
     const result = await onClaim();
     if (!result) return;
-    const message = formatClaimReward(result);
-    if (message) showClaimFeedback(message);
-  }, [claiming, onClaim, showClaimFeedback]);
+
+    if (result.rewardType === "special_chest") {
+      showClaimFeedback("سندووقی تایبەت وەرگیرا!");
+      setChestOpening(true);
+
+      setTimeout(async () => {
+        try {
+          const openResult = await openSpecialChest();
+          const rewards: string[] = [];
+          if (openResult.awardedCoins > 0) {
+            rewards.push(`+${openResult.awardedCoins.toLocaleString("en-US")} سکە`);
+          }
+          if (openResult.awardedGems > 0) {
+            rewards.push(`+${openResult.awardedGems.toLocaleString("en-US")} گەوهەر`);
+          }
+          if (openResult.awardedMc > 0) {
+            rewards.push(`+${openResult.awardedMc.toLocaleString("en-US")} ئەزنیف`);
+          }
+          showClaimFeedback(rewards.join("\n"));
+        } catch (err) {
+          console.warn("Failed to open chest:", err);
+          showClaimFeedback("خەتا لە کردنەوەی سندووق!");
+        } finally {
+          setChestOpening(false);
+        }
+      }, 1500);
+    } else {
+      const message = formatClaimReward(result);
+      if (message) showClaimFeedback(message);
+    }
+  }, [claiming, onClaim, showClaimFeedback, chestOpening]);
 
   const close = useCallback(() => {
     if (closing.current) return;
@@ -376,7 +435,15 @@ useEffect(
                       styles.activeRewardIcon,
                   ]}
                 >
-                  <Text style={styles.rewardEmoji}>{item.icon}</Text>
+                  {item.icon === "special_chest" ? (
+                    <SpecialChestIcon size={34} />
+                  ) : item.icon === "gold_coin" ? (
+                    <GoldCoinIcon size={30} />
+                  ) : item.icon.includes("-") ? (
+                    <Ionicons name={item.icon as any} size={28} color="#f8d675" />
+                  ) : (
+                    <Text style={styles.rewardEmoji}>{item.icon}</Text>
+                  )}
                 </View>
 
                 <Text
