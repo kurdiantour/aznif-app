@@ -171,7 +171,10 @@ serve(async (request) => {
       )
       .eq("match_id", matchId)
       .order("created_at", {
-        ascending: true,
+        ascending: false,
+      })
+      .order("id", {
+        ascending: false,
       })
       .limit(100);
 
@@ -190,7 +193,7 @@ serve(async (request) => {
     }
 
     return reply({
-      messages: messages ?? [],
+      messages: (messages ?? []).reverse(),
     });
   }
 

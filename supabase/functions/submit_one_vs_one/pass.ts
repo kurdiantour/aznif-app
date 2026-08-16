@@ -29,16 +29,19 @@ function timeoutResponse(
   room: any,
   extra: Record<string, unknown> = {},
 ) {
-  return json({
-    ok: false,
-    code,
-    error: message,
-    serverNow: new Date().toISOString(),
-    roomVersion: Number(room?.version ?? -1),
-    turnStartedAt: room?.state?.turnStartedAt ?? room?.updated_at ?? null,
-    currentTurnPlayerId: room?.state?.currentTurnPlayerId ?? null,
-    ...extra,
-  }, 409);
+  return json(
+    {
+      ok: false,
+      code,
+      error: message,
+      serverNow: new Date().toISOString(),
+      roomVersion: Number(room?.version ?? -1),
+      turnStartedAt: room?.state?.turnStartedAt ?? room?.updated_at ?? null,
+      currentTurnPlayerId: room?.state?.currentTurnPlayerId ?? null,
+      ...extra,
+    },
+    409,
+  );
 }
 
 function hasPlayable(playerIndex: number, hands: any[][], state: any) {
@@ -63,8 +66,9 @@ function boneyardHasPlayable(boneyard: any[], state: any) {
 
 export default async function handler(req: Request) {
   try {
-    if (req.method !== "POST")
+    if (req.method !== "POST") {
       return json({ error: "Method Not Allowed" }, 405);
+    }
 
     const token = (req.headers.get("authorization") || "")
       .replace(/^Bearer\s+/i, "")
@@ -72,8 +76,9 @@ export default async function handler(req: Request) {
     if (!token) return json({ error: "Unauthorized" }, 401);
 
     const { data: userData, error: userError } = await svc.auth.getUser(token);
-    if (userError || !userData?.user)
+    if (userError || !userData?.user) {
       return json({ error: "Invalid auth token" }, 401);
+    }
 
     const user = userData.user;
     const {
@@ -83,6 +88,7 @@ export default async function handler(req: Request) {
       expected_turn_started_at: expectedTurnStartedAt,
       expected_turn_player_id: expectedTurnPlayerId,
     } = await req.json();
+
     if (!room_id) return json({ error: "Missing room_id" }, 400);
 
     const { data: room, error: roomErr } = await svc
@@ -96,6 +102,7 @@ export default async function handler(req: Request) {
 
     const state = room.state || {};
     const expectedVersion = Number(expectedVersionRaw);
+
     if (timedOut) {
       if (
         !Number.isInteger(expectedVersion) ||
@@ -133,15 +140,17 @@ export default async function handler(req: Request) {
       }
     }
 
-    if (room.status !== "active")
+    if (room.status !== "active") {
       return timedOut
         ? timeoutResponse("already_processed", "This turn is no longer active", room)
         : json({ error: "1v1 room is not active" }, 400);
+    }
 
-    if (state.winningTeamId || state.roundWinnerPlayerId)
+    if (state.winningTeamId || state.roundWinnerPlayerId) {
       return timedOut
         ? timeoutResponse("already_processed", "This turn is already complete", room)
         : json({ error: "Round is not passable" }, 400);
+    }
 
     const { data: players, error: playersErr } = await svc
       .from("one_vs_one_players")
@@ -150,27 +159,88 @@ export default async function handler(req: Request) {
       .order("player_index", { ascending: true });
 
     if (playersErr) throw playersErr;
-    if (!Array.isArray(players) || players.length !== 2)
+    if (!Array.isArray(players) || players.length !== 2) {
       return json({ error: "1v1 requires exactly 2 players" }, 400);
+    }
 
     const requestPlayerIndex = players.findIndex(
       (player: any) => player.user_id === user.id,
     );
-    if (requestPlayerIndex === -1)
+    if (requestPlayerIndex === -1) {
       return json({ error: "You are not a player in this 1v1 room" }, 403);
+    }
 
     const currentTurnPlayerId = state.currentTurnPlayerId ?? null;
     const playerIndex = players.findIndex(
       (player: any) => player.user_id === currentTurnPlayerId,
     );
-    if (playerIndex === -1)
+
+    if (playerIndex === -1) {
       return json({ error: "Active player is missing" }, 409);
+    }
+
+    if (!timedOut && currentTurnPlayerId !== user.id) {
+      const details = {
+        reason: "not_your_turn",
+        room_id,
+        requestUserId: user.id,
+        roomCurrentTurnPlayerId: room.current_turn_player_id ?? null,
+        stateCurrentTurnPlayerId: state.currentTurnPlayerId ?? null,
+        effectiveCurrentTurnPlayerId: currentTurnPlayerId,
+        playerIndex: requestPlayerIndex,
+      };
+
+      console.warn("submit_one_vs_one action=pass Not your turn", details);
+      return json({ error: "Not your turn", details }, 403);
+    }
+
+    if (!timedOut && !state.board?.centerTile) {
+      return json({ error: "Cannot pass before opening move" }, 400);
+    }
+
+    const { data: privateState, error: privateErr } = await svc
+      .from("one_vs_one_private_states")
+      .select("hands, boneyard")
+      .eq("room_id", room_id)
+      .maybeSingle();
+
+    if (privateErr) throw privateErr;
+    if (!privateState) {
+      return json({ error: "1v1 private state is missing" }, 409);
+    }
+
+    const hands = Array.isArray(privateState.hands) ? privateState.hands : [];
+    const boneyard = Array.isArray(privateState.boneyard)
+      ? privateState.boneyard
+      : [];
+    const currentTurnDrawCount = Number(state.currentTurnDrawCount ?? 0);
+
+    const mustDrawBeforePassing =
+      !!state.board?.centerTile &&
+      !hasPlayable(playerIndex, hands, state) &&
+      boneyardHasPlayable(boneyard, state) &&
+      currentTurnDrawCount < MAX_ONE_VS_ONE_DRAWS_PER_TURN;
+
+    if (timedOut && mustDrawBeforePassing) {
+      return timeoutResponse(
+        "turn_timer_not_expired",
+        "Turn timer is paused while the active player must draw",
+        room,
+        {
+          timerPausedForDraw: true,
+          expiresAt: null,
+          retryAfterMs: null,
+        },
+      );
+    }
+
     if (timedOut) {
       const turnStartedAt = Date.parse(
         state.turnStartedAt ?? room.updated_at ?? "",
       );
       const serverNowMs = Date.now();
       const expiresAtMs = turnStartedAt + TURN_DURATION_MS;
+
       if (!Number.isFinite(turnStartedAt) || serverNowMs < expiresAtMs) {
         return timeoutResponse(
           "turn_timer_not_expired",
@@ -186,49 +256,13 @@ export default async function handler(req: Request) {
           },
         );
       }
-    } else if (currentTurnPlayerId !== user.id) {
-      const details = {
-        reason: "not_your_turn",
-        room_id,
-        requestUserId: user.id,
-        roomCurrentTurnPlayerId: room.current_turn_player_id ?? null,
-        stateCurrentTurnPlayerId: state.currentTurnPlayerId ?? null,
-        effectiveCurrentTurnPlayerId: currentTurnPlayerId,
-        playerIndex: requestPlayerIndex,
-      };
-
-      console.warn("submit_one_vs_one action=pass Not your turn", details);
-
-      return json({ error: "Not your turn", details }, 403);
     }
 
-    if (!timedOut && !state.board?.centerTile)
-      return json({ error: "Cannot pass before opening move" }, 400);
-
-    const { data: privateState, error: privateErr } = await svc
-      .from("one_vs_one_private_states")
-      .select("hands, boneyard")
-      .eq("room_id", room_id)
-      .maybeSingle();
-
-    if (privateErr) throw privateErr;
-
-    if (!privateState)
-      return json({ error: "1v1 private state is missing" }, 409);
-
-    const hands = Array.isArray(privateState.hands) ? privateState.hands : [];
-    const boneyard = Array.isArray(privateState.boneyard)
-      ? privateState.boneyard
-      : [];
-    const currentTurnDrawCount = Number(state.currentTurnDrawCount ?? 0);
-
-    if (!timedOut && hasPlayable(playerIndex, hands, state))
+    if (!timedOut && hasPlayable(playerIndex, hands, state)) {
       return json({ error: "You have a playable tile" }, 400);
-    if (
-      !timedOut &&
-      boneyardHasPlayable(boneyard, state) &&
-      currentTurnDrawCount < MAX_ONE_VS_ONE_DRAWS_PER_TURN
-    ) {
+    }
+
+    if (!timedOut && mustDrawBeforePassing) {
       return json({ error: "You must draw before passing" }, 400);
     }
 
@@ -242,20 +276,23 @@ export default async function handler(req: Request) {
       teamA: Number(state.teamScores?.teamA ?? 0),
       teamB: Number(state.teamScores?.teamB ?? 0),
     };
+
     const finalHands = hands;
     const finalBoneyard = boneyard;
     let nextTurnPlayerId = nextPlayerId;
     let nextStatus = "active";
     let endOfHandScoringEvent = null;
+    const nextPhaseStartedAt = new Date().toISOString();
 
     let nextState = {
       ...state,
       mode: "1v1",
       currentTurnPlayerId: nextPlayerId,
       canDrawTile: false,
+      drawStartedAt: null,
       currentTurnDrawCount: 0,
       lastPassedPlayerId: currentTurnPlayerId,
-      turnStartedAt: new Date().toISOString(),
+      turnStartedAt: nextPhaseStartedAt,
       lastScoringEvent: null,
       endOfHandScoringEvent: null,
       blockedPasses,
@@ -291,8 +328,6 @@ export default async function handler(req: Request) {
         ...nextState,
         teamScores: nextScores,
         roundWinnerPlayerId: winner.user_id,
-        // The last player who placed a tile is king; scoring remains based on
-        // the lowest-pip hand calculated above.
         leaderPlayerId: blockerPlayerId,
         endOfHandScoringEvent,
         roundEndReason: "blocked",
@@ -300,16 +335,21 @@ export default async function handler(req: Request) {
         winningTeamId: finished.winningTeamId,
         matchReward: finished.matchReward,
         endOfHandScoreApplied: true,
+        drawStartedAt: null,
       };
 
       nextTurnPlayerId = blockerPlayerId;
       nextState.currentTurnPlayerId = nextTurnPlayerId;
       nextStatus = finished.winningTeamId ? "finished" : "active";
     } else {
-      nextState.canDrawTile = nextPlayerId
+      const nextPlayerMustDraw = nextPlayerId
         ? !hasPlayable(nextPlayerIndex, hands, state) &&
-          boneyardHasPlayable(boneyard, state)
+          boneyardHasPlayable(boneyard, state) &&
+          boneyard.length > 0
         : false;
+
+      nextState.canDrawTile = nextPlayerMustDraw;
+      nextState.drawStartedAt = nextPlayerMustDraw ? nextPhaseStartedAt : null;
     }
 
     nextState = {
@@ -337,6 +377,7 @@ export default async function handler(req: Request) {
         },
       },
     );
+
     if (commitError) {
       if (commitError.message?.includes("STALE_GAME_STATE")) {
         if (timedOut) {
@@ -345,6 +386,7 @@ export default async function handler(req: Request) {
             .select("id, status, state, version, current_turn_player_id, updated_at")
             .eq("id", room_id)
             .maybeSingle();
+
           if (latestRoomError) throw latestRoomError;
           if (latestRoom && Number(latestRoom.version) > expectedVersion) {
             return timeoutResponse(
@@ -353,23 +395,24 @@ export default async function handler(req: Request) {
               latestRoom,
             );
           }
+
           return timeoutResponse(
             "stale_timeout",
             "Timeout claim became stale before commit",
             latestRoom ?? room,
           );
         }
+
         return json({ error: "Stale 1v1 state, please retry" }, 409);
       }
+
       throw commitError;
     }
 
     if (nextState.roundWinnerPlayerId && nextStatus !== "finished") {
       const { error: forfeitErr } = await svc.rpc(
         "resolve_one_vs_one_round_leave_forfeits",
-        {
-          p_room_id: room_id,
-        },
+        { p_room_id: room_id },
       );
       if (forfeitErr) throw forfeitErr;
     }

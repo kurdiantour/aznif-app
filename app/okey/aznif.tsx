@@ -232,13 +232,6 @@ export default function OkeyAznifScreen() {
         return;
       }
 
-      if (!profile) {
-        setJoinError(
-          "پێویستە سەرەتا بچیتە ژوورەوە.",
-        );
-        return;
-      }
-
       if (aznifBalance < table.entry) {
         return;
       }
@@ -261,7 +254,7 @@ export default function OkeyAznifScreen() {
 
         setJoiningTableId(null);
         setJoinError(
-          "نەتوانرا بچیتە ناو یاری. دووبارە هەوڵ بدەرەوە.",
+          "کێشەیەک ڕوویدا. تکایە دووبارە هەوڵ بدەرەوە.",
         );
       }
     },
@@ -269,7 +262,6 @@ export default function OkeyAznifScreen() {
       aznifBalance,
       joiningTableId,
       openOnlineGame,
-      profile,
     ],
   );
 

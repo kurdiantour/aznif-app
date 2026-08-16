@@ -65,6 +65,7 @@ function DealtOpponentBack({
 }
 
 export function OkeyOpponentSeat({
+  playerId,
   name,
   count,
   active,
@@ -77,6 +78,7 @@ export function OkeyOpponentSeat({
   onMeasured,
   onPress,
 }: {
+  playerId?: string;
   name: string;
   count: number;
   active: boolean;
@@ -115,6 +117,16 @@ export function OkeyOpponentSeat({
       onMeasured?.(rect);
     });
   };
+
+  // PRESENTATION CONTRACT (tested): a waiting placeholder can become a real
+  // player without a layout change. This re-measure keeps playerId → screen
+  // rect mapping valid for every opponent flight; do not remove without full
+  // multiplayer animation coverage.
+  // Re-measure after a waiting seat receives its real player identity.
+  useEffect(() => {
+    const frame = requestAnimationFrame(measureSeat);
+    return () => cancelAnimationFrame(frame);
+  }, [playerId]);
 
   return (
     <Pressable

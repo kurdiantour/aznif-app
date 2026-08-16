@@ -4,6 +4,7 @@ import {
   submitOneVsOneDraw,
   submitOneVsOneMove,
   submitOneVsOnePass,
+  type DrawTimeoutClaim,
   type TurnTimeoutClaim,
 } from '@/lib/multiplayer/multiplayerApi';
 import {
@@ -42,11 +43,14 @@ type UseOneVsOneResult = Omit<MockGameState, 'playTile' | 'drawTile' | 'passTurn
   myPlayerIndex: number;
   opponentPlayerIndex: number;
   currentUserId: string | null;
+  drawTimeLeft: number;
   pendingMove: PendingMultiplayerMove | null;
   playTile: (tile: DominoTileData, branch?: KozelBranch) => Promise<any>;
   drawTile: () => Promise<boolean>;
   passTurn: () => Promise<boolean>;
 };
+
+const DRAW_PHASE_DURATION_SECONDS = 5;
 
 export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   const [loading, setLoading] = useState(true);
@@ -56,6 +60,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   const [profileById, setProfileById] = useState<Map<string, any>>(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [turnTimeLeft, setTurnTimeLeft] = useState(PLAYER_TURN_DURATION_SECONDS);
+  const [drawTimeLeft, setDrawTimeLeft] = useState(DRAW_PHASE_DURATION_SECONDS);
   const [pendingMove, setPendingMove] = useState<PendingMultiplayerMove | null>(null);
 
   const roomChannelRef = useRef<any>(null);
@@ -77,6 +82,10 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
   const serverClockOffsetMsRef = useRef(0);
   const roomIdRef = useRef(roomId);
   const timeoutSubmitRef = useRef<((claim: TurnTimeoutClaim, turnKey: string, claimRoomId: string) => void) | null>(null);
+  const drawTimeoutInFlightRef = useRef(false);
+  const drawTimeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeDrawKeyRef = useRef<string | null>(null);
+  const drawTimeoutSubmitRef = useRef<((claim: DrawTimeoutClaim, drawKey: string, claimRoomId: string) => void) | null>(null);
   const lastRealtimeActivityRef = useRef<number>(Date.now());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptRef = useRef<number>(0);
@@ -89,21 +98,34 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     timeoutRetryTurnKeyRef.current = null;
   }, []);
 
+  const clearDrawTimeoutRetry = useCallback(() => {
+    if (drawTimeoutRetryRef.current) {
+      clearTimeout(drawTimeoutRetryRef.current);
+      drawTimeoutRetryRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     roomIdRef.current = roomId;
     latestVersionRef.current = -1;
     pendingMoveRef.current = null;
     activeTurnKeyRef.current = null;
+    activeDrawKeyRef.current = null;
     timeoutPassInFlightRef.current = false;
+    drawTimeoutInFlightRef.current = false;
     clearTimeoutRetry();
+    clearDrawTimeoutRetry();
     setPendingMove(null);
 
     return () => {
       activeTurnKeyRef.current = null;
+      activeDrawKeyRef.current = null;
       timeoutPassInFlightRef.current = false;
+      drawTimeoutInFlightRef.current = false;
       clearTimeoutRetry();
+      clearDrawTimeoutRetry();
     };
-  }, [roomId, clearTimeoutRetry]);
+  }, [roomId, clearTimeoutRetry, clearDrawTimeoutRetry]);
 
   const applySnapshot = useCallback((snapshot: any) => {
     const version = getSnapshotVersion(snapshot);
@@ -126,7 +148,16 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       version >= 0 && typeof turnStartedAt === 'string' && typeof currentTurnPlayerId === 'string'
         ? `${version}:${turnStartedAt}:${currentTurnPlayerId}`
         : null;
+    const drawStartedAt = nextRawState.drawStartedAt ?? null;
+    activeDrawKeyRef.current =
+      nextRawState.canDrawTile === true &&
+      version >= 0 &&
+      typeof drawStartedAt === 'string' &&
+      typeof currentTurnPlayerId === 'string'
+        ? `${version}:${drawStartedAt}:${currentTurnPlayerId}`
+        : null;
     clearTimeoutRetry();
+    clearDrawTimeoutRetry();
     setRawState(nextRawState);
     const pending = pendingMoveRef.current;
     if (
@@ -138,7 +169,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       setPendingMove(null);
     }
     return true;
-  }, [clearTimeoutRetry]);
+  }, [clearTimeoutRetry, clearDrawTimeoutRetry]);
 
   const refreshSnapshot = useCallback(async () => {
     if (!roomId) throw new Error('No 1v1 room id');
@@ -364,10 +395,29 @@ if (updatedRoom) {
         ? `${version}:${turnStartedAt}:${nextTurnPlayerId}`
         : null;
 
+    const drawStartedAt = nextRawState.drawStartedAt ?? null;
+    activeDrawKeyRef.current =
+      nextRawState.canDrawTile === true &&
+      version >= 0 &&
+      typeof drawStartedAt === 'string' &&
+      typeof nextTurnPlayerId === 'string'
+        ? `${version}:${drawStartedAt}:${nextTurnPlayerId}`
+        : null;
+
     clearTimeoutRetry();
+    clearDrawTimeoutRetry();
 
     return nextRawState;
   });
+
+  // IMPORTANT: this must be OUTSIDE setRawState()
+void refreshSnapshot().catch((error) => {
+  console.warn(
+    '1v1 private hand refresh after room realtime update failed',
+    error,
+  );
+});
+
 }
     },
   )
@@ -569,10 +619,18 @@ movesChannelRef.current = supabase
   const roundWinnerPlayerId = rawState?.roundWinnerPlayerId ?? null;
   const winningTeamId = rawState?.winningTeamId ?? null;
 
-  useEffect(() => {
-    if (!currentTurnPlayerId || roundWinnerPlayerId || winningTeamId) return;
+useEffect(() => {
+  if (!currentTurnPlayerId || roundWinnerPlayerId || winningTeamId) return;
 
-    const turnStartedAt = Date.parse(rawState?.turnStartedAt ?? rawState?.updated_at ?? '');
+  // Drawing is a mandatory game action, not decision time.
+  // Pause the visible countdown while the server says Draw is required.
+  if (rawState?.canDrawTile === true) return;
+
+  const turnStartedAt = Date.parse(
+    rawState?.turnStartedAt ?? rawState?.updated_at ?? '',
+  );
+
+
     const updateTimer = () => {
       const elapsed = Number.isFinite(turnStartedAt)
         ? Math.floor((Date.now() + serverClockOffsetMsRef.current - turnStartedAt) / 1000)
@@ -583,8 +641,45 @@ movesChannelRef.current = supabase
     const timer = setInterval(updateTimer, 250);
 
     return () => clearInterval(timer);
-  }, [currentTurnPlayerId, rawState?.turnStartedAt, rawState?.updated_at, roundWinnerPlayerId, winningTeamId]);
+}, [
+  currentTurnPlayerId,
+  rawState?.turnStartedAt,
+  rawState?.updated_at,
+  rawState?.canDrawTile,
+  roundWinnerPlayerId,
+  winningTeamId,
+]);
 
+  useEffect(() => {
+    if (
+      !currentTurnPlayerId ||
+      roundWinnerPlayerId ||
+      winningTeamId ||
+      rawState?.canDrawTile !== true
+    ) {
+      setDrawTimeLeft(DRAW_PHASE_DURATION_SECONDS);
+      return;
+    }
+
+    const drawStartedAt = Date.parse(rawState?.drawStartedAt ?? '');
+
+    const updateDrawTimer = () => {
+      const elapsed = Number.isFinite(drawStartedAt)
+        ? Math.floor((Date.now() + serverClockOffsetMsRef.current - drawStartedAt) / 1000)
+        : 0;
+      setDrawTimeLeft(Math.max(0, DRAW_PHASE_DURATION_SECONDS - elapsed));
+    };
+
+    updateDrawTimer();
+    const timer = setInterval(updateDrawTimer, 250);
+    return () => clearInterval(timer);
+  }, [
+    currentTurnPlayerId,
+    rawState?.canDrawTile,
+    rawState?.drawStartedAt,
+    roundWinnerPlayerId,
+    winningTeamId,
+  ]);
   const startNextRound = useCallback(async () => {
     if (!roomId) return;
     if (roundTransitionSyncRef.current) {
@@ -753,9 +848,10 @@ movesChannelRef.current = supabase
         kind: row.kind,
         teamId: row.team_id,
         isActive: playerId === state.currentTurnPlayerId,
-        timeLeft: playerId === state.currentTurnPlayerId
-          ? turnTimeLeft
-          : PLAYER_TURN_DURATION_SECONDS,
+timeLeft:
+  playerId === state.currentTurnPlayerId
+    ? turnTimeLeft
+    : PLAYER_TURN_DURATION_SECONDS,
         tileCount: handCounts[playerIndex] ?? 0,
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
@@ -764,7 +860,7 @@ movesChannelRef.current = supabase
         points: profile?.points,
       };
     });
-  }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft]);
+  }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft, drawTimeLeft]);
 
   const board: KozelBoardState = rawState?.board ?? createEmptyBoard();
 
@@ -1032,6 +1128,105 @@ movesChannelRef.current = supabase
     }
   }, [clearTimeoutRetry, refreshSnapshot, scheduleTimeoutRetry, syncServerClock]);
 
+  const scheduleDrawTimeoutRetry = useCallback((
+    claim: DrawTimeoutClaim,
+    drawKey: string,
+    claimRoomId: string,
+    expiresAt: unknown,
+  ) => {
+    clearDrawTimeoutRetry();
+    if (
+      roomIdRef.current !== claimRoomId ||
+      activeDrawKeyRef.current !== drawKey ||
+      typeof expiresAt !== 'string'
+    ) return;
+
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs)) return;
+
+    const synchronizedNow = Date.now() + serverClockOffsetMsRef.current;
+    const retryInMs = Math.max(0, expiresAtMs - synchronizedNow);
+
+    drawTimeoutRetryRef.current = setTimeout(() => {
+      drawTimeoutRetryRef.current = null;
+      if (
+        roomIdRef.current === claimRoomId &&
+        activeDrawKeyRef.current === drawKey
+      ) {
+        drawTimeoutSubmitRef.current?.(claim, drawKey, claimRoomId);
+      }
+    }, retryInMs);
+  }, [clearDrawTimeoutRetry]);
+
+  const submitDrawTimeoutClaim = useCallback(async (
+    claim: DrawTimeoutClaim,
+    drawKey: string,
+    claimRoomId: string,
+  ) => {
+    if (
+      drawTimeoutInFlightRef.current ||
+      roomIdRef.current !== claimRoomId ||
+      activeDrawKeyRef.current !== drawKey
+    ) return;
+
+    drawTimeoutInFlightRef.current = true;
+    try {
+      const result = await submitOneVsOneDraw(claimRoomId, true, claim);
+      syncServerClock(result?.serverNow);
+
+      if (
+        roomIdRef.current !== claimRoomId ||
+        activeDrawKeyRef.current !== drawKey
+      ) return;
+
+      clearDrawTimeoutRetry();
+      await refreshSnapshot();
+    } catch (caught) {
+      const requestError = caught instanceof MultiplayerRequestError ? caught : null;
+      const code = requestError?.code;
+      const response = requestError?.details;
+      syncServerClock(response?.serverNow);
+
+      if (code === 'turn_timer_not_expired') {
+        scheduleDrawTimeoutRetry(
+          claim,
+          drawKey,
+          claimRoomId,
+          response?.expiresAt,
+        );
+        return;
+      }
+
+      if (code === 'stale_timeout' || code === 'already_processed') {
+        clearDrawTimeoutRetry();
+        if (roomIdRef.current === claimRoomId) {
+          await refreshSnapshot().catch(() => undefined);
+        }
+        return;
+      }
+
+      if (roomIdRef.current === claimRoomId) {
+        await refreshSnapshot().catch(() => undefined);
+      }
+    } finally {
+      drawTimeoutInFlightRef.current = false;
+    }
+  }, [
+    clearDrawTimeoutRetry,
+    refreshSnapshot,
+    scheduleDrawTimeoutRetry,
+    syncServerClock,
+  ]);
+
+  useEffect(() => {
+    drawTimeoutSubmitRef.current = (claim, drawKey, claimRoomId) => {
+      void submitDrawTimeoutClaim(claim, drawKey, claimRoomId);
+    };
+    return () => {
+      drawTimeoutSubmitRef.current = null;
+    };
+  }, [submitDrawTimeoutClaim]);
+
   useEffect(() => {
     timeoutSubmitRef.current = (claim, turnKey, claimRoomId) => {
       void submitTimeoutClaim(claim, turnKey, claimRoomId);
@@ -1044,8 +1239,49 @@ movesChannelRef.current = supabase
   useEffect(() => {
     if (
       !roomId ||
+      rawState?.canDrawTile !== true ||
+      drawTimeLeft > 0 ||
+      roundWinnerPlayerId ||
+      winningTeamId ||
+      drawTimeoutInFlightRef.current ||
+      drawTimeoutRetryRef.current
+    ) return;
+
+    const expectedVersion = getSnapshotVersion(rawState);
+    const expectedDrawStartedAt = rawState?.drawStartedAt;
+    if (
+      expectedVersion < 0 ||
+      typeof expectedDrawStartedAt !== 'string' ||
+      typeof currentTurnPlayerId !== 'string' ||
+      !currentTurnPlayerId
+    ) return;
+
+    const claim: DrawTimeoutClaim = {
+      expectedVersion,
+      expectedDrawStartedAt,
+      expectedTurnPlayerId: currentTurnPlayerId,
+    };
+
+    const drawKey = `${expectedVersion}:${expectedDrawStartedAt}:${currentTurnPlayerId}`;
+    if (activeDrawKeyRef.current !== drawKey) return;
+
+    void submitDrawTimeoutClaim(claim, drawKey, roomId);
+  }, [
+    roomId,
+    rawState,
+    drawTimeLeft,
+    roundWinnerPlayerId,
+    winningTeamId,
+    currentTurnPlayerId,
+    submitDrawTimeoutClaim,
+  ]);
+
+  useEffect(() => {
+    if (
+      !roomId ||
       turnTimeLeft > 0 ||
       roundWinnerPlayerId ||
+      rawState?.canDrawTile === true ||
       winningTeamId ||
       timeoutPassInFlightRef.current ||
       timeoutRetryRef.current
@@ -1082,6 +1318,8 @@ movesChannelRef.current = supabase
     loading,
     error,
 
+    drawTimeLeft,
+
     players,
     currentTurnPlayerId,
     board,
@@ -1106,6 +1344,7 @@ movesChannelRef.current = supabase
     drawTile,
 
     canDrawTile:
+  rawState?.canDrawTile === true &&
   !!currentUserId &&
   currentTurnPlayerId === currentUserId &&
   !hasPlayableTile &&

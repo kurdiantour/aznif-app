@@ -28,13 +28,21 @@ import {
 const SAVED_EMAIL_KEY = "domino_saved_email";
 const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
 
-function isRecentlyCreatedUser(createdAt?: string) {
-  if (!createdAt) return false;
+function isRecentlyCreatedUser(
+  createdAt?: string,
+  lastSignInAt?: string,
+) {
+  if (!createdAt || !lastSignInAt) return false;
 
   const createdTime = new Date(createdAt).getTime();
+  const lastSignInTime = new Date(lastSignInAt).getTime();
 
-  return Number.isFinite(createdTime) &&
-    Date.now() - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS;
+  return (
+    Number.isFinite(createdTime) &&
+    Number.isFinite(lastSignInTime) &&
+    lastSignInTime >= createdTime &&
+    lastSignInTime - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS
+  );
 }
 
 export default function LoginScreen() {
@@ -158,7 +166,10 @@ export default function LoginScreen() {
 
       const user = await getCurrentUser();
 
-      if (isRecentlyCreatedUser(user?.created_at)) {
+      if (isRecentlyCreatedUser(
+  user?.created_at,
+  user?.last_sign_in_at,
+)) {
         await markPendingLeaderboardConsent();
       }
 

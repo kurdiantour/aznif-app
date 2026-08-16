@@ -7,6 +7,7 @@ import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 import { Redirect } from "expo-router";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -27,6 +28,7 @@ export default function InviteFriendsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [requestCount, setRequestCount] = useState(0);
   const [transferSuccessSignal, setTransferSuccessSignal] = useState(0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { showSendChipPopup } = useContext(SendChipPopupContext);
 
   const refreshRequestCount = useCallback(async () => {
@@ -41,6 +43,18 @@ export default function InviteFriendsScreen() {
       void refreshRequestCount();
     }, [refreshRequestCount]),
   );
+
+  useEffect(() => {
+    if (!toastMessage) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   useEffect(() => {
     let mounted = true;
@@ -154,6 +168,7 @@ export default function InviteFriendsScreen() {
                 )
               }
               transferSuccessSignal={transferSuccessSignal}
+              onToast={setToastMessage}
             />
           ) : activeTab === "requests" ? (
             <RequestsPanel onRequestsChanged={setRequestCount} />
@@ -163,6 +178,42 @@ export default function InviteFriendsScreen() {
         </View>
       </View>
 
+      {toastMessage ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            toastMessage.startsWith("بانگهێشت بۆ") &&
+              styles.inviteSuccessToast,
+          ]}
+        >
+          <Ionicons
+            name={
+              toastMessage.startsWith("بانگهێشت بۆ")
+                ? "checkmark-circle-outline"
+                : "alert-circle-outline"
+            }
+            size={18}
+            color={
+              toastMessage.startsWith("بانگهێشت بۆ")
+                ? "#86efac"
+                : "#fca5a5"
+            }
+          />
+
+          {toastMessage.startsWith("بانگهێشت بۆ") ? (
+            <Text style={[styles.toastText, styles.inviteSuccessText]}>
+              بانگهێشت بۆ{" "}
+              <Text style={styles.inviteUsername}>
+                ({toastMessage.replace(/^بانگهێشت بۆ\s*/, "").replace(/\s*نێردرا\.$/, "")})
+              </Text>{" "}
+              نێردرا.
+            </Text>
+          ) : (
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -242,5 +293,46 @@ const styles = StyleSheet.create({
 
   content: {
     flex: 1,
+  },
+
+  toast: {
+    position: "absolute",
+    bottom: 90,
+    alignSelf: "center",
+    zIndex: 100,
+    elevation: 20,
+    maxWidth: "90%",
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(248,113,113,0.35)",
+    backgroundColor: "rgba(20,18,29,0.96)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  toastText: {
+    color: "#f1e1e1",
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: "center",
+    fontFamily: "SpedaBold",
+    writingDirection: "rtl",
+  },
+
+  inviteSuccessToast: {
+    borderColor: "rgba(34,197,94,0.45)",
+  },
+
+  inviteSuccessText: {
+    color: "#86efac",
+  },
+
+  inviteUsername: {
+    color: "#86efac",
+    fontFamily: "RobotoMedium",
   },
 });

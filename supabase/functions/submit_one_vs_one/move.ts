@@ -298,6 +298,8 @@ export default async function handler(req: Request) {
       reward = finished.matchReward;
     }
 
+    const nextPhaseStartedAt = new Date().toISOString();
+
     let nextState = {
       ...state,
       mode: "1v1",
@@ -307,7 +309,8 @@ export default async function handler(req: Request) {
       handCounts: handCounts(nextHands),
       boneyardCount: boneyard.length,
       currentTurnPlayerId: nextTurnPlayerId,
-      turnStartedAt: new Date().toISOString(),
+      turnStartedAt: nextPhaseStartedAt,
+      drawStartedAt: null,
       leaderPlayerId: roundWinnerPlayerId ?? state.leaderPlayerId ?? user.id,
       isOpeningRound: false,
       isFirstRound: false,
@@ -338,6 +341,9 @@ export default async function handler(req: Request) {
         boneyard,
         nextState,
       );
+      nextState.drawStartedAt = nextState.canDrawTile
+        ? nextPhaseStartedAt
+        : null;
     }
 
     const { data: updatedRoom, error: commitError } = await svc.rpc(

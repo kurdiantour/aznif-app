@@ -33,11 +33,7 @@ function routeStatus(pathname: string): PresenceStatus {
     pathname === "/domino/game" ||
     pathname.startsWith("/domino/game/") ||
     pathname === "/okey/game" ||
-    pathname.startsWith("/okey/game/") ||
-    pathname === "/okey/aznif" ||
-    pathname.startsWith("/okey/aznif/") ||
-    pathname === "/okey/fun" ||
-    pathname.startsWith("/okey/fun/")
+    pathname.startsWith("/okey/game/")
   ) {
     return "in_game";
   }

@@ -1,5 +1,5 @@
 import { AVATAR_IDS } from "@/constants/avatars";
-import type { User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
 import { supabase } from "./supabase";
 
@@ -41,6 +41,13 @@ function authCallbackParams(url: string) {
   return new URLSearchParams(`${query}&${fragment}`);
 }
 
+let oauthCodeExchange:
+  | {
+      code: string;
+      promise: Promise<Session>;
+    }
+  | null = null;
+
 export async function completeAuthFromUrl(url: string) {
   const params = authCallbackParams(url);
   const code = params.get("code");
@@ -53,10 +60,44 @@ export async function completeAuthFromUrl(url: string) {
     throw new Error(errorDescription ?? errorCode ?? "Authentication failed.");
   }
 
-  if (code) {
+if (code) {
+  if (oauthCodeExchange?.code === code) {
+    return oauthCodeExchange.promise;
+  }
+
+  const exchangePromise = (async () => {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) throw error;
-  } else if (accessToken && refreshToken) {
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    if (!session?.user) {
+      throw new Error("Authentication completed without a saved session.");
+    }
+
+    return session;
+  })();
+
+  oauthCodeExchange = {
+    code,
+    promise: exchangePromise,
+  };
+
+  try {
+    return await exchangePromise;
+  } catch (error) {
+    if (oauthCodeExchange?.code === code) {
+      oauthCodeExchange = null;
+    }
+
+    throw error;
+  }
+} else if (accessToken && refreshToken) {
     const { error } = await supabase.auth.setSession({
       access_token: accessToken,
       refresh_token: refreshToken,

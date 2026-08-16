@@ -141,6 +141,7 @@ type FriendsPanelProps = {
   searchQuery?: string;
   onSendChip?: (friend: Friend) => void;
   transferSuccessSignal?: number;
+  onToast?: (message: string) => void;
 };
 
 function getMeaningfulSearchQuery(query: string) {
@@ -158,40 +159,26 @@ function getMeaningfulSearchQuery(query: string) {
   return trimmed;
 }
 
-function getGameInviteError(reason: unknown) {
+function getGameInviteToast(reason: unknown) {
   const message =
     reason instanceof Error
       ? reason.message
       : typeof (reason as { message?: unknown })?.message === "string"
         ? String((reason as { message: string }).message)
         : "";
-  const normalized = message.toLowerCase();
 
-  if (normalized.includes("player_already_in_party")) {
-    return "تۆ یان هاوڕێکەت پێشتر لە پارتیدان.";
-  }
-  if (normalized.includes("already pending")) {
-    return "بانگهێشتێک پێشتر نێردراوە و چاوەڕوانی وەڵامە.";
-  }
-  if (normalized.includes("not available")) {
-    return "هاوڕێکەت ئێستا بۆ بانگهێشت بەردەست نییە.";
-  }
-  if (normalized.includes("confirmed friends")) {
-    return "تەنها دەتوانیت هاوڕێی پەسەندکراو بانگهێشت بکەیت.";
-  }
-  if (normalized.includes("unauthorized") || normalized.includes("jwt")) {
-    return "تکایە دووبارە بچۆرە ژوورەوە.";
-  }
-  if (normalized.includes("network") || normalized.includes("fetch")) {
-    return "پەیوەندی ئینتەرنێت هەڵەی تێدایە.";
+  if (message.toLowerCase().includes("already pending")) {
+    return "بانگهێشت پێشتر نێردراوە. چاوەڕوانی وەڵام بە.";
   }
 
-  return message || "نەتوانرا بانگهێشتی یاری بنێردرێت.";
+  return null;
 }
+
 export function FriendsPanel({
   searchQuery = "",
   onSendChip,
   transferSuccessSignal = 0,
+  onToast,
 }: FriendsPanelProps) {
   const meaningfulSearchQuery = getMeaningfulSearchQuery(searchQuery);
   const isSearchActive = searchQuery.trim().length >= 2;
@@ -203,8 +190,6 @@ export function FriendsPanel({
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const nextFriends = await getFriends();
@@ -217,10 +202,7 @@ export function FriendsPanel({
     setLoading(true);
     refresh()
       .catch((err) => {
-        if (mounted)
-          setError(
-            err instanceof Error ? err.message : "Unable to load friends.",
-          );
+        console.warn("[FriendsPanel] Unable to load friends:", err);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -233,7 +215,6 @@ export function FriendsPanel({
 
   useFocusEffect(
     useCallback(() => {
-      setError(null);
       void refresh();
     }, [refresh]),
   );
@@ -320,8 +301,9 @@ export function FriendsPanel({
           if (mounted) setSearchResults(results);
         })
         .catch((err) => {
-          if (mounted)
-            setError(err instanceof Error ? err.message : "Search failed.");
+          if (mounted) {
+            console.warn("[FriendsPanel] Friend search failed:", err);
+          }
         })
         .finally(() => {
           if (mounted) setSearching(false);
@@ -343,8 +325,6 @@ export function FriendsPanel({
 
   async function handleAdd(result: FriendSearchResult) {
     setBusyId(result.id);
-    setError(null);
-    setSuccessMessage(null);
 
     try {
       await sendFriendRequest(result.id);
@@ -360,9 +340,7 @@ export function FriendsPanel({
         ),
       );
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to send friend request.",
-      );
+      console.warn("[FriendsPanel] Unable to send friend request:", err);
     } finally {
       setBusyId(null);
     }
@@ -379,19 +357,19 @@ export function FriendsPanel({
   }
 
   function handleTransferSuccess() {
-    setSuccessMessage("ئەزنیف بە سەرکەوتوویی نێردرا.");
     void refresh();
   }
 
   async function handleInvite(friend: Friend) {
     setInviteBusyId(friend.id);
-    setError(null);
-    setSuccessMessage(null);
     try {
       await sendGameInvite(friend.id);
-      setSuccessMessage(`بانگهێشت بۆ ${friend.name} نێردرا.`);
+      onToast?.(`بانگهێشت بۆ ${friend.name} نێردرا.`);
     } catch (err) {
-      setError(getGameInviteError(err));
+      const toastMessage = getGameInviteToast(err);
+      if (toastMessage) {
+        onToast?.(toastMessage);
+      }
       void refreshPresence([friend.id]);
     } finally {
       setInviteBusyId(null);
@@ -427,10 +405,6 @@ export function FriendsPanel({
           </View>
         ) : null}
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        {successMessage ? (
-          <Text style={styles.successText}>{successMessage}</Text>
-        ) : null}
 
         {!isSearchActive && loading ? (
           <ActivityIndicator
@@ -645,17 +619,4 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
 
-  errorText: {
-    width: "100%",
-    color: "#ff8a8a",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-  },
-
-  successText: {
-    width: "100%",
-    color: "#7dd3fc",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-  },
 });

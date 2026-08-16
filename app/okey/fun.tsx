@@ -254,14 +254,10 @@ export default function OkeyFunScreen() {
         return;
       }
 
-      if (!profile) {
-        setJoinError(
-          "پێویستە سەرەتا بچیتە ژوورەوە.",
-        );
-        return;
-      }
-
-      if (coinBalance < table.entry || profile.points < table.minPoints) {
+      if (
+        coinBalance < table.entry ||
+        (profile?.points ?? 0) < table.minPoints
+      ) {
         return;
       }
 
@@ -283,7 +279,7 @@ export default function OkeyFunScreen() {
 
         setJoiningTableId(null);
         setJoinError(
-          "نەتوانرا بچیتە ناو یاری. دووبارە هەوڵ بدەرەوە.",
+          "کێشەیەک ڕوویدا. تکایە دووبارە هەوڵ بدەرەوە.",
         );
       }
     },

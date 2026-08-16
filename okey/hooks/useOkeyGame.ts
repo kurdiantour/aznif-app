@@ -9,18 +9,6 @@ import { AppState } from "react-native";
 
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 import {
-  canSpendTileOnBestMeld,
-  createInitialOkeyGame,
-  discardTile,
-  getNextRoundDealerIndex,
-  spendTileOnBestMeld,
-} from "@/okey/engine/okey-engine";
-import {
-  prepareTimeoutTurn,
-  resolveTimeoutTurn,
-} from "@/okey/engine/okey-timeout";
-import { reconcileOkeyMatchAfterInterruption } from "@/okey/lifecycle/okey-match-lifecycle";
-import {
   MAX_ROUNDS,
   ROUND_RESULT_COUNTDOWN_SECONDS,
   createInitialOkeyMatch,
@@ -39,14 +27,6 @@ import type {
 } from "@/okey/types/okey";
 
 const FINISH_REVEAL_SECONDS = 5.35;
-
-// No local match adapter or local persistence exists in the online-only client.
-const onlineOnlyFallback = {
-  apply: <T,>(state: T, ..._args: unknown[]) => state,
-};
-const loadDisabledSnapshot = async (): Promise<{ match: OkeyMatchState; savedAt: number } | null> => null;
-const saveDisabledSnapshot = async (..._args: unknown[]) => undefined;
-const clearDisabledSnapshot = async () => undefined;
 
 function createPlaceholderOkeyTile(
   id: string,
@@ -356,8 +336,7 @@ export function useOkeyGame(
   const [onlineCommandPending, setOnlineCommandPending] =
     useState(false);
 
-  const [hasLoadedSavedGame, setHasLoadedSavedGame] =
-    useState(false);
+  const hasLoadedSavedGame = true;
 
   const [isAppActive, setIsAppActive] =
     useState(
@@ -382,9 +361,6 @@ export function useOkeyGame(
   const hasAppliedOnlineProjectionRef =
     useRef(false);
 
-  const inactiveAtRef =
-    useRef<number | null>(null);
-
   const appStateRef = useRef(
     AppState.currentState,
   );
@@ -397,52 +373,7 @@ export function useOkeyGame(
   const state = match.roundState;
 
   const onlineReady =
-    !isOnline ||
     onlineProjection !== null;
-
-  useEffect(() => {
-    if (isOnline) {
-      setHasLoadedSavedGame(true);
-      return;
-    }
-
-    let mounted = true;
-
-    loadDisabledSnapshot()
-      .then((snapshot) => {
-        if (!mounted || !snapshot) {
-          return;
-        }
-
-        const settled =
-          settleFinishedRound(
-            snapshot.match,
-          );
-
-        setMatch(
-          reconcileOkeyMatchAfterInterruption(
-            settled,
-            Date.now() -
-              snapshot.savedAt,
-          ).match,
-        );
-      })
-      .catch((error) =>
-        console.warn(
-          "Unable to load saved Okey match",
-          error,
-        ),
-      )
-      .finally(() => {
-        if (mounted) {
-          setHasLoadedSavedGame(true);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [isOnline]);
 
   useEffect(() => {
     matchRef.current = match;
@@ -615,29 +546,10 @@ export function useOkeyGame(
               "active" &&
             nextState !== "active"
           ) {
-            const suspendedAt =
-              Date.now();
-
-            inactiveAtRef.current =
-              suspendedAt;
-
             setIsAppActive(false);
             setPendingTimeoutDiscardTileId(
               null,
             );
-
-            if (!isOnline) {
-              void saveDisabledSnapshot(
-                matchRef.current,
-                suspendedAt,
-              ).catch((error) =>
-                console.warn(
-                  "Unable to save suspended Okey match",
-                  error,
-                ),
-              );
-            }
-
             return;
           }
 
@@ -646,44 +558,22 @@ export function useOkeyGame(
               "active" &&
             nextState === "active"
           ) {
-            const resumedAt =
-              Date.now();
+            const adapter =
+              onlineAdapterRef.current;
 
-            const elapsedMs =
-              inactiveAtRef.current ===
-              null
-                ? 0
-                : resumedAt -
-                  inactiveAtRef.current;
-
-            inactiveAtRef.current =
-              null;
-
-            if (isOnline) {
-              const adapter =
-                onlineAdapterRef.current;
-
-              if (adapter) {
-                void adapter
-                  .reconnect()
-                  .then(() => {
-                    setOnlineError(null);
-                  })
-                  .catch((error) => {
-                    setOnlineError(
-                      normalizeOnlineError(
-                        error,
-                      ),
-                    );
-                  });
-              }
-            } else {
-              setMatch((current) =>
-                reconcileOkeyMatchAfterInterruption(
-                  current,
-                  elapsedMs,
-                ).match,
-              );
+            if (adapter) {
+              void adapter
+                .reconnect()
+                .then(() => {
+                  setOnlineError(null);
+                })
+                .catch((error) => {
+                  setOnlineError(
+                    normalizeOnlineError(
+                      error,
+                    ),
+                  );
+                });
             }
 
             setIsAppActive(true);
@@ -697,99 +587,7 @@ export function useOkeyGame(
 
     return () =>
       subscription.remove();
-  }, [isOnline]);
-
-
-  const saveMatchTimerRef =
-    useRef<ReturnType<
-      typeof setTimeout
-    > | null>(null);
-
-  useEffect(() => {
-    if (
-      isOnline ||
-      !hasLoadedSavedGame
-    ) {
-      return;
-    }
-
-    if (saveMatchTimerRef.current) {
-      clearTimeout(
-        saveMatchTimerRef.current,
-      );
-    }
-
-    saveMatchTimerRef.current =
-      setTimeout(() => {
-        void saveDisabledSnapshot(
-          matchRef.current,
-        ).catch((error) =>
-          console.warn(
-            "Unable to save Okey match",
-            error,
-          ),
-        );
-
-        saveMatchTimerRef.current =
-          null;
-      }, 300);
-
-    return () => {
-      if (
-        saveMatchTimerRef.current
-      ) {
-        clearTimeout(
-          saveMatchTimerRef.current,
-        );
-
-        saveMatchTimerRef.current =
-          null;
-      }
-    };
-  }, [
-    hasLoadedSavedGame,
-    isOnline,
-    match,
-  ]);
-
-  useEffect(
-    () => () => {
-      if (
-        saveMatchTimerRef.current
-      ) {
-        clearTimeout(
-          saveMatchTimerRef.current,
-        );
-
-        saveMatchTimerRef.current =
-          null;
-      }
-    },
-    [],
-  );
-
-  const updateRoundState =
-    useCallback(
-      (
-        updater: (
-          current: OkeyGameState,
-        ) => OkeyGameState,
-      ) => {
-        setMatch((current) => {
-          if (current.matchFinished) {
-            return current;
-          }
-
-          return settleFinishedRound({
-            ...current,
-            roundState: updater(
-              current.roundState,
-            ),
-          });
-        });
-      },
-      [],
-    );
+  }, []);
 
 
   const dispatchOnline =
@@ -874,103 +672,18 @@ export function useOkeyGame(
     }, []);
 
   const newGame = useCallback(() => {
-    if (isOnline) {
-      void reconnectOnline();
-      return;
-    }
-
-    void clearDisabledSnapshot().catch(
-      (error) =>
-        console.warn(
-          "Unable to clear saved Okey match",
-          error,
-        ),
-    );
-
-    setMatch(
-      createInitialOkeyMatch(),
-    );
-  }, [isOnline, reconnectOnline]);
+    void reconnectOnline();
+  }, [reconnectOnline]);
 
   const nextRound = useCallback(() => {
-
-    if (isOnline) {
-      setMatch((current) => ({
-        ...current,
-        showRoundResultPopup: false,
-        showFinishRevealPopup: false,
-        roundResultCountdownRemaining:
-          null,
-      }));
-      return;
-    }
-
-    setMatch((current) => {
-      if (
-        !current.showRoundResultPopup
-      ) {
-        return current;
-      }
-
-      if (
-        current.roundState.endReason ===
-        "tile-cycle-limit"
-      ) {
-        return {
-          ...current,
-          roundState:
-            createInitialOkeyGame(
-              current.roundState
-                .dealerIndex,
-            ),
-          showRoundResultPopup: false,
-          showFinishRevealPopup: false,
-          roundResultCountdownRemaining:
-            null,
-        };
-      }
-
-      if (
-        !current.roundResults.some(
-          (result) =>
-            result.round ===
-            current.currentRound,
-        )
-      ) {
-        return current;
-      }
-
-      if (
-        current.matchFinished ||
-        current.currentRound >=
-          MAX_ROUNDS
-      ) {
-        return {
-          ...current,
-          showRoundResultPopup: true,
-          roundResultCountdownRemaining:
-            null,
-          matchFinished: true,
-        };
-      }
-
-      return {
-        ...current,
-        roundState:
-          createInitialOkeyGame(
-            getNextRoundDealerIndex(
-              current.roundState,
-            ),
-          ),
-        currentRound:
-          current.currentRound + 1,
-        showRoundResultPopup: false,
-        showFinishRevealPopup: false,
-        roundResultCountdownRemaining:
-          null,
-      };
-    });
-  }, [isOnline]);
+    setMatch((current) => ({
+      ...current,
+      showRoundResultPopup: false,
+      showFinishRevealPopup: false,
+      roundResultCountdownRemaining:
+        null,
+    }));
+  }, []);
 
   useEffect(() => {
     if (
@@ -1074,110 +787,37 @@ export function useOkeyGame(
 
   const draw = useCallback(
     (source: OkeyDrawSource) => {
-      if (isOnline) {
-        void dispatchOnline({
-          type: "draw",
-          source,
-        });
-
-        return;
-      }
-
-      updateRoundState((current) =>
-        onlineOnlyFallback.apply(
-          current,
-          {
-            type: "draw",
-            source,
-          },
-        ),
-      );
+      void dispatchOnline({
+        type: "draw",
+        source,
+      });
     },
-    [
-      dispatchOnline,
-      isOnline,
-      updateRoundState,
-    ],
+    [dispatchOnline],
   );
 
   const discard = useCallback(
     (tileId: string) => {
-      if (isOnline) {
-        void dispatchOnline({
-          type: "discard",
-          tileId,
-        });
-
-        return;
-      }
-
-      updateRoundState((current) =>
-        onlineOnlyFallback.apply(
-          current,
-          {
-            type: "discard",
-            tileId,
-          },
-        ),
-      );
+      void dispatchOnline({
+        type: "discard",
+        tileId,
+      });
     },
-    [
-      dispatchOnline,
-      isOnline,
-      updateRoundState,
-    ],
+    [dispatchOnline],
   );
 
-  const sortHand = useCallback(() => {
-    updateRoundState((current) =>
-      onlineOnlyFallback.apply(
-        current,
-        {
-          type: "sort-hand",
-          playerIndex: 0,
-        },
-      ),
-    );
-  }, [updateRoundState]);
+  // Rack ordering is presentation-only in the online client.
+  // OkeyPlayerRack owns the local visual order, so these controller
+  // callbacks remain no-ops for API compatibility with the scene.
+  const sortHand = useCallback(() => {}, []);
 
   const moveTile = useCallback(
-    (
-      tileId: string,
-      targetIndex: number,
-    ) => {
-      updateRoundState((current) =>
-        onlineOnlyFallback.apply(
-          current,
-          {
-            type: "move-tile",
-            playerIndex: 0,
-            tileId,
-            targetIndex,
-          },
-        ),
-      );
-    },
-    [updateRoundState],
+    (_tileId: string, _targetIndex: number) => {},
+    [],
   );
 
   const moveTiles = useCallback(
-    (
-      tileIds: string[],
-      targetIndex: number,
-    ) => {
-      updateRoundState((current) =>
-        onlineOnlyFallback.apply(
-          current,
-          {
-            type: "move-tiles",
-            playerIndex: 0,
-            tileIds,
-            targetIndex,
-          },
-        ),
-      );
-    },
-    [updateRoundState],
+    (_tileIds: string[], _targetIndex: number) => {},
+    [],
   );
 
   const openMelds = useCallback(
@@ -1185,84 +825,29 @@ export function useOkeyGame(
       melds: OkeyMeld[],
       score: number,
     ) => {
-      if (isOnline) {
-        void dispatchOnline({
-          type: "open-melds",
-          melds,
-          score,
-        });
-
-        return;
-      }
-
-      updateRoundState((current) =>
-        onlineOnlyFallback.apply(
-          current,
-          {
-            type: "open-melds",
-            playerIndex: 0,
-            melds,
-            score,
-          },
-        ),
-      );
+      void dispatchOnline({
+        type: "open-melds",
+        melds,
+        score,
+      });
     },
-    [
-      dispatchOnline,
-      isOnline,
-      updateRoundState,
-    ],
+    [dispatchOnline],
   );
 
   const declareKonkan =
     useCallback((orderedRunTileIds: string[]) => {
-      if (isOnline) {
-        void dispatchOnline({
-          type: "declare-konkan",
-          orderedRunTileIds,
-        });
+      void dispatchOnline({
+        type: "declare-konkan",
+        orderedRunTileIds,
+      });
+    }, [dispatchOnline]);
 
-        return;
-      }
-
-      updateRoundState((current) =>
-        onlineOnlyFallback.apply(
-          current,
-          {
-            type: "declare-konkan",
-            playerIndex: 0,
-            orderedRunTileIds,
-          },
-        ),
-      );
-    }, [
-      dispatchOnline,
-      isOnline,
-      updateRoundState,
-    ]);
-
-  const spendTile =
-    useCallback(
-      (tileId: string) => {
-
-        if (isOnline) {
-          return;
-        }
-
-        updateRoundState(
-          (current) =>
-            onlineOnlyFallback.apply(
-              current,
-              {
-                type: "spend-best",
-                playerIndex: 0,
-                tileId,
-              },
-            ),
-        );
-      },
-      [isOnline, updateRoundState],
-    );
+  // Kept for controller compatibility. Online gameplay uses
+  // spendTileOnTableMeld / lockKonkanSetOnTable server commands.
+  const spendTile = useCallback(
+    (_tileId: string) => {},
+    [],
+  );
 
   const spendTileOnTableMeld =
     useCallback(
@@ -1271,36 +856,14 @@ export function useOkeyGame(
         targetPlayerId: string,
         targetMeldId: string,
       ) => {
-        if (isOnline) {
-          void dispatchOnline({
-            type: "spend-meld",
-            tileId,
-            targetPlayerId,
-            targetMeldId,
-          });
-
-          return;
-        }
-
-        updateRoundState(
-          (current) =>
-            onlineOnlyFallback.apply(
-              current,
-              {
-                type: "spend-meld",
-                playerIndex: 0,
-                tileId,
-                targetPlayerId,
-                targetMeldId,
-              },
-            ),
-        );
+        void dispatchOnline({
+          type: "spend-meld",
+          tileId,
+          targetPlayerId,
+          targetMeldId,
+        });
       },
-      [
-        dispatchOnline,
-        isOnline,
-        updateRoundState,
-      ],
+      [dispatchOnline],
     );
 
   const lockKonkanSetOnTable =
@@ -1310,186 +873,46 @@ export function useOkeyGame(
         targetPlayerId: string,
         targetMeldId: string,
       ) => {
-        if (isOnline) {
-          void dispatchOnline({
-            type: "lock-konkan",
-            tileId,
-            targetPlayerId,
-            targetMeldId,
-          });
-
-          return;
-        }
-
-        updateRoundState(
-          (current) =>
-            onlineOnlyFallback.apply(
-              current,
-              {
-                type: "lock-konkan",
-                playerIndex: 0,
-                tileId,
-                targetPlayerId,
-                targetMeldId,
-              },
-            ),
-        );
+        void dispatchOnline({
+          type: "lock-konkan",
+          tileId,
+          targetPlayerId,
+          targetMeldId,
+        });
       },
-      [
-        dispatchOnline,
-        isOnline,
-        updateRoundState,
-      ],
+      [dispatchOnline],
     );
 
   const spendOrDiscardTile =
     useCallback(
       (tileId: string) => {
-        if (isOnline) {
-          if (
-            state.hasDrawnThisTurn
-          ) {
-            void dispatchOnline({
-              type: "discard",
-              tileId,
-            });
-          }
-
-          return;
+        if (state.hasDrawnThisTurn) {
+          void dispatchOnline({
+            type: "discard",
+            tileId,
+          });
         }
-
-        updateRoundState(
-          (current) =>
-            canSpendTileOnBestMeld(
-              current,
-              0,
-              tileId,
-            )
-              ? spendTileOnBestMeld(
-                  current,
-                  0,
-                  tileId,
-                )
-              : current.hasDrawnThisTurn
-                ? discardTile(
-                    current,
-                    tileId,
-                  )
-                : current,
-        );
       },
       [
         dispatchOnline,
-        isOnline,
         state.hasDrawnThisTurn,
-        updateRoundState,
       ],
     );
 
+  // Timeout gameplay is server-authoritative online. The scene still
+  // consumes these callbacks, so keep the API without local mutation.
   const beginTimeoutHumanTurn =
-    useCallback(() => {
-      if (isOnline) {
-        return null;
-      }
-
-      let preparedTileId:
-        | string
-        | null = null;
-
-      updateRoundState(
-        (current) => {
-          if (
-            current.phase !==
-              "playing" ||
-            current.currentPlayerIndex !==
-              0
-          ) {
-            return current;
-          }
-
-          if (
-            current.hasDrawnThisTurn
-          ) {
-            return resolveTimeoutTurn(
-              current,
-              0,
-            );
-          }
-
-          const prepared =
-            prepareTimeoutTurn(
-              current,
-              0,
-            );
-
-          preparedTileId =
-            prepared.drawnTileId;
-
-          setPendingTimeoutDiscardTileId(
-            prepared.drawnTileId,
-          );
-
-          return prepared.state;
-        },
-      );
-
-      return preparedTileId;
-    }, [
-      isOnline,
-      updateRoundState,
-    ]);
+    useCallback(() => null, []);
 
   const playEliminated =
-    useCallback(() => {
-      if (isOnline) {
-        return;
-      }
-
-      updateRoundState(
-        (current) =>
-          onlineOnlyFallback.apply(
-            current,
-            {
-              type: "play-eliminated",
-            },
-          ),
-      );
-    }, [
-      isOnline,
-      updateRoundState,
-    ]);
+    useCallback(() => {}, []);
 
   const commitPendingTimeoutDiscard =
     useCallback(() => {
-      if (isOnline) {
-        setPendingTimeoutDiscardTileId(
-          null,
-        );
-        return;
-      }
-
-      const tileId =
-        pendingTimeoutDiscardTileId;
-
-      if (!tileId) {
-        return;
-      }
-
       setPendingTimeoutDiscardTileId(
         null,
       );
-
-      updateRoundState((current) =>
-        discardTile(
-          current,
-          tileId,
-        ),
-      );
-    }, [
-      isOnline,
-      pendingTimeoutDiscardTileId,
-      updateRoundState,
-    ]);
+    }, []);
 
   const currentRoundResult =
     useMemo(() => {

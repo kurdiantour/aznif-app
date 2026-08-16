@@ -3,7 +3,10 @@ import {
 } from "@/lib/leaderboardVisibility";
 import { supabase } from "@/lib/supabase";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { getOrCreateProfile } from "@/lib/supabaseAuth";
+import {
+  completeAuthFromUrl,
+  getOrCreateProfile,
+} from "@/lib/supabaseAuth";
 import { useURL } from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -11,13 +14,21 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
 
-function isRecentlyCreatedUser(createdAt?: string) {
-  if (!createdAt) return false;
+function isRecentlyCreatedUser(
+  createdAt?: string,
+  lastSignInAt?: string,
+) {
+  if (!createdAt || !lastSignInAt) return false;
 
   const createdTime = new Date(createdAt).getTime();
+  const lastSignInTime = new Date(lastSignInAt).getTime();
 
-  return Number.isFinite(createdTime) &&
-    Date.now() - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS;
+  return (
+    Number.isFinite(createdTime) &&
+    Number.isFinite(lastSignInTime) &&
+    lastSignInTime >= createdTime &&
+    lastSignInTime - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS
+  );
 }
 
 function callbackParams(url: string) {
@@ -71,10 +82,9 @@ export default function AuthCallbackScreen() {
             type: tokenType as EmailOtpType,
           });
           if (error) throw error;
-        } else if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else if (accessToken && refreshToken) {
+} else if (code) {
+  await completeAuthFromUrl(url);
+} else if (accessToken && refreshToken) {
           const { error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
@@ -102,9 +112,14 @@ export default function AuthCallbackScreen() {
 
           await getOrCreateProfile();
 
-          if (isRecentlyCreatedUser(user?.created_at)) {
-            await markPendingLeaderboardConsent();
-          }
+if (
+  isRecentlyCreatedUser(
+    user?.created_at,
+    user?.last_sign_in_at,
+  )
+) {
+  await markPendingLeaderboardConsent();
+}
 
           router.replace("/(tabs)/play");
           return;

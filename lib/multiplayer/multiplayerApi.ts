@@ -21,6 +21,12 @@ export type TurnTimeoutClaim = {
   expectedTurnPlayerId: string;
 };
 
+export type DrawTimeoutClaim = {
+  expectedVersion: number;
+  expectedDrawStartedAt: string;
+  expectedTurnPlayerId: string;
+};
+
 export class MultiplayerRequestError extends Error {
   constructor(
     message: string,
@@ -88,6 +94,7 @@ async function submitMultiplayerRequest(
       true,
     );
   }
+
   let json: any = null;
 
   try {
@@ -155,10 +162,22 @@ export async function submitOneVsOnePass(
   });
 }
 
-export async function submitOneVsOneDraw(roomId: string) {
+export async function submitOneVsOneDraw(
+  roomId: string,
+  timedOut = false,
+  timeoutClaim?: DrawTimeoutClaim,
+) {
   return submitMultiplayerRequest("submit_one_vs_one", {
     action: "draw",
     room_id: roomId,
+    timed_out: timedOut,
+    ...(timeoutClaim
+      ? {
+          expected_version: timeoutClaim.expectedVersion,
+          expected_draw_started_at: timeoutClaim.expectedDrawStartedAt,
+          expected_turn_player_id: timeoutClaim.expectedTurnPlayerId,
+        }
+      : {}),
   });
 }
 

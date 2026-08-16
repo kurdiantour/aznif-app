@@ -434,6 +434,8 @@ useEffect(() => {
           navigationStartedRef.current = true;
           void (async () => {
             await gamePreparationRef.current;
+
+            if (cancellationStartedRef.current) return;
             router.replace({
               pathname: "/domino/game",
               params: {

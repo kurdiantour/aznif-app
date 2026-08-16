@@ -165,7 +165,14 @@ export function OkeyCenterPiles({
             {...discardDragHandlers.panHandlers}
             style={discardDragPosition ? styles.hiddenRackTile : undefined}
           >
-            <OkeyTileFace tile={displayedTopDiscard} compact isWildcard={isOkeyWildcard(displayedTopDiscard, okeyTile)} />
+            {/* Intentional: remount when fallback hands off to the real top tile.
+                Prevents native image reuse from showing the previous discard for a frame. */}
+            <OkeyTileFace
+              key={displayedTopDiscard.id}
+              tile={displayedTopDiscard}
+              compact
+              isWildcard={isOkeyWildcard(displayedTopDiscard, okeyTile)}
+            />
           </View>
         ) : (
           <View ref={discardTopRef} collapsable={false} onLayout={measureDiscardTop} style={styles.emptyDiscard} />

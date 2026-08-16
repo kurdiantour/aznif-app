@@ -15,9 +15,7 @@ import GameChatDrawer, { type GameChatTransport } from "@/components/game/GameCh
 import type { GameChatMessage } from "@/lib/gameChat";
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
-import ConnectionOverlay from "@/okey/components/ConnectionOverlay";
 import GameControls from "@/okey/components/GameControls";
-import ConnectionErrorBanner from "@/okey/components/ConnectionErrorBanner";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import TableBackground from "@/components/game/TableBackground";
@@ -353,9 +351,6 @@ const {
   onlineReady,
   onlineProjection,
   onlineAdapter,
-  onlineError,
-  onlineCommandPending,
-  reconnectOnline,
   leaveOnlineMatch,
 } = controller ?? onlineController;
 
@@ -468,6 +463,9 @@ const dealLifecycleKey = onlineGameplayReady
   const previousDiscardCountRef = useRef(state.discardPile.length);
   const previousDiscardTopTileRef = useRef<OkeyTile | null>(state.discardPile[state.discardPile.length - 1] ?? null);
   const previousDeckCountRef = useRef(state.deck.length);
+  // PRESENTATION CONTRACT (tested): these queues preserve draw → discard order
+  // across asynchronous authoritative snapshots. Do not collapse or reorder them
+  // without exercising every seat and both split/coalesced server updates.
   const queuedOpponentWallDrawFlightsRef = useRef<{ ownerPlayerId: string; eventId: string; source: "deck" | "discard"; tile: OkeyTile | null }[]>([]);
   const pendingOpponentDiscardAfterDrawRef = useRef<QueuedOpponentDiscardFlight | null>(null);
   const queuedOpponentDiscardFlightsRef = useRef<QueuedOpponentDiscardFlight[]>([]);
@@ -479,6 +477,7 @@ const dealLifecycleKey = onlineGameplayReady
   const pendingDrawFlightRef = useRef<{ tileId: string; tile: OkeyTile | null; sourceRect: ScreenRect; face: "front" | "back" } | null>(null);
   const timeoutDrawLandingRectRef = useRef<ScreenRect | null>(null);
   const pendingDiscardTileIdRef = useRef<string | null>(null);
+  const pendingDiscardLandingTileIdRef = useRef<string | null>(null);
   const awaitingDiscardRemovalTileIdRef = useRef<string | null>(null);
   const onlineTimeoutDiscardFlightRef = useRef<{
     eventId: string;
@@ -809,14 +808,18 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
       BOT_DECISION_PAUSE_MS,
     );
   }, [buildOpponentDiscardFlight, setHideDiscardTopTile, setPresentedPlayers, setTileFlight, state.discardPile, state.players]);
+  // INTENTIONAL / TESTED: peek first, then shift only after both screen rects
+  // exist. Shifting before measurement silently loses one player's animation.
+  // Do not simplify this queue flow without full multiplayer presentation tests.
   const startNextQueuedOpponentDiscardFlight = useCallback(() => {
-    const nextDraw = queuedOpponentWallDrawFlightsRef.current.shift();
+    const nextDraw = queuedOpponentWallDrawFlightsRef.current[0];
     if (nextDraw) {
       const sourceRect = nextDraw.source === "deck"
         ? deckTopRectRef.current
         : discardTopRectRef.current;
       const seatRect = opponentSeatRectsRef.current[nextDraw.ownerPlayerId] ?? null;
       if (sourceRect && seatRect) {
+        queuedOpponentWallDrawFlightsRef.current.shift();
         const landingRect = {
           x: seatRect.x + seatRect.width / 2 - sourceRect.width / 2,
           y: seatRect.y + seatRect.height / 2 - sourceRect.height / 2,
@@ -834,9 +837,12 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
         });
         return true;
       }
+      // Keep the event until both layout rects are available.
+      return false;
     }
 
-    while (queuedOpponentDiscardFlightsRef.current.length > 0) {      const next = queuedOpponentDiscardFlightsRef.current.shift();
+    while (queuedOpponentDiscardFlightsRef.current.length > 0) {
+      const next = queuedOpponentDiscardFlightsRef.current[0];
       if (!next) return false;
       const previousDiscard = state.discardPile[next.discardCount - 2] ?? null;
 
@@ -844,6 +850,7 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
         const deckRect = deckTopRectRef.current;
         const seatRect = opponentSeatRectsRef.current[next.ownerPlayerId] ?? null;
         if (deckRect && seatRect) {
+          queuedOpponentDiscardFlightsRef.current.shift();
           const landingRect = {
             x: seatRect.x + seatRect.width / 2 - deckRect.width / 2,
             y: seatRect.y + seatRect.height / 2 - deckRect.height / 2,
@@ -863,17 +870,29 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
           });
           return true;
         }
+        return false;
       }
 
       // The authoritative discard is already in state. Keep it hidden from the
       // first presentation frame so it cannot appear on the pile before flying.
       setDiscardPresentationFallback(previousDiscard);
       setHideDiscardTopTile(true);
+      queuedOpponentDiscardFlightsRef.current.shift();
       startOpponentPostDrawSequence(next);
       return true;
     }
     return false;
   }, [setHideDeckTopTile, setHideDiscardTopTile, setTileFlight, startOpponentPostDrawSequence, state.discardPile, toLocalRect]);
+  // Measurement may finish after an authoritative event. Retrying here is what
+  // releases the intentionally retained queue item; it is not redundant work.
+  const retryQueuedOpponentFlight = () => {
+    if (tileFlight || onlineTimeoutDiscardFlightRef.current) return;
+    if (
+      queuedOpponentWallDrawFlightsRef.current.length === 0 &&
+      queuedOpponentDiscardFlightsRef.current.length === 0
+    ) return;
+    startNextQueuedOpponentDiscardFlight();
+  };
   const startTimeoutDiscardFlight = useCallback((tileId: string) => {
     const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
     const sourceRect = rackTileRectsRef.current[tileId] ?? timeoutDrawLandingRectRef.current;
@@ -899,8 +918,19 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
       to: toLocalRect(targetRect),
     });
   }, [commitPendingTimeoutDiscard, humanPlayer.hand, setHiddenRackTileIds, setHideDiscardTopTile, setTileFlight, toLocalRect]);
+  // PRESENTATION CONTRACT (tested): discard landing is a two-phase handoff.
+  // Keep this ordering unless the complete draw/discard animation suite is run;
+  // otherwise the previous top discard can flash after the flight lands.
   const finishTileFlight = () => {
     const pendingDiscardTileId = pendingDiscardTileIdRef.current;
+    const landedDiscardTile = tileFlight?.id.includes("discard-")
+      ? tileFlight.tile
+      : null;
+    // When an opponent's draw and discard arrive in the same authoritative
+    // update, the discard already exists in state while the draw is flying.
+    // Keep that new top tile concealed until its second flight starts; clearing
+    // this here briefly revealed it during the bot decision pause.
+    const pendingOpponentDiscard = pendingOpponentDiscardAfterDrawRef.current;
     setTileFlight(null);
     // Online discard confirmation can arrive after the flight completes. Keep
     // the tile hidden until the authoritative hand no longer contains it so it
@@ -908,8 +938,24 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     setHiddenRackTileIds(pendingDiscardTileId ? [pendingDiscardTileId] : []);
     setDrawFlightTileId(null);
     setHideDeckTopTile(false);
-    setHideDiscardTopTile(false);
-    setDiscardPresentationFallback(null);
+    if (pendingOpponentDiscard) {
+      // Preserve the old top only while the following discard flight is pending.
+      setHideDiscardTopTile(true);
+    } else if (landedDiscardTile) {
+      // Keep the landed tile on top until the authoritative pile contains it.
+      // This prevents the old discard from flashing during a delayed update.
+      setDiscardPresentationFallback(landedDiscardTile);
+      if (topDiscard?.id === landedDiscardTile.id) {
+        setHideDiscardTopTile(false);
+        setDiscardPresentationFallback(null);
+      } else {
+        pendingDiscardLandingTileIdRef.current = landedDiscardTile.id;
+        setHideDiscardTopTile(true);
+      }
+    } else {
+      setHideDiscardTopTile(false);
+      setDiscardPresentationFallback(null);
+    }
 
     const onlineTimeoutFlight = onlineTimeoutDiscardFlightRef.current;
     if (onlineTimeoutFlight?.stage === "deck-to-rack") {
@@ -953,7 +999,6 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
       return;
     }
 
-    const pendingOpponentDiscard = pendingOpponentDiscardAfterDrawRef.current;
     if (pendingOpponentDiscard) {
       pendingOpponentDiscardAfterDrawRef.current = null;
       startOpponentPostDrawSequence(pendingOpponentDiscard);
@@ -980,6 +1025,18 @@ requestAnimationFrame(() => {
   }
 });
   };
+  // Release the landing fallback only after authoritative state confirms the same
+  // tile. This covers delayed online confirmation without touching game logic.
+  useEffect(() => {
+    const pendingTileId = pendingDiscardLandingTileIdRef.current;
+    if (!pendingTileId || topDiscard?.id !== pendingTileId) return;
+
+    pendingDiscardLandingTileIdRef.current = null;
+    setHideDiscardTopTile(false);
+    setDiscardPresentationFallback((current) =>
+      current?.id === pendingTileId ? null : current,
+    );
+  }, [setHideDiscardTopTile, topDiscard?.id]);
   const startDrawFlight = (source: "deck" | "discard") => {
     if (!canDraw || tileFlight) return;
     const drawnTile = source === "deck" ? state.deck[0] ?? null : topDiscard;
@@ -1672,14 +1729,17 @@ if (
   const handleTopOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[0]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
+    retryQueuedOpponentFlight();
   });
   const handleLeftOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[1]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
+    retryQueuedOpponentFlight();
   });
   const handleRightOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[2]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
+    retryQueuedOpponentFlight();
   });
   const handleMeldMeasured = useStableEvent(registerMeldDropRect);
   const handleMeldOffsetChange = useStableEvent(moveTableMeld);
@@ -1689,6 +1749,7 @@ if (
   const handleDiscardDroppedOnRackStable = useStableEvent(handleDiscardDroppedOnRack);
   const handleDeckMeasured = useStableEvent((rect: ScreenRect) => {
     deckTopRectRef.current = rect;
+    retryQueuedOpponentFlight();
   });
   const handleDiscardMeasured = useStableEvent((rect: ScreenRect) => {
     discardTopRectRef.current = rect;
@@ -1696,6 +1757,7 @@ if (
     setDealOrigin((current) =>
       current?.x === nextOrigin.x && current?.y === nextOrigin.y ? current : nextOrigin,
     );
+    retryQueuedOpponentFlight();
   });
   const handleRackTileSelect = useStableEvent((tileId: string) => {
     if (canDiscard && selectedTileId === tileId) {
@@ -1789,21 +1851,6 @@ if (
   onCancel={handleCancelWaiting}
 />
 
-<ConnectionOverlay
-  visible={
-    isOnline &&
-    !onlineReady &&
-    !shouldShowWaitingPlayers
-  }
-/>
-
-<ConnectionErrorBanner
-  visible={isOnline && !!onlineError}
-  loading={onlineCommandPending}
-  onRetry={reconnectOnline}
-/>
-
-
 {!showMatchMenu ? (
   <GameControls
     onOpenMenu={openMatchMenu}
@@ -1819,6 +1866,7 @@ if (
     <MemoizedOkeyOpponentSeat
       key={`${dealLifecycleKey}-top`}
       {...opponentSeats[0]}
+      playerId={opponentSeats[0]?.id}
       side="top"
       dealOrder={2}
       dealOrigin={dealOrigin}
@@ -1833,6 +1881,7 @@ if (
     <MemoizedOkeyOpponentSeat
       key={`${dealLifecycleKey}-left`}
       {...opponentSeats[1]}
+      playerId={opponentSeats[1]?.id}
       side="left"
       dealOrder={3}
       dealOrigin={dealOrigin}
@@ -1847,6 +1896,7 @@ if (
     <MemoizedOkeyOpponentSeat
       key={`${dealLifecycleKey}-right`}
       {...opponentSeats[2]}
+      playerId={opponentSeats[2]?.id}
       side="right"
       dealOrder={1}
       dealOrigin={dealOrigin}

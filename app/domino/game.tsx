@@ -30,6 +30,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
@@ -129,7 +130,27 @@ export default function GameScreen() {
   const previousHandSignatureRef = useRef<string | null>(null);
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
+  const showGameChatRef = useRef(showGameChat);
+  useEffect(() => {
   passTurnRef.current = game.passTurn;
+}, [game.passTurn]);
+
+  useEffect(() => {
+  showGameChatRef.current = showGameChat;
+}, [showGameChat]);
+
+useEffect(() => {
+  const subscription = BackHandler.addEventListener(
+    "hardwareBackPress",
+    () => {
+      setShowLeaveConfirm(true);
+      return true;
+    }
+  );
+
+  return () => subscription.remove();
+}, []);
+
   const localCurrentUserId =
     !isLocalGame && gameMode === "1v1"
       ? ((game as any).currentUserId ?? null)
@@ -227,7 +248,9 @@ export default function GameScreen() {
           if (message.mode !== gameMode) return;
           if (message.sender_user_id === (profile?.id ?? localCurrentUserId)) return;
 
-          setUnreadChatCount((count) => (showGameChat ? 0 : Math.min(count + 1, 99)));
+          setUnreadChatCount((count) =>
+  showGameChatRef.current ? 0 : Math.min(count + 1, 99)
+);
         },
       )
       .subscribe();
@@ -235,7 +258,7 @@ export default function GameScreen() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [gameMode, isLocalGame, localCurrentUserId, profile?.id, roomId, showGameChat]);
+  }, [gameMode, isLocalGame, localCurrentUserId, profile?.id, roomId]);
 
   useEffect(() => {
     if (showGameChat) setUnreadChatCount(0);
@@ -350,29 +373,28 @@ export default function GameScreen() {
     }
   }, [shouldShowPassPrompt]);
 
-  useEffect(() => {
-    if (!shouldShowPassPrompt) {
-      setPassCountdown(10);
-      setIsPassingTurn(false);
-      passRequestedRef.current = false;
-      return;
-    }
-
+ useEffect(() => {
+  if (!shouldShowPassPrompt) {
     setPassCountdown(10);
-    const interval = setInterval(() => {
-      setPassCountdown((previous) => {
-        if (previous <= 1) {
-          clearInterval(interval);
-          void handlePassTurn();
-          return 0;
-        }
+    setIsPassingTurn(false);
+    passRequestedRef.current = false;
+    return;
+  }
 
-        return previous - 1;
-      });
-    }, 1000);
+  setPassCountdown(10);
 
-    return () => clearInterval(interval);
-  }, [game.currentTurnPlayerId, shouldShowPassPrompt, handlePassTurn]);
+  const interval = setInterval(() => {
+    setPassCountdown((previous) => Math.max(0, previous - 1));
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [game.currentTurnPlayerId, shouldShowPassPrompt]);
+
+useEffect(() => {
+  if (shouldShowPassPrompt && passCountdown === 0) {
+    void handlePassTurn();
+  }
+}, [passCountdown, shouldShowPassPrompt, handlePassTurn]);
 
   useEffect(() => {
     if (!isMyTurn) {
@@ -873,15 +895,22 @@ useEffect(() => {
     onPress={() => setShowScorePopup(true)}
   />
 </View>
-          <DrawPilePrompt
-            visible={game.canDrawTile || shouldShowPassPrompt}
-            gameMode={gameMode}
-            boneyardCount={game.boneyardCount}
-            onDraw={handleDrawTile}
-            onPass={shouldShowPassPrompt ? handlePassTurn : undefined}
-            passCountdown={shouldShowPassPrompt ? passCountdown : undefined}
-            passing={isPassingTurn}
-          />
+
+
+<DrawPilePrompt
+  visible={game.canDrawTile || shouldShowPassPrompt}
+  gameMode={gameMode}
+  boneyardCount={game.boneyardCount}
+  onDraw={handleDrawTile}
+  onPass={shouldShowPassPrompt ? handlePassTurn : undefined}
+  passCountdown={shouldShowPassPrompt ? passCountdown : undefined}
+  drawCountdown={
+    gameMode === "1v1" && game.canDrawTile
+      ? (game as any).drawTimeLeft
+      : undefined
+  }
+  passing={isPassingTurn}
+/>
 
 
           <View style={styles.bottomArea}>

@@ -460,6 +460,12 @@ export function useAiPracticeGame(): AiPracticeGameState {
         openingDouble,
       );
 
+      // The drawn tile created a valid move.
+       // Start a fresh full turn timer now.
+      if (!stillCannotMove) {
+        setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
+         }
+
       if (
         nextDrawCount >= MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN &&
         stillCannotMove
@@ -471,6 +477,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
         setLastScoringEvent(null);
         setCurrentIndex((playerIndex + 1) % seats.length);
+        setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
       }
     }
 
@@ -537,6 +544,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
       setLastScoringEvent(null);
       setCurrentIndex((playerIndex + 1) % seats.length);
+      setTimeLeft(PLAYER_TURN_DURATION_SECONDS);
     }
 
     return true;
@@ -554,11 +562,15 @@ export function useAiPracticeGame(): AiPracticeGameState {
     return passTurnInternal(0);
   };
 
-  useEffect(() => {
-    if (roundWinnerPlayerId) return;
-    if (winningTeamId) return;
+useEffect(() => {
+  if (roundWinnerPlayerId) return;
+  if (winningTeamId) return;
 
-    const timer = setTimeout(() => {
+  // Human has no playable tile and must draw.
+  // Do not consume turn time while the Draw Tile prompt is active.
+  if (canDrawTile) return;
+
+  const timer = setTimeout(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           if (isRoundBlocked()) {
@@ -576,20 +588,21 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [
-    timeLeft,
-    roundWinnerPlayerId,
-    winningTeamId,
-    board,
-    hands,
-    boneyard,
-    spinnerValue,
-    isOpeningRound,
-    openingDouble,
-    currentIndex,
-    humanDrawsThisTurn,
-    isRoundBlocked,
-  ]);
+}, [
+  timeLeft,
+  roundWinnerPlayerId,
+  winningTeamId,
+  board,
+  hands,
+  boneyard,
+  spinnerValue,
+  isOpeningRound,
+  openingDouble,
+  currentIndex,
+  humanDrawsThisTurn,
+  canDrawTile,
+  isRoundBlocked,
+]);
 
   useEffect(() => {
     if (roundWinnerPlayerId) return;

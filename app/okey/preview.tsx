@@ -16,10 +16,7 @@ export default function OkeyPreviewScreen() {
   const [latencyMs, setLatencyMs] = useState<number>(100);
   const [connected, setConnected] = useState(true);
 
-  const controller = useLocalOkeyPreviewGame({
-    latencyMs,
-    connected,
-  });
+const controller = useLocalOkeyPreviewGame();
 
   if (!__DEV__) {
     return <Redirect href="/okey" />;

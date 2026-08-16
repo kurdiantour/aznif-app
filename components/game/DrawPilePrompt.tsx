@@ -35,6 +35,7 @@ type DrawPilePromptProps = {
   onDraw: () => void;
   onPass?: () => void;
   passCountdown?: number;
+  drawCountdown?: number;
   passing?: boolean;
 };
 
@@ -45,6 +46,7 @@ export default function DrawPilePrompt({
   onDraw,
   onPass,
   passCountdown,
+  drawCountdown,
   passing = false,
 }: DrawPilePromptProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -56,6 +58,12 @@ export default function DrawPilePrompt({
   const isTwoVsTwoGame = gameMode === "2v2";
   const hasTiles = boneyardCount > 0;
   const isCompact = screenWidth < 700 || screenHeight < 380;
+
+  const drawProgress =
+  typeof drawCountdown === "number"
+    ? Math.max(0, Math.min(1, drawCountdown / 5))
+    : 0;
+
   const boneyardTiles = Array.from({ length: Math.max(0, boneyardCount) });
   const boneyardColumns = isCompact ? 4 : 5;
   const boneyardRows = boneyardTiles.reduce<number[][]>(
@@ -214,6 +222,19 @@ export default function DrawPilePrompt({
           )}
         </View>
 
+        {gameMode === "1v1" &&
+  hasTiles &&
+  typeof drawCountdown === "number" && (
+    <View style={styles.drawProgressTrack}>
+      <View
+        style={[
+          styles.drawProgressFill,
+          { width: `${drawProgress * 100}%` },
+        ]}
+      />
+    </View>
+  )}
+
         {!hasTiles && onPass && (
           <Pressable
             style={[styles.humanPassButton, styles.oneVsOnePassButton, passing && styles.buttonDisabled]}
@@ -262,7 +283,7 @@ boneyardPanel: {
   borderRadius: 6,
   overflow: "hidden",
   paddingHorizontal: 14,
-  paddingBottom: 20,
+  paddingBottom: 26,
   alignItems: "center",
   backgroundColor: "rgba(58, 25, 92, 0.18)",
   borderWidth: 1,
@@ -279,7 +300,7 @@ boneyardPanelCompact: {
   minHeight: 104,
   top: "42%",
   paddingHorizontal: 12,
-  paddingBottom: 8,
+  paddingBottom: 14,
 },
 
 boneyardGrid: {
@@ -345,6 +366,23 @@ boneyardTileButton: {
   buttonDisabled: {
     opacity: 0.6,
   },
+
+drawProgressTrack: {
+  position: "absolute",
+  left: "9%",
+  right: "9%",
+  bottom: 10,
+  height: 4,
+  borderRadius: 999,
+  overflow: "hidden",
+  backgroundColor: "rgba(255,255,255,0.16)",
+},
+
+drawProgressFill: {
+  height: "100%",
+  borderRadius: 999,
+  backgroundColor: "#facc15",
+},
 
   passCountdown: {
     marginTop: 9,
