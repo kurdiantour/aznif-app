@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+const oneVsOneCommitContractSource = readFileSync(
+  "domino/modes/one-vs-one/server/domino-one-vs-one-commit-contract.ts",
+  "utf8",
+);
+const timeoutConflictSource = readFileSync(
+  "domino/modes/one-vs-one/server/domino-one-vs-one-timeout-conflict.ts",
+  "utf8",
+);
 const passSource = readFileSync(
   "supabase/functions/submit_one_vs_one/pass.ts",
   "utf8",
@@ -10,7 +18,7 @@ const twoVsTwoPassSource = readFileSync(
   "supabase/functions/submit_two_vs_two/pass.ts",
   "utf8",
 );
-const twoVsTwoHookSource = readFileSync("hooks/useTwoVsTwoGame.ts", "utf8");
+const twoVsTwoHookSource = readFileSync("domino/modes/two-vs-two/presentation/use-two-vs-two-game.ts", "utf8");
 const okeyMatchSource = readFileSync(
   "supabase/functions/okey_match/index.ts",
   "utf8",
@@ -23,7 +31,10 @@ const apiSource = readFileSync(
   "lib/multiplayer/multiplayerApi.ts",
   "utf8",
 );
-const hookSource = readFileSync("hooks/useOneVsOneGame.ts", "utf8");
+const timeoutControllerSource = readFileSync(
+  "domino/modes/one-vs-one/controllers/use-domino-one-vs-one-timeout-controller.ts",
+  "utf8",
+);
 
 const EXPECTED_CODES = new Set([
   "turn_timer_not_expired",
@@ -77,13 +88,17 @@ test("timeout protocol exposes stable expected codes without warning them", () =
     assert.match(apiSource, new RegExp(`"${code}"`));
   }
   assert.match(passSource, /expected_version: expectedVersionRaw/);
-  assert.match(passSource, /p_expected_version: room\.version/);
-  assert.match(passSource, /Number\(latestRoom\.version\) > expectedVersion/);
+  assert.match(passSource, /buildOneVsOnePassCommit/);
+  assert.match(oneVsOneCommitContractSource, /p_expected_version: args\.expectedVersion/);
+  assert.match(passSource, /reconcileDominoOneVsOneCommit/);
+  assert.match(timeoutConflictSource, /Number\(latestRoom\.version\) > args\.expectedVersion/);
+  assert.match(timeoutConflictSource, /"already_processed"/);
+  assert.match(timeoutConflictSource, /"stale_timeout"/);
   assert.match(passSource, /serverNow:/);
   assert.match(passSource, /retryAfterMs:/);
-  assert.match(hookSource, /serverClockOffsetMsRef/);
-  assert.match(hookSource, /timeoutRetryRef/);
-  assert.match(hookSource, /clearTimeoutRetry\(\)/);
+  assert.match(timeoutControllerSource, /serverClockOffsetMsRef/);
+  assert.match(timeoutControllerSource, /passRetryRef/);
+  assert.match(timeoutControllerSource, /clearPassRetry\(\)/);
 });
 
 test("simultaneous timeout claims commit once and become already_processed", async () => {

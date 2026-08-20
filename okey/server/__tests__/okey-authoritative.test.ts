@@ -111,30 +111,50 @@ test("second consecutive missed turn repeats exact auto-discard and reaches stre
   assert.equal(isOkeyBotControlled(match.roundState.players[playerIndex]), false);
 });
 
-test("the turn after two misses starts with immediate bot takeover and no third human timer", () => {
+test("the turn after two misses hands the seat to the bot worker without a third human timer", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   const playerIndex = 1;
   match = forcePlayerTurn(match, playerIndex);
   const originalPlayer = match.roundState.players[playerIndex];
 
   match = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
-  match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, playerIndex), expiredDeadline, afterDeadline);
+  match = resolveAuthoritativeMatchDeadline(
+    forcePlayerTurn(match, playerIndex),
+    expiredDeadline,
+    afterDeadline,
+  );
+
   assert.equal(match.timeoutCountsByPlayerId[originalPlayer.id], 2);
   assert.throws(
-    () => applyAuthoritativeOkeyMatchCommand(forcePlayerTurn(match, playerIndex), playerIndex, { type: "draw", source: "deck" }),
-    (error) => error instanceof OkeyCommandError && error.code === "command_rejected",
+    () =>
+      applyAuthoritativeOkeyMatchCommand(
+        forcePlayerTurn(match, playerIndex),
+        playerIndex,
+        { type: "draw", source: "deck" },
+      ),
+    (error) =>
+      error instanceof OkeyCommandError &&
+      error.code === "command_rejected",
   );
 
   const precedingIndex = 0;
   match = forcePlayerTurn(match, precedingIndex);
   match = {
     ...match,
-    roundState: { ...match.roundState, hasDrawnThisTurn: true },
+    roundState: {
+      ...match.roundState,
+      hasDrawnThisTurn: true,
+    },
   };
+
   const discardId = match.roundState.players[precedingIndex].hand[0].id;
-  match = applyAuthoritativeOkeyMatchCommand(match, precedingIndex, { type: "discard", tileId: discardId });
+  match = applyAuthoritativeOkeyMatchCommand(match, precedingIndex, {
+    type: "discard",
+    tileId: discardId,
+  });
 
   const controlledPlayer = match.roundState.players[playerIndex];
+
   assert.equal(match.timeoutCountsByPlayerId[originalPlayer.id], 2);
   assert.equal(isOkeyBotControlled(controlledPlayer), true);
   assert.equal(controlledPlayer.id, originalPlayer.id);
@@ -143,7 +163,11 @@ test("the turn after two misses starts with immediate bot takeover and no third 
   assert.match(controlledPlayer.name, /^Bot [3-9]\d{2}$/);
   assert.notEqual(controlledPlayer.name, originalPlayer.name);
   assert.ok((controlledPlayer.botNumber ?? 0) >= 300);
-  assert.notEqual(match.roundState.currentPlayerIndex, playerIndex);
+
+  // The authoritative layer now transfers ownership only.
+  // process_bot_turns is the single source of truth for executing the bot move.
+  assert.equal(match.roundState.currentPlayerIndex, playerIndex);
+
   assert.deepEqual(match.manualLeftPlayerIds, []);
   assert.equal(match.pendingForfeitTeamId, null);
   assert.equal(match.leaveTerminationReason, null);

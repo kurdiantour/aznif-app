@@ -14,12 +14,12 @@ import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import MiniScoreBoard from "@/components/game/MiniScoreBoard";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
-import { PLAYER_TURN_DURATION_SECONDS } from "@/hooks/gameShared";
+import { PLAYER_TURN_DURATION_SECONDS } from "@/domino/shared/game-shared";
 import { useGame } from "@/hooks/useGame";
 import { useGameSounds } from "@/hooks/useGameSounds";
-import { useOneVsOneGame } from "@/hooks/useOneVsOneGame";
-import { useRoundPresentation } from "@/hooks/useRoundPresentation";
-import { useTwoVsTwoGame } from "@/hooks/useTwoVsTwoGame";
+import { useOneVsOneGame } from "@/domino/modes/one-vs-one/presentation/use-one-vs-one-game";
+import { useRoundPresentation } from "@/domino/shared/presentation/use-round-presentation";
+import { useTwoVsTwoGame } from "@/domino/modes/two-vs-two";
 import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
 import { calculateMoveScore } from "@/lib/game/kozel-engine";
 import { useProfile } from "@/lib/profile";
@@ -182,7 +182,7 @@ useEffect(() => {
   }, []);
 
   useEffect(() => {
-    if (isLocalGame) return;
+    if (isLocalGame || gameMode === "1v1") return;
     if (gameLoading) return;
     if (gameInitializedRef.current) return;
     if (!roomId) return;
@@ -190,7 +190,7 @@ useEffect(() => {
     const initializeGame = async () => {
       try {
         const { data: roomData, error: roomError } = await supabase
-          .from(gameMode === "1v1" ? "one_vs_one_rooms" : "two_vs_two_rooms")
+          .from("two_vs_two_rooms")
           .select("status, state")
           .eq("id", roomId)
           .maybeSingle();
@@ -211,14 +211,9 @@ useEffect(() => {
 
         gameInitializedRef.current = true;
 
-        const { error } =
-          gameMode === "1v1"
-            ? await supabase.rpc("start_one_vs_one_game", {
-                p_room_id: roomId,
-              })
-            : await supabase.rpc("start_two_vs_two_game", {
-                p_room_id: roomId,
-              });
+        const { error } = await supabase.rpc("start_two_vs_two_game", {
+          p_room_id: roomId,
+        });
 
         if (error) {
           console.warn("Failed to start game (may already be started)", error);
@@ -537,9 +532,7 @@ useEffect(() => {
     try {
       if (!isLocalGame && roomId) {
         if (gameMode === "1v1") {
-          await supabase.rpc("leave_one_vs_one_match", {
-            p_room_id: roomId,
-          });
+          await oneVsOneGame.leaveMatch();
         } else {
           await supabase.rpc("leave_two_vs_two_match", {
             p_room_id: roomId,

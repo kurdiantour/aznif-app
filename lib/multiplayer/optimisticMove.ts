@@ -1,3 +1,5 @@
+import { getSnapshotVersion as getCoreSnapshotVersion } from "@/lib/multiplayer/core/versioning";
+
 import type {
   DominoTileData,
   KozelBoardState,
@@ -14,8 +16,7 @@ export type PendingMultiplayerMove = {
 };
 
 export function getSnapshotVersion(snapshot: any): number {
-  const version = Number(snapshot?.version ?? snapshot?.room?.version);
-  return Number.isFinite(version) ? version : -1;
+  return getCoreSnapshotVersion(snapshot);
 }
 
 export function boardContainsMove(

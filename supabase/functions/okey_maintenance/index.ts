@@ -5,11 +5,8 @@ import {
   getNextOkeyMatchTurnDeadline,
   projectOkeyMatchPublicState,
   resolveAuthoritativeMatchDeadline,
-  settleAuthoritativeOkeyRound,
   type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
-
-import { playBotTurn } from "../../../okey/engine/okey-bot-engine.ts";
 
 
 const MATCH_LIMIT = 100;
@@ -236,11 +233,16 @@ serve(async (request) => {
 
           await channel.send({
             type: "broadcast",
-            event: "invalidate",
+            event: "state_update",
             payload: {
               matchId: match.id,
               version: Number(match.version),
               status: "finished",
+              projection: projectOkeyMatchPublicState(
+                originalState,
+                Number(match.version),
+                null,
+              ),
             },
           });
 
@@ -276,29 +278,6 @@ serve(async (request) => {
       }
 
 
-      const currentPlayer =
-        nextState.roundState.players[
-          nextState.roundState.currentPlayerIndex
-        ];
-
-      if (
-        !nextState.matchFinished &&
-        currentPlayer?.controlledByBot
-      ) {
-        nextState = settleAuthoritativeOkeyRound({
-          ...nextState,
-          roundState: playBotTurn(
-            nextState.roundState,
-            {
-              difficulty:
-                currentPlayer.botDifficulty ??
-                "normal",
-            },
-          ),
-        });
-
-        changed = true;
-      }
 
       if (!changed) {
         skipped += 1;
@@ -395,7 +374,7 @@ serve(async (request) => {
 
         await channel.send({
           type: "broadcast",
-          event: "invalidate",
+          event: "state_update",
           payload: {
             matchId: match.id,
             version: Number((commit as { version: number }).version),
@@ -403,6 +382,11 @@ serve(async (request) => {
               nextState.matchFinished
                 ? "finished"
                 : "playing",
+            projection: projectOkeyMatchPublicState(
+              nextState,
+              Number((commit as { version: number }).version),
+              deadline,
+            ),
           },
         });
 

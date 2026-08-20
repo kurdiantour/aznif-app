@@ -20,10 +20,6 @@ import {
   isOkeyBotControlled,
 } from "../engine/okey-bot-policy.ts";
 
-import {
-  playBotTurn,
-} from "../engine/okey-bot-engine.ts";
-
 import type {
   OkeyGameState,
   OkeyMeld,
@@ -821,66 +817,39 @@ function reconcileAuthoritativeHumanControl(
   };
 }
 
-function continueAuthoritativeBotTurns(
+function reconcileAuthoritativeBotOwnership(
   match: OkeyAuthoritativeMatchState,
 ): OkeyAuthoritativeMatchState {
   let current = reconcileAuthoritativeHumanControl(match);
 
-  for (let action = 0; action < 32; action += 1) {
-    if (current.matchFinished) {
-      break;
-    }
+  if (current.matchFinished) {
+    return current;
+  }
 
-    let player =
-      current.roundState.players[
-        current.roundState.currentPlayerIndex
-      ];
+  const playerIndex =
+    current.roundState.currentPlayerIndex;
 
-    /* Two missed turns make the next turn bot-owned before a third deadline. */
-    if (
-      player &&
-      !isOkeyBotControlled(player) &&
-      (current.timeoutCountsByPlayerId?.[player.id] ?? 0) >= 2
-    ) {
-      current = {
-        ...current,
-        roundState: handSeatToBot(
-          current.roundState,
-          current.roundState.currentPlayerIndex,
-          "normal",
-        ),
-      };
-      current = reconcileAuthoritativeHumanControl(current);
-      if (current.matchFinished) {
-        break;
-      }
-      player = current.roundState.players[current.roundState.currentPlayerIndex];
-    }
+  const player =
+    current.roundState.players[playerIndex];
 
-    if (!isOkeyBotControlled(player)) {
-      break;
-    }
-
-    const nextRoundState = playBotTurn(
-      current.roundState,
-      {
-        difficulty:
-          player.botDifficulty ?? "normal",
-      },
-    );
-
-    if (nextRoundState === current.roundState) {
-      break;
-    }
-
-    current = settleAuthoritativeOkeyRound({
+  if (
+    player &&
+    !isOkeyBotControlled(player) &&
+    (current.timeoutCountsByPlayerId?.[player.id] ?? 0) >= 2
+  ) {
+    current = reconcileAuthoritativeHumanControl({
       ...current,
-      roundState: nextRoundState,
+      roundState: handSeatToBot(
+        current.roundState,
+        playerIndex,
+        "normal",
+      ),
     });
   }
 
   return current;
 }
+
 export function applyAuthoritativeManualLeave(
   match: OkeyAuthoritativeMatchState,
   actorPlayerIndex: number,
@@ -916,9 +885,7 @@ export function applyAuthoritativeManualLeave(
         ),
   });
 
-  return takeoverMatch.matchFinished
-    ? takeoverMatch
-    : continueAuthoritativeBotTurns(takeoverMatch);
+  return takeoverMatch;
 }
 export function applyAuthoritativeOkeyMatchCommand(
   match:
@@ -965,7 +932,7 @@ export function applyAuthoritativeOkeyMatchCommand(
         }
       : match.timeoutCountsByPlayerId;
 
-  return continueAuthoritativeBotTurns(
+  return reconcileAuthoritativeBotOwnership(
     settleAuthoritativeOkeyRound({
       ...match,
       timeoutCountsByPlayerId:
@@ -1135,7 +1102,9 @@ export function resolveAuthoritativeMatchDeadline(
   }
 
   if (isOkeyBotControlled(player)) {
-    return continueAuthoritativeBotTurns(match);
+    throw new OkeyCommandError(
+      "command_rejected",
+    );
   }
 
   const timeoutCounts =
@@ -1199,7 +1168,7 @@ const lastTimeoutDiscardEvent:
     : null;
 
 
-return continueAuthoritativeBotTurns(
+return reconcileAuthoritativeBotOwnership(
   settleAuthoritativeOkeyRound({
     ...match,
     timeoutCountsByPlayerId: nextTimeoutCounts,

@@ -29,7 +29,7 @@ import {
     PLAYER_TURN_DURATION_SECONDS,
     ROUND_RESULT_REVEAL_MS,
     SeatDefinition,
-} from './gameShared';
+} from '@/domino/shared/game-shared';
 
 import type { RoundPhase, RoundResult } from '@/types/game';
 

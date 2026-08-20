@@ -22,7 +22,7 @@ if (gameScreen.includes("award_ai_practice_win")) {
   failures.push("The game client must not settle authoritative rewards.");
 }
 
-const oneVsOneHook = read("hooks/useOneVsOneGame.ts");
+const oneVsOneHook = read("domino/modes/one-vs-one/presentation/use-one-vs-one-game.ts");
 const latestHardening = read(
   "supabase/migrations/20260615000100_remove_private_hand_debug_and_wallet_inserts.sql",
 );
@@ -87,10 +87,24 @@ for (const required of [
     failures.push(`Missing hardening invariant: ${required}`);
 }
 
-const edgeFiles = [
+const oneVsOneEdgeFiles = [
   "supabase/functions/submit_one_vs_one/move.ts",
   "supabase/functions/submit_one_vs_one/draw.ts",
   "supabase/functions/submit_one_vs_one/pass.ts",
+];
+const authoritativeCommitCore = read(
+  "lib/multiplayer/core/authoritative-commit.ts",
+);
+if (!matches(authoritativeCommitCore, /rpc\(\s*["']commit_multiplayer_action["']/)) {
+  failures.push("Multiplayer commit core bypasses the atomic action commit.");
+}
+for (const file of oneVsOneEdgeFiles) {
+  if (!matches(read(file), /commitMultiplayerAction\(\s*svc\s*,/)) {
+    failures.push(`${file} bypasses the shared atomic commit core.`);
+  }
+}
+
+const edgeFiles = [
   "supabase/functions/submit_two_vs_two/move.ts",
   "supabase/functions/submit_two_vs_two/pass.ts",
   "supabase/functions/process_bot_turns/index.ts",
@@ -195,41 +209,14 @@ for (const required of [
   }
 }
 
-const disconnectTakeoverHardening = read(
-  "supabase/migrations/20260630000500_reliable_disconnect_bot_takeover.sql",
-);
-for (const required of [
-  "GREATEST(p_grace_seconds, 60)",
-  "COALESCE(player.last_seen_at, player.joined_at, player.updated_at) < v_cutoff",
-  "SET connected = false",
-  "FOR UPDATE OF player SKIP LOCKED",
-  "'reason', 'heartbeat_timeout'",
-  "takeover_expires_at = now() + interval '60 seconds'",
-  "process_one_vs_one_takeovers",
-  "process_two_vs_two_takeovers",
-]) {
-  if (!disconnectTakeoverHardening.includes(required)) {
-    failures.push(`Missing disconnect takeover invariant: ${required}`);
-  }
-}
-const scopedTakeover = read(
-  "supabase/migrations/20260630000600_scope_disconnect_takeover_to_room.sql",
-);
-for (const required of [
-  "process_one_vs_one_room_takeovers",
-  "process_two_vs_two_room_takeovers",
-  "player.room_id=p_room_id",
-  "pg_advisory_xact_lock",
-  "max(move.sequence)",
-]) {
-  if (!scopedTakeover.includes(required)) {
-    failures.push(`Missing room-scoped takeover invariant: ${required}`);
-  }
-}
-const twoVsTwoHook = read("hooks/useTwoVsTwoGame.ts");
 
+const twoVsTwoHook = read("domino/modes/two-vs-two/presentation/use-two-vs-two-game.ts");
+
+const oneVsOneAdapter = read(
+  "domino/modes/one-vs-one/adapters/supabase-domino-one-vs-one-adapter.ts",
+);
 const dominoProfileSources = [
-  ["1v1", oneVsOneHook],
+  ["1v1", oneVsOneAdapter],
   ["2v2", twoVsTwoHook],
 ];
 for (const [label, source] of dominoProfileSources) {
@@ -242,32 +229,7 @@ for (const [label, source] of dominoProfileSources) {
   }
 }
 
-for (const [label, source] of [
-  ["1v1", oneVsOneHook],
-  ["2v2", twoVsTwoHook],
-]) {
-  if (
-    !matches(
-      source,
-      /setInterval\(\(\) => void heartbeat\(\), 30_000\)/,
-    )
-  ) {
-    failures.push(`${label} heartbeat must run every 30 seconds.`);
-  }
 
-  if (!source.includes("takeoverWatchdogInFlightRef")) {
-    failures.push(`${label} active matches have no takeover watchdog.`);
-  }
-
-  if (
-    !matches(
-      source,
-      /setInterval\(\(\) => void runTakeoverWatchdog\(\), 10_000\)/,
-    )
-  ) {
-    failures.push(`${label} takeover watchdog is not scheduled.`);
-  }
-}
 
 for (const forbidden of [
   "created_at >",

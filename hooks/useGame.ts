@@ -1,8 +1,8 @@
 import type { GameMode } from '@/types/game';
 import { useAiPracticeGame } from './useAiPracticeGame';
 import type { MockGameState } from './useGameBase';
-import { useOneVsOneGame } from './useOneVsOneGame';
-import { useTwoVsTwoGame } from './useTwoVsTwoGame';
+import { useOneVsOneGame } from '@/domino/modes/one-vs-one/presentation/use-one-vs-one-game';
+import { useTwoVsTwoGame } from '@/domino/modes/two-vs-two';
 
 export function useGame(
   mode: GameMode = '2v2',

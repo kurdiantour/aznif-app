@@ -1,9 +1,18 @@
-// @ts-nocheck
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { runDominoOneVsOnePostCommitLifecycle } from "../../../domino/modes/one-vs-one/lifecycle/domino-one-vs-one-post-commit-lifecycle.ts";
+import { buildOneVsOneDrawCommit } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-commit-contract.ts";
+import { reconcileDominoOneVsOneCommit } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-timeout-conflict.ts";
+import { commitMultiplayerAction } from "../../../lib/multiplayer/core/authoritative-commit.ts";
+
+import { authenticateDominoOneVsOneRequest, loadDominoOneVsOnePlayers, loadDominoOneVsOnePrivateState, loadDominoOneVsOneRoom, projectDominoOneVsOnePrivateState } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-context.ts";
+
+import {
+  canDrawOneVsOne,
+} from "../../../domino/modes/one-vs-one/engine/domino-one-vs-one-engine.ts";
+import { reduceOneVsOneDraw } from "../../../domino/modes/one-vs-one/authoritative/domino-one-vs-one-command-reducer.ts";
 
 import { canHandMove } from "../_shared/kozel-engine.ts";
-import { handCounts } from "../_shared/game-utils.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
@@ -13,7 +22,6 @@ const svc = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "", {
   auth: { persistSession: false },
 });
 
-const MAX_ONE_VS_ONE_DRAWS_PER_TURN = 3;
 const DRAW_PHASE_DURATION_MS = 5_000;
 
 function json(data: unknown, status = 200) {
@@ -50,28 +58,20 @@ function canDrawForPlayer(
   boneyard: any[],
   state: any,
 ) {
-  if (
-    !state.board?.centerTile ||
-    boneyard.length === 0 ||
-    state.roundWinnerPlayerId ||
-    state.winningTeamId
-  ) {
-    return false;
-  }
-
-  if (
-    Number(state.currentTurnDrawCount ?? 0) >= MAX_ONE_VS_ONE_DRAWS_PER_TURN
-  ) {
-    return false;
-  }
-
-  return !canHandMove(
-    hands[playerIndex] ?? [],
-    state.board,
-    state.spinnerValue ?? null,
-    state.isOpeningRound ?? state.isFirstRound ?? true,
-    typeof state.openingDouble === "number" ? state.openingDouble : null,
-  );
+  return canDrawOneVsOne({
+    boardStarted: Boolean(state.board?.centerTile),
+    roundFinished: Boolean(state.roundWinnerPlayerId),
+    matchFinished: Boolean(state.winningTeamId),
+    handHasPlayableTile: canHandMove(
+      hands[playerIndex] ?? [],
+      state.board,
+      state.spinnerValue ?? null,
+      state.isOpeningRound ?? state.isFirstRound ?? true,
+      typeof state.openingDouble === "number" ? state.openingDouble : null,
+    ),
+    boneyardCount: boneyard.length,
+    currentTurnDrawCount: Number(state.currentTurnDrawCount ?? 0),
+  });
 }
 
 export default async function handler(req: Request) {
@@ -80,18 +80,9 @@ export default async function handler(req: Request) {
       return json({ error: "Method Not Allowed" }, 405);
     }
 
-    const token = (req.headers.get("authorization") || "")
-      .replace(/^Bearer\s+/i, "")
-      .trim();
-
-    if (!token) return json({ error: "Unauthorized" }, 401);
-
-    const { data: userData, error: userError } = await svc.auth.getUser(token);
-    if (userError || !userData?.user) {
-      return json({ error: "Invalid auth token" }, 401);
-    }
-
-    const user = userData.user;
+    const auth = await authenticateDominoOneVsOneRequest(req, svc);
+    if (!auth.ok) return auth.response;
+    const user = auth.user;
     const {
       room_id,
       timed_out: timedOut = false,
@@ -102,11 +93,7 @@ export default async function handler(req: Request) {
 
     if (!room_id) return json({ error: "Missing room_id" }, 400);
 
-    const { data: room, error: roomErr } = await svc
-      .from("one_vs_one_rooms")
-      .select("id, status, state, version, current_turn_player_id, updated_at")
-      .eq("id", room_id)
-      .maybeSingle();
+    const { data: room, error: roomErr } = await loadDominoOneVsOneRoom(svc, room_id);
 
     if (roomErr) throw roomErr;
     if (!room) return json({ error: "1v1 room not found" }, 404);
@@ -163,11 +150,7 @@ export default async function handler(req: Request) {
         : json({ error: "Round is not drawable" }, 400);
     }
 
-    const { data: players, error: playersErr } = await svc
-      .from("one_vs_one_players")
-      .select("id, user_id, player_index")
-      .eq("room_id", room_id)
-      .order("player_index", { ascending: true });
+    const { data: players, error: playersErr } = await loadDominoOneVsOnePlayers(svc, room_id);
 
     if (playersErr) throw playersErr;
     if (!Array.isArray(players) || players.length !== 2) {
@@ -194,11 +177,7 @@ export default async function handler(req: Request) {
       return json({ error: "Not your turn" }, 403);
     }
 
-    const { data: privateState, error: privateErr } = await svc
-      .from("one_vs_one_private_states")
-      .select("hands, boneyard")
-      .eq("room_id", room_id)
-      .maybeSingle();
+    const { data: privateState, error: privateErr } = await loadDominoOneVsOnePrivateState(svc, room_id);
 
     if (privateErr) throw privateErr;
     if (!privateState) {
@@ -238,59 +217,37 @@ export default async function handler(req: Request) {
       }
     }
 
-    const drawnTile = boneyard[0];
-    const nextBoneyard = boneyard.slice(1);
-    const nextHands = hands.map((hand: any[], index: number) =>
-      index === activePlayerIndex ? [...hand, drawnTile] : hand,
-    );
-
-    const stillHasPlayableTile = canHandMove(
-      nextHands[activePlayerIndex] ?? [],
-      state.board,
-      state.spinnerValue ?? null,
-      state.isOpeningRound ?? state.isFirstRound ?? true,
-      typeof state.openingDouble === "number" ? state.openingDouble : null,
-    );
-
-    const currentTurnDrawCount = Number(state.currentTurnDrawCount ?? 0);
-    const nextTurnDrawCount = currentTurnDrawCount + 1;
-
     const opponent = players.find(
       (player: any) => player.user_id !== currentTurnPlayerId,
     );
     const opponentPlayerId = opponent?.user_id ?? currentTurnPlayerId;
-
-    const shouldAutoPass =
-      !stillHasPlayableTile &&
-      (nextTurnDrawCount >= MAX_ONE_VS_ONE_DRAWS_PER_TURN ||
-        nextBoneyard.length === 0);
-
-    const stillNeedsDraw =
-      !shouldAutoPass && !stillHasPlayableTile && nextBoneyard.length > 0;
-
-    const finalTurnPlayerId = shouldAutoPass
-      ? opponentPlayerId
-      : currentTurnPlayerId;
-
     const phaseStartedAt = new Date().toISOString();
 
-    const nextState = {
-      ...state,
-      mode: "1v1",
-      currentTurnPlayerId: finalTurnPlayerId,
-      turnStartedAt:
-        stillHasPlayableTile || shouldAutoPass
-          ? phaseStartedAt
-          : state.turnStartedAt ?? phaseStartedAt,
-      drawStartedAt: stillNeedsDraw ? phaseStartedAt : null,
-      handCounts: handCounts(nextHands),
-      boneyardCount: nextBoneyard.length,
-      canDrawTile: stillNeedsDraw,
-      currentTurnDrawCount: shouldAutoPass ? 0 : nextTurnDrawCount,
-      lastDrawnTile: null,
-      lastPassedPlayerId: shouldAutoPass ? currentTurnPlayerId : null,
-      blockedPasses: shouldAutoPass ? [currentTurnPlayerId] : [],
-    };
+    const transition = reduceOneVsOneDraw({
+      state,
+      hands,
+      boneyard,
+      activePlayerIndex,
+      currentTurnPlayerId,
+      opponentPlayerId,
+      phaseStartedAt,
+      hasPlayableTileAfterDraw: (nextHand) => canHandMove(
+        nextHand,
+        state.board,
+        state.spinnerValue ?? null,
+        state.isOpeningRound ?? state.isFirstRound ?? true,
+        typeof state.openingDouble === "number" ? state.openingDouble : null,
+      ),
+    });
+
+    const {
+      nextState,
+      nextHands,
+      nextBoneyard,
+      nextTurnDrawCount,
+      finalTurnPlayerId,
+      shouldAutoPass,
+    } = transition;
 
     const action = timedOut
       ? shouldAutoPass
@@ -300,91 +257,29 @@ export default async function handler(req: Request) {
         ? "draw_tile_auto_pass"
         : "draw_tile";
 
-    const { data: updatedRoom, error: commitError } = await svc.rpc(
-      "commit_multiplayer_action",
-      {
-        p_mode: "1v1",
-        p_room_id: room_id,
-        p_expected_version: room.version,
-        p_state: nextState,
-        p_hands: nextHands,
-        p_boneyard: nextBoneyard,
-        p_current_turn_player_id: finalTurnPlayerId,
-        p_status: null,
-        p_player_id: currentTurnPlayerId,
-        p_action: action,
-        p_payload: {
-          remainingBoneyard: nextBoneyard.length,
-          currentTurnDrawCount: nextTurnDrawCount,
-          autoDrawn: timedOut,
-          autoPassed: shouldAutoPass,
-          triggeredByUserId: user.id,
-        },
-      },
-    );
+    const commit = await commitMultiplayerAction(svc, buildOneVsOneDrawCommit({ roomId: room_id, expectedVersion: room.version, state: nextState, hands: nextHands, boneyard: nextBoneyard, currentTurnPlayerId: finalTurnPlayerId, status: null, playerId: currentTurnPlayerId, action, currentTurnDrawCount: nextTurnDrawCount, timedOut, autoPassed: shouldAutoPass, triggeredByUserId: user.id }));
 
-    if (commitError) {
-      if (commitError.message?.includes("STALE_GAME_STATE")) {
-        if (timedOut) {
-          const { data: latestRoom, error: latestRoomError } = await svc
-            .from("one_vs_one_rooms")
-            .select("id, status, state, version, current_turn_player_id, updated_at")
-            .eq("id", room_id)
-            .maybeSingle();
+    const reconciliation = await reconcileDominoOneVsOneCommit({
+      client: svc,
+      commit,
+      timedOut,
+      roomId: room_id,
+      expectedVersion,
+      originalRoom: room,
+      alreadyProcessedMessage: "This draw phase was already processed",
+      staleMessage: "Auto-draw claim became stale before commit",
+      timeoutResponse,
+    });
+    if (!reconciliation.ok) return reconciliation.response;
+    const updatedRoom = reconciliation.updatedRoom;
 
-          if (latestRoomError) throw latestRoomError;
-
-          if (latestRoom && Number(latestRoom.version) > expectedVersion) {
-            return timeoutResponse(
-              "already_processed",
-              "This draw phase was already processed",
-              latestRoom,
-            );
-          }
-
-          return timeoutResponse(
-            "stale_timeout",
-            "Auto-draw claim became stale before commit",
-            latestRoom ?? room,
-          );
-        }
-
-        return json({ error: "Stale 1v1 state, please retry" }, 409);
-      }
-
-      throw commitError;
-    }
-
-    // ── Timeout-strike accounting (1v1 only) ────────────────────────────────
-    // A manual draw is valid human activity and resets the player's strikes.
-    // An automatic draw by itself does NOT count as a turn timeout because the
-    // same player's turn is still alive. Only an auto-draw that also auto-passes
-    // ends the inactive turn, so it counts as exactly one timeout strike.
-    if (timedOut) {
-      if (shouldAutoPass) {
-        await svc.rpc("process_one_vs_one_turn_strikes", {
-          p_room_id: room_id,
-          p_acting_user_id: currentTurnPlayerId,
-          p_next_user_id: finalTurnPlayerId,
-          p_increment_acting: true,
-        });
-      }
-    } else {
-      await svc.rpc("process_one_vs_one_turn_strikes", {
-        p_room_id: room_id,
-        p_acting_user_id: currentTurnPlayerId,
-        p_next_user_id: finalTurnPlayerId,
-        p_increment_acting: false,
-      });
-    }
+    await runDominoOneVsOnePostCommitLifecycle({ client: svc, action: "draw", roomId: room_id, state: nextState, status: null, actingUserId: currentTurnPlayerId, nextUserId: finalTurnPlayerId, timedOut, autoPassed: shouldAutoPass });
 
     return json(
       {
         ok: true,
         state: {
-          ...nextState,
-          myHand: nextHands[requestPlayerIndex] ?? [],
-          myHandOwnerId: user.id,
+          ...projectDominoOneVsOnePrivateState({ state: nextState, hands: nextHands, playerIndex: requestPlayerIndex, userId: user.id }),
         },
         room: updatedRoom,
         serverNow: new Date().toISOString(),
@@ -393,6 +288,6 @@ export default async function handler(req: Request) {
     );
   } catch (err) {
     console.error("submit_one_vs_one action=draw error", err);
-    return json({ error: err?.message ?? String(err) }, 500);
+    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 }

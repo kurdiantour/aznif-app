@@ -1,8 +1,15 @@
-// @ts-nocheck
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { runDominoOneVsOnePostCommitLifecycle } from "../../../domino/modes/one-vs-one/lifecycle/domino-one-vs-one-post-commit-lifecycle.ts";
+import { buildOneVsOneMoveCommit } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-commit-contract.ts";
+import { commitMultiplayerAction, multiplayerConflictResponse } from "../../../lib/multiplayer/core/authoritative-commit.ts";
 
-import { resolveMatchOutcome } from "../../../lib/game/match-rules.ts";
+import { authenticateDominoOneVsOneRequest, loadDominoOneVsOnePlayers, loadDominoOneVsOnePrivateState, loadDominoOneVsOneRoom, projectDominoOneVsOnePrivateState } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-context.ts";
+
+import {
+  shouldOfferDraw,
+} from "../../../domino/modes/one-vs-one/engine/domino-one-vs-one-engine.ts";
+import { reduceOneVsOnePlay } from "../../../domino/modes/one-vs-one/authoritative/domino-one-vs-one-command-reducer.ts";
 import {
   applyMove,
   canHandMove,
@@ -10,11 +17,8 @@ import {
   isValidMove,
 } from "../_shared/kozel-engine.ts";
 import {
-  handCounts,
   isBoardEmpty,
   isSameTile,
-  pipTotal,
-  roundToNearestFive,
 } from "../_shared/game-utils.ts";
 
 const SUPABASE_URL =
@@ -42,37 +46,28 @@ function currentCanDraw(
   boneyard: any[],
   state: any,
 ) {
-  if (
-    !nextTurnPlayerId ||
-    !state.board?.centerTile ||
-    state.roundWinnerPlayerId ||
-    state.winningTeamId
-  ) {
-    return false;
-  }
+  if (!nextTurnPlayerId) return false;
 
   const nextIndex = players.findIndex(
     (player: any) => player.user_id === nextTurnPlayerId,
   );
   if (nextIndex < 0) return false;
 
-  if (boneyard.length === 0) return false;
-
-  if (!canHandMove(
-    boneyard,
+  const ruleArgs = [
     state.board,
     state.spinnerValue ?? null,
     state.isOpeningRound ?? state.isFirstRound ?? true,
     typeof state.openingDouble === "number" ? state.openingDouble : null,
-  )) return false;
+  ] as const;
 
-  return !canHandMove(
-    hands[nextIndex] ?? [],
-    state.board,
-    state.spinnerValue ?? null,
-    state.isOpeningRound ?? state.isFirstRound ?? true,
-    typeof state.openingDouble === "number" ? state.openingDouble : null,
-  );
+  return shouldOfferDraw({
+    boardStarted: Boolean(state.board?.centerTile),
+    roundFinished: Boolean(state.roundWinnerPlayerId),
+    matchFinished: Boolean(state.winningTeamId),
+    handHasPlayableTile: canHandMove(hands[nextIndex] ?? [], ...ruleArgs),
+    boneyardHasPlayableTile: canHandMove(boneyard, ...ruleArgs),
+    boneyardCount: boneyard.length,
+  });
 }
 
 export default async function handler(req: Request) {
@@ -80,25 +75,14 @@ export default async function handler(req: Request) {
     if (req.method !== "POST")
       return json({ error: "Method Not Allowed" }, 405);
 
-    const token = (req.headers.get("authorization") || "")
-      .replace(/^Bearer\s+/i, "")
-      .trim();
-    if (!token) return json({ error: "Unauthorized" }, 401);
-
-    const { data: userData, error: userError } = await svc.auth.getUser(token);
-    if (userError || !userData?.user)
-      return json({ error: "Invalid auth token" }, 401);
-
-    const user = userData.user;
+    const auth = await authenticateDominoOneVsOneRequest(req, svc);
+    if (!auth.ok) return auth.response;
+    const user = auth.user;
     const { room_id, tile, branch } = await req.json();
     if (!room_id || !tile?.id)
       return json({ error: "Missing parameters" }, 400);
 
-    const { data: room, error: roomErr } = await svc
-      .from("one_vs_one_rooms")
-      .select("id, status, state, version, current_turn_player_id")
-      .eq("id", room_id)
-      .maybeSingle();
+    const { data: room, error: roomErr } = await loadDominoOneVsOneRoom(svc, room_id);
 
     if (roomErr) throw roomErr;
     if (!room) return json({ error: "1v1 room not found" }, 404);
@@ -111,11 +95,7 @@ export default async function handler(req: Request) {
     if (state.roundWinnerPlayerId)
       return json({ error: "Round is already complete" }, 400);
 
-    const { data: players, error: playersErr } = await svc
-      .from("one_vs_one_players")
-      .select("id, user_id, player_index, seat, team_id, kind")
-      .eq("room_id", room_id)
-      .order("player_index", { ascending: true });
+    const { data: players, error: playersErr } = await loadDominoOneVsOnePlayers(svc, room_id);
 
     if (playersErr) throw playersErr;
     if (!Array.isArray(players) || players.length !== 2)
@@ -127,11 +107,7 @@ export default async function handler(req: Request) {
     if (playerIndex === -1)
       return json({ error: "You are not a player in this 1v1 room" }, 403);
 
-    const { data: privateState, error: privateErr } = await svc
-      .from("one_vs_one_private_states")
-      .select("hands, boneyard")
-      .eq("room_id", room_id)
-      .maybeSingle();
+    const { data: privateState, error: privateErr } = await loadDominoOneVsOnePrivateState(svc, room_id);
 
     if (privateErr) throw privateErr;
 
@@ -223,18 +199,6 @@ export default async function handler(req: Request) {
       moveScore,
     } = applyMove(board, tile, branch, spinnerValue, isOpeningRound);
 
-    const nextHands = hands.map((hand: any[], index: number) => {
-      if (index !== playerIndex) return hand;
-      let removed = false;
-      return hand.filter((handTile: any) => {
-        if (!removed && isSameTile(handTile, tile)) {
-          removed = true;
-          return false;
-        }
-        return true;
-      });
-    });
-
     const nextPlayerIndex = (playerIndex + 1) % 2;
     const currentPlayer = players.find(
       (player: any) => player.player_index === playerIndex,
@@ -242,169 +206,59 @@ export default async function handler(req: Request) {
     const nextPlayer = players.find(
       (player: any) => player.player_index === nextPlayerIndex,
     );
-
     if (!currentPlayer || !nextPlayer?.user_id) {
       return json({ error: "Invalid 1v1 player mapping" }, 409);
     }
 
-    const nextPlayerId = nextPlayer.user_id;
-    const nextScores = {
-      teamA: Number(state.teamScores?.teamA ?? 0),
-      teamB: Number(state.teamScores?.teamB ?? 0),
-    };
-
-    let lastScoringEvent = null;
-    let endOfHandScoringEvent = null;
-    if (moveScore > 0) {
-      nextScores[currentPlayer.team_id] =
-        Number(nextScores[currentPlayer.team_id] ?? 0) + Number(moveScore);
-      lastScoringEvent = {
-        playerId: user.id,
-        teamId: currentPlayer.team_id,
-        points: moveScore,
-        openEndsTotal: moveScore,
-      };
-    }
-
-    let nextTurnPlayerId = nextPlayerId;
-    let roundWinnerPlayerId = null;
-    let winningTeamId = null;
-    let reward = null;
-    const finalHands = nextHands;
-    const finalBoneyard = boneyard;
-
-    if (nextHands[playerIndex]?.length === 0) {
-      roundWinnerPlayerId = user.id;
-      nextTurnPlayerId = user.id;
-      const opponentPips = pipTotal(nextHands[nextPlayerIndex] ?? []);
-      const endOfHandScore = roundToNearestFive(opponentPips);
-
-      if (endOfHandScore > 0) {
-        nextScores[currentPlayer.team_id] =
-          Number(nextScores[currentPlayer.team_id] ?? 0) + endOfHandScore;
-        endOfHandScoringEvent = {
-          playerId: user.id,
-          teamId: currentPlayer.team_id,
-          points: endOfHandScore,
-          openEndsTotal: opponentPips,
-        };
-      }
-
-      const finished = resolveMatchOutcome(
-        nextScores,
-        state.matchReward ?? null,
-      );
-      winningTeamId = finished.winningTeamId;
-      reward = finished.matchReward;
-    }
-
-    const nextPhaseStartedAt = new Date().toISOString();
-
-    let nextState = {
-      ...state,
-      mode: "1v1",
-      board: nextBoard,
-      spinnerValue: nextSpinnerValue,
-      currentTurnDrawCount: 0,
-      handCounts: handCounts(nextHands),
-      boneyardCount: boneyard.length,
-      currentTurnPlayerId: nextTurnPlayerId,
-      turnStartedAt: nextPhaseStartedAt,
-      drawStartedAt: null,
-      leaderPlayerId: roundWinnerPlayerId ?? state.leaderPlayerId ?? user.id,
-      isOpeningRound: false,
-      isFirstRound: false,
-      openingDouble: null,
-      openingTileId: null,
-      lastPlayedTile: tile,
-      lastMovePlayerId: user.id,
-      lastMoveBranch: branch ?? null,
-      lastScoringEvent,
-      endOfHandScoringEvent,
-      endOfHandScoreApplied: Boolean(roundWinnerPlayerId),
-      teamScores: nextScores,
-      roundWinnerPlayerId,
-      roundEndReason: roundWinnerPlayerId ? "empty_hand" : null,
-      revealedFinalHands: roundWinnerPlayerId ? finalHands : null,
-      winningTeamId,
-      matchReward: reward,
-      lastPassedPlayerId: null,
-      blockedPasses: [],
-      canDrawTile: false,
-    };
-
-    if (!roundWinnerPlayerId) {
-      nextState.canDrawTile = currentCanDraw(
-        nextTurnPlayerId,
+    const transition = reduceOneVsOnePlay({
+      state,
+      hands,
+      boneyard,
+      players,
+      playerIndex,
+      actorUserId: user.id,
+      tile,
+      branch,
+      nextBoard,
+      nextSpinnerValue,
+      moveScore,
+      phaseStartedAt: new Date().toISOString(),
+      isSameTile,
+      canNextPlayerDraw: (playerId, nextHands, nextState) => currentCanDraw(
+        playerId,
         players,
         nextHands,
         boneyard,
         nextState,
-      );
-      nextState.drawStartedAt = nextState.canDrawTile
-        ? nextPhaseStartedAt
-        : null;
-    }
+      ),
+    });
+    const {
+      nextState,
+      nextHands: finalHands,
+      nextBoneyard: finalBoneyard,
+      nextTurnPlayerId,
+      status: nextStatus,
+    } = transition;
+    const roundWinnerPlayerId = nextState.roundWinnerPlayerId ?? null;
+    const winningTeamId = nextState.winningTeamId ?? null;
 
-    const { data: updatedRoom, error: commitError } = await svc.rpc(
-      "commit_multiplayer_action",
-      {
-        p_mode: "1v1",
-        p_room_id: room_id,
-        p_expected_version: room.version,
-        p_state: nextState,
-        p_hands: finalHands,
-        p_boneyard: finalBoneyard,
-        p_current_turn_player_id: nextTurnPlayerId,
-        p_status: winningTeamId ? "finished" : "active",
-        p_player_id: user.id,
-        p_action: "play_tile",
-        p_payload: {
-          tile,
-          branch: branch ?? null,
-          moveScore,
-          wasOpeningMove: isOpeningRound && boardEmpty,
-        },
-      },
-    );
+    const commit = await commitMultiplayerAction(svc, buildOneVsOneMoveCommit({ roomId: room_id, expectedVersion: room.version, state: nextState, hands: finalHands, boneyard: finalBoneyard, currentTurnPlayerId: nextTurnPlayerId, status: nextStatus, playerId: user.id, tile, branch: branch ?? null, moveScore, wasOpeningMove: isOpeningRound && boardEmpty }));
+    const updatedRoom = commit.ok ? commit.data : null;
+    const commitError = commit.ok ? null : commit.error;
     if (commitError) {
       if (commitError.message?.includes("STALE_GAME_STATE"))
-        return json({ error: "Stale 1v1 state, please retry" }, 409);
+        return multiplayerConflictResponse("Stale 1v1 state, please retry");
       throw commitError;
     }
 
 
-    // ── Timeout-strike accounting (1v1 only) ────────────────────────────────
-    // A successful tile play is always a valid human action → reset strikes.
-    // Then check if the next turn player has ≥ 2 accumulated strikes and
-    // trigger bot takeover for them before their timer can start.
-    if (!roundWinnerPlayerId && !winningTeamId) {
-      await svc.rpc('process_one_vs_one_turn_strikes', {
-        p_room_id: room_id,
-        p_acting_user_id: user.id,
-        p_next_user_id: nextTurnPlayerId,
-        p_increment_acting: false,
-      });
-    }
-
-    if (roundWinnerPlayerId && !winningTeamId) {
-
-      const { error: forfeitErr } = await svc.rpc(
-        "resolve_one_vs_one_round_leave_forfeits",
-        {
-          p_room_id: room_id,
-        },
-      );
-      if (forfeitErr) throw forfeitErr;
-    }
+    await runDominoOneVsOnePostCommitLifecycle({ client: svc, action: "move", roomId: room_id, state: nextState, status: nextStatus, actingUserId: user.id, nextUserId: nextTurnPlayerId });
 
     return json(
       {
         ok: true,
         state: {
-          ...nextState,
-          myHand: finalHands[playerIndex] ?? [],
-          revealedFinalHands: roundWinnerPlayerId ? finalHands : null,
+          ...projectDominoOneVsOnePrivateState({ state: nextState, hands: finalHands, playerIndex, revealFinalHands: true }),
         },
         room: updatedRoom,
       },
@@ -412,6 +266,6 @@ export default async function handler(req: Request) {
     );
   } catch (err) {
     console.error("submit_one_vs_one action=move error", err);
-    return json({ error: err?.message ?? String(err) }, 500);
+    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 }

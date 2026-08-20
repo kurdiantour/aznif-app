@@ -18,9 +18,9 @@ import {
   TeamId,
 } from '@/types/game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAvailableBranches, handContainsTile } from './gameRuleQueries';
-import { buildRoundResult } from './roundResult';
-import { useRoundLifecycle } from './useRoundLifecycle';
+import { getAvailableBranches, handContainsTile } from '@/domino/shared/rules/game-rule-queries';
+import { buildRoundResult } from '@/domino/shared/lifecycle/round-result';
+import { useRoundLifecycle } from '@/domino/shared/lifecycle/use-round-lifecycle';
 import {
   createAiPracticeDeal,
   createAiPracticeSeats,
@@ -31,7 +31,7 @@ import {
   getBlockedRoundWinnerIndex1v1,
   pickPreferredBranch,
   PLAYER_TURN_DURATION_SECONDS,
-} from './gameShared';
+} from '@/domino/shared/game-shared';
 
 export type AiPracticeGameState = GameState & {
   passTurn: () => boolean;
