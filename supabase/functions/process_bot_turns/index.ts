@@ -1,5 +1,8 @@
 // @ts-nocheck
 
+import { reduceTwoVsTwoBotPass, reduceTwoVsTwoPlay } from "../../../domino/modes/two-vs-two/authoritative/domino-two-vs-two-command-reducer.ts";
+import { finalizeTwoVsTwoRound, isTwoVsTwoRoundTransitionPending } from "../../../domino/modes/two-vs-two/lifecycle/domino-two-vs-two-round-transition.ts";
+import { buildTwoVsTwoCommit } from "../../../domino/modes/two-vs-two/server/domino-two-vs-two-commit-contract.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
@@ -9,8 +12,8 @@ import {
   createEmptyBoard,
   getPlayableBranches,
 } from "../_shared/kozel-engine.ts";
-import { resolveMatchOutcome } from "../../../lib/game/match-rules.ts";
-import { getNextOkeyOrderPlayer } from "../../../lib/game/turn-order.ts";
+import { resolveMatchOutcome } from "../../../domino/core/rules/match-rules.ts";
+import { getNextOkeyOrderPlayer } from "../../../domino/core/rules/turn-order.ts";
 import {
   handCounts,
   pipTotal,
@@ -24,6 +27,7 @@ import {
 } from "../../../okey/server/okey-authoritative.ts";
 import { playBotTurn } from "../../../okey/engine/okey-bot-engine.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
+import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
@@ -360,7 +364,7 @@ serve(async (req) => {
     if (
       !currentTurnPlayerId ||
       state.winningTeamId ||
-      state.roundWinnerPlayerId
+      (state.roundWinnerPlayerId && (mode !== "2v2" || isTwoVsTwoRoundTransitionPending(state)))
     ) {
       return json({ ok: true, processed: false, reason: "no_open_bot_turn" });
     }
@@ -451,146 +455,45 @@ serve(async (req) => {
         state: result.state,
       });
     }
+    const completedAt = new Date().toISOString();
     const hand = hands[playerIndex] ?? [];
     const botMove = pickBotMove(hand, state);
-    const nextPlayerId =
-      getNextOkeyOrderPlayer(players, players[playerIndex])?.user_id ?? null;
-    let nextHands = hands;
-    let nextBoneyard = boneyard;
-    let nextState = state;
+    let transition;
     let action = "bot_pass_turn";
     let payload: any = { reason: "bot_takeover" };
 
     if (botMove) {
       const board = state.board ?? createEmptyBoard();
-      const result = applyMove(
+      const move = applyMove(
         board,
         botMove.tile,
         botMove.branch,
         state.spinnerValue ?? null,
         isOpeningRound(state),
       );
-
-      nextHands = hands.map((playerHand: any[], index: number) => {
-        if (index !== playerIndex) return playerHand;
-        let removed = false;
-        return playerHand.filter((tile: any) => {
-          if (!removed && tile.id === botMove.tile.id) {
-            removed = true;
-            return false;
-          }
-
-          return true;
-        });
-      });
-
-      nextState = {
-        ...state,
-        board: result.board,
-        spinnerValue: result.spinnerValue,
-        handCounts: handCounts(nextHands),
-        boneyardCount: nextBoneyard.length,
-        currentTurnPlayerId: nextPlayerId,
-        isOpeningRound: false,
-        isFirstRound: false,
-        openingDouble: null,
-        openingTileId: null,
-        lastPlayedTile: botMove.tile,
-        lastMoveBranch: botMove.branch,
-        lastScoringEvent: null,
-        endOfHandScoringEvent: null,
-        lastPassedPlayerId: null,
-        blockedPasses: [],
-        canDrawTile: false,
-      };
-
-        const currentPlayer = players[playerIndex];
-        const nextScores = {
-          teamA: Number(state.teamScores?.teamA ?? 0),
-          teamB: Number(state.teamScores?.teamB ?? 0),
-        };
-        let lastScoringEvent = null;
-        let endOfHandScoringEvent = null;
-
-        if (result.moveScore > 0) {
-          nextScores[currentPlayer.team_id] += Number(result.moveScore);
-          lastScoringEvent = {
-            playerId: currentTurnPlayerId,
-            teamId: currentPlayer.team_id,
-            points: result.moveScore,
-            openEndsTotal: result.moveScore,
-          };
-        }
-
-        let roundWinner = null;
-        let roundEndReason = null;
-        let leaderPlayerId = state.leaderPlayerId ?? currentTurnPlayerId;
-
-        if ((nextHands[playerIndex] ?? []).length === 0) {
-          roundWinner = currentPlayer;
-          roundEndReason = "empty_hand";
-          leaderPlayerId = currentTurnPlayerId;
-        } else if (
-          !canAnyPlayerMove(
-            nextHands,
-            result.board,
-            result.spinnerValue,
+      transition = reduceTwoVsTwoPlay({
+        state,
+        hands,
+        boneyard,
+        players,
+        playerIndex,
+        actorUserId: currentTurnPlayerId,
+        tile: botMove.tile,
+        branch: botMove.branch,
+        nextBoard: move.board,
+        nextSpinnerValue: move.spinnerValue,
+        moveScore: move.moveScore,
+        phaseStartedAt: completedAt,
+        isSameTile: (candidate, submitted) => candidate.id === submitted.id,
+        canAnyPlayerMove: (candidateHands, candidateBoard, candidateSpinner) =>
+          canAnyPlayerMove(
+            candidateHands,
+            candidateBoard,
+            candidateSpinner,
             false,
             null,
-          )
-        ) {
-          const lowest = players.reduce(
-            (best, candidate, index) => {
-              const total = pipTotal(nextHands[index] ?? []);
-              return total < best.total ? { player: candidate, total } : best;
-            },
-            { player: players[0], total: pipTotal(nextHands[0] ?? []) },
-          );
-          roundWinner = lowest.player;
-          roundEndReason = "blocked";
-          // The player whose tile closed the board remains king next hand.
-          leaderPlayerId = currentTurnPlayerId;
-        }
-
-        if (roundWinner) {
-          const opponentPips = scoreOpponentPips(
-            nextHands,
-            players,
-            roundWinner.team_id,
-          );
-          const endScore = roundToNearestFive(opponentPips);
-          if (endScore > 0) {
-            nextScores[roundWinner.team_id] += endScore;
-            endOfHandScoringEvent = {
-              playerId: roundWinner.user_id,
-              teamId: roundWinner.team_id,
-              points: endScore,
-              openEndsTotal: opponentPips,
-            };
-          }
-          const finished = resolveMatchOutcome(
-            nextScores,
-            state.matchReward ?? null,
-          );
-          nextState = {
-            ...nextState,
-            currentTurnPlayerId: currentTurnPlayerId,
-            leaderPlayerId,
-            teamScores: nextScores,
-            lastScoringEvent,
-            endOfHandScoringEvent,
-            roundWinnerPlayerId: roundWinner.user_id,
-            roundEndReason,
-            winningTeamId: finished.winningTeamId,
-            matchReward: finished.matchReward,
-          };
-        } else {
-          nextState = {
-            ...nextState,
-            teamScores: nextScores,
-            lastScoringEvent,
-          };
-        }
+          ),
+      });
       action = "bot_play_tile";
       payload = {
         tile: botMove.tile,
@@ -598,39 +501,53 @@ serve(async (req) => {
         reason: "bot_takeover",
       };
     } else {
-      nextState = {
-        ...state,
-        currentTurnPlayerId: nextPlayerId,
-        lastPassedPlayerId: currentTurnPlayerId,
-        blockedPasses: Array.from(
-          new Set([...(state.blockedPasses ?? []), currentTurnPlayerId]),
-        ),
-        canDrawTile: false,
-      };
+      transition = reduceTwoVsTwoBotPass({
+        state,
+        hands,
+        boneyard,
+        players,
+        playerIndex,
+        currentTurnPlayerId,
+      });
     }
 
-    const { data: updatedRoom, error: commitError } = await svc.rpc("commit_multiplayer_action", {
-      p_mode: mode,
-      p_room_id: room_id,
-      p_expected_version: room.version,
-      p_state: nextState,
-      p_hands: nextHands,
-      p_boneyard: nextBoneyard,
-      p_current_turn_player_id: nextState.currentTurnPlayerId ?? nextPlayerId,
-      // Keep a completed 2v2 round active until the leave-forfeit resolver has
-      // had the chance to override a normal score win.
-      p_status: mode === "2v2" && nextState.roundWinnerPlayerId ? "active" : null,
-      p_player_id: currentTurnPlayerId,
-      p_action: action,
-      p_payload: payload,
+    transition = finalizeTwoVsTwoRound({
+      transition,
+      players,
+      roomId: room_id,
+      committedVersion: Number(room.version) + 1,
+      completedAt,
+      shuffleSeed: crypto.getRandomValues(new Uint32Array(1))[0],
     });
+    const {
+      nextState,
+      nextHands,
+      nextBoneyard,
+      nextTurnPlayerId: nextPlayerId,
+    } = transition;
+    const { data: updatedRoom, error: commitError } = await svc.rpc(
+      "commit_multiplayer_action",
+      buildTwoVsTwoCommit({
+        roomId: room_id,
+        expectedVersion: room.version,
+        state: nextState,
+        hands: nextHands,
+        boneyard: nextBoneyard,
+        currentTurnPlayerId: nextState.currentTurnPlayerId ?? nextPlayerId,
+        status: nextState.roundWinnerPlayerId ? "active" : null,
+        playerId: currentTurnPlayerId,
+        action,
+        payload,
+      }),
+    );
     if (commitError) {
       if (commitError.message?.includes("STALE_GAME_STATE"))
-        return json({ error: "Stale room state, please retry" }, 409);
+        return json({ ok: true, processed: false, reason: "stale_game_state" });
       throw commitError;
     }
 
     if (nextState.roundWinnerPlayerId) {
+      await svc.from("two_vs_two_players").update({ consecutive_timeout_strikes: 0 }).eq("room_id", room_id);
       const { data: forfeit, error: forfeitErr } = await svc.rpc(
         names.resolveForfeits,
         { p_room_id: room_id },
@@ -665,8 +582,9 @@ serve(async (req) => {
       state: updatedRoom?.state ?? nextState,
     });
   } catch (err) {
-    console.error("process_bot_turns error", err);
-    return json({ error: err?.message ?? String(err) }, 500);
+    const failure = describeDominoOneVsOneServerError(err);
+    console.error("process_bot_turns error", failure);
+    return json({ error: failure.message, failure }, 500);
   }
 });
 

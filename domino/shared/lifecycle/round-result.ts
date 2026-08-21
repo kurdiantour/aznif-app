@@ -1,4 +1,4 @@
-import type { DominoTileData, RoundResult, TeamId } from '@/types/game';
+import type { DominoTileData, RoundResult, TeamId } from '@/domino/types/domino-game';
 
 export function buildRoundResult({
   winnerId,

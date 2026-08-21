@@ -25,6 +25,7 @@ export function useDominoOneVsOneConnectionController(args: {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const startInFlightRef = useRef(false);
   const pollInFlightRef = useRef(false);
+  const takeoverRosterInFlightRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectPolicyRef = useRef(new RealtimeReconnectPolicy());
@@ -209,6 +210,28 @@ export function useDominoOneVsOneConnectionController(args: {
     refreshPlayers,
   ]);
 
+  useEffect(() => {
+    if (!args.roomId || args.loading) return;
+
+    const reconcileTakeoverRoster = async () => {
+      if (takeoverRosterInFlightRef.current) return;
+      takeoverRosterInFlightRef.current = true;
+      try {
+        await refreshPlayers(false);
+      } catch (error) {
+        console.warn("1v1 takeover roster reconcile failed", error);
+      } finally {
+        takeoverRosterInFlightRef.current = false;
+      }
+    };
+
+    void reconcileTakeoverRoster();
+    const interval = setInterval(() => void reconcileTakeoverRoster(), 2_000);
+    return () => {
+      clearInterval(interval);
+      takeoverRosterInFlightRef.current = false;
+    };
+  }, [args.roomId, args.loading, refreshPlayers]);
   useEffect(() => {
     if (!args.roomId || args.loading || !args.adapter || !args.rawState) return;
     if (

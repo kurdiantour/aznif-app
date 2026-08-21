@@ -1,5 +1,5 @@
 import type { AvatarId } from '@/constants/avatars';
-import { FULL_DOMINO_SET } from '@/constants/domino-set';
+import { FULL_DOMINO_SET } from '@/domino/core/constants/domino-set';
 import { dealDominoHands } from '@/domino/core/setup/deal';
 import { shuffleArray } from '@/domino/core/setup/shuffle';
 import { calculateMatchReward, getFinalMatchWinner } from '@/domino/core/rules/match-rules';
@@ -7,14 +7,15 @@ import {
     getHandPipTotal,
     roundToNearestFive,
 } from '@/domino/core/engine/kozel-engine';
-import {
+import type {
     DominoTileData,
     KozelBoardState,
     KozelBranch,
     Player,
     TeamId,
-} from '@/types/game';
-import { MutableRefObject } from 'react';
+} from '@/domino/types/domino-game';
+import type { MutableRefObject } from 'react';
+import { assignDominoBotIdentities } from './bot-identity.ts';
 
 export { calculateMatchReward };
 
@@ -28,7 +29,9 @@ export const ROUND_RESULT_REVEAL_MS = 9_340;
 export const BLOCKED_RESULT_REVEAL_MS = 10_000;
 export const ROUND_TRANSITION_SYNC_MS = 1000;
 export const MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN = 3;
-export const PLAYER_TURN_DURATION_SECONDS = 20;
+export {
+  DOMINO_HUMAN_TURN_DURATION_SECONDS as PLAYER_TURN_DURATION_SECONDS,
+} from './timing/domino-turn-timer.ts';
 
 export type SeatDefinition = {
   id: string;
@@ -40,6 +43,12 @@ export type SeatDefinition = {
 };
 
 export function createTwoVsTwoSeats(): SeatDefinition[] {
+  const botIdentities = assignDominoBotIdentities([
+    { id: 'p1', playerIndex: 0 },
+    { id: 'p2', playerIndex: 1 },
+    { id: 'p3', playerIndex: 2 },
+    { id: 'p4', playerIndex: 3 },
+  ]);
   return [
     {
       id: 'p1',
@@ -51,7 +60,7 @@ export function createTwoVsTwoSeats(): SeatDefinition[] {
     },
     {
       id: 'p2',
-      name: 'Sara',
+      name: botIdentities.get('p2')!.name,
       avatarId: 'avatar-1',
       seat: 'left',
       kind: 'bot',
@@ -59,7 +68,7 @@ export function createTwoVsTwoSeats(): SeatDefinition[] {
     },
     {
       id: 'p3',
-      name: 'AI Bot',
+      name: botIdentities.get('p3')!.name,
       avatarId: 'bot-avatar',
       seat: 'top',
       kind: 'bot',
@@ -67,7 +76,7 @@ export function createTwoVsTwoSeats(): SeatDefinition[] {
     },
     {
       id: 'p4',
-      name: 'Miran',
+      name: botIdentities.get('p4')!.name,
       avatarId: 'avatar-4',
       seat: 'right',
       kind: 'bot',

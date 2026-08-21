@@ -3,7 +3,7 @@ import type { AvatarId } from "@/constants/avatars";
 import { sendFriendRequest } from "@/lib/friends";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
-import type { Player } from "@/types/game";
+import type { Player } from "@/domino/types/domino-game";
 import { BlurView } from "expo-blur";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";

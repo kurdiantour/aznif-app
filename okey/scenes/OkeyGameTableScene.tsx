@@ -73,7 +73,7 @@ import type {
   OkeyMeld,
   OkeyTeamId,
   OkeyTile,
-} from "@/okey/types/okey";import type { Player } from "@/types/game";
+} from "@/okey/types/okey";import type { Player } from "@/domino/types/domino-game";
 
 
 const OKEY_TURN_DURATION_SECONDS = 20;

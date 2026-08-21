@@ -1,5 +1,6 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { Player } from "@/types/game";
+import { DOMINO_HUMAN_TURN_DURATION_SECONDS } from "@/domino/shared/timing/domino-turn-timer";
+import { Player } from "@/domino/types/domino-game";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -23,7 +24,7 @@ type Props = {
   onPress?: () => void;
 };
 
-const TURN_DURATION_SECONDS = 20;
+const TURN_DURATION_SECONDS = DOMINO_HUMAN_TURN_DURATION_SECONDS;
 const TURN_RING_SIZE = 44;
 const TURN_RING_STROKE_WIDTH = 4;
 

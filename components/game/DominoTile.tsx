@@ -1,4 +1,4 @@
-import { DominoTileData } from "@/types/game";
+import { DominoTileData } from "@/domino/types/domino-game";
 import { Image } from "expo-image";
 import { StyleSheet, View } from "react-native";
 

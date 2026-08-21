@@ -1,9 +1,10 @@
+import { DOMINO_HUMAN_TURN_DURATION_MS } from '../../../shared/timing/domino-turn-timer.ts';
 export type DominoPipTile = Readonly<{ left: number; right: number }>;
 
 export const DOMINO_ONE_VS_ONE_RULES = Object.freeze({
   playerCount: 2,
   maximumHumanDrawsPerTurn: 3,
-  turnDurationMs: 20_000,
+  turnDurationMs: DOMINO_HUMAN_TURN_DURATION_MS,
   teamByPlayerIndex: ["teamA", "teamB"] as const,
 });
 

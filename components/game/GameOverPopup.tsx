@@ -6,7 +6,10 @@ import {
   View,
 } from "react-native";
 
-import type { MatchReward } from "@/types/game";
+import type {
+  MatchReward,
+  TeamId,
+} from "@/domino/types/domino-game";
 
 type GameOverPopupProps = {
   visible: boolean;
@@ -17,6 +20,9 @@ type GameOverPopupProps = {
     teamA: number;
     teamB: number;
   };
+  teamAName?: string;
+  teamBName?: string;
+  winningTeamId?: TeamId | null;
   finishReason?: string | null;
   onClose: () => void;
   onPlayAgain: () => void;
@@ -28,6 +34,9 @@ export default function GameOverPopup({
   isPracticeMode = false,
   reward,
   teamScores,
+  teamAName = "Team A",
+  teamBName = "Team B",
+  winningTeamId,
   finishReason,
   onClose,
 }: GameOverPopupProps) {
@@ -82,9 +91,7 @@ export default function GameOverPopup({
               accessibilityRole="header"
               style={styles.title}
             >
-              {
-                "\u0626\u06d5\u0646\u062c\u0627\u0645\u06cc \u06cc\u0627\u0631\u06cc"
-              }
+              {"ئەنجامی یاری"}
             </Text>
 
             <Text style={styles.titleStar}>
@@ -118,11 +125,21 @@ export default function GameOverPopup({
             <View style={styles.section}>
               <View style={styles.scoreRow}>
                 <View style={styles.scoreSide}>
-                  <Text style={styles.scoreLabel}>
-                    تیمی ئێوە
+                  <Text
+                    style={styles.scoreLabel}
+                    numberOfLines={1}
+                  >
+                    {teamAName}
                   </Text>
 
-                  <Text style={styles.teamAScore}>
+                  <Text
+                    style={[
+                      styles.scoreValue,
+                      winningTeamId === "teamA"
+                        ? styles.winnerScore
+                        : styles.loserScore,
+                    ]}
+                  >
                     {teamScores.teamA}
                   </Text>
                 </View>
@@ -130,11 +147,21 @@ export default function GameOverPopup({
                 <View style={styles.scoreDivider} />
 
                 <View style={styles.scoreSide}>
-                  <Text style={styles.scoreLabel}>
-                    تیمی بەرامبەر
+                  <Text
+                    style={styles.scoreLabel}
+                    numberOfLines={1}
+                  >
+                    {teamBName}
                   </Text>
 
-                  <Text style={styles.teamBScore}>
+                  <Text
+                    style={[
+                      styles.scoreValue,
+                      winningTeamId === "teamB"
+                        ? styles.winnerScore
+                        : styles.loserScore,
+                    ]}
+                  >
                     {teamScores.teamB}
                   </Text>
                 </View>
@@ -145,9 +172,7 @@ export default function GameOverPopup({
           {reward ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                {
-                  "\u062e\u06d5\u06b5\u0627\u062a\u06d5\u06a9\u0627\u0646"
-                }
+                {"خەڵاتەکان"}
               </Text>
 
               <View style={styles.rewardRow}>
@@ -180,53 +205,53 @@ export default function GameOverPopup({
 
                 {!isAznifMatch && !isPracticeMode ? (
                   <View style={styles.rewardCard}>
-                      <Text style={styles.rewardIcon}>
-                        {"\u{1F48E}"}
+                    <Text style={styles.rewardIcon}>
+                      {"\u{1F48E}"}
+                    </Text>
+
+                    <View style={styles.rewardValueRow}>
+                      <Text
+                        style={[
+                          styles.rewardValue,
+                          rewardValueStyle(
+                            reward.gem,
+                          ),
+                        ]}
+                      >
+                        {formatDelta(reward.gem)}
                       </Text>
 
-                      <View style={styles.rewardValueRow}>
-                        <Text
-                          style={[
-                            styles.rewardValue,
-                            rewardValueStyle(
-                              reward.gem,
-                            ),
-                          ]}
-                        >
-                          {formatDelta(reward.gem)}
-                        </Text>
-
-                        <Text style={styles.rewardLabel}>
-                          گەوهەر
-                        </Text>
-                      </View>
+                      <Text style={styles.rewardLabel}>
+                        گەوهەر
+                      </Text>
+                    </View>
                   </View>
                 ) : null}
 
                 {!isAznifMatch ? (
                   <View style={styles.rewardCard}>
-                      <Text style={styles.rewardIcon}>
-                        {"\u2B50"}
+                    <Text style={styles.rewardIcon}>
+                      {"\u2B50"}
+                    </Text>
+
+                    <View style={styles.rewardValueRow}>
+                      <Text
+                        style={[
+                          styles.rewardValue,
+                          rewardValueStyle(
+                            reward.points,
+                          ),
+                        ]}
+                      >
+                        {formatDelta(
+                          reward.points,
+                        )}
                       </Text>
 
-                      <View style={styles.rewardValueRow}>
-                        <Text
-                          style={[
-                            styles.rewardValue,
-                            rewardValueStyle(
-                              reward.points,
-                            ),
-                          ]}
-                        >
-                          {formatDelta(
-                            reward.points,
-                          )}
-                        </Text>
-
-                        <Text style={styles.rewardLabel}>
-                          Point
-                        </Text>
-                      </View>
+                      <Text style={styles.rewardLabel}>
+                        Point
+                      </Text>
+                    </View>
                   </View>
                 ) : null}
               </View>
@@ -395,18 +420,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  teamAScore: {
+  scoreValue: {
     marginTop: 4,
-    color: "#7db0ff",
     fontSize: 24,
     fontFamily: "RobotoMedium",
   },
 
-  teamBScore: {
-    marginTop: 4,
+  winnerScore: {
+    color: "#7db0ff",
+  },
+
+  loserScore: {
     color: "#ff8585",
-    fontSize: 24,
-    fontFamily: "RobotoMedium",
   },
 
   rewardRow: {

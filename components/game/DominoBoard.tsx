@@ -1,6 +1,6 @@
 import DominoTile from "@/components/game/DominoTile";
-import { createPlacedTile } from "@/lib/game/kozel-engine";
-import { DominoTileData, GameState, KozelBranch } from "@/types/game";
+import { createPlacedTile } from "@/domino/core/engine/kozel-engine";
+import { DominoTileData, GameState, KozelBranch } from "@/domino/types/domino-game";
 import { createContext, useContext, useMemo } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 

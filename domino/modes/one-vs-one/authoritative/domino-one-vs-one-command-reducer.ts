@@ -225,6 +225,12 @@ export function reduceOneVsOnePlay(input: {
     nextHands: any[][],
     nextState: DominoOneVsOneAuthoritativeState,
   ) => boolean;
+  isHandPlayable: (
+    playerIndex: number,
+    nextHands: any[][],
+    nextState: DominoOneVsOneAuthoritativeState,
+  ) => boolean;
+  isBoneyardPlayable: (nextState: DominoOneVsOneAuthoritativeState) => boolean;
 }) {
   if (input.players.length !== 2 || input.hands.length !== 2) {
     throw new Error("domino_1v1_requires_exactly_two_players_and_hands");
@@ -327,16 +333,73 @@ export function reduceOneVsOnePlay(input: {
   };
 
   if (!roundWinnerPlayerId) {
-    const canDrawTile = input.canNextPlayerDraw(
-      nextTurnPlayerId,
+    const currentPlayerCanPlay = input.isHandPlayable(
+      input.playerIndex,
       nextHands,
       nextState,
     );
-    nextState = {
-      ...nextState,
-      canDrawTile,
-      drawStartedAt: canDrawTile ? input.phaseStartedAt : null,
-    };
+    const nextPlayerCanPlay = input.isHandPlayable(
+      nextPlayerIndex,
+      nextHands,
+      nextState,
+    );
+    const boneyardCanPlay =
+      input.boneyard.length > 0 && input.isBoneyardPlayable(nextState);
+
+    // Qapat is authoritative and immediate: after a tile changes the board,
+    // if neither player can move and the boneyard cannot rescue the hand,
+    // the round ends now. No draw/pass cycle is allowed first.
+    if (!currentPlayerCanPlay && !nextPlayerCanPlay && !boneyardCanPlay) {
+      const handResult = resolveBlockedHand(nextHands);
+      const winner = input.players[handResult.winnerIndex];
+
+      if (handResult.awardedPoints > 0) {
+        nextScores[winner.team_id] += handResult.awardedPoints;
+        endOfHandScoringEvent = {
+          playerId: winner.user_id,
+          teamId: winner.team_id,
+          points: handResult.awardedPoints,
+          openEndsTotal: handResult.remainingPips,
+        };
+      }
+
+      const finished = resolveMatchOutcome(
+        nextScores,
+        input.state.matchReward ?? null,
+      );
+      roundWinnerPlayerId = winner.user_id;
+      winningTeamId = finished.winningTeamId;
+      reward = finished.matchReward;
+      nextTurnPlayerId = input.actorUserId;
+
+      nextState = {
+        ...nextState,
+        currentTurnPlayerId: nextTurnPlayerId,
+        leaderPlayerId: input.actorUserId,
+        teamScores: nextScores,
+        roundWinnerPlayerId,
+        roundEndReason: "blocked",
+        revealedFinalHands: nextHands,
+        winningTeamId,
+        matchReward: reward,
+        endOfHandScoringEvent,
+        endOfHandScoreApplied: true,
+        canDrawTile: false,
+        drawStartedAt: null,
+        blockedPasses: [],
+      };
+    } else {
+      const canDrawTile = input.canNextPlayerDraw(
+        nextTurnPlayerId,
+        nextHands,
+        nextState,
+      );
+      nextState = {
+        ...nextState,
+        canDrawTile,
+        drawStartedAt: canDrawTile ? input.phaseStartedAt : null,
+      };
+    }
   }
 
   return {

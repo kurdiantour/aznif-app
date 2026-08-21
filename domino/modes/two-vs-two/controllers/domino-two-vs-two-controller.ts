@@ -1,6 +1,6 @@
 import { applyMove } from '@/domino/core/engine/kozel-engine';
-import { boardContainsMove, type PendingMultiplayerMove } from '@/lib/multiplayer/optimisticMove';
-import type { DominoTileData, KozelBoardState, KozelBranch } from '@/types/game';
+import { boardContainsMove, type PendingMultiplayerMove } from '@/domino/shared/optimistic/domino-optimistic-move';
+import type { DominoTileData, KozelBoardState, KozelBranch } from '@/domino/types/domino-game';
 
 export function normalizeDominoTwoVsTwoSnapshot(snapshot: any) {
   const room = snapshot?.room ?? snapshot ?? {};

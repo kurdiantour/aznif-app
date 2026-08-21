@@ -1,5 +1,5 @@
-import { MAX_PLAYERS } from "@/constants/game";
-import { DominoTileData } from "@/types/game";
+import { MAX_PLAYERS } from "@/domino/core/constants/domino-game";
+import type { DominoTileData } from "@/domino/types/domino-game";
 
 export type DealResult = {
   hands: DominoTileData[][];

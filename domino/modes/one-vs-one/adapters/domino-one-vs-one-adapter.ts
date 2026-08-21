@@ -1,4 +1,4 @@
-import type { DominoTileData, KozelBranch } from "@/types/game";
+import type { DominoTileData, KozelBranch } from "@/domino/types/domino-game";
 
 export type DominoOneVsOneTurnTimeoutClaim = {
   expectedVersion: number;

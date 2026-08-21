@@ -210,14 +210,14 @@ for (const required of [
 }
 
 
-const twoVsTwoHook = read("domino/modes/two-vs-two/presentation/use-two-vs-two-game.ts");
+const twoVsTwoAdapter = read("domino/modes/two-vs-two/adapters/domino-two-vs-two-supabase-api.ts");
 
 const oneVsOneAdapter = read(
   "domino/modes/one-vs-one/adapters/supabase-domino-one-vs-one-adapter.ts",
 );
 const dominoProfileSources = [
   ["1v1", oneVsOneAdapter],
-  ["2v2", twoVsTwoHook],
+  ["2v2", twoVsTwoAdapter],
 ];
 for (const [label, source] of dominoProfileSources) {
   if (matches(source, /\bcups\b/)) {

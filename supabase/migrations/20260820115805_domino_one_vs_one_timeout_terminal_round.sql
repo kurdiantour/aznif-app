@@ -84,7 +84,8 @@ DECLARE
   v_terminal_move_action text;
   v_terminal_move_payload jsonb;
 BEGIN
-  SELECT * INTO v_room
+  SELECT *
+  INTO v_room
   FROM public.one_vs_one_rooms
   WHERE id = p_room_id
   FOR UPDATE;
@@ -99,8 +100,8 @@ BEGIN
     RETURN jsonb_build_object('forfeit', false);
   END IF;
 
-  SELECT player, terminal_event.action
-  INTO v_taken_over_player, v_takeover_action
+  SELECT player
+  INTO v_taken_over_player
   FROM public.one_vs_one_players AS player
   JOIN LATERAL (
     SELECT move.action
@@ -121,6 +122,15 @@ BEGIN
   IF NOT FOUND THEN
     RETURN jsonb_build_object('forfeit', false);
   END IF;
+
+  SELECT move.action
+  INTO v_takeover_action
+  FROM public.one_vs_one_moves AS move
+  WHERE move.room_id = p_room_id
+    AND move.player_id = v_taken_over_player.user_id
+    AND move.action IN ('manual_leave_takeover', 'timeout_takeover')
+  ORDER BY move.sequence DESC
+  LIMIT 1;
 
   v_winning_team := CASE
     WHEN v_taken_over_player.team_id = 'teamA' THEN 'teamB'
@@ -224,7 +234,10 @@ BEGIN
     RETURN public.resolve_one_vs_one_terminal_round(p_room_id);
   END IF;
 
-  RAISE EXCEPTION 'unsupported_terminal_round_scope:%:%', p_game, p_mode;
+  RAISE EXCEPTION
+    'unsupported_terminal_round_scope:%:%',
+    p_game,
+    p_mode;
 END;
 $$;
 
@@ -237,7 +250,11 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT public.resolve_multiplayer_terminal_round('domino', '1v1', p_room_id);
+  SELECT public.resolve_multiplayer_terminal_round(
+    'domino',
+    '1v1',
+    p_room_id
+  );
 $$;
 
 CREATE OR REPLACE FUNCTION public.finalize_one_vs_one_takeover_after_round()
@@ -254,34 +271,51 @@ BEGIN
        OR NULLIF(OLD.state ->> 'roundWinnerPlayerId', '') IS NULL
      )
   THEN
-    PERFORM public.resolve_multiplayer_terminal_round('domino', '1v1', NEW.id);
+    PERFORM public.resolve_multiplayer_terminal_round(
+      'domino',
+      '1v1',
+      NEW.id
+    );
   END IF;
 
   RETURN NEW;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.apply_one_vs_one_timeout_strike_takeover(uuid, uuid)
+REVOKE ALL
+ON FUNCTION public.apply_one_vs_one_timeout_strike_takeover(uuid, uuid)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.apply_one_vs_one_timeout_strike_takeover(uuid, uuid)
+
+GRANT EXECUTE
+ON FUNCTION public.apply_one_vs_one_timeout_strike_takeover(uuid, uuid)
 TO service_role;
 
-REVOKE ALL ON FUNCTION public.resolve_one_vs_one_terminal_round(uuid)
+REVOKE ALL
+ON FUNCTION public.resolve_one_vs_one_terminal_round(uuid)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.resolve_one_vs_one_terminal_round(uuid)
+
+GRANT EXECUTE
+ON FUNCTION public.resolve_one_vs_one_terminal_round(uuid)
 TO service_role;
 
-REVOKE ALL ON FUNCTION public.resolve_multiplayer_terminal_round(text, text, uuid)
+REVOKE ALL
+ON FUNCTION public.resolve_multiplayer_terminal_round(text, text, uuid)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.resolve_multiplayer_terminal_round(text, text, uuid)
+
+GRANT EXECUTE
+ON FUNCTION public.resolve_multiplayer_terminal_round(text, text, uuid)
 TO service_role;
 
-REVOKE ALL ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid)
+REVOKE ALL
+ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid)
+
+GRANT EXECUTE
+ON FUNCTION public.resolve_one_vs_one_round_leave_forfeits(uuid)
 TO service_role;
 
-REVOKE ALL ON FUNCTION public.finalize_one_vs_one_takeover_after_round()
+REVOKE ALL
+ON FUNCTION public.finalize_one_vs_one_takeover_after_round()
 FROM PUBLIC, anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';

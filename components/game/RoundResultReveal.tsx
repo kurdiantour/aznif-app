@@ -1,4 +1,4 @@
-import type { Player, RoundResult } from "@/types/game";
+import type { Player, RoundResult } from "@/domino/types/domino-game";
 import { useEffect, useRef } from "react";
 import {
   Animated,

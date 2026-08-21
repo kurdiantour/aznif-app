@@ -1,4 +1,4 @@
-import type { MatchReward } from "@/types/game";
+import type { MatchReward } from "@/domino/types/domino-game";
 import {
   Pressable,
   StyleSheet,

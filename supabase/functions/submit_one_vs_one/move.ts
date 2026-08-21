@@ -1,4 +1,5 @@
 
+import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { runDominoOneVsOnePostCommitLifecycle } from "../../../domino/modes/one-vs-one/lifecycle/domino-one-vs-one-post-commit-lifecycle.ts";
 import { buildOneVsOneMoveCommit } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-commit-contract.ts";
@@ -231,6 +232,28 @@ export default async function handler(req: Request) {
         boneyard,
         nextState,
       ),
+      isHandPlayable: (targetPlayerIndex, nextHands, nextState) => {
+        const ruleArgs = [
+          nextState.board,
+          nextState.spinnerValue ?? null,
+          nextState.isOpeningRound ?? nextState.isFirstRound ?? true,
+          typeof nextState.openingDouble === "number"
+            ? nextState.openingDouble
+            : null,
+        ] as const;
+        return canHandMove(nextHands[targetPlayerIndex] ?? [], ...ruleArgs);
+      },
+      isBoneyardPlayable: (nextState) => {
+        const ruleArgs = [
+          nextState.board,
+          nextState.spinnerValue ?? null,
+          nextState.isOpeningRound ?? nextState.isFirstRound ?? true,
+          typeof nextState.openingDouble === "number"
+            ? nextState.openingDouble
+            : null,
+        ] as const;
+        return canHandMove(boneyard, ...ruleArgs);
+      },
     });
     const {
       nextState,
@@ -265,7 +288,8 @@ export default async function handler(req: Request) {
       200,
     );
   } catch (err) {
-    console.error("submit_one_vs_one action=move error", err);
-    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    const failure = describeDominoOneVsOneServerError(err);
+    console.error("submit_one_vs_one action=move error", failure);
+    return json({ error: failure.message, failure }, 500);
   }
 }

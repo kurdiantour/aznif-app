@@ -1,5 +1,5 @@
 import { canHandMove, getPlayableBranches } from '@/domino/core/engine/kozel-engine';
-import type { DominoTileData, KozelBoardState, KozelBranch } from '@/types/game';
+import type { DominoTileData, KozelBoardState, KozelBranch } from '@/domino/types/domino-game';
 
 export type PlayabilityContext = {
   board: KozelBoardState;

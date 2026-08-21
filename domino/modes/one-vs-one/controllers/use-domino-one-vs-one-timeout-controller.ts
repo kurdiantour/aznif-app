@@ -4,8 +4,9 @@ import type {
   DominoOneVsOneTurnTimeoutClaim,
 } from "../adapters/domino-one-vs-one-adapter";
 import { MultiplayerRequestError } from "@/lib/multiplayer/core/http-command-client";
-import { getSnapshotVersion } from "@/lib/multiplayer/optimisticMove";
+import { getSnapshotVersion } from "@/lib/multiplayer/core/versioning";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { projectDominoTurnSecondsLeft } from "@/domino/shared/timing/domino-turn-timer";
 
 const DRAW_PHASE_DURATION_SECONDS = 5;
 
@@ -62,6 +63,12 @@ export function useDominoOneVsOneTimeoutController(args: {
     clearDrawRetry();
   }, [clearPassRetry, clearDrawRetry]);
 
+  // The initial authoritative snapshot can arrive before the presentation
+  // observer ref is registered. Always seed the timeout identity from state.
+  useEffect(() => {
+    if (args.rawState) acceptSnapshot(args.rawState);
+  }, [args.rawState, acceptSnapshot]);
+
   useEffect(() => () => {
     activeTurnKeyRef.current = null;
     activeDrawKeyRef.current = null;
@@ -76,9 +83,11 @@ export function useDominoOneVsOneTimeoutController(args: {
     if (args.rawState?.canDrawTile === true) return;
     const startedAt = Date.parse(args.rawState?.turnStartedAt ?? args.rawState?.updated_at ?? "");
     const update = () => {
-      const elapsed = Number.isFinite(startedAt)
-        ? Math.floor((Date.now() + serverClockOffsetMsRef.current - startedAt) / 1000) : 0;
-      setTurnTimeLeft(Math.max(0, args.turnDurationSeconds - elapsed));
+      setTurnTimeLeft(projectDominoTurnSecondsLeft({
+        turnStartedAtMs: startedAt,
+        nowMs: Date.now() + serverClockOffsetMsRef.current,
+        durationSeconds: args.turnDurationSeconds,
+      }));
     };
     update();
     const timer = setInterval(update, 250);

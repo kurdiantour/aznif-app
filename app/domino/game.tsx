@@ -15,16 +15,15 @@ import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import MiniScoreBoard from "@/components/game/MiniScoreBoard";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { PLAYER_TURN_DURATION_SECONDS } from "@/domino/shared/game-shared";
-import { useGame } from "@/hooks/useGame";
-import { useGameSounds } from "@/hooks/useGameSounds";
+import { useGameSounds } from "@/domino/shared/presentation/use-domino-game-sounds";
 import { useOneVsOneGame } from "@/domino/modes/one-vs-one/presentation/use-one-vs-one-game";
 import { useRoundPresentation } from "@/domino/shared/presentation/use-round-presentation";
 import { useTwoVsTwoGame } from "@/domino/modes/two-vs-two";
-import { awardAiPracticeWin } from "@/lib/aiPracticeRewards";
-import { calculateMoveScore } from "@/lib/game/kozel-engine";
+import { awardAiPracticeWin, useAiPracticeGame } from "@/domino/modes/ai-practice";
+import { calculateMoveScore } from "@/domino/core/engine/kozel-engine";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/types/game";
+import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/domino/types/domino-game";
 import { Ionicons } from "@expo/vector-icons";
 import { useKeepAwake } from "expo-keep-awake";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
@@ -65,7 +64,7 @@ export default function GameScreen() {
   const isPracticeMode = practice === "true";
   const isLocalGame = isPracticeMode;
 
-  const practiceGame = useGame(gameMode, true);
+  const practiceGame = useAiPracticeGame();
 
   const oneVsOneGame = useOneVsOneGame(
     !isLocalGame && gameMode === "1v1" ? roomId : undefined,
@@ -124,6 +123,7 @@ export default function GameScreen() {
   const [blockedIntroComplete, setBlockedIntroComplete] = useState(false);
 
   const gameInitializedRef = useRef(false);
+  const takeoverExitStartedRef = useRef(false);
   const practiceRewardSettlementRequestedRef = useRef(false);
   const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
   const boardAreaRef = useRef<any>(null);
@@ -155,9 +155,17 @@ useEffect(() => {
     !isLocalGame && gameMode === "1v1"
       ? ((game as any).currentUserId ?? null)
       : currentUserId;
+  const localPlayerTakenOver =
+    !isLocalGame && (game as any).localPlayerTakenOver === true;
 
   useEffect(() => {
+    if (!localPlayerTakenOver || takeoverExitStartedRef.current) return;
+    takeoverExitStartedRef.current = true;
+    router.replace("/(tabs)/play");
+  }, [localPlayerTakenOver, router]);
+  useEffect(() => {
     gameInitializedRef.current = false;
+    takeoverExitStartedRef.current = false;
     practiceRewardSettlementRequestedRef.current = false;
     practiceMatchIdRef.current = roomId || `${Date.now()}-${Math.random()}`;
   }, [roomId, gameMode, isLocalGame]);
@@ -960,6 +968,9 @@ useEffect(() => {
     teamA: game.teamScores?.teamA ?? 0,
     teamB: game.teamScores?.teamB ?? 0,
   }}
+  teamAName={scoreTeamAName}
+  teamBName={scoreTeamBName}
+  winningTeamId={game.winningTeamId}
   onClose={() => {
     setShowGameOverPopup(false);
     router.replace("/(tabs)/play");

@@ -27,6 +27,8 @@ test("play reducer removes one tile, scores the move and advances turn", () => {
     phaseStartedAt: "now",
     isSameTile: (left, right) => left.id === right.id,
     canNextPlayerDraw: () => true,
+    isHandPlayable: () => true,
+    isBoneyardPlayable: () => true,
   });
 
   assert.deepEqual(result.nextState.handCounts, [1, 1]);
@@ -56,6 +58,12 @@ test("empty hand ends the round, adds opponent pips and keeps actor as leader", 
     canNextPlayerDraw: () => {
       throw new Error("must_not_run_after_round_end");
     },
+    isHandPlayable: () => {
+      throw new Error("must_not_run_after_round_end");
+    },
+    isBoneyardPlayable: () => {
+      throw new Error("must_not_run_after_round_end");
+    },
   });
 
   assert.equal(result.nextState.roundWinnerPlayerId, "player-a");
@@ -81,5 +89,64 @@ test("play reducer rejects a tile not present in the authoritative hand", () => 
     phaseStartedAt: "now",
     isSameTile: (left, right) => left.id === right.id,
     canNextPlayerDraw: () => false,
+    isHandPlayable: () => false,
+    isBoneyardPlayable: () => false,
   }), /tile_not_found/);
 });
+
+test("play reducer ends qapat immediately when neither hand nor boneyard can move", () => {
+  const played = tile("6-6", 6, 6);
+  const result = reduceOneVsOnePlay({
+    state: { teamScores: { teamA: 0, teamB: 0 }, leaderPlayerId: "player-b" },
+    hands: [[played, tile("1-2", 1, 2)], [tile("3-4", 3, 4)]],
+    boneyard: [tile("0-0", 0, 0)],
+    players,
+    playerIndex: 0,
+    actorUserId: "player-a",
+    tile: played,
+    nextBoard: { centerTile: played },
+    nextSpinnerValue: 6,
+    moveScore: 0,
+    phaseStartedAt: "now",
+    isSameTile: (left, right) => left.id === right.id,
+    canNextPlayerDraw: () => {
+      throw new Error("must_not_offer_draw_after_qapat");
+    },
+    isHandPlayable: () => false,
+    isBoneyardPlayable: () => false,
+  });
+
+  assert.equal(result.nextState.roundEndReason, "blocked");
+  assert.equal(result.nextState.canDrawTile, false);
+  assert.equal(result.nextState.drawStartedAt, null);
+  assert.deepEqual(result.nextState.revealedFinalHands, result.nextHands);
+  assert.equal(result.nextState.leaderPlayerId, "player-a");
+  assert.equal(result.nextState.roundWinnerPlayerId, "player-a");
+  assert.equal(result.nextState.teamScores.teamA, 5);
+});
+
+test("play reducer does not declare qapat while boneyard has a playable rescue tile", () => {
+  const played = tile("6-6", 6, 6);
+  const result = reduceOneVsOnePlay({
+    state: { teamScores: { teamA: 0, teamB: 0 } },
+    hands: [[played, tile("1-2", 1, 2)], [tile("3-4", 3, 4)]],
+    boneyard: [tile("6-0", 6, 0)],
+    players,
+    playerIndex: 0,
+    actorUserId: "player-a",
+    tile: played,
+    nextBoard: { centerTile: played },
+    nextSpinnerValue: 6,
+    moveScore: 0,
+    phaseStartedAt: "now",
+    isSameTile: (left, right) => left.id === right.id,
+    canNextPlayerDraw: () => true,
+    isHandPlayable: () => false,
+    isBoneyardPlayable: () => true,
+  });
+
+  assert.equal(result.nextState.roundEndReason, null);
+  assert.equal(result.nextState.canDrawTile, true);
+  assert.equal(result.nextState.drawStartedAt, "now");
+});
+

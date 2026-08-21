@@ -1,4 +1,4 @@
-import type { PlayerSeatPosition } from '@/types/game';
+export type MultiplayerSeatPosition = 'bottom' | 'left' | 'top' | 'right';
 
 export function getPlayerIndex(
   rows: any[],
@@ -13,7 +13,7 @@ export function getRelativeSeat(
   playerIndex: number,
   myPlayerIndex: number,
   seatCount: 2 | 4,
-): PlayerSeatPosition {
+): MultiplayerSeatPosition {
   if (seatCount === 2) return playerIndex === myPlayerIndex ? 'bottom' : 'top';
 
   const offset = (playerIndex - myPlayerIndex + seatCount) % seatCount;

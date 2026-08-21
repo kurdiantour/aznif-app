@@ -5,7 +5,7 @@ import {
   reconcileOptimisticCommand,
 } from "@/lib/multiplayer/core/versioning";
 import type { OptimisticCommand } from "@/lib/multiplayer/core/types";
-import type { DominoTileData, KozelBoardState, KozelBranch } from "@/types/game";
+import type { DominoTileData, KozelBoardState, KozelBranch } from "@/domino/types/domino-game";
 
 export type DominoOneVsOneMovePayload = { tile: DominoTileData; branch: KozelBranch };
 export type DominoOneVsOneOptimisticMove = OptimisticCommand<

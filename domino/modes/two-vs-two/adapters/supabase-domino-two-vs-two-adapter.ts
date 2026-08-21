@@ -4,7 +4,6 @@ import {
   getDominoTwoVsTwoRoster,
   getDominoTwoVsTwoSnapshot,
   processDominoTwoVsTwoBotTurn,
-  startDominoTwoVsTwoNextHand,
   submitDominoTwoVsTwoMove,
   submitDominoTwoVsTwoPass,
 } from './domino-two-vs-two-supabase-api';
@@ -54,12 +53,6 @@ export class SupabaseDominoTwoVsTwoAdapter implements DominoTwoVsTwoAdapter {
 
   processBotTurn() {
     return processDominoTwoVsTwoBotTurn(this.roomId);
-  }
-
-  async startNextHand() {
-    const { data, error } = await startDominoTwoVsTwoNextHand(this.roomId);
-    if (error) throw error;
-    return data;
   }
 
   subscribe(observer: DominoTwoVsTwoSubscription) {

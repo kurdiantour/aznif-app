@@ -18,7 +18,9 @@ const twoVsTwoPassSource = readFileSync(
   "supabase/functions/submit_two_vs_two/pass.ts",
   "utf8",
 );
-const twoVsTwoHookSource = readFileSync("domino/modes/two-vs-two/presentation/use-two-vs-two-game.ts", "utf8");
+const twoVsTwoHookSource = readFileSync("domino/modes/two-vs-two/controllers/use-domino-two-vs-two-controller.ts", "utf8");
+const twoVsTwoCommitContractSource = readFileSync("domino/modes/two-vs-two/server/domino-two-vs-two-commit-contract.ts", "utf8");
+const twoVsTwoTimeoutControllerSource = readFileSync("domino/modes/two-vs-two/controllers/domino-two-vs-two-timeout-controller.ts", "utf8");
 const okeyMatchSource = readFileSync(
   "supabase/functions/okey_match/index.ts",
   "utf8",
@@ -28,13 +30,22 @@ const okeyAdapterSource = readFileSync(
   "utf8",
 );
 const apiSource = readFileSync(
-  "lib/multiplayer/multiplayerApi.ts",
+  "domino/modes/two-vs-two/adapters/domino-two-vs-two-supabase-api.ts",
   "utf8",
 );
 const timeoutControllerSource = readFileSync(
   "domino/modes/one-vs-one/controllers/use-domino-one-vs-one-timeout-controller.ts",
   "utf8",
 );
+
+const dominoTurnTimerSource = readFileSync(
+  "domino/shared/timing/domino-turn-timer.ts",
+  "utf8",
+);
+const dominoPlayerSeatSource = readFileSync("components/game/PlayerSeat.tsx", "utf8");
+const dominoGameScreenSource = readFileSync("app/domino/game.tsx", "utf8");
+const oneVsOneEngineSource = readFileSync("domino/modes/one-vs-one/engine/domino-one-vs-one-engine.ts", "utf8");
+const aiPracticeControllerSource = readFileSync("domino/modes/ai-practice/controllers/use-domino-ai-practice-controller.ts", "utf8");
 
 const EXPECTED_CODES = new Set([
   "turn_timer_not_expired",
@@ -140,7 +151,8 @@ test("Domino 2v2 exposes the atomic timeout protocol for four clients", async ()
   for (const code of EXPECTED_CODES) {
     assert.match(twoVsTwoPassSource, new RegExp(`"${code}"`));
   }
-  assert.match(twoVsTwoPassSource, /p_expected_version: room\.version/);
+  assert.match(twoVsTwoPassSource, /expectedVersion: room\.version/);
+  assert.match(twoVsTwoCommitContractSource, /p_expected_version: args\.expectedVersion/);
   assert.match(twoVsTwoPassSource, /Number\(latestRoom\.version\) > expectedVersion/);
   assert.match(twoVsTwoHookSource, /serverClockOffsetMsRef/);
   assert.match(twoVsTwoHookSource, /timeoutRetryRef/);
@@ -170,4 +182,21 @@ test("Okey timeout uses server deadline and atomic expectedVersion", () => {
   assert.match(okeyAdapterSource, /serverClockOffsetMs/);
   assert.match(okeyAdapterSource, /deadlineMs -\s*\(Date\.now\(\) \+ this\.serverClockOffsetMs\)/);
   assert.doesNotMatch(okeyAdapterSource, /deadlineMs -\s*Date\.now\(\) \+\s*150/);
+});
+
+
+test("Domino human turn duration has one 25-second contract across every mode and UI", () => {
+  assert.match(dominoTurnTimerSource, /DOMINO_HUMAN_TURN_DURATION_SECONDS = 25/);
+  assert.match(dominoTurnTimerSource, /DOMINO_HUMAN_TURN_DURATION_SECONDS \* 1_000/);
+  assert.match(passSource, /DOMINO_HUMAN_TURN_DURATION_MS/);
+  assert.match(twoVsTwoPassSource, /DOMINO_HUMAN_TURN_DURATION_MS/);
+  assert.match(oneVsOneEngineSource, /DOMINO_HUMAN_TURN_DURATION_MS/);
+  assert.match(timeoutControllerSource, /projectDominoTurnSecondsLeft/);
+  assert.match(twoVsTwoTimeoutControllerSource, /projectDominoTurnSecondsLeft/);
+  assert.match(aiPracticeControllerSource, /PLAYER_TURN_DURATION_SECONDS/);
+  assert.match(dominoPlayerSeatSource, /DOMINO_HUMAN_TURN_DURATION_SECONDS/);
+  assert.match(dominoGameScreenSource, /humanPlayer\.timeLeft \/ PLAYER_TURN_DURATION_SECONDS/);
+  assert.doesNotMatch(dominoGameScreenSource, /humanTurnTimerText/);
+  assert.doesNotMatch(passSource, /TURN_DURATION_MS = 20_000/);
+  assert.doesNotMatch(twoVsTwoPassSource, /TURN_DURATION_MS = 20_000/);
 });

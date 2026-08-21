@@ -26,7 +26,7 @@ test("production 1v1 scoring parity", () => {
   assert.equal(resolveBlockedHand([[tile(1, 2)], [tile(0, 3)]]).winnerIndex, 0);
   assert.equal(resolveEmptyHand([[], [tile(6, 6), tile(1, 1)]], 0).awardedPoints, 15);
   assert.equal(DOMINO_ONE_VS_ONE_RULES.maximumHumanDrawsPerTurn, 3);
-  assert.equal(DOMINO_ONE_VS_ONE_RULES.turnDurationMs, 20_000);
+  assert.equal(DOMINO_ONE_VS_ONE_RULES.turnDurationMs, 25_000);
 });
 
 test("production 1v1 draw guards and lifecycle parity", () => {

@@ -3,7 +3,7 @@ import {
   getPlayableBranches,
   isValidMove,
 } from "@/domino/core/engine/kozel-engine";
-import { DominoTileData, KozelBoardState, KozelBranch } from "@/types/game";
+import type { DominoTileData, KozelBoardState, KozelBranch } from "@/domino/types/domino-game";
 
 const BOT_BRANCH_PRIORITY: KozelBranch[] = ["right", "left", "up", "down"];
 

@@ -32,12 +32,15 @@ test("1v1 hook delegates persistence, realtime and commands to its game adapter"
   }
 });
 
-test("legacy multiplayer API has no Domino 1v1 endpoint exports", () => {
-  const source = readFileSync("lib/multiplayer/multiplayerApi.ts", "utf8");
-  assert.doesNotMatch(source, /submitOneVsOne/);
-  assert.doesNotMatch(source, /submit_one_vs_one/);
-  assert.match(source, /submitTwoVsTwoMove/);
-  assert.match(source, /submitTwoVsTwoPass/);
+test("Domino command APIs are mode-owned and absent from generic Multiplayer", () => {
+  assert.equal(existsSync("lib/multiplayer/multiplayerApi.ts"), false);
+  const twoVsTwoApi = readFileSync(
+    "domino/modes/two-vs-two/adapters/domino-two-vs-two-supabase-api.ts",
+    "utf8",
+  );
+  assert.match(twoVsTwoApi, /submitDominoTwoVsTwoMove/);
+  assert.match(twoVsTwoApi, /submitDominoTwoVsTwoPass/);
+  assert.doesNotMatch(twoVsTwoApi, /submitOneVsOne|submit_one_vs_one/);
 });
 test("1v1 screen and preload contain no direct persistence endpoint", () => {
   const screen = readFileSync("app/domino/game.tsx", "utf8");
@@ -53,12 +56,14 @@ test("timeout takeover is strike-driven and has no heartbeat or worker watchdog"
   const hook = readFileSync("domino/modes/one-vs-one/presentation/use-one-vs-one-game.ts", "utf8");
   const botController = readFileSync("domino/modes/one-vs-one/controllers/use-domino-one-vs-one-bot-controller.ts", "utf8");
   const connectionController = readFileSync("domino/modes/one-vs-one/controllers/use-domino-one-vs-one-connection-controller.ts", "utf8");
+  const timeoutController = readFileSync("domino/modes/one-vs-one/controllers/use-domino-one-vs-one-timeout-controller.ts", "utf8");
   assert.doesNotMatch(hook + botController + connectionController, /heartbeat/i);
   assert.doesNotMatch(hook + botController + connectionController, /takeoverWatchdog/);
   assert.equal((botController.match(/processBotTurn\(\)/g) ?? []).length, 1);
   assert.doesNotMatch(hook, /processBotTurn\(\)/);
   assert.match(connectionController, /Date\.now\(\) - lastActivityRef\.current < 12_000/);
   assert.match(connectionController, /refreshPlayers\(false\)/);
+  assert.match(timeoutController, /if \(args\.rawState\) acceptSnapshot\(args\.rawState\)/);
 
   const migration = readFileSync(
     "supabase/migrations/20260819000100_domino_timeout_takeover.sql",
@@ -69,18 +74,36 @@ test("timeout takeover is strike-driven and has no heartbeat or worker watchdog"
   assert.match(migration, /apply_one_vs_one_timeout_strike_takeover/);
   assert.match(migration, /Heartbeat \/ presence \/ reconnect \/ disconnect are intentionally NOT defined here/);
 });
-test("Domino module owns 1v1 while legacy paths remain compatibility-only", () => {
+test("1v1 presentation preserves the authoritative Qapat end reason", () => {
+  const presentation = readFileSync(
+    "domino/modes/one-vs-one/presentation/use-one-vs-one-game.ts",
+    "utf8",
+  );
+  assert.match(
+    presentation,
+    /buildRoundResult\(\{[\s\S]*?endReason: rawState\?\.roundEndReason \?\? undefined/,
+  );
+});
+
+test("Domino module owns canonical core paths and legacy shims are removed", () => {
   const hook = readFileSync("domino/modes/one-vs-one/presentation/use-one-vs-one-game.ts", "utf8");
   assert.doesNotMatch(hook, /@\/lib\/domino\/one-vs-one|@\/hooks\/useOneVsOneGame/);
 
   assert.equal(existsSync("hooks/useOneVsOneGame.ts"), false);
   assert.equal(existsSync("lib/domino/one-vs-one"), false);
 
-  const legacyEngine = readFileSync("lib/game/kozel-engine.ts", "utf8").trim();
-  assert.equal(legacyEngine, 'export * from "@/domino/core/engine/kozel-engine";');
+  for (const legacyPath of [
+    "lib/game/bot-ai.ts",
+    "lib/game/king-rules.ts",
+    "lib/game/kozel-engine.ts",
+    "lib/game/match-rules.ts",
+    "lib/game/turn-order.ts",
+    "lib/domino/deal.ts",
+    "lib/domino/shuffle.ts",
+  ]) assert.equal(existsSync(legacyPath), false, legacyPath);
 
   assert.equal(existsSync("domino/modes/two-vs-two"), true);
-  const twoVsTwo = readFileSync("domino/modes/two-vs-two/presentation/use-two-vs-two-game.ts", "utf8");
+  const twoVsTwo = readFileSync("domino/modes/two-vs-two/controllers/use-domino-two-vs-two-controller.ts", "utf8");
   assert.match(twoVsTwo, /@\/domino\/core\/engine\/kozel-engine/);
   assert.match(twoVsTwo, /mode: '2v2'/);
 

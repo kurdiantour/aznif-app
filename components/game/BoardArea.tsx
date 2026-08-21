@@ -1,6 +1,6 @@
 import BoardBoneyard from "@/components/game/BoardBoneyard";
 import DominoBoard, { getDominoBoardPreviewTargets, getDominoBoardTileMetrics } from "@/components/game/DominoBoard";
-import { DominoTileData, GameState, KozelBranch, Player } from "@/types/game";
+import { DominoTileData, GameState, KozelBranch, Player } from "@/domino/types/domino-game";
 import {
   forwardRef,
   useEffect,

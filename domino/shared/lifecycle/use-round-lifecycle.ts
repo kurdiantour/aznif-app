@@ -1,4 +1,4 @@
-import type { RoundPhase, RoundResult, TeamId } from '@/types/game';
+import type { RoundPhase, RoundResult, TeamId } from '@/domino/types/domino-game';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   NEXT_ROUND_COUNTDOWN_SECONDS,
@@ -12,11 +12,13 @@ export function useRoundLifecycle({
   winningTeamId,
   buildRoundResult,
   startNextRound,
+  serverAuthoritative = false,
 }: {
   roundWinnerPlayerId: string | null;
   winningTeamId: TeamId | null;
   buildRoundResult: (winnerId: string) => RoundResult | null;
-  startNextRound: () => void | Promise<void>;
+  startNextRound?: () => void | Promise<void>;
+  serverAuthoritative?: boolean;
 }) {
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -72,11 +74,12 @@ export function useRoundLifecycle({
       setCountdown: setNextRoundCountdown,
       onCountdownStart: () => setPhase('next_round_countdown'),
       onCountdownComplete: () => {
+        if (serverAuthoritative) {
+          setPhase('playing');
+          return;
+        }
         setPhase('dealing');
-        // Keep every client in the dealing phase until the authoritative
-        // snapshot clears roundWinnerPlayerId. Resetting here briefly renders
-        // the completed hand as "playing" and can revive stale turn actions.
-        void Promise.resolve(startNextRound());
+        void Promise.resolve(startNextRound?.());
       },
     });
   }, [
@@ -84,6 +87,7 @@ export function useRoundLifecycle({
     resetRoundPresentation,
     roundWinnerPlayerId,
     startNextRound,
+    serverAuthoritative,
     winningTeamId,
   ]);
 

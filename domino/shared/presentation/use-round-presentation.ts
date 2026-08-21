@@ -1,4 +1,4 @@
-import type { DominoTileData, Player, TeamId } from '@/types/game';
+import type { DominoTileData, Player, TeamId } from '@/domino/types/domino-game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const FINAL_TILE_REVEAL_DELAY_MS = 3_000;

@@ -1,4 +1,5 @@
 
+import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { runDominoOneVsOnePostCommitLifecycle } from "../../../domino/modes/one-vs-one/lifecycle/domino-one-vs-one-post-commit-lifecycle.ts";
 import { buildOneVsOnePassCommit } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-commit-contract.ts";
@@ -9,6 +10,7 @@ import { authenticateDominoOneVsOneRequest, loadDominoOneVsOnePlayers, loadDomin
 
 import { reduceOneVsOnePass } from "../../../domino/modes/one-vs-one/authoritative/domino-one-vs-one-command-reducer.ts";
 import { canHandMove } from "../_shared/kozel-engine.ts";
+import { DOMINO_HUMAN_TURN_DURATION_MS } from "../../../domino/shared/timing/domino-turn-timer.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
@@ -18,7 +20,7 @@ const svc = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "", {
 });
 
 const MAX_ONE_VS_ONE_DRAWS_PER_TURN = 3;
-const TURN_DURATION_MS = 20_000;
+const TURN_DURATION_MS = DOMINO_HUMAN_TURN_DURATION_MS;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -301,7 +303,8 @@ export default async function handler(req: Request) {
       200,
     );
   } catch (err) {
-    console.error("submit_one_vs_one action=pass error", err);
-    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    const failure = describeDominoOneVsOneServerError(err);
+    console.error("submit_one_vs_one action=pass error", failure);
+    return json({ error: failure.message, failure }, 500);
   }
 }

@@ -1,8 +1,12 @@
 // @ts-nocheck
 
+import { authenticateDominoTwoVsTwoRequest, loadDominoTwoVsTwoPrivateState, loadDominoTwoVsTwoPlayers, loadDominoTwoVsTwoRoom } from "../../../domino/modes/two-vs-two/server/domino-two-vs-two-server-context.ts";
+import { buildTwoVsTwoCommit } from "../../../domino/modes/two-vs-two/server/domino-two-vs-two-commit-contract.ts";
+import { reduceTwoVsTwoPass } from "../../../domino/modes/two-vs-two/authoritative/domino-two-vs-two-command-reducer.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { canAnyPlayerMove, canHandMove } from "../_shared/kozel-engine.ts";
-import { getNextOkeyOrderPlayer } from "../../../lib/game/turn-order.ts";
+import { getNextOkeyOrderPlayer } from "../../../domino/core/rules/turn-order.ts";
+import { DOMINO_HUMAN_TURN_DURATION_MS } from "../../../domino/shared/timing/domino-turn-timer.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
@@ -11,7 +15,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const svc = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "", {
   auth: { persistSession: false },
 });
-const TURN_DURATION_MS = 20_000;
+const TURN_DURATION_MS = DOMINO_HUMAN_TURN_DURATION_MS;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -43,17 +47,11 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== "POST")
       return json({ error: "Method Not Allowed" }, 405);
-    const token = (req.headers.get("authorization") || "")
-      .replace(/^Bearer\s+/i, "")
-      .trim();
-    if (!token) return json({ error: "Unauthorized" }, 401);
+    const auth = await authenticateDominoTwoVsTwoRequest(req, svc);
+    if ("response" in auth) return auth.response;
+    const user = auth.user;
 
-    const { data: userData, error: userError } = await svc.auth.getUser(token);
-    if (userError || !userData?.user)
-      return json({ error: "Invalid auth token" }, 401);
-
-    const user = userData.user;
-    const {
+const {
       room_id,
       timed_out: timedOut = false,
       expected_version: expectedVersionRaw,
@@ -61,12 +59,7 @@ export default async function handler(req: Request) {
       expected_turn_player_id: expectedTurnPlayerId,
     } = await req.json();
     if (!room_id) return json({ error: "Missing room_id" }, 400);
-
-    const { data: room, error: roomErr } = await svc
-      .from("two_vs_two_rooms")
-      .select("id, status, state, version, current_turn_player_id, updated_at")
-      .eq("id", room_id)
-      .maybeSingle();
+    const { data: room, error: roomErr } = await loadDominoTwoVsTwoRoom(svc, room_id);
     if (roomErr) throw roomErr;
     if (!room) return json({ error: "2v2 room not found" }, 404);
 
@@ -115,16 +108,13 @@ export default async function handler(req: Request) {
 
     if (!timedOut && !state.board?.centerTile)
       return json({ error: "Cannot pass before opening move" }, 400);
+    if (state.roundWinnerPlayerId && Date.now() < Date.parse(state.roundStartsAt ?? ""))
+      return timedOut ? timeoutResponse("turn_timer_not_expired", "Next round has not started", room, { expiresAt: state.roundStartsAt }) : json({ error: "Next 2v2 round has not started" }, 409);
     if (state.winningTeamId)
       return timedOut
         ? timeoutResponse("already_processed", "This turn is already complete", room)
         : json({ error: "2v2 match is already finished" }, 400);
-
-    const { data: players, error: playersErr } = await svc
-      .from("two_vs_two_players")
-      .select("id, user_id, player_index, seat, team_id, kind")
-      .eq("room_id", room_id)
-      .order("player_index", { ascending: true });
+    const { data: players, error: playersErr } = await loadDominoTwoVsTwoPlayers(svc, room_id);
     if (playersErr) throw playersErr;
     if (!Array.isArray(players) || players.length !== 4)
       return json({ error: "2v2 requires exactly 4 players" }, 400);
@@ -164,12 +154,7 @@ export default async function handler(req: Request) {
       }
     } else if (currentTurnPlayerId !== user.id)
       return json({ error: "Not your turn" }, 403);
-
-    const { data: privateState, error: privateErr } = await svc
-      .from("two_vs_two_private_states")
-      .select("hands, boneyard")
-      .eq("room_id", room_id)
-      .maybeSingle();
+    const { data: privateState, error: privateErr } = await loadDominoTwoVsTwoPrivateState(svc, room_id);
     if (privateErr) throw privateErr;
     if (!privateState)
       return json({ error: "2v2 private state is missing" }, 409);
@@ -201,50 +186,34 @@ export default async function handler(req: Request) {
       );
     }
 
-    const nextPlayerId =
-      getNextOkeyOrderPlayer(players, players[playerIndex])?.user_id ?? null;
-
-    const openingTimeoutWaived =
-      timedOut &&
-      !state.board?.centerTile &&
-      (state.isOpeningRound ?? state.isFirstRound ?? true);
-
-    const turnRuleState = openingTimeoutWaived
-      ? {
-          ...state,
-          isOpeningRound: false,
-          isFirstRound: false,
-          openingDouble: null,
-          openingTileId: null,
-        }
-      : state;
-
-    const nextState = {
-      ...turnRuleState,
-      currentTurnPlayerId: nextPlayerId,
-      lastPassedPlayerId: currentTurnPlayerId,
-      turnStartedAt: new Date().toISOString(),
-      canDrawTile: false,
-      blockedPasses: Array.from(
-        new Set([...(state.blockedPasses ?? []), currentTurnPlayerId]),
-      ),
-    };
-
+    const transition = reduceTwoVsTwoPass({
+      state,
+      hands,
+      boneyard: privateState.boneyard ?? [],
+      players,
+      playerIndex,
+      currentTurnPlayerId,
+      timedOut,
+      phaseStartedAt: new Date().toISOString(),
+    });
+    const {
+      nextState,
+      nextTurnPlayerId: nextPlayerId,
+    } = transition;
     const { data: updatedRoom, error: commitError } = await svc.rpc(
       "commit_multiplayer_action",
-      {
-        p_mode: "2v2",
-        p_room_id: room_id,
-        p_expected_version: room.version,
-        p_state: nextState,
-        p_hands: hands,
-        p_boneyard: privateState.boneyard ?? [],
-        p_current_turn_player_id: nextPlayerId,
-        p_status: null,
-        p_player_id: currentTurnPlayerId,
-        p_action: "pass_turn",
-        p_payload: { nextPlayerId, timedOut },
-      },
+      buildTwoVsTwoCommit({
+        roomId: room_id,
+        expectedVersion: room.version,
+        state: nextState,
+        hands,
+        boneyard: privateState.boneyard ?? [],
+        currentTurnPlayerId: nextPlayerId,
+        status: null,
+        playerId: currentTurnPlayerId,
+        action: "pass_turn",
+        payload: { nextPlayerId, timedOut },
+      }),
     );
     if (commitError) {
       if (commitError.message?.includes("STALE_GAME_STATE")) {

@@ -1,5 +1,5 @@
 import DominoTile from "@/components/game/DominoTile";
-import { DominoTileData } from "@/types/game";
+import { DominoTileData } from "@/domino/types/domino-game";
 import { Animated, StyleSheet, View } from "react-native";
 
 const HIDDEN_BONEYARD_TILE: DominoTileData = {

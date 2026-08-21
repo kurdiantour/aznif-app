@@ -4,7 +4,7 @@ import type {
   DominoOneVsOneDrawTimeoutClaim,
   DominoOneVsOneTurnTimeoutClaim,
 } from "./domino-one-vs-one-adapter";
-import type { DominoTileData, KozelBranch } from "@/types/game";
+import type { DominoTileData, KozelBranch } from "@/domino/types/domino-game";
 
 const EXPECTED_COMMAND_CODES = new Set([
   "turn_timer_not_expired",

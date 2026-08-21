@@ -1,4 +1,6 @@
 import { createEmptyBoard } from '@/domino/core/engine/kozel-engine';
+import { shouldExitLocalHumanAfterTakeover } from "@/domino/shared/lifecycle/local-takeover-exit-policy";
+import { assignDominoBotIdentities } from '@/domino/shared/bot-identity';
 import { SupabaseDominoOneVsOneAdapter } from '@/domino/modes/one-vs-one/adapters/supabase-domino-one-vs-one-adapter';
 import {
   DominoOneVsOneSnapshotController,
@@ -10,7 +12,7 @@ import { useDominoOneVsOneTimeoutController } from '@/domino/modes/one-vs-one/co
 import { MultiplayerRequestError } from '@/lib/multiplayer/core/http-command-client';
 import {
   type PendingMultiplayerMove,
-} from '@/lib/multiplayer/optimisticMove';
+} from '@/domino/shared/optimistic/domino-optimistic-move';
 import { calculateLevelFromPoints } from '@/lib/progression';
 import type {
   DominoTileData,
@@ -19,7 +21,7 @@ import type {
   MatchReward,
   ScoringEvent,
   TeamId,
-} from '@/types/game';
+} from '@/domino/types/domino-game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAvailableBranches, handContainsTile, handHasPlayableTile } from '@/domino/shared/rules/game-rule-queries';
 import {
@@ -30,16 +32,17 @@ import {
 import { runMultiplayerAction } from '@/lib/multiplayer/core/multiplayer-action';
 import { getPlayerIndex, getRelativeSeat } from '@/lib/multiplayer/core/player-normalization';
 import { buildRoundResult } from '@/domino/shared/lifecycle/round-result';
-import type { MockGameState } from '@/hooks/useGameBase';
+import type { DominoGameViewModel } from '@/domino/shared/contracts/domino-game-view-model';
 import { useRoundLifecycle } from '@/domino/shared/lifecycle/use-round-lifecycle';
 
-type UseOneVsOneResult = Omit<MockGameState, 'playTile' | 'drawTile' | 'passTurn'> & {
+type UseOneVsOneResult = Omit<DominoGameViewModel, 'playTile' | 'drawTile' | 'passTurn'> & {
   loading: boolean;
   error: string | null;
   rawState: any;
   myPlayerIndex: number;
   opponentPlayerIndex: number;
   currentUserId: string | null;
+  localPlayerTakenOver: boolean;
   drawTimeLeft: number;
   pendingMove: PendingMultiplayerMove | null;
   playTile: (tile: DominoTileData, branch?: KozelBranch) => Promise<any>;
@@ -181,6 +184,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     return buildRoundResult({
       winnerId,
       winnerTeam,
+      endReason: rawState?.roundEndReason ?? undefined,
       awardedPoints,
       players,
       hands: rawState.revealedFinalHands,
@@ -224,21 +228,34 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     return getPlayerIndex(playersRows, (row) => row.user_id !== currentUserId);
   }, [playersRows, currentUserId]);
 
+  const localPlayerTakenOver = useMemo(
+    () => shouldExitLocalHumanAfterTakeover(currentUserId, playersRows),
+    [playersRows, currentUserId],
+  );
+
   const players = useMemo(() => {
     const state = rawState ?? {};
     const handCounts = state.handCounts ?? [];
+
+    const botIdentities = assignDominoBotIdentities(
+      playersRows.map((row) => ({
+          id: String(row.id),
+          playerIndex: typeof row.player_index === 'number' ? row.player_index : 0,
+        })),
+    );
 
     return playersRows.map((row) => {
       const playerId = row.user_id ?? `bot-${row.id}`;
       const profile = row.user_id ? profileById.get(row.user_id) : null;
       const playerIndex =
         typeof row.player_index === 'number' ? row.player_index : 0;
+      const isBot = row.bot_takeover || row.kind === 'bot' || !row.user_id;
 
       return {
         id: playerId,
-        name: row.bot_takeover
-          ? 'رۆبوتی کاتی'
-          : profile?.username ?? (row.user_id ? 'Player' : 'Bot'),
+        name: isBot
+          ? botIdentities.get(String(row.id))!.name
+          : profile?.username ?? 'Player',
         seat: getRelativeSeat(playerIndex, myPlayerIndex, 2),
         kind: row.kind,
         teamId: row.team_id,
@@ -435,6 +452,7 @@ timeLeft:
     myPlayerIndex,
     opponentPlayerIndex,
     currentUserId,
+    localPlayerTakenOver,
     phase,
     roundResult,
     nextRoundCountdown,

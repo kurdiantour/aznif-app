@@ -11,7 +11,7 @@ import {
 import Svg, { Circle } from "react-native-svg";
 
 import DominoTile from "@/components/game/DominoTile";
-import { DominoTileData } from "@/types/game";
+import { DominoTileData } from "@/domino/types/domino-game";
 
 const PASS_AUTO_SECONDS = 10;
 const TIMER_SIZE = 68;

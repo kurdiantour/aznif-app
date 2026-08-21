@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import DominoTile from '@/components/game/DominoTile';
-import type { DominoTileData } from '@/types/game';
+import type { DominoTileData } from '@/domino/types/domino-game';
 
 type Props = {
   tile: DominoTileData;

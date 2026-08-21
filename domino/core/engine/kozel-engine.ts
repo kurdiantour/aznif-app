@@ -1,11 +1,11 @@
-import { KOZEL_BRANCHES } from "@/constants/game";
+import { KOZEL_BRANCHES } from "../constants/domino-game.ts";
 import type {
   BoardBranchState,
   BoardPlacedTile,
   DominoTileData,
   KozelBoardState,
   KozelBranch,
-} from "@/types/game";
+} from "../../types/domino-game.ts";
 
 function normalizeImageKey(a: number, b: number) {
   return a <= b ? `${a}-${b}` : `${b}-${a}`;

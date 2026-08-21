@@ -57,7 +57,8 @@ test("two blocked passes resolve the lower-pip hand and preserve blocker leaders
   assert.equal(result.nextState.revealedFinalHands, hands);
 });
 
-test("opening timeout waives only the opening-double restriction", () => {
+test("opening timeout passes the turn and lets the next player open with any playable tile", () => {
+  let observedRuleState: Record<string, any> | null = null;
   const result = reduceOneVsOnePass({
     state: {
       board: { centerTile: null },
@@ -73,11 +74,19 @@ test("opening timeout waives only the opening-double restriction", () => {
     currentTurnPlayerId: "player-a",
     timedOut: true,
     phaseStartedAt: "now",
-    isHandPlayable: () => true,
+    isHandPlayable: (_playerIndex, ruleState) => {
+      observedRuleState = ruleState;
+      return true;
+    },
     isBoneyardPlayable: () => false,
   });
 
+  assert.equal(result.nextTurnPlayerId, "player-b");
+  assert.equal(result.nextState.currentTurnPlayerId, "player-b");
   assert.equal(result.nextState.isOpeningRound, false);
   assert.equal(result.nextState.openingDouble, null);
   assert.equal(result.nextState.openingTileId, null);
+  const observed = observedRuleState as Record<string, any> | null;
+  assert.equal(observed?.isOpeningRound, false);
+  assert.equal(observed?.openingDouble, null);
 });
