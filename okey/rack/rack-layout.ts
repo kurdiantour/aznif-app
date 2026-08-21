@@ -1,9 +1,7 @@
-import { LayoutAnimation } from "react-native";
-
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import { getOrderedMeldScore } from "@/okey/engine/okey-melds";
 import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
-import { RACK_ROW_CAPACITY } from "@/okey/components/okeyStyles";
+import { RACK_ROW_CAPACITY, RACK_TILE_GAP } from "@/okey/components/okeyStyles";
 export type RackRow = "top" | "bottom";
 export type RackSlot = string | null;
 export type RackSlots = Record<RackRow, RackSlot[]>;
@@ -21,29 +19,16 @@ export type ExternalDropPlacement = { tileId: string; point: { x: number; y: num
 export const ROW_ORDER: RackRow[] = ["bottom", "top"];
 export const GROUP_LONG_PRESS_MS = 600;
 export const GROUP_LONG_PRESS_MOVE_TOLERANCE = 8;
-export const DRAG_ACTIVATION_DISTANCE = 8;
+export const DRAG_ACTIVATION_DISTANCE = 4;
 export const ROW_SNAP_PADDING_RATIO = 0.45;
-export const SLOT_TARGET_HYSTERESIS_RATIO = 0.62;
+export const SLOT_TARGET_HYSTERESIS_RATIO = 0.35;
 export const RACK_TILE_ENTER_MS = 620;
 export const RACK_DEAL_BATCH_STAGGER_MS = 420;
 export const INITIAL_BOTTOM_TILE_COUNT = RACK_ROW_CAPACITY;
-export const RACK_REFLOW_ANIMATION_MS = 130;
+export const RACK_REFLOW_ANIMATION_MS = 0;
 
 export function configureRackReflowAnimation() {
-  LayoutAnimation.configureNext({
-    duration: RACK_REFLOW_ANIMATION_MS,
-    create: {
-      type: LayoutAnimation.Types.easeInEaseOut,
-      property: LayoutAnimation.Properties.opacity,
-    },
-    update: {
-      type: LayoutAnimation.Types.easeInEaseOut,
-    },
-    delete: {
-      type: LayoutAnimation.Types.easeInEaseOut,
-      property: LayoutAnimation.Properties.opacity,
-    },
-  });
+  // Intentionally empty: rack reflow is immediate.
 }
 
 export function getRowTilesFromSlots(rowSlots: RackSlot[], tileById: Map<string, OkeyTile>, stagedTileIds: Set<string>) {
@@ -189,6 +174,330 @@ for (const tile of tiles) {
 }
 
   return next;
+}
+
+
+export type RackViewport = { x: number; y: number; width: number; height: number };
+
+export function getDropRowForY(
+  localY: number,
+  rowLayouts: Record<RackRow, RackRowLayout | null>,
+  rackTileHeight: number,
+  rowSnapPaddingRatio: number,
+): RackRow | null {
+  const topLayout = rowLayouts.top;
+  const bottomLayout = rowLayouts.bottom;
+  if (!topLayout || !bottomLayout) return null;
+
+  if (localY >= topLayout.y && localY <= topLayout.y + topLayout.height) return "top";
+  if (localY >= bottomLayout.y && localY <= bottomLayout.y + bottomLayout.height) return "bottom";
+
+  const snapPadding = rackTileHeight * rowSnapPaddingRatio;
+  const candidates = (["top", "bottom"] as RackRow[])
+    .map((row) => {
+      const rowLayout = rowLayouts[row]!;
+      return {
+        row,
+        inside:
+          localY >= rowLayout.y - snapPadding &&
+          localY <= rowLayout.y + rowLayout.height + snapPadding,
+        distance: Math.abs(localY - (rowLayout.y + rowLayout.height / 2)),
+      };
+    })
+    .filter((candidate) => candidate.inside)
+    .sort((a, b) => a.distance - b.distance);
+
+  return candidates[0]?.row ?? null;
+}
+
+export function getInsertionTargetForPoint(args: {
+  tileId: string;
+  moveX: number;
+  moveY: number;
+  sourceSlots: RackSlots;
+  viewport: RackViewport;
+  rowLayouts: Record<RackRow, RackRowLayout | null>;
+  rackTileWidth: number;
+  rackTileHeight: number;
+  rackTileStride: number;
+  dragTouchOffsetX: number;
+  activeTarget: InsertionTarget | null;
+  rowSnapPaddingRatio: number;
+  slotTargetHysteresisRatio: number;
+}): InsertionTarget | null {
+  const {
+    tileId,
+    moveX,
+    moveY,
+    sourceSlots,
+    viewport,
+    rowLayouts,
+    rackTileWidth,
+    rackTileHeight,
+    rackTileStride,
+    dragTouchOffsetX,
+    activeTarget,
+    rowSnapPaddingRatio,
+    slotTargetHysteresisRatio,
+  } = args;
+
+  if (viewport.width <= 0 || viewport.height <= 0) return null;
+
+  const localX = moveX - viewport.x;
+  const localY = moveY - viewport.y;
+  const draggedTileCenterX =
+    localX - dragTouchOffsetX + rackTileWidth / 2;
+
+  const targetRow = getDropRowForY(
+    localY,
+    rowLayouts,
+    rackTileHeight,
+    rowSnapPaddingRatio,
+  );
+  if (!targetRow) return null;
+
+  const firstSlotCenterX = rackTileWidth / 2;
+  const lastSlotCenterX =
+    firstSlotCenterX + (RACK_ROW_CAPACITY - 1) * rackTileStride;
+
+  if (
+    draggedTileCenterX < firstSlotCenterX - rackTileWidth / 2 ||
+    draggedTileCenterX > lastSlotCenterX + rackTileWidth / 2
+  ) {
+    return null;
+  }
+
+  const rawSlotIndex = Math.round(
+    (draggedTileCenterX - firstSlotCenterX) / rackTileStride,
+  );
+  let slotIndex = Math.max(
+    0,
+    Math.min(RACK_ROW_CAPACITY - 1, rawSlotIndex),
+  );
+
+  if (activeTarget?.row === targetRow) {
+    const activeCenterX =
+      firstSlotCenterX + activeTarget.slotIndex * rackTileStride;
+
+    if (
+      Math.abs(draggedTileCenterX - activeCenterX) <=
+      rackTileStride * slotTargetHysteresisRatio
+    ) {
+      slotIndex = activeTarget.slotIndex;
+    }
+  }
+
+  const moveTarget = moveTileIntoSlot(
+    sourceSlots,
+    tileId,
+    targetRow,
+    slotIndex,
+  );
+  if (!moveTarget) return null;
+
+  return {
+    row: moveTarget.row,
+    slotIndex: moveTarget.slotIndex,
+    flatIndex: getFlatIndexForSlot(
+      moveTarget.slots,
+      moveTarget.row,
+      moveTarget.slotIndex,
+    ),
+    nextSlots: moveTarget.slots,
+  };
+}
+
+export function getGroupInsertionTargetForPoint(args: {
+  tileIds: string[];
+  moveX: number;
+  moveY: number;
+  sourceSlots: RackSlots;
+  viewport: RackViewport;
+  rowLayouts: Record<RackRow, RackRowLayout | null>;
+  rackTileWidth: number;
+  rackTileHeight: number;
+  rackTileStride: number;
+  touchedTileIndex: number;
+  activeTarget: InsertionTarget | null;
+  rowSnapPaddingRatio: number;
+  slotTargetHysteresisRatio: number;
+}): InsertionTarget | null {
+  const {
+    tileIds,
+    moveX,
+    moveY,
+    sourceSlots,
+    viewport,
+    rowLayouts,
+    rackTileWidth,
+    rackTileHeight,
+    rackTileStride,
+    touchedTileIndex,
+    activeTarget,
+    rowSnapPaddingRatio,
+    slotTargetHysteresisRatio,
+  } = args;
+
+  if (viewport.width <= 0 || viewport.height <= 0 || tileIds.length === 0) {
+    return null;
+  }
+
+  const localX = moveX - viewport.x;
+  const localY = moveY - viewport.y;
+  const targetRow = getDropRowForY(
+    localY,
+    rowLayouts,
+    rackTileHeight,
+    rowSnapPaddingRatio,
+  );
+  if (!targetRow) return null;
+
+  const groupWidth = tileIds.length * rackTileStride - RACK_TILE_GAP;
+  const rowEndX =
+    (RACK_ROW_CAPACITY - 1) * rackTileStride + rackTileWidth;
+
+  if (localX < -groupWidth / 2 || localX > rowEndX + groupWidth / 2) {
+    return null;
+  }
+
+  const insertionX = localX - touchedTileIndex * rackTileStride;
+  const rawSlotIndex = Math.floor(
+    (insertionX + rackTileWidth / 2) / rackTileStride,
+  );
+
+  let slotIndex = Math.max(
+    0,
+    Math.min(RACK_ROW_CAPACITY - tileIds.length, rawSlotIndex),
+  );
+
+  if (activeTarget?.row === targetRow) {
+    const activeTouchedCenterX =
+      (activeTarget.slotIndex + touchedTileIndex) * rackTileStride +
+      rackTileWidth / 2;
+
+    if (
+      Math.abs(localX - activeTouchedCenterX) <=
+      rackTileStride * slotTargetHysteresisRatio
+    ) {
+      slotIndex = activeTarget.slotIndex;
+    }
+  }
+
+  const moveTarget = moveTilesIntoSlot(
+    sourceSlots,
+    tileIds,
+    targetRow,
+    slotIndex,
+  );
+  if (!moveTarget) return null;
+
+  return {
+    row: moveTarget.row,
+    slotIndex: moveTarget.slotIndex,
+    flatIndex: getFlatIndexForSlot(
+      moveTarget.slots,
+      moveTarget.row,
+      moveTarget.slotIndex,
+    ),
+    nextSlots: moveTarget.slots,
+  };
+}
+
+export function getExternalDropTargetForPoint(args: {
+  tileId: string;
+  point: { x: number; y: number };
+  committedSlots: RackSlots;
+  viewport: RackViewport;
+  rowLayouts: Record<RackRow, RackRowLayout | null>;
+  rackTileWidth: number;
+  rackTileHeight: number;
+  rackTileStride: number;
+  rowSnapPaddingRatio: number;
+}): InsertionTarget | null {
+  const {
+    tileId,
+    point,
+    committedSlots,
+    viewport,
+    rowLayouts,
+    rackTileWidth,
+    rackTileHeight,
+    rackTileStride,
+    rowSnapPaddingRatio,
+  } = args;
+
+  if (viewport.width <= 0 || viewport.height <= 0) return null;
+
+  const localX = point.x - viewport.x;
+  const localY = point.y - viewport.y;
+  const targetRow = getDropRowForY(
+    localY,
+    rowLayouts,
+    rackTileHeight,
+    rowSnapPaddingRatio,
+  );
+  if (!targetRow) return null;
+
+  const rowEndX =
+    (RACK_ROW_CAPACITY - 1) * rackTileStride + rackTileWidth;
+
+  if (
+    localX < -rackTileWidth / 2 ||
+    localX > rowEndX + rackTileWidth / 2
+  ) {
+    return null;
+  }
+
+  const desiredSlotIndex = Math.max(
+    0,
+    Math.min(
+      RACK_ROW_CAPACITY - 1,
+      Math.floor((localX + rackTileWidth / 2) / rackTileStride),
+    ),
+  );
+
+  const nextSlots = cloneSlots(committedSlots);
+  for (const row of ROW_ORDER) {
+    const originIndex = nextSlots[row].findIndex(
+      (entry) => entry === tileId,
+    );
+    if (originIndex >= 0) nextSlots[row][originIndex] = null;
+  }
+
+  const rowSlots = nextSlots[targetRow];
+  let slotIndex = desiredSlotIndex;
+
+  if (rowSlots[slotIndex] !== null) {
+    let right = slotIndex + 1;
+    while (right < RACK_ROW_CAPACITY && rowSlots[right] !== null) right += 1;
+
+    let left = slotIndex - 1;
+    while (left >= 0 && rowSlots[left] !== null) left -= 1;
+
+    if (
+      right < RACK_ROW_CAPACITY &&
+      (left < 0 || right - slotIndex <= slotIndex - left)
+    ) {
+      for (let index = right; index > slotIndex; index -= 1) {
+        rowSlots[index] = rowSlots[index - 1];
+      }
+    } else if (left >= 0) {
+      for (let index = left; index < slotIndex; index += 1) {
+        rowSlots[index] = rowSlots[index + 1];
+      }
+    } else {
+      return null;
+    }
+  }
+
+  rowSlots[slotIndex] = tileId;
+
+  return {
+    row: targetRow,
+    slotIndex,
+    flatIndex: getFlatIndexForSlot(nextSlots, targetRow, slotIndex),
+    nextSlots,
+  };
 }
 
 export function getTileOrigin(slots: RackSlots, tileId: string): DragOrigin | null {
