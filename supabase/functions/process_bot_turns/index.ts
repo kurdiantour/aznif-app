@@ -560,17 +560,6 @@ serve(async (req) => {
           .update({ status: "finished", current_turn_player_id: null })
           .eq("id", room_id);
         if (finishErr) throw finishErr;
-        // The status update normally invokes domino_settle_finished_room.
-        // Call the current idempotent authority as an explicit recovery path;
-        // settle_finished_match_rewards is a legacy no-op compatibility stub.
-        const { error: rewardErr } = await svc.rpc(
-          "domino_settle_match",
-          {
-            p_mode: mode,
-            p_room_id: room_id,
-          },
-        );
-        if (rewardErr) throw rewardErr;
       }
     }
 

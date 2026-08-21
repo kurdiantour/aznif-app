@@ -3,10 +3,10 @@ import test from 'node:test';
 import { finalizeTwoVsTwoRound } from '../lifecycle/domino-two-vs-two-round-transition.ts';
 
 const players = [
-  { user_id: 'p0', team_id: 'teamA' as const, player_index: 0 },
-  { user_id: 'p1', team_id: 'teamB' as const, player_index: 1 },
-  { user_id: 'p2', team_id: 'teamA' as const, player_index: 2 },
-  { user_id: 'p3', team_id: 'teamB' as const, player_index: 3 },
+  { user_id: 'p0', team_id: 'teamA', player_index: 0 },
+  { user_id: 'p1', team_id: 'teamB', player_index: 1 },
+  { user_id: 'p2', team_id: 'teamA', player_index: 2 },
+  { user_id: 'p3', team_id: 'teamB', player_index: 3 },
 ];
 
 const completedTransition = {
