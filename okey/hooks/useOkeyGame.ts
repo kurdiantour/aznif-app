@@ -504,18 +504,6 @@ export function useOkeyGame(
         applyProjection,
       );
 
-    void adapter
-      .reconnect()
-      .catch((error) => {
-        if (mounted) {
-          setOnlineError(
-            normalizeOnlineError(
-              error,
-            ),
-          );
-        }
-      });
-
     return () => {
       mounted = false;
       unsubscribe();

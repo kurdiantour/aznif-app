@@ -90,9 +90,12 @@ function parseCommand(
         : null;
 
     case "declare-konkan":
-      return {
-        type: "declare-konkan",
-      };
+      return Array.isArray(command.orderedRunTileIds)
+        ? {
+            type: "declare-konkan",
+            orderedRunTileIds: command.orderedRunTileIds,
+          }
+        : null;
 
     case "open-melds":
       return Array.isArray(command.melds) &&
@@ -238,12 +241,7 @@ serve(async (req) => {
 
   if (
     !isSnapshot &&
-    (
-      !isUuid(body.commandId) ||
-      typeof body.expectedVersion !== "number" ||
-      !Number.isSafeInteger(body.expectedVersion) ||
-      body.expectedVersion < 0
-    )
+    !isUuid(body.commandId)
   ) {
     return json(
       {
@@ -263,9 +261,12 @@ serve(async (req) => {
     },
   );
 
-  const broadcastInvalidation = async (
+  const broadcastStateUpdate = async (
     version: number,
     status: "playing" | "finished",
+    projection: ReturnType<
+      typeof projectOkeyMatchPublicState
+    >,
   ) => {
     const channel = service.channel(
       `okey-match:${matchId}`,
@@ -273,11 +274,12 @@ serve(async (req) => {
 
     await channel.send({
       type: "broadcast",
-      event: "invalidate",
+      event: "state_update",
       payload: {
         matchId,
         version,
         status,
+        projection,
       },
     });
 
@@ -624,7 +626,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       nextState,
       playerIndex,
       acceptedCommand,
-      body.commandId,
+      body.commandId as string,
     );
 
 const {
@@ -638,7 +640,7 @@ const {
       p_user_id: authData.user.id,
       p_command_id: body.commandId,
       p_expected_version:
-        body.expectedVersion,
+        Number(bundle.version),
       p_command_type: commandType,
       p_state: nextState,
       p_projection: publicProjection,
@@ -691,9 +693,14 @@ const commit =
    * reached its committed state.
    */
   try {
-    await broadcastInvalidation(
+    await broadcastStateUpdate(
       commit.version,
       committedStatus,
+      projectOkeyMatchPublicState(
+        committedState,
+        commit.version,
+        commit.turn_deadline_at,
+      ),
     );
   } catch (broadcastError) {
     console.error(

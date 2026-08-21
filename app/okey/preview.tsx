@@ -1,5 +1,4 @@
 import { Redirect } from "expo-router";
-import { useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -10,13 +9,8 @@ import {
 import { useLocalOkeyPreviewGame } from "@/okey/hooks/useLocalOkeyPreviewGame";
 import OkeyGameTableScene from "@/okey/scenes/OkeyGameTableScene";
 
-const LATENCY_PRESETS = [0, 100, 250, 500] as const;
-
 export default function OkeyPreviewScreen() {
-  const [latencyMs, setLatencyMs] = useState<number>(100);
-  const [connected, setConnected] = useState(true);
-
-const controller = useLocalOkeyPreviewGame();
+  const controller = useLocalOkeyPreviewGame();
 
   if (!__DEV__) {
     return <Redirect href="/okey" />;
@@ -32,44 +26,19 @@ const controller = useLocalOkeyPreviewGame();
       <View pointerEvents="box-none" style={styles.devOverlay}>
         <View style={styles.devPanel}>
           <Text style={styles.devTitle}>
-            Realtime Preview
+            Okey Bot Test
           </Text>
 
-          <View style={styles.row}>
-            {LATENCY_PRESETS.map((value) => {
-              const active = latencyMs === value;
-
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => setLatencyMs(value)}
-                  style={[
-                    styles.pill,
-                    active && styles.pillActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.pillText,
-                      active && styles.pillTextActive,
-                    ]}
-                  >
-                    {value}ms
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Text style={styles.devText}>
+            You + 3 local bots
+          </Text>
 
           <Pressable
-            onPress={() => setConnected((value) => !value)}
-            style={[
-              styles.connectionButton,
-              !connected && styles.connectionButtonDisconnected,
-            ]}
+            onPress={controller.newGame}
+            style={styles.restartButton}
           >
-            <Text style={styles.connectionText}>
-              {connected ? "Disconnect" : "Reconnect"}
+            <Text style={styles.restartText}>
+              Restart Game
             </Text>
           </Pressable>
         </View>
@@ -90,7 +59,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   devPanel: {
-    width: 220,
+    width: 150,
     padding: 10,
     borderRadius: 12,
     borderWidth: 1,
@@ -98,44 +67,24 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.48)",
   },
   devTitle: {
-    marginBottom: 8,
     color: "#fff",
     fontSize: 12,
     fontWeight: "700",
   },
-  row: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  pill: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.10)",
-  },
-  pillActive: {
-    backgroundColor: "rgba(255,255,255,0.28)",
-  },
-  pillText: {
+  devText: {
+    marginTop: 4,
     color: "rgba(255,255,255,0.72)",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
   },
-  pillTextActive: {
-    color: "#fff",
-  },
-  connectionButton: {
+  restartButton: {
     marginTop: 8,
     alignItems: "center",
     paddingVertical: 7,
     borderRadius: 8,
-    backgroundColor: "rgba(52, 211, 153, 0.22)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
-  connectionButtonDisconnected: {
-    backgroundColor: "rgba(248, 113, 113, 0.24)",
-  },
-  connectionText: {
+  restartText: {
     color: "#fff",
     fontSize: 11,
     fontWeight: "700",

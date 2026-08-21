@@ -6,8 +6,7 @@ import type { DominoTwoVsTwoTurnTimeoutClaim } from '../adapters/domino-two-vs-t
 import type { PendingMultiplayerMove } from '@/domino/shared/optimistic/domino-optimistic-move';
 import { getSnapshotVersion } from '@/lib/multiplayer/core/versioning';
 import { calculateLevelFromPoints } from '@/lib/progression';
-import type {
-    DominoTileData,
+import type { DominoTileData,
     KozelBoardState,
     KozelBranch,
     MatchReward,
@@ -47,10 +46,8 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const [profileById, setProfileById] = useState<Map<string, any>>(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMultiplayerMove | null>(null);
-  const [serverRoundGateOpen, setServerRoundGateOpen] = useState(false);
   const adapter = useMemo(() => roomId ? new SupabaseDominoTwoVsTwoAdapter(roomId) : null, [roomId]);
 
-  const takeoverWatchdogInFlightRef = useRef(false);
   const latestVersionRef = useRef(-1);
   const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
   const timeoutPassInFlightRef = useRef(false);
@@ -207,30 +204,9 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     playersRows[0]?.user_id ??
     '';
 
-  useEffect(() => {
-    const winnerId = rawState?.roundWinnerPlayerId;
-    const startsAt = Date.parse(rawState?.roundStartsAt ?? '');
-    if (!winnerId || !Number.isFinite(startsAt)) {
-      setServerRoundGateOpen(false);
-      return;
-    }
-    const remaining = startsAt - Date.now();
-    if (remaining <= 0) {
-      setServerRoundGateOpen(true);
-      return;
-    }
-    setServerRoundGateOpen(false);
-    const timer = setTimeout(() => setServerRoundGateOpen(true), remaining);
-    return () => clearTimeout(timer);
-  }, [rawState?.roundWinnerPlayerId, rawState?.roundStartsAt]);
-
-  const effectiveRoundWinnerPlayerId = serverRoundGateOpen
-    ? null
-    : rawState?.roundWinnerPlayerId ?? null;
-
   const turnTimeLeft = useDominoTwoVsTwoTurnClock({
     currentTurnPlayerId,
-    rawState: { ...rawState, roundWinnerPlayerId: effectiveRoundWinnerPlayerId },
+    rawState,
     serverClockOffsetMsRef,
     durationSeconds: PLAYER_TURN_DURATION_SECONDS,
   });
@@ -282,7 +258,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     loading,
     currentTurnPlayerId,
     winningTeamId: rawState?.winningTeamId ?? null,
-    roundWinnerPlayerId: effectiveRoundWinnerPlayerId,
+    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
     players: playersRows,
     adapter,
   });
@@ -321,7 +297,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const playTile = async (tile: DominoTileData, branch?: KozelBranch) => {
     if (!roomId) throw new Error('No 2v2 room id');
-    if (pendingMoveRef.current || effectiveRoundWinnerPlayerId) return false;
+    if (pendingMoveRef.current || rawState?.roundWinnerPlayerId) return false;
 
     const resolvedBranch = branch ?? availableBranchesForTile(tile)[0];
     if (!resolvedBranch) return false;
@@ -362,14 +338,12 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const passTurn = async () => {
     if (!roomId) return false;
-    // A queued pass countdown from the previous hand can fire while the new
-    // empty board snapshot is arriving. Passing is never legal before the
-    // opening tile, so stop it locally instead of sending a stale request.
+    // Game rule: passing is illegal before the opening tile is on the board.
     if (
       !board.centerTile ||
       currentTurnPlayerId !== currentUserId ||
       hasPlayableTile ||
-      effectiveRoundWinnerPlayerId ||
+      rawState?.roundWinnerPlayerId ||
       rawState?.winningTeamId
     ) return false;
 
@@ -384,7 +358,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     roomId,
     turnTimeLeft,
     currentTurnPlayerId,
-    rawState: { ...rawState, roundWinnerPlayerId: effectiveRoundWinnerPlayerId },
+    rawState,
     currentUserId,
     adapter,
     refreshSnapshot,
@@ -416,7 +390,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   }, [playersRows, rawState]);
 
   const { phase, roundResult, nextRoundCountdown } = useRoundLifecycle({
-    roundWinnerPlayerId: effectiveRoundWinnerPlayerId,
+    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
     winningTeamId: rawState?.winningTeamId ?? null,
     buildRoundResult: createRoundResult,
     serverAuthoritative: true,
@@ -433,7 +407,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     boneyardCount: rawState?.boneyardCount ?? 0,
     mode: '2v2',
 
-    roundWinnerPlayerId: effectiveRoundWinnerPlayerId,
+    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
     lastPlayedTile: rawState?.lastPlayedTile ?? null,
     lastScoringEvent: rawState?.lastScoringEvent as ScoringEvent | null,
     endOfHandScoringEvent: rawState?.endOfHandScoringEvent as ScoringEvent | null,

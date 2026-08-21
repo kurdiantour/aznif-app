@@ -3,7 +3,7 @@ export type PlayerKind = "human" | "bot";
 export type TeamId = "teamA" | "teamB";
 export type GameMode = "1v1" | "2v2";
 
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "../../constants/avatars.ts";
 
 export type MatchReward = {
   coin: number;

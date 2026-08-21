@@ -316,7 +316,7 @@ serve(async (req) => {
     }
 
     return json({
-      memberships: (membershipRows ?? []).map((membership) => ({
+      memberships: (membershipRows ?? []).map((membership: any) => ({
         matchId: String(membership.match_id),
         playerIndex: Number(membership.player_index),
         status: membership.status,

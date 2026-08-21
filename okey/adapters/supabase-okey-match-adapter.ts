@@ -308,6 +308,42 @@ export class SupabaseOkeyMatchAdapter
   }
 
 
+  private mergePublicProjection(
+    projection: OkeyMatchServerProjection,
+  ): OkeyMatchServerProjection {
+    const previous = this.snapshot;
+
+    if (!previous) {
+      return projection;
+    }
+
+    const previousPlayers = new Map(
+      previous.players.map((player) => [
+        player.id,
+        player,
+      ]),
+    );
+
+    return {
+      ...projection,
+      players: projection.players.map(
+        (player) => {
+          const previousPlayer =
+            previousPlayers.get(player.id);
+
+          return previousPlayer?.hand
+            ? {
+                ...player,
+                hand: previousPlayer.hand,
+              }
+            : player;
+        },
+      ),
+      settlement:
+        previous.settlement ?? null,
+    };
+  }
+
   private scheduleTimeout(
     snapshot:
       OkeyMatchServerProjection,
@@ -522,11 +558,44 @@ export class SupabaseOkeyMatchAdapter
       .on(
         "broadcast",
         {
-          event: "invalidate",
+          event: "state_update",
         },
-        () => {
+        ({ payload }) => {
+          if (
+            !payload ||
+            typeof payload !== "object"
+          ) {
+            return;
+          }
 
-          void this.refresh().catch(() => {});
+          const message = payload as {
+            matchId?: string;
+            version?: number;
+            projection?:
+              OkeyMatchServerProjection;
+          };
+
+          if (
+            message.matchId !== this.matchId ||
+            typeof message.version !== "number" ||
+            !message.projection
+          ) {
+            return;
+          }
+
+          if (
+            this.snapshot &&
+            message.version <=
+              this.snapshot.version
+          ) {
+            return;
+          }
+
+          this.publish(
+            this.mergePublicProjection(
+              message.projection,
+            ),
+          );
         },
       )
       .subscribe((status) => {

@@ -1,0 +1,3 @@
+-- History-preserving no-op.
+-- The legacy Okey `invalidate` realtime bridge was removed from the active runtime.
+-- Direct `state_update` broadcasts from okey_match are the canonical match update path.

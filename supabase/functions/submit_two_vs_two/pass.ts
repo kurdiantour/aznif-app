@@ -43,7 +43,7 @@ function timeoutResponse(
   }, 409);
 }
 
-export default async function handler(req: Request) {
+export default async function handler(req: Request): Promise<Response> {
   try {
     if (req.method !== "POST")
       return json({ error: "Method Not Allowed" }, 405);

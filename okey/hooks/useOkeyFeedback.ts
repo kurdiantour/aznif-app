@@ -10,6 +10,8 @@ import {
   subscribeToOkeyFeedbackPreferences,
 } from "@/okey/feedback/okey-feedback-preferences";
 import type { OkeyFeedbackEvent } from "@/okey/feedback/okey-feedback-types";
+import type { OkeyRoundResult } from "@/okey/match/okey-match-state";
+import type { OkeyGameState, OkeyTeamId } from "@/okey/types/okey";
 
 const TILE_SOUND = require("@/assets/audio/game/tile-placement-1.mp3");
 const MOVE_SOUND = require("@/assets/audio/game/tile-placement-2.mp3");
@@ -190,4 +192,164 @@ export function useOkeyFeedback() {
   );
 
   return { emitFeedback };
+}
+
+type EmitOkeyFeedback = (
+  event: OkeyFeedbackEvent,
+  eventKey: string,
+) => boolean;
+
+type OkeyGameFeedbackInput = {
+  state: OkeyGameState;
+  roundResults: OkeyRoundResult[];
+  showMatchResultPopup: boolean;
+  matchWinnerTeamId: OkeyTeamId | null;
+  matchScores: Record<OkeyTeamId, number>;
+  currentRound: number;
+  humanTeamId: OkeyTeamId;
+  isAppActive: boolean;
+  lifecycleResumeToken: number;
+  emitFeedback: EmitOkeyFeedback;
+};
+
+export function useOkeyGameFeedback({
+  state,
+  roundResults,
+  showMatchResultPopup,
+  matchWinnerTeamId,
+  matchScores,
+  currentRound,
+  humanTeamId,
+  isAppActive,
+  lifecycleResumeToken,
+  emitFeedback,
+}: OkeyGameFeedbackInput) {
+  const snapshotRef = useRef<OkeyGameState | null>(null);
+  const roundResultsCountRef = useRef(roundResults.length);
+  const matchVisibleRef = useRef(showMatchResultPopup);
+  const resumeTokenRef = useRef(lifecycleResumeToken);
+
+  useEffect(() => {
+    const previous = snapshotRef.current;
+    const resumed = resumeTokenRef.current !== lifecycleResumeToken;
+    resumeTokenRef.current = lifecycleResumeToken;
+
+    if (!isAppActive || resumed || !previous) {
+      snapshotRef.current = state;
+      roundResultsCountRef.current = roundResults.length;
+      matchVisibleRef.current = showMatchResultPopup;
+      return;
+    }
+
+    const previousHandCount =
+      previous.players[previous.currentPlayerIndex]?.hand.length ?? 0;
+    const currentHandCount =
+      state.players[previous.currentPlayerIndex]?.hand.length ?? 0;
+
+    if (currentHandCount > previousHandCount) {
+      const source: OkeyFeedbackEvent =
+        state.discardPile.length < previous.discardPile.length
+          ? "draw-discard"
+          : "draw-deck";
+
+      const drawn =
+        state.players[previous.currentPlayerIndex]?.hand.find(
+          (tile) =>
+            !previous.players[previous.currentPlayerIndex]?.hand.some(
+              (entry) => entry.id === tile.id,
+            ),
+        );
+
+      emitFeedback(
+        source,
+        `draw:${drawn?.id ?? state.currentPlayerIndex}:${state.discardPile.length}`,
+      );
+    }
+
+    if (state.discardPile.length > previous.discardPile.length) {
+      const discarded = state.discardPile[state.discardPile.length - 1];
+      emitFeedback(
+        "discard",
+        `discard:${discarded?.id ?? state.discardPile.length}`,
+      );
+    }
+
+    const previousMeldCount = previous.players.reduce(
+      (total, player) => total + player.melds.length,
+      0,
+    );
+    const currentMeldCount = state.players.reduce(
+      (total, player) => total + player.melds.length,
+      0,
+    );
+
+    if (currentMeldCount > previousMeldCount) {
+      const enteredKonkan = state.players.some(
+        (player, index) =>
+          player.konkan &&
+          (!previous.players[index]?.konkan ||
+            (!previous.players[index]?.opened && player.opened)),
+      );
+
+      emitFeedback(
+        enteredKonkan ? "konkan" : "meld-open",
+        `meld:${currentRound}:${currentMeldCount}`,
+      );
+    }
+
+    if (
+      state.currentPlayerIndex !== previous.currentPlayerIndex &&
+      state.currentPlayerIndex === 0
+    ) {
+      emitFeedback(
+        "turn-start",
+        `turn:${currentRound}:${state.discardPile.length}:0`,
+      );
+    }
+
+    if (roundResults.length > roundResultsCountRef.current) {
+      const result = roundResults[roundResults.length - 1];
+      const event: OkeyFeedbackEvent =
+        result?.winnerTeamId === null
+          ? "round-draw"
+          : result?.winnerTeamId === humanTeamId
+            ? "round-win"
+            : "round-loss";
+
+      emitFeedback(
+        event,
+        `round-result:${result?.round ?? currentRound}`,
+      );
+    }
+
+    if (showMatchResultPopup && !matchVisibleRef.current) {
+      const event: OkeyFeedbackEvent =
+        matchWinnerTeamId === null
+          ? "match-draw"
+          : matchWinnerTeamId === humanTeamId
+            ? "match-win"
+            : "match-loss";
+
+      emitFeedback(
+        event,
+        `match-result:${currentRound}:${matchScores.teamA}:${matchScores.teamB}`,
+      );
+    }
+
+    snapshotRef.current = state;
+    roundResultsCountRef.current = roundResults.length;
+    matchVisibleRef.current = showMatchResultPopup;
+  }, [
+    currentRound,
+    emitFeedback,
+    humanTeamId,
+    isAppActive,
+    lifecycleResumeToken,
+    matchScores.teamA,
+    matchScores.teamB,
+    matchWinnerTeamId,
+    roundResults,
+    showMatchResultPopup,
+    state,
+  ]);
 }

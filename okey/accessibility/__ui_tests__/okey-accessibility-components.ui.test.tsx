@@ -62,7 +62,7 @@ test("active timer and match result are announced with semantic roles", () => {
   );
   expect(result.getByRole("alert").props.accessibilityLiveRegion).toBe("assertive");
   expect(result.UNSAFE_getByProps({ accessibilityViewIsModal: true })).toBeTruthy();
-  expect(result.getByRole("button").props.accessibilityLabel).toBe("یارییەکی نوێ");
+  expect(result.getByRole("button").props.accessibilityLabel).toBe("دەرچوون");
 });
 test("discard exposes separate accessible actions for taking a tile and viewing history", () => {
   const take = jest.fn();

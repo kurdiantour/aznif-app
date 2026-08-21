@@ -60,8 +60,6 @@ export function OkeyMatchResultPopup({
     >
       <View
         style={styles.backdrop}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
       >
         <BlurView
           intensity={45}
