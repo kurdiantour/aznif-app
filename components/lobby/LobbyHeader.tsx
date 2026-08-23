@@ -15,10 +15,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useAppLayout } from "@/hooks/useAppLayout";
 
 let friendRequestHeaderChannelSequence = 0;
 
 export function LobbyHeader() {
+  const { isCompact, isCompactWidth, isCompactHeight, isLandscape, insets } = useAppLayout();
   const { profile, loading } = useProfile();
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
@@ -118,9 +120,17 @@ export function LobbyHeader() {
 
   return (
       <View>
-        <View style={styles.topBar}>
+        <View style={[
+          styles.topBar,
+          { 
+            paddingTop: Math.max(0, insets.top - 14),
+            paddingHorizontal: isCompactWidth ? 16 : (isLandscape ? 20 : 30),
+            rowGap: isCompact ? 4 : 8,
+          },
+          (isLandscape || isCompactHeight) && { flexWrap: "nowrap" }
+        ]}>
           <Pressable
-            style={styles.userBox}
+            style={[styles.userBox, isCompact && { width: 140 }]}
             onPress={() => router.push(profile ? "/profile" : "/login")}
           >
             <PlayerAvatar
@@ -143,17 +153,17 @@ export function LobbyHeader() {
 
           <View style={styles.topRight}>
             {profile ? (
-            <View style={styles.balanceGroup}>
+            <View style={[styles.balanceGroup, isCompactWidth && { gap: 4 }, (isLandscape || isCompactHeight) && { flexWrap: "nowrap" }]}>
               <LinearGradient
                 colors={["rgba(245,197,66,0.24)", "rgba(255,255,255,0.06)"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.balancePillCoin}
+                style={[styles.balancePillCoin, isCompact && styles.balancePillCompact]}
               >
                 <View style={styles.balanceIconCircleCoin}>
                   <Text style={styles.currencyEmoji}>{"\u{1FA99}"}</Text>
                 </View>
-                <Text style={styles.balanceText}>
+                <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
   {coinBalance} <Text style={styles.balanceTextKurdish}>سکە</Text>
 </Text>
               </LinearGradient>
@@ -161,13 +171,13 @@ export function LobbyHeader() {
                 colors={["rgba(255,183,59,0.22)", "rgba(255,255,255,0.07)"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.balancePill}
+                style={[styles.balancePill, isCompact && styles.balancePillCompact]}
               >
                 <View style={styles.balanceIconCircle}>
                   <Text style={styles.currencyEmoji}>{"\u2728"}</Text>
                 </View>
 
-                <Text style={styles.balanceText}>
+                <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
   {mcBalance} <Text style={styles.balanceTextKurdish}>ئەزنیف</Text>
 </Text>
               </LinearGradient>
@@ -178,13 +188,13 @@ export function LobbyHeader() {
                     colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={styles.balancePillSecondary}
+                    style={[styles.balancePillSecondary, isCompact && styles.balancePillCompact]}
                   >
                     <View style={styles.balanceIconCircleGold}>
                       <Text style={styles.currencyEmoji}>{"\u{1F48E}"}</Text>
                     </View>
 
-<Text style={styles.balanceText}>
+<Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
   {gemBalance}{" "}
   <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
 </Text>
@@ -198,13 +208,13 @@ export function LobbyHeader() {
                   colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={styles.balancePillSecondary}
+                  style={[styles.balancePillSecondary, isCompact && styles.balancePillCompact]}
                 >
                   <View style={styles.balanceIconCircleGold}>
                     <Text style={styles.currencyEmoji}>{"\u{1F48E}"}</Text>
                   </View>
 
-                  <Text style={styles.balanceText}>
+                  <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
                     {gemBalance} <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
                   </Text>
                 </LinearGradient>
@@ -379,6 +389,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     flexShrink: 0,
+  },
+
+  balancePillCompact: {
+    minWidth: 80,
+    paddingHorizontal: 8,
+    gap: 4,
+    flexShrink: 1,
   },
 
   balanceIconCircle: {

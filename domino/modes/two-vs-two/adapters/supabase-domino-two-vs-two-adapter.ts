@@ -6,6 +6,7 @@ import {
   processDominoTwoVsTwoBotTurn,
   submitDominoTwoVsTwoMove,
   submitDominoTwoVsTwoPass,
+  startDominoTwoVsTwoNextHand,
 } from './domino-two-vs-two-supabase-api';
 import type {
   DominoTwoVsTwoAdapter,
@@ -49,6 +50,10 @@ export class SupabaseDominoTwoVsTwoAdapter implements DominoTwoVsTwoAdapter {
       return submitDominoTwoVsTwoPass(this.roomId, true, command.claim);
     }
     return submitDominoTwoVsTwoPass(this.roomId);
+  }
+
+  startNextHand(completedRoundId: string) {
+    return startDominoTwoVsTwoNextHand(this.roomId, completedRoundId);
   }
 
   processBotTurn() {

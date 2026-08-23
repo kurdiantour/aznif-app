@@ -61,7 +61,7 @@ test("timeout takeover is strike-driven and has no heartbeat or worker watchdog"
   assert.doesNotMatch(hook + botController + connectionController, /takeoverWatchdog/);
   assert.equal((botController.match(/processBotTurn\(\)/g) ?? []).length, 1);
   assert.doesNotMatch(hook, /processBotTurn\(\)/);
-  assert.match(connectionController, /Date\.now\(\) - lastActivityRef\.current < 12_000/);
+  assert.match(connectionController, /now - lastActivityRef\.current >= 12_000/);
   assert.match(connectionController, /refreshPlayers\(false\)/);
   assert.match(timeoutController, /if \(args\.rawState\) acceptSnapshot\(args\.rawState\)/);
 
@@ -74,6 +74,36 @@ test("timeout takeover is strike-driven and has no heartbeat or worker watchdog"
   assert.match(migration, /apply_one_vs_one_timeout_strike_takeover/);
   assert.match(migration, /Heartbeat \/ presence \/ reconnect \/ disconnect are intentionally NOT defined here/);
 });
+
+test("1v1 roster sync is realtime-driven with an independent stale watchdog", () => {
+  const connectionController = readFileSync(
+    "domino/modes/one-vs-one/controllers/use-domino-one-vs-one-connection-controller.ts",
+    "utf8",
+  );
+  const adapter = readFileSync(
+    "domino/modes/one-vs-one/adapters/supabase-domino-one-vs-one-adapter.ts",
+    "utf8",
+  );
+
+  assert.doesNotMatch(connectionController, /reconcileTakeoverRoster/);
+  assert.doesNotMatch(connectionController, /takeoverRosterInFlightRef/);
+  assert.doesNotMatch(connectionController, /, 2_000\)/);
+  assert.match(adapter, /table: "one_vs_one_players"/);
+  assert.match(adapter, /observer\.onRosterInvalidated\(\)/);
+  assert.match(
+    connectionController,
+    /onRosterInvalidated:[\s\S]*?lastRosterActivityRef\.current = Date\.now\(\);[\s\S]*?refreshPlayers\(\)/,
+  );
+  assert.match(
+    connectionController,
+    /const rosterIsStale = now - lastRosterActivityRef\.current >= 12_000/,
+  );
+  assert.match(
+    connectionController,
+    /snapshotIsStale[\s\S]*?Promise\.all\(\[refreshSnapshot\(\), refreshPlayers\(false\)\]\)[\s\S]*?: refreshPlayers\(false\)/,
+  );
+});
+
 test("1v1 presentation preserves the authoritative Qapat end reason", () => {
   const presentation = readFileSync(
     "domino/modes/one-vs-one/presentation/use-one-vs-one-game.ts",

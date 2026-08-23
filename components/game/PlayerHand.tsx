@@ -21,8 +21,9 @@ type Props = {
   onPlayTile: (
     tile: DominoTileData,
     dropPoint: { x: number; y: number },
+    sourceRect?: { x: number; y: number; width: number; height: number },
   ) => void;
-  onSelectTile?: (tile: DominoTileData) => void;
+  onSelectTile?: (tile: DominoTileData, sourceRect?: { x: number; y: number; width: number; height: number }) => void;
   disabled?: boolean;
   selectedTileId?: string | null;
   playableTileIds?: string[];
@@ -32,6 +33,7 @@ type Props = {
   dealToken?: number;
   dealOrder?: number;
   dealPlayerCount?: number;
+  hiddenTileId?: string | null;
 };
 
 const TILE_WIDTH = 28;
@@ -65,6 +67,7 @@ export default function PlayerHand({
   dealToken = 0,
   dealOrder = 0,
   dealPlayerCount = 1,
+  hiddenTileId = null,
 }: Props) {
   const [localTiles, setLocalTiles] = useState(tiles);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -148,7 +151,8 @@ export default function PlayerHand({
       const tile = localTilesRef.current[index];
       if (!tile || !playableTileIdsRef.current.has(tile.id)) return;
 
-      onSelectTile?.(tile);
+      const left = getLeftForIndex(index);
+      onSelectTile?.(tile, trayWindowOrigin ? { x: trayWindowOrigin.x + left, y: trayWindowOrigin.y + TILE_TOP * scale, width: TILE_WIDTH * scale, height: TILE_HEIGHT * scale } : undefined);
 
       updateContainerOffset();
 
@@ -170,7 +174,7 @@ export default function PlayerHand({
       lastGestureRef.current = { dx: 0, dy: 0 };
       drag.setValue({ x: 0, y: 0 });
     },
-    [drag, getLeftForIndex, onSelectTile, scale, updateContainerOffset],
+    [drag, getLeftForIndex, onSelectTile, scale, trayWindowOrigin, updateContainerOffset],
   );
 
   const finishDrag = useCallback((gesture: { moveX?: number; moveY?: number }) => {
@@ -199,7 +203,8 @@ export default function PlayerHand({
       const y = gesture.moveY;
 
       if (realTile && typeof x === "number" && typeof y === "number") {
-        onPlayTile(realTile, { x, y });
+        const left = getLeftForIndex(from);
+        onPlayTile(realTile, { x, y }, trayWindowOrigin ? { x: trayWindowOrigin.x + left, y: trayWindowOrigin.y + TILE_TOP * scale, width: TILE_WIDTH * scale, height: TILE_HEIGHT * scale } : undefined);
       }
 
       resetDrag();
@@ -207,7 +212,7 @@ export default function PlayerHand({
     }
 
     resetDrag();
-  }, [onPlayTile, resetDrag]);
+  }, [getLeftForIndex, onPlayTile, resetDrag, scale, trayWindowOrigin]);
 
   const createResponder = useCallback(
     (index: number) =>
@@ -451,7 +456,7 @@ export default function PlayerHand({
                 width: scaledTileWidth,
                 height: scaledTileHeight,
                 zIndex: isDragging || isSelected ? 100 : isPlayable ? 50 : 1,
-                opacity:
+                opacity: tile.id === hiddenTileId ? 0 :
                   visibleDealToken === dealToken && !isWaitingForNewDeal
                     ? Animated.multiply(
                         dealOpacity,

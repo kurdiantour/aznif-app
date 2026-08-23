@@ -5,8 +5,7 @@
 -- FINAL RULE:
 --   valid human action -> consecutive_timeout_strikes = 0
 --   completed timeout #1 -> strike = 1
---   completed timeout #2 -> seat is locked for bot takeover
---   before that seat receives another human timer:
+--   completed timeout #2 -> acting seat immediately enters bot takeover
 --       bot_takeover = true
 --       connected = false
 --
@@ -231,7 +230,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_next_strikes integer := 0;
+  v_acting_strikes integer := 0;
 BEGIN
   IF p_increment_acting THEN
     UPDATE public.one_vs_one_players
@@ -239,7 +238,17 @@ BEGIN
         updated_at = now()
     WHERE room_id = p_room_id
       AND user_id = p_acting_user_id
-      AND bot_takeover = false;
+      AND bot_takeover = false
+    RETURNING consecutive_timeout_strikes
+    INTO v_acting_strikes;
+
+    IF COALESCE(v_acting_strikes, 0) >= 2 THEN
+      PERFORM public.apply_one_vs_one_timeout_strike_takeover(
+        p_room_id,
+        p_acting_user_id
+      );
+      RETURN true;
+    END IF;
   ELSE
     UPDATE public.one_vs_one_players
     SET consecutive_timeout_strikes = 0,
@@ -247,25 +256,6 @@ BEGIN
     WHERE room_id = p_room_id
       AND user_id = p_acting_user_id
       AND bot_takeover = false;
-  END IF;
-
-  IF p_next_user_id IS NULL OR p_next_user_id = p_acting_user_id THEN
-    RETURN false;
-  END IF;
-
-  SELECT consecutive_timeout_strikes
-  INTO v_next_strikes
-  FROM public.one_vs_one_players
-  WHERE room_id = p_room_id
-    AND user_id = p_next_user_id
-    AND bot_takeover = false;
-
-  IF COALESCE(v_next_strikes, 0) >= 2 THEN
-    PERFORM public.apply_one_vs_one_timeout_strike_takeover(
-      p_room_id,
-      p_next_user_id
-    );
-    RETURN true;
   END IF;
 
   RETURN false;
@@ -284,7 +274,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_next_strikes integer := 0;
+  v_acting_strikes integer := 0;
 BEGIN
   IF p_increment_acting THEN
     UPDATE public.two_vs_two_players
@@ -292,7 +282,17 @@ BEGIN
         updated_at = now()
     WHERE room_id = p_room_id
       AND user_id = p_acting_user_id
-      AND bot_takeover = false;
+      AND bot_takeover = false
+    RETURNING consecutive_timeout_strikes
+    INTO v_acting_strikes;
+
+    IF COALESCE(v_acting_strikes, 0) >= 2 THEN
+      PERFORM public.apply_two_vs_two_timeout_strike_takeover(
+        p_room_id,
+        p_acting_user_id
+      );
+      RETURN true;
+    END IF;
   ELSE
     UPDATE public.two_vs_two_players
     SET consecutive_timeout_strikes = 0,
@@ -300,25 +300,6 @@ BEGIN
     WHERE room_id = p_room_id
       AND user_id = p_acting_user_id
       AND bot_takeover = false;
-  END IF;
-
-  IF p_next_user_id IS NULL OR p_next_user_id = p_acting_user_id THEN
-    RETURN false;
-  END IF;
-
-  SELECT consecutive_timeout_strikes
-  INTO v_next_strikes
-  FROM public.two_vs_two_players
-  WHERE room_id = p_room_id
-    AND user_id = p_next_user_id
-    AND bot_takeover = false;
-
-  IF COALESCE(v_next_strikes, 0) >= 2 THEN
-    PERFORM public.apply_two_vs_two_timeout_strike_takeover(
-      p_room_id,
-      p_next_user_id
-    );
-    RETURN true;
   END IF;
 
   RETURN false;

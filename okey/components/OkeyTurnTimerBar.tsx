@@ -11,13 +11,15 @@ import { styles } from "./okeyStyles";
 
 export function OkeyTurnTimerBar({
   active,
-  durationMs = 20_000,
+  visible = true,
+  durationMs = 30_000,
   resetKey,
   orientation = "horizontal",
   reverse = false,
   style,
 }: {
   active: boolean;
+  visible?: boolean;
   durationMs?: number;
   resetKey?: string;
   orientation?: "horizontal" | "vertical";
@@ -70,10 +72,10 @@ export function OkeyTurnTimerBar({
   return (
     <View
       pointerEvents="none"
-      accessible={active}
+      accessible={active && visible}
       accessibilityRole="timer"
       accessibilityLabel={
-        active
+        active && visible
           ? `کاتی نۆبەت، ${Math.ceil(durationMs / 1000)} چرکە`
           : undefined
       }
@@ -90,7 +92,13 @@ export function OkeyTurnTimerBar({
         style,
       ]}
     >
-      <Animated.View style={[styles.turnTimerFill, fillStyle]} />
+      <Animated.View
+        style={[
+          styles.turnTimerFill,
+          fillStyle,
+          !visible && { opacity: 0 },
+        ]}
+      />
     </View>
   );
 }

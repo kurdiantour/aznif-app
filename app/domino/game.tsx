@@ -3,6 +3,7 @@ import DrawPilePrompt from "@/components/game/DrawPilePrompt";
 import GameOverPopup from "@/components/game/GameOverPopup";
 import GameChatDrawer from "@/components/game/GameChatDrawer";
 import PlayerHand from "@/components/game/PlayerHand";
+import DominoTileFlightOverlay from "@/components/game/DominoTileFlightOverlay";
 import PlayerSeat from "@/components/game/PlayerSeat";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import RoundResultReveal from "@/components/game/RoundResultReveal";
@@ -16,9 +17,12 @@ import MiniScoreBoard from "@/components/game/MiniScoreBoard";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { PLAYER_TURN_DURATION_SECONDS } from "@/domino/shared/game-shared";
 import { useGameSounds } from "@/domino/shared/presentation/use-domino-game-sounds";
+import { useDominoTileFlightCoordinator } from "@/domino/shared/presentation/use-domino-tile-flight-coordinator";
+import type { DominoFlightRect } from "@/domino/shared/presentation/domino-tile-flight";
 import { useOneVsOneGame } from "@/domino/modes/one-vs-one/presentation/use-one-vs-one-game";
 import { useRoundPresentation } from "@/domino/shared/presentation/use-round-presentation";
 import { useTwoVsTwoGame } from "@/domino/modes/two-vs-two";
+import { useLocalTwoVsTwoPreviewGame } from "@/domino/modes/two-vs-two/presentation/use-local-2v2-preview";
 import { awardAiPracticeWin, useAiPracticeGame } from "@/domino/modes/ai-practice";
 import { calculateMoveScore } from "@/domino/core/engine/kozel-engine";
 import { useProfile } from "@/lib/profile";
@@ -27,7 +31,7 @@ import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/dom
 import { Ionicons } from "@expo/vector-icons";
 import { useKeepAwake } from "expo-keep-awake";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BackHandler,
   Pressable,
@@ -52,7 +56,7 @@ function getTeamName(
 export default function GameScreen() {
   useKeepAwake();
 
-  const { room_id, mode, practice } = useLocalSearchParams();
+  const { room_id, mode, practice, preview } = useLocalSearchParams();
   const router = useRouter();
 
   const roomId = String(room_id ?? "");
@@ -62,9 +66,11 @@ export default function GameScreen() {
   const gameMode: "1v1" | "2v2" = rawMode === "2v2" ? "2v2" : "1v1";
 
   const isPracticeMode = practice === "true";
-  const isLocalGame = isPracticeMode;
+  const isTwoVsTwoPreview = __DEV__ && preview === "true";
+  const isLocalGame = isPracticeMode || isTwoVsTwoPreview;
 
   const practiceGame = useAiPracticeGame();
+  const previewGame = useLocalTwoVsTwoPreviewGame(isTwoVsTwoPreview);
 
   const oneVsOneGame = useOneVsOneGame(
     !isLocalGame && gameMode === "1v1" ? roomId : undefined,
@@ -74,7 +80,9 @@ export default function GameScreen() {
     !isLocalGame && gameMode === "2v2" ? roomId : undefined,
   );
 
-  const game = isPracticeMode
+  const game = isTwoVsTwoPreview
+    ? previewGame
+    : isPracticeMode
     ? practiceGame
     : gameMode === "1v1"
       ? oneVsOneGame
@@ -127,6 +135,15 @@ export default function GameScreen() {
   const practiceRewardSettlementRequestedRef = useRef(false);
   const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
   const boardAreaRef = useRef<any>(null);
+  const screenRef = useRef<View | null>(null);
+  const screenOriginRef = useRef({ x: 0, y: 0 });
+  const selectedTileSourceRef = useRef<DominoFlightRect | null>(null);
+  const seatFlightOriginsRef = useRef<Record<string, DominoFlightRect>>({});
+  const previousBoardTileCountRef = useRef<number | null>(null);
+  const previousTurnPlayerIdRef = useRef<string | null>(null);
+  const animatedMoveKeyRef = useRef<string | null>(null);
+  const tileFlight = useDominoTileFlightCoordinator();
+  const toScreenRect = (rect: DominoFlightRect): DominoFlightRect => ({ ...rect, x: rect.x - screenOriginRef.current.x, y: rect.y - screenOriginRef.current.y });
   const previousHandSignatureRef = useRef<string | null>(null);
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
@@ -292,15 +309,42 @@ useEffect(() => {
   const topPlayer = game.players.find((p) => p.seat === "top");
   const leftPlayer = game.players.find((p) => p.seat === "left");
   const rightPlayer = game.players.find((p) => p.seat === "right");
+
+  useLayoutEffect(() => {
+    const boardTileCount = (game.board.centerTile ? 1 : 0) +
+      (["left", "right", "up", "down"] as const).reduce((total, branch) => total + game.board.branches[branch].tiles.length, 0);
+    const previousCount = previousBoardTileCountRef.current;
+    const previousTurnPlayerId = previousTurnPlayerIdRef.current;
+    previousBoardTileCountRef.current = boardTileCount;
+    previousTurnPlayerIdRef.current = game.currentTurnPlayerId ?? null;
+    if (previousCount === null || boardTileCount !== previousCount + 1 || !game.lastPlayedTile) return;
+    const moverId = (game as any).rawState?.lastMovePlayerId ?? previousTurnPlayerId;
+    const localUserId = (game as any).currentUserId ?? currentUserId;
+    if (!moverId || moverId === localUserId) return;
+    const source = seatFlightOriginsRef.current[moverId];
+    if (!source) return;
+    const version = (game as any).rawState?.version ?? (game as any).rawState?.roomVersion ?? boardTileCount;
+    const moveKey = `${version}:${moverId}:${game.lastPlayedTile.id}`;
+    if (animatedMoveKeyRef.current === moveKey) return;
+    animatedMoveKeyRef.current = moveKey;
+    const tileId = game.lastPlayedTile.id;
+    tileFlight.hideBoardTile(tileId);
+    requestAnimationFrame(() => {
+      void boardAreaRef.current?.getTileRect?.(tileId).then((target: DominoFlightRect | null) => {
+        if (animatedMoveKeyRef.current !== moveKey) return;
+        if (!target) {
+          tileFlight.revealBoardTile(tileId);
+          return;
+        }
+        tileFlight.begin({ id: moveKey, tile: game.lastPlayedTile!, from: toScreenRect(source), to: toScreenRect(target) }, false);
+      });
+    });
+  }, [game, currentUserId, tileFlight]);
   const isTurnRingVisible = !game.roundWinnerPlayerId && !game.winningTeamId;
 
   const humanPlayer = isLocalGame
     ? game.players.find((p) => p.kind === "human")
     : game.players.find((p) => p.id === localCurrentUserId);
-  const shouldShowHumanTurnProgress =
-    !!humanPlayer &&
-    isTurnRingVisible &&
-    (game as any).phase === "playing";
   const humanTurnProgressWidth = humanPlayer?.isActive
     ? 450 * Math.max(0, Math.min(1, humanPlayer.timeLeft / PLAYER_TURN_DURATION_SECONDS))
     : 450;
@@ -355,6 +399,12 @@ useEffect(() => {
     !!game.board?.centerTile &&
     !game.canDrawTile &&
     playableTileIds.length === 0;
+  const shouldShowHumanTurnProgress =
+    !!humanPlayer &&
+    isTurnRingVisible &&
+    (game as any).phase === "playing";
+  const shouldShowHumanTurnProgressFill =
+    shouldShowHumanTurnProgress && !shouldShowPassPrompt;
 
   const handlePassTurn = useCallback(async () => {
     if (!shouldShowPassPrompt || passRequestedRef.current) return;
@@ -422,11 +472,16 @@ useEffect(() => {
     setSelectableBranches([]);
   };
 
+  useEffect(() => {
+    const hiddenTileId = tileFlight.hiddenHandTileId;
+    if (hiddenTileId && !game.myHand.some((tile) => tile.id === hiddenTileId)) tileFlight.releaseHandTile(hiddenTileId);
+  }, [game.myHand, tileFlight]);
+
   const isTileInMyHand = (tile: DominoTileData) => {
     return game.myHand.some((handTile) => handTile.id === tile.id);
   };
 
-  const handlePreviewTile = (tile: DominoTileData) => {
+  const handlePreviewTile = (tile: DominoTileData, sourceRect?: DominoFlightRect) => {
     if (!isMyTurn) return;
     if (!isTileInMyHand(tile)) return;
 
@@ -437,6 +492,7 @@ useEffect(() => {
       return;
     }
 
+    selectedTileSourceRef.current = sourceRect ?? null;
     setSelectedTile(tile);
     setSelectableBranches(branches);
   };
@@ -444,6 +500,7 @@ useEffect(() => {
   const handleDropTile = async (
     tile: DominoTileData,
     dropPoint: { x: number; y: number },
+    sourceRect?: DominoFlightRect,
   ) => {
     if (!isMyTurn) return;
     if (!isTileInMyHand(tile)) return;
@@ -455,6 +512,8 @@ useEffect(() => {
       return;
     }
 
+    tileFlight.hideHumanTile(tile.id);
+
     const branch = await boardAreaRef.current?.findDropBranch?.(
       tile,
       branches,
@@ -462,6 +521,7 @@ useEffect(() => {
     );
 
     if (!branch || !branches.includes(branch)) {
+      tileFlight.rollbackHumanTile(tile.id);
       clearSelection();
       return;
     }
@@ -471,15 +531,22 @@ useEffect(() => {
     // briefly while the multiplayer request resolves.
     clearSelection();
 
+    void boardAreaRef.current?.getPreviewRect?.(tile, branch).then((target: DominoFlightRect | null) => {
+      if (!sourceRect || !target) return tileFlight.rollbackHumanTile(tile.id);
+      tileFlight.begin({ id: `human:${tile.id}:${Date.now()}`, tile, from: toScreenRect(sourceRect), to: toScreenRect(target) }, true);
+    });
+
     try {
       const played = await game.playTile(tile, branch);
 
       if (!played) {
+        tileFlight.rollbackHumanTile(tile.id);
         setSelectedTile(tile);
         setSelectableBranches(branches);
       }
     } catch (err) {
       console.warn("play tile failed", err);
+      tileFlight.rollbackHumanTile(tile.id);
       if (isTileInMyHand(tile)) {
         setSelectedTile(tile);
         setSelectableBranches(branches);
@@ -503,16 +570,24 @@ useEffect(() => {
 
     const tileToPlay = selectedTile;
     clearSelection();
+    const sourceRect = selectedTileSourceRef.current;
+    tileFlight.hideHumanTile(tileToPlay.id);
+    void boardAreaRef.current?.getPreviewRect?.(tileToPlay, branch).then((target: DominoFlightRect | null) => {
+      if (!sourceRect || !target) return tileFlight.rollbackHumanTile(tileToPlay.id);
+      tileFlight.begin({ id: `human:${tileToPlay.id}:${Date.now()}`, tile: tileToPlay, from: toScreenRect(sourceRect), to: toScreenRect(target) }, true);
+    });
 
     try {
       const played = await game.playTile(tileToPlay, branch);
 
       if (!played && isTileInMyHand(tileToPlay)) {
+        tileFlight.rollbackHumanTile(tileToPlay.id);
         setSelectedTile(tileToPlay);
         setSelectableBranches(branches);
       }
     } catch (err) {
       console.warn("play tile failed", err);
+      tileFlight.rollbackHumanTile(tileToPlay.id);
       if (isTileInMyHand(tileToPlay)) {
         setSelectedTile(tileToPlay);
         setSelectableBranches(branches);
@@ -720,7 +795,19 @@ useEffect(() => {
   }
 
   return (
-    <View style={styles.screen}>
+    <View ref={screenRef} onLayout={() => screenRef.current?.measureInWindow((x, y) => { screenOriginRef.current = { x, y }; })} style={styles.screen}>
+      {tileFlight.flight && <DominoTileFlightOverlay flight={tileFlight.flight} onDone={tileFlight.finish} />}
+      {isTwoVsTwoPreview && (
+        <View pointerEvents="box-none" style={styles.previewDevOverlay}>
+          <View style={styles.previewDevPanel}>
+            <Text style={styles.previewDevTitle}>Domino 2v2 Preview</Text>
+            <Text style={styles.previewDevText}>You + 3 local bots</Text>
+            <Pressable onPress={previewGame.restartGame} style={styles.previewRestartButton}>
+              <Text style={styles.previewRestartText}>Restart Game</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <View style={styles.stage}>
         <TableBackground tableId={!isLocalGame ? getPreloadedTableId() : undefined}>
           {topPlayer && (
@@ -735,6 +822,7 @@ useEffect(() => {
                   dealOrder={gameMode === "1v1" ? 0 : 2}
                   dealPlayerCount={gameMode === "1v1" ? 2 : 4}
                   onPress={topPlayer.kind === "human" ? () => setProfilePlayer(topPlayer) : undefined}
+                  onFlightOriginChange={(rect) => { seatFlightOriginsRef.current[topPlayer.id] = rect; }}
                 />
               </View>
             </View>
@@ -764,6 +852,7 @@ useEffect(() => {
                   dealPlayerCount={4}
                   dealRotation={-90}
                   onPress={leftPlayer.kind === "human" ? () => setProfilePlayer(leftPlayer) : undefined}
+                  onFlightOriginChange={(rect) => { seatFlightOriginsRef.current[leftPlayer.id] = rect; }}
                   />
                 </View>
               </View>
@@ -794,6 +883,7 @@ useEffect(() => {
                   dealPlayerCount={4}
                   dealRotation={90}
                   onPress={rightPlayer.kind === "human" ? () => setProfilePlayer(rightPlayer) : undefined}
+                  onFlightOriginChange={(rect) => { seatFlightOriginsRef.current[rightPlayer.id] = rect; }}
                   />
                 </View>
               </View>
@@ -816,6 +906,7 @@ useEffect(() => {
                 finalTileAnimationTileId={finalTileAnimationTileId}
                 onFinalTileAnimationComplete={handleFinalTileAnimationComplete}
                 ref={boardAreaRef}
+                hiddenTileId={tileFlight.hiddenBoardTileId}
               />
             </View>
           </View>
@@ -927,16 +1018,19 @@ useEffect(() => {
               dealToken={dealToken}
               dealOrder={gameMode === "1v1" ? 1 : 0}
               dealPlayerCount={gameMode === "1v1" ? 2 : 4}
+              hiddenTileId={tileFlight.hiddenHandTileId}
             />
 
             {shouldShowHumanTurnProgress && (
               <View style={styles.humanTurnProgressTrack}>
-                <View
-                  style={[
-                    styles.humanTurnProgressFill,
-                    { width: humanTurnProgressWidth },
-                  ]}
-                />
+                {shouldShowHumanTurnProgressFill && (
+                  <View
+                    style={[
+                      styles.humanTurnProgressFill,
+                      { width: humanTurnProgressWidth },
+                    ]}
+                  />
+                )}
               </View>
             )}
           </View>
@@ -1022,6 +1116,12 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
+  previewDevOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "flex-end", paddingTop: 44, paddingRight: 10, zIndex: 1000, elevation: 1000 },
+  previewDevPanel: { width: 160, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.16)", backgroundColor: "rgba(0,0,0,0.55)" },
+  previewDevTitle: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  previewDevText: { marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 10, fontWeight: "600" },
+  previewRestartButton: { marginTop: 8, alignItems: "center", paddingVertical: 7, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.16)" },
+  previewRestartText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   screen: {
     flex: 1,
     direction: "ltr",

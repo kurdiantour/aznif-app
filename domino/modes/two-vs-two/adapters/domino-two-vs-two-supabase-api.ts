@@ -57,6 +57,14 @@ export const submitDominoTwoVsTwoPass = (
     : {}),
 });
 
+export const startDominoTwoVsTwoNextHand = (
+  roomId: string,
+  completedRoundId: string,
+) => submitCommand('submit_two_vs_two', {
+  action: 'start_next_hand',
+  room_id: roomId,
+  expected_completed_round_id: completedRoundId,
+});
 export async function processDominoTwoVsTwoBotTurn(roomId: string) {
   const { data, error } = await supabase.functions.invoke('process_bot_turns', {
     body: { mode: '2v2', room_id: roomId },

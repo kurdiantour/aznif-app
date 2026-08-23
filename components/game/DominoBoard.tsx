@@ -8,7 +8,7 @@ type Direction = "right" | "left" | "down" | "up";
 type BoardTile = GameState["board"]["branches"][KozelBranch]["tiles"][number];
 type Boundary = { edgePadding: number; safeHorizontalPadding: number; safeVerticalPadding: number };
 type Position = { tile: BoardTile; x: number; y: number; direction: Direction };
-export type BoardPreviewTarget = { branch: KozelBranch; x: number; y: number; width: number; height: number; scale: number };
+export type BoardPreviewTarget = { branch: KozelBranch; x: number; y: number; width: number; height: number; scale: number; rotation: number };
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
 type WinningContext = { tileId: string | null; translateY: Animated.Value; scale: Animated.Value; emphasisOpacity: Animated.Value; centerProgress: Animated.Value; rotation: Animated.Value };
 
@@ -137,18 +137,18 @@ function getZoom(board: GameState["board"], width: number, height: number, tileW
   const safeHeight = Math.max(0, height / 2 - boundary.safeVerticalPadding);
   return ZOOM_LEVELS.find((scale) => bounds!.minX * scale >= -safeWidth && bounds!.maxX * scale <= safeWidth && bounds!.minY * scale >= -safeHeight && bounds!.maxY * scale <= safeHeight) ?? ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
 }
-function BranchTile({ position, tileWidth, tileHeight, zIndex = 20 }: { position: Position; tileWidth: number; tileHeight: number; zIndex?: number }) {
+function BranchTile({ position, tileWidth, tileHeight, zIndex = 20, hidden = false }: { position: Position; tileWidth: number; tileHeight: number; zIndex?: number; hidden?: boolean }) {
   const winning = useContext(WinningTileAnimationContext);
   const preview = "__placementPreview" in position.tile;
   const previewTile = position.tile as BoardTile & { __previewBranch?: KozelBranch; __onPreviewPress?: (branch: KozelBranch) => void };
   const size = slotSize(position.tile, position.direction, tileWidth, tileHeight);
-  return <Pressable pointerEvents={preview ? "auto" : "none"} onPress={previewTile.__previewBranch ? () => previewTile.__onPreviewPress?.(previewTile.__previewBranch!) : undefined} style={[styles.tile, preview && styles.preview, { width: size.width, height: size.height, left: "50%", top: "50%", marginLeft: position.x - size.width / 2, marginTop: position.y - size.height / 2, zIndex }]}>
+  return <Pressable pointerEvents={preview ? "auto" : "none"} onPress={previewTile.__previewBranch ? () => previewTile.__onPreviewPress?.(previewTile.__previewBranch!) : undefined} style={[styles.tile, preview && styles.preview, { width: size.width, height: size.height, left: "50%", top: "50%", marginLeft: position.x - size.width / 2, marginTop: position.y - size.height / 2, zIndex, opacity: hidden ? 0 : preview ? 0.5 : 1 }]}>
     <DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} />
     {winning?.tileId === position.tile.id && <Animated.View pointerEvents="none" style={[styles.winner, { width: size.width, height: size.height, opacity: winning.emphasisOpacity, transform: [{ translateX: Animated.multiply(winning.centerProgress, -position.x) }, { translateY: Animated.add(Animated.multiply(winning.centerProgress, -position.y), winning.translateY) }, { rotate: winning.rotation.interpolate({ inputRange: [0, 1080], outputRange: ["0deg", "1080deg"] }) }, { scale: winning.scale }] }]}><DominoTile tile={position.tile} width={tileWidth} height={tileHeight} rotation={rotationFor(position.tile, position.direction)} /></Animated.View>}
   </Pressable>;
 }
 
-type Props = { board: GameState["board"]; selectedTile: DominoTileData | null; selectableBranches: KozelBranch[]; onSelectBranch?: (branch: KozelBranch) => void; boardWidth: number; boardHeight: number; boundary: Boundary; winningTileId: string | null; winningTranslateY: Animated.Value; winningScale: Animated.Value; winningEmphasisOpacity: Animated.Value; winningCenterProgress: Animated.Value; winningRotation: Animated.Value; isCenterFinalTile: boolean; centerFinalTransform: any };
+type Props = { hiddenTileId?: string | null; board: GameState["board"]; selectedTile: DominoTileData | null; selectableBranches: KozelBranch[]; onSelectBranch?: (branch: KozelBranch) => void; boardWidth: number; boardHeight: number; boundary: Boundary; winningTileId: string | null; winningTranslateY: Animated.Value; winningScale: Animated.Value; winningEmphasisOpacity: Animated.Value; winningCenterProgress: Animated.Value; winningRotation: Animated.Value; isCenterFinalTile: boolean; centerFinalTransform: any };
 export function getDominoBoardTileMetrics(board: GameState["board"], boardWidth: number, boardHeight: number) {
   const estimate = (tiles: BoardTile[], direction: Direction) => tiles.reduce((total, tile) => {
     const size = slotSize(tile, direction, BASE_TILE_WIDTH, BASE_TILE_HEIGHT);
@@ -188,8 +188,19 @@ export function getDominoBoardPreviewTargets(board: GameState["board"], selected
     const position = path[path.length - 1];
     if (!position) return [];
     const size = slotSize(tile, position.direction, layout.tileWidth, layout.tileHeight);
-    return [{ branch, x: position.x, y: position.y, width: size.width, height: size.height, scale: zoom }];
+    return [{ branch, x: position.x, y: position.y, width: size.width, height: size.height, scale: zoom, rotation: rotationFor(tile, position.direction) }];
   });
+}
+export function getDominoBoardTileTarget(board: GameState["board"], tileId: string, boardWidth: number, boardHeight: number, boundary: Boundary): Omit<BoardPreviewTarget, "branch"> | null {
+  const layout = getDominoBoardTileMetrics(board, boardWidth, boardHeight);
+  const zoom = getZoom(board, boardWidth, boardHeight, layout.tileWidth, layout.tileHeight, layout.centerWidth, layout.centerHeight, boundary);
+  if (board.centerTile?.id === tileId) return { x: 0, y: 0, width: layout.centerWidth, height: layout.centerHeight, scale: zoom, rotation: centerRotation(board.centerTile) };
+  const pathWidth = boardWidth / zoom; const pathHeight = boardHeight / zoom;
+  for (const branch of ["left", "right", "up", "down"] as const) {
+    const position = buildPath(branch, board.branches[branch].tiles, layout.tileWidth, layout.tileHeight, layout.centerWidth, layout.centerHeight, pathWidth, pathHeight, boundary.edgePadding).find((entry) => entry.tile.id === tileId);
+    if (position) { const size = slotSize(position.tile, position.direction, layout.tileWidth, layout.tileHeight); return { x: position.x, y: position.y, width: size.width, height: size.height, scale: zoom, rotation: rotationFor(position.tile, position.direction) }; }
+  }
+  return null;
 }
 export default function DominoBoard(props: Props) {
   const { board, boardWidth, boardHeight, boundary } = props;
@@ -226,9 +237,9 @@ export default function DominoBoard(props: Props) {
         <Text style={styles.openingPlus}>+</Text>
       </>}
     </Pressable>}
-    <View pointerEvents="none" style={[styles.center, { width: layout.centerWidth, height: layout.centerHeight, marginLeft: -layout.centerWidth / 2, marginTop: -layout.centerHeight / 2, opacity: props.isCenterFinalTile ? 0 : 1 }]}>{board.centerTile && <DominoTile tile={board.centerTile} width={layout.tileWidth} height={layout.tileHeight} rotation={centerRotation(board.centerTile)} />}</View>
+    <View pointerEvents="none" style={[styles.center, { width: layout.centerWidth, height: layout.centerHeight, marginLeft: -layout.centerWidth / 2, marginTop: -layout.centerHeight / 2, opacity: props.isCenterFinalTile || board.centerTile?.id === props.hiddenTileId ? 0 : 1 }]}>{board.centerTile && <DominoTile tile={board.centerTile} width={layout.tileWidth} height={layout.tileHeight} rotation={centerRotation(board.centerTile)} />}</View>
     {props.isCenterFinalTile && board.centerTile && <Animated.View pointerEvents="none" style={[styles.center, styles.centerWinner, { width: layout.centerWidth, height: layout.centerHeight, marginLeft: -layout.centerWidth / 2, marginTop: -layout.centerHeight / 2, zIndex: 220, transform: props.centerFinalTransform }]}><DominoTile tile={board.centerTile} width={layout.tileWidth} height={layout.tileHeight} rotation={centerRotation(board.centerTile)} /></Animated.View>}
-    {(["left", "right", "up", "down"] as const).flatMap((branch) => buildPath(branch, board.branches[branch].tiles, layout.tileWidth, layout.tileHeight, layout.centerWidth, layout.centerHeight, pathBoardWidth, pathBoardHeight, boundary.edgePadding).map((position, index) => <BranchTile key={`${branch}-${position.tile.order}-${position.tile.id}`} position={position} tileWidth={layout.tileWidth} tileHeight={layout.tileHeight} zIndex={20 + index} />))}
+    {(["left", "right", "up", "down"] as const).flatMap((branch) => buildPath(branch, board.branches[branch].tiles, layout.tileWidth, layout.tileHeight, layout.centerWidth, layout.centerHeight, pathBoardWidth, pathBoardHeight, boundary.edgePadding).map((position, index) => <BranchTile key={`${branch}-${position.tile.order}-${position.tile.id}`} position={position} tileWidth={layout.tileWidth} tileHeight={layout.tileHeight} zIndex={20 + index} hidden={position.tile.id === props.hiddenTileId} />))}
     {props.selectedTile && props.selectableBranches.map(preview)}
   </WinningTileAnimationContext.Provider></Animated.View>;
 }

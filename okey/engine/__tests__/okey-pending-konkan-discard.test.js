@@ -10,7 +10,7 @@ function state(overrides = {}) {
   const players = overrides.players ?? [
     player("human", "teamA", [...openTiles]),
     player("mate", "teamA", []),
-    player("opponent", "teamB", []),
+    player("opponent", "teamB", [], false, true),
     player("opponent2", "teamB", []),
   ];
   return {
@@ -78,4 +78,3 @@ function openMeldsFromHand(hand) {
   assert(restored.players[0].pendingKonkanFromDiscard === true, "Saved/restored state should keep pending KonKan.");
   assert(restored.players[0].konkan === false, "Saved/restored pending state should not become KonKan.");
 }
-

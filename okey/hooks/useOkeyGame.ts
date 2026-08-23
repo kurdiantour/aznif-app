@@ -8,6 +8,9 @@ import {
 import { AppState } from "react-native";
 
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
+import { useOkeyMultiplayerBotController } from "@/okey/controllers/okey-multiplayer-bot-controller";
+import { getOkeyAuthoritativeRoundPresentation } from "@/okey/presentation/okey-game-presentation";
+import { useOkeyTimeoutController, useOkeyTurnClock } from "./useOkeyTimeoutController";
 import {
   MAX_ROUNDS,
   ROUND_RESULT_COUNTDOWN_SECONDS,
@@ -38,7 +41,6 @@ function createPlaceholderOkeyTile(
     copy: 1,
   };
 }
-
 function createPlaceholderHand(
   playerId: string,
   count: number,
@@ -53,7 +55,6 @@ function createPlaceholderHand(
       ),
   );
 }
-
 function createPlaceholderDeck(
   count: number,
 ): OkeyTile[] {
@@ -67,8 +68,6 @@ function createPlaceholderDeck(
       ),
   );
 }
-
-
 function projectToOkeyGameState(
   projection: OkeyMatchServerProjection,
 ): OkeyGameState {
@@ -140,8 +139,7 @@ return {
   ) => {
     if (viewerIndex < 0) {
       return index;
-    }
-
+}
     return (
       (index -
         viewerIndex +
@@ -181,8 +179,7 @@ discardOwners:
     (owner) => {
       if (!owner) {
         return [];
-      }
-
+}
       const playerId =
         owner.playerId ??
         projection.players[
@@ -191,8 +188,7 @@ discardOwners:
 
       if (!playerId) {
         return [];
-      }
-
+}
       return [
         {
           playerId,
@@ -226,7 +222,6 @@ discardOwners:
       projection.hasDrawnThisTurn,
   };
 }
-
 function projectAuthoritativeRoundResults(
   projection: OkeyMatchServerProjection,
 ): OkeyMatchState["roundResults"] {
@@ -246,7 +241,6 @@ function projectAuthoritativeRoundResults(
     }),
   );
 }
-
 function preserveViewerRackOrder(
   previousState: OkeyGameState,
   nextState: OkeyGameState,
@@ -272,18 +266,15 @@ function preserveViewerRackOrder(
 
     if (!currentTile) {
       continue;
-    }
-
+}
     ordered.push(currentTile);
     nextById.delete(previousTile.id);
-  }
-
+}
   ordered.push(...nextById.values());
 
   if (!nextState.players[0]) {
     return nextState;
-  }
-
+}
   return {
     ...nextState,
     players: nextState.players.map(
@@ -297,7 +288,6 @@ function preserveViewerRackOrder(
     ),
   };
 }
-
 function normalizeOnlineError(
   error: unknown,
 ) {
@@ -307,7 +297,6 @@ function normalizeOnlineError(
         "okey_online_request_failed",
       );
 }
-
 export function useOkeyGame(
   onlineTableId?: string,
   onlineMatchId?: string,
@@ -370,7 +359,91 @@ export function useOkeyGame(
     setPendingTimeoutDiscardTileId,
   ] = useState<string | null>(null);
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const serverClockOffsetMsRef = useRef(0);
+  const timeoutPassInFlightRef = useRef(false);
+  const timeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeoutSubmitRef = useRef<((claim: any, turnKey: string, matchId: string) => void) | null>(null);
+  const activeTurnKeyRef = useRef<string | null>(null);
+  const matchIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    matchIdRef.current = onlineMatchId;
+  }, [onlineMatchId]);
+
+  const clearTimeoutRetry = useCallback(() => {
+    if (timeoutRetryRef.current) {
+      clearTimeout(timeoutRetryRef.current);
+      timeoutRetryRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimeoutRetry();
+  }, [clearTimeoutRetry]);
+
   const state = match.roundState;
+
+  const currentPlayerId = onlineProjection && onlineProjection.players[onlineProjection.currentPlayerIndex]
+    ? onlineProjection.players[onlineProjection.currentPlayerIndex].id
+    : '';
+
+  const turnTimeLeft = useOkeyTurnClock({
+    currentPlayerId,
+    projection: onlineProjection,
+    serverClockOffsetMsRef,
+  });
+
+  useOkeyTimeoutController({
+    matchId: onlineMatchId,
+    turnTimeLeft,
+    currentPlayerId,
+    projection: onlineProjection,
+    currentUserId,
+    adapter: onlineAdapter,
+    refreshSnapshot: async () => {
+      if (onlineAdapter) {
+        await onlineAdapter.refresh();
+      }
+    },
+    matchIdRef,
+    activeTurnKeyRef,
+    serverClockOffsetMsRef,
+    timeoutPassInFlightRef,
+    timeoutRetryRef,
+    timeoutSubmitRef,
+    clearTimeoutRetry,
+  });
+
+  useEffect(() => {
+    if (
+      !onlineMatchId ||
+      onlineProjection?.matchFinished
+    ) {
+      activeTurnKeyRef.current = null;
+      return;
+    }
+    const expectedVersion = Number(onlineProjection?.version);
+    const expectedTurnDeadlineAt = onlineProjection?.turnDeadlineAt;
+    if (
+      !Number.isInteger(expectedVersion) ||
+      expectedVersion < 0 ||
+      typeof expectedTurnDeadlineAt !== "string" ||
+      !currentPlayerId
+    ) {
+      activeTurnKeyRef.current = null;
+      return;
+    }
+    activeTurnKeyRef.current =
+      `${expectedVersion}:${expectedTurnDeadlineAt}:${currentPlayerId}`;
+  }, [onlineMatchId, onlineProjection, currentPlayerId]);
+
+  useOkeyMultiplayerBotController({
+    matchId: onlineMatchId,
+    projection: onlineProjection,
+    adapter: onlineAdapter,
+  });
 
   const onlineReady =
     onlineProjection !== null;
@@ -389,8 +462,7 @@ export function useOkeyGame(
       hasAppliedOnlineProjectionRef.current =
         false;
       return;
-    }
-
+}
     let mounted = true;
 
     const adapter =
@@ -407,14 +479,23 @@ export function useOkeyGame(
     hasAppliedOnlineProjectionRef.current =
       false;
 
+    adapter
+      .getCurrentUserId()
+      .then((userId) => {
+        if (mounted) {
+          setCurrentUserId(userId);
+        }
+      })
+      .catch(console.error);
+
     const applyProjection = (
       projection: OkeyMatchServerProjection,
     ) => {
       if (!mounted) {
         return;
-      }
-
+}
       setOnlineProjection(projection);
+      serverClockOffsetMsRef.current = adapter.getServerClockOffsetMs();
 
       setMatch((current) => {
         const projectedState =
@@ -443,6 +524,22 @@ export function useOkeyGame(
 
         const matchJustFinished =
           !current.matchFinished && projection.matchFinished;
+        const authoritativeRoundPresentation =
+          getOkeyAuthoritativeRoundPresentation({
+            eligibleAt: projection.nextRoundEligibleAt,
+            serverNowMs: Date.now() + serverClockOffsetMsRef.current,
+            countdownSeconds: ROUND_RESULT_COUNTDOWN_SECONDS,
+          });
+        const awaitingAuthoritativeNextRound =
+          projection.phase === "finished" &&
+          !projection.matchFinished &&
+          authoritativeRoundPresentation !== null;
+        const initializeAuthoritativeRoundPresentation =
+          awaitingAuthoritativeNextRound &&
+          (hasNewRoundResult || isFirstProjection);
+        const authoritativeRoundStarted =
+          current.roundState.phase === "finished" &&
+          projection.phase === "playing";
 
         return {
           ...current,
@@ -463,21 +560,35 @@ export function useOkeyGame(
             projection.matchWinnerTeamId,
 
           showFinishRevealPopup:
-            hasNewRoundResult
+            authoritativeRoundStarted
+              ? false
+              : initializeAuthoritativeRoundPresentation
+                ? authoritativeRoundPresentation.showFinishReveal
+              : hasNewRoundResult
               ? true
               : isFirstProjection
                 ? false
                 : current.showFinishRevealPopup,
 
           showRoundResultPopup:
-            hasNewRoundResult
+            authoritativeRoundStarted
+              ? false
+              : initializeAuthoritativeRoundPresentation
+                ? !authoritativeRoundPresentation.showFinishReveal
+              : hasNewRoundResult
               ? false
               : isFirstProjection
                 ? false
                 : current.showRoundResultPopup,
 
           roundResultCountdownRemaining:
-            hasNewRoundResult
+            authoritativeRoundStarted
+              ? null
+              : initializeAuthoritativeRoundPresentation
+                ? authoritativeRoundPresentation.showFinishReveal
+                  ? null
+                  : authoritativeRoundPresentation.countdownRemaining
+              : hasNewRoundResult
               ? null
               : isFirstProjection
                 ? null
@@ -663,15 +774,40 @@ export function useOkeyGame(
     void reconnectOnline();
   }, [reconnectOnline]);
 
+  const nextRoundClaimRef = useRef<string | null>(null);
+  const eliminatedTurnClaimRef = useRef<string | null>(null);
   const nextRound = useCallback(() => {
-    setMatch((current) => ({
-      ...current,
-      showRoundResultPopup: false,
-      showFinishRevealPopup: false,
-      roundResultCountdownRemaining:
-        null,
-    }));
-  }, []);
+    const adapter = onlineAdapterRef.current;
+    const projection = onlineProjection;
+
+    if (
+      !adapter ||
+      !projection ||
+      projection.matchFinished ||
+      projection.phase !== "finished"
+    ) {
+      return;
+    }
+
+    const claimKey = projection.version + ":" + projection.currentRound;
+    if (nextRoundClaimRef.current === claimKey) return;
+    nextRoundClaimRef.current = claimKey;
+
+    void adapter.startNextRound({
+      expectedVersion: projection.version,
+      expectedRound: projection.currentRound,
+    }).then(() => {
+      setMatch((current) => ({
+        ...current,
+        showRoundResultPopup: false,
+        showFinishRevealPopup: false,
+        roundResultCountdownRemaining: null,
+      }));
+    }).catch((error) => {
+      nextRoundClaimRef.current = null;
+      setOnlineError(normalizeOnlineError(error));
+    });
+  }, [onlineProjection]);
 
   useEffect(() => {
     if (
@@ -682,6 +818,16 @@ export function useOkeyGame(
       return;
     }
 
+    const authoritativePresentation =
+      getOkeyAuthoritativeRoundPresentation({
+        eligibleAt: onlineProjection?.nextRoundEligibleAt ?? null,
+        serverNowMs: Date.now() + serverClockOffsetMsRef.current,
+        countdownSeconds: ROUND_RESULT_COUNTDOWN_SECONDS,
+      });
+    const revealDelayMs = authoritativePresentation
+      ? authoritativePresentation.msUntilCountdown
+      : FINISH_REVEAL_SECONDS * 1000;
+
     const timer = setTimeout(() => {
       setMatch((current) => {
         if (
@@ -690,15 +836,23 @@ export function useOkeyGame(
           return current;
         }
 
+        const latestPresentation =
+          getOkeyAuthoritativeRoundPresentation({
+            eligibleAt: onlineProjection?.nextRoundEligibleAt ?? null,
+            serverNowMs: Date.now() + serverClockOffsetMsRef.current,
+            countdownSeconds: ROUND_RESULT_COUNTDOWN_SECONDS,
+          });
+
         return {
           ...current,
           showFinishRevealPopup: false,
           showRoundResultPopup: true,
           roundResultCountdownRemaining:
+            latestPresentation?.countdownRemaining ??
             ROUND_RESULT_COUNTDOWN_SECONDS,
         };
       });
-    }, FINISH_REVEAL_SECONDS * 1000);
+    }, revealDelayMs);
 
     return () =>
       clearTimeout(timer);
@@ -706,6 +860,7 @@ export function useOkeyGame(
     hasLoadedSavedGame,
     isAppActive,
     match.showFinishRevealPopup,
+    onlineProjection?.nextRoundEligibleAt,
   ]);
 
   useEffect(() => {
@@ -719,10 +874,17 @@ export function useOkeyGame(
       return;
     }
 
-    if (
-      match.roundResultCountdownRemaining <=
-      0
-    ) {
+    const authoritativePresentation =
+      getOkeyAuthoritativeRoundPresentation({
+        eligibleAt: onlineProjection?.nextRoundEligibleAt ?? null,
+        serverNowMs: Date.now() + serverClockOffsetMsRef.current,
+        countdownSeconds: ROUND_RESULT_COUNTDOWN_SECONDS,
+      });
+    const countdownRemaining =
+      authoritativePresentation?.countdownRemaining ??
+      match.roundResultCountdownRemaining;
+
+    if (countdownRemaining <= 0) {
       if (match.matchFinished) {
         setMatch((current) => ({
           ...current,
@@ -750,17 +912,28 @@ export function useOkeyGame(
           return current;
         }
 
+        const latestPresentation =
+          getOkeyAuthoritativeRoundPresentation({
+            eligibleAt: onlineProjection?.nextRoundEligibleAt ?? null,
+            serverNowMs: Date.now() + serverClockOffsetMsRef.current,
+            countdownSeconds: ROUND_RESULT_COUNTDOWN_SECONDS,
+          });
+        const nextCountdown = latestPresentation
+          ? latestPresentation.countdownRemaining
+          : Math.max(0, current.roundResultCountdownRemaining - 1);
+
+        if (nextCountdown === current.roundResultCountdownRemaining) {
+          return current;
+        }
+
         return {
           ...current,
-          roundResultCountdownRemaining:
-            Math.max(
-              0,
-              current.roundResultCountdownRemaining -
-                1,
-            ),
+          roundResultCountdownRemaining: nextCountdown,
         };
       });
-    }, 1000);
+    }, authoritativePresentation
+      ? authoritativePresentation.msUntilNextCountdownTick
+      : 1000);
 
     return () =>
       clearTimeout(timer);
@@ -771,6 +944,7 @@ export function useOkeyGame(
     match.roundResultCountdownRemaining,
     match.showRoundResultPopup,
     nextRound,
+    onlineProjection?.nextRoundEligibleAt,
   ]);
 
   const draw = useCallback(
@@ -892,8 +1066,32 @@ export function useOkeyGame(
   const beginTimeoutHumanTurn =
     useCallback(() => null, []);
 
-  const playEliminated =
-    useCallback(() => {}, []);
+  const playEliminated = useCallback(() => {
+    const adapter = onlineAdapterRef.current;
+    const projection = onlineProjection;
+    const actor = projection?.players[projection.currentPlayerIndex];
+
+    if (
+      !adapter ||
+      !projection ||
+      projection.phase !== "playing" ||
+      !actor?.eliminated
+    ) {
+      return;
+    }
+
+    const claimKey = projection.version + ":" + actor.id;
+    if (eliminatedTurnClaimRef.current === claimKey) return;
+    eliminatedTurnClaimRef.current = claimKey;
+
+    void adapter.playEliminatedTurn({
+      expectedVersion: projection.version,
+      expectedActorId: actor.id,
+    }).catch((error) => {
+      eliminatedTurnClaimRef.current = null;
+      setOnlineError(normalizeOnlineError(error));
+    });
+  }, [onlineProjection]);
 
   const commitPendingTimeoutDiscard =
     useCallback(() => {
@@ -1007,3 +1205,4 @@ export function useOkeyGame(
 
   };
 }
+

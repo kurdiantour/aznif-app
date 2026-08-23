@@ -1,4 +1,4 @@
-export type DominoTwoVsTwoCommandAction = 'move' | 'pass';
+export type DominoTwoVsTwoCommandAction = 'move' | 'pass' | 'start_next_hand';
 export type DominoTwoVsTwoCommandHandler = (request: Request) => Promise<Response>;
 
 export type DominoTwoVsTwoCommandHandlers = Record<
@@ -28,7 +28,7 @@ export class DominoTwoVsTwoCommandService {
       return json({ error: 'Missing action' }, 400);
     }
 
-    if (action !== 'move' && action !== 'pass') {
+    if (action !== 'move' && action !== 'pass' && action !== 'start_next_hand') {
       return json({ error: 'Invalid action' }, 400);
     }
     return this.handlers[action](request);

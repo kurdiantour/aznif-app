@@ -3,13 +3,15 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
   applyAuthoritativeOkeyMatchCommand,
+  applyAuthoritativeOkeyEliminatedTurn,
   applyAuthoritativeManualLeave,
   deriveOkeyDailyQuestGameplayEvents,
-  getNextOkeyMatchTurnDeadline,
+  getOkeyMatchTurnDeadlineAfterTransition,
   OkeyCommandError,
   projectOkeyMatchPublicState,
   projectOkeyMatchState,
   resolveAuthoritativeMatchDeadline,
+  startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeCommand,
   type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
@@ -216,6 +218,8 @@ serve(async (req) => {
   if (
     action !== "snapshot" &&
     action !== "command" &&
+    action !== "play-eliminated" &&
+    action !== "start-next-round" &&
     action !== "resolve-timeout" &&
     action !== "manual-leave"
   ) {
@@ -263,10 +267,6 @@ serve(async (req) => {
 
   const broadcastStateUpdate = async (
     version: number,
-    status: "playing" | "finished",
-    projection: ReturnType<
-      typeof projectOkeyMatchPublicState
-    >,
   ) => {
     const channel = service.channel(
       `okey-match:${matchId}`,
@@ -278,8 +278,6 @@ serve(async (req) => {
       payload: {
         matchId,
         version,
-        status,
-        projection,
       },
     });
 
@@ -497,14 +495,101 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     });
   }
 
+  const clientExpectedVersion =
+    body.expectedVersion !== undefined && body.expectedVersion !== null
+      ? Number(body.expectedVersion)
+      : null;
+
+  if (
+    (
+      action === "command" ||
+      action === "play-eliminated" ||
+      action === "start-next-round"
+    ) &&
+    clientExpectedVersion !== null &&
+    clientExpectedVersion !== Number(bundle.version)
+  ) {
+    return json(
+      {
+        error: "version_conflict",
+        details: `Client expected version ${clientExpectedVersion} does not match database version ${bundle.version}`,
+      },
+      409,
+    );
+  }
+
   let nextState: OkeyAuthoritativeMatchState;
   let commandType: string;
   let acceptedCommand:
     | OkeyAuthoritativeCommand
-    | { type: "manual-leave" | "system-timeout" };
+    | { type: "manual-leave" | "system-timeout" | "system-eliminated-turn" | "start-next-round" };
 
   try {
-    if (action === "manual-leave") {
+    if (action === "start-next-round") {
+      const expectedRound = Number(body.expectedRound);
+
+      if (
+        clientExpectedVersion === null ||
+        !Number.isInteger(expectedRound) ||
+        expectedRound < 1
+      ) {
+        return json({ error: "invalid_next_round_claim" }, 400);
+      }
+
+      if (state.matchFinished) {
+        return json({ error: "match_finished" }, 409);
+      }
+
+      if (
+        state.currentRound !== expectedRound ||
+        state.roundState.phase !== "finished"
+      ) {
+        return json(
+          {
+            error: "already_started",
+            code: "already_processed",
+            version: bundle.version,
+          },
+          409,
+        );
+      }
+
+      const eligibleAtMs = Date.parse(state.nextRoundEligibleAt ?? "");
+      const serverNowMs = Date.now();
+      if (!Number.isFinite(eligibleAtMs)) {
+        return json({ error: "next_round_eligibility_missing" }, 409);
+      }
+      if (serverNowMs < eligibleAtMs) {
+        return json(
+          {
+            error: "next_round_not_ready",
+            retryAfterMs: Math.max(0, eligibleAtMs - serverNowMs),
+            eligibleAt: state.nextRoundEligibleAt,
+          },
+          409,
+        );
+      }
+
+      nextState = startAuthoritativeOkeyNextRound(state);
+      commandType = "start-next-round";
+      acceptedCommand = { type: "start-next-round" };
+    } else if (action === "play-eliminated") {
+      const expectedActorId = body.expectedActorId;
+      if (
+        clientExpectedVersion === null ||
+        typeof expectedActorId !== "string" ||
+        expectedActorId.length === 0
+      ) {
+        return json({ error: "invalid_eliminated_turn_claim" }, 400);
+      }
+
+      nextState = applyAuthoritativeOkeyEliminatedTurn(
+        state,
+        expectedActorId,
+      );
+      commandType = "system-eliminated-turn";
+      acceptedCommand = { type: "system-eliminated-turn" };
+    } else if (action === "manual-leave") {
       nextState =
         applyAuthoritativeManualLeave(
           state,
@@ -514,6 +599,61 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       commandType = "manual-leave";
       acceptedCommand = { type: "manual-leave" };
     } else if (action === "resolve-timeout") {
+      const expectedTurnDeadlineAt = body.expectedTurnDeadlineAt;
+      const expectedTurnPlayerId = body.expectedTurnPlayerId;
+
+      if (
+        clientExpectedVersion === null ||
+        typeof expectedTurnDeadlineAt !== "string" ||
+        typeof expectedTurnPlayerId !== "string"
+      ) {
+        return json(
+          {
+            error: "stale_timeout",
+            code: "stale_timeout",
+            version: bundle.version,
+            details: "Timeout claim is missing its turn identity",
+          },
+          409,
+        );
+      }
+
+      if (clientExpectedVersion !== Number(bundle.version)) {
+        return json(
+          {
+            error: clientExpectedVersion < Number(bundle.version)
+              ? "already_processed"
+              : "stale_timeout",
+            code: clientExpectedVersion < Number(bundle.version)
+              ? "already_processed"
+              : "stale_timeout",
+            version: bundle.version,
+            expiresAt: bundle.turn_deadline_at,
+            details: `Client expected version ${clientExpectedVersion} does not match database version ${bundle.version}`,
+          },
+          409,
+        );
+      }
+
+      const currentPlayerIndex = state.roundState.currentPlayerIndex;
+      const currentPlayerId = state.roundState.players[currentPlayerIndex]?.id;
+
+      if (
+        expectedTurnDeadlineAt !== bundle.turn_deadline_at ||
+        expectedTurnPlayerId !== currentPlayerId
+      ) {
+        return json(
+          {
+            error: "stale_timeout",
+            code: "stale_timeout",
+            version: bundle.version,
+            expiresAt: bundle.turn_deadline_at,
+            details: "Timeout claim does not match the active turn",
+          },
+          409,
+        );
+      }
+
       const deadlineMs = Date.parse(bundle.turn_deadline_at ?? "");
       const serverNowMs = Date.now();
       if (!Number.isFinite(deadlineMs)) {
@@ -609,10 +749,11 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   const nextVersion =
     Number(bundle.version) + 1;
 
-  const deadline =
-    getNextOkeyMatchTurnDeadline(
-      nextState,
-    );
+  const deadline = getOkeyMatchTurnDeadlineAfterTransition(
+    state,
+    nextState,
+    bundle.turn_deadline_at,
+  );
 
   const publicProjection =
     projectOkeyMatchPublicState(
@@ -640,7 +781,9 @@ const {
       p_user_id: authData.user.id,
       p_command_id: body.commandId,
       p_expected_version:
-        Number(bundle.version),
+        action === "manual-leave"
+          ? Number(bundle.version)
+          : (clientExpectedVersion ?? Number(bundle.version)),
       p_command_type: commandType,
       p_state: nextState,
       p_projection: publicProjection,
@@ -666,11 +809,11 @@ const commit =
     return json(
       {
         error: conflict
-          ? action === "resolve-timeout"
+          ? action === "resolve-timeout" || action === "play-eliminated" || action === "start-next-round"
             ? "already_processed"
             : "version_conflict"
           : "commit_failed",
-        code: conflict && action === "resolve-timeout"
+        code: conflict && (action === "resolve-timeout" || action === "play-eliminated" || action === "start-next-round")
           ? "already_processed"
           : undefined,
         details: commitError?.message,
@@ -682,11 +825,6 @@ const commit =
   const committedState =
     commit.state as OkeyAuthoritativeMatchState;
 
-  const committedStatus =
-    committedState.matchFinished
-      ? "finished"
-      : "playing";
-
   /*
    * The game-state broadcast must not be blocked by a later settlement
    * failure. Clients must still learn that the authoritative match
@@ -695,12 +833,6 @@ const commit =
   try {
     await broadcastStateUpdate(
       commit.version,
-      committedStatus,
-      projectOkeyMatchPublicState(
-        committedState,
-        commit.version,
-        commit.turn_deadline_at,
-      ),
     );
   } catch (broadcastError) {
     console.error(
@@ -760,3 +892,4 @@ const commit =
     ),
   });
 });
+

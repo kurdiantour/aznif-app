@@ -50,6 +50,7 @@ import {
 import { OkeyTileFace } from "./OkeyTileFace";
 import { OkeyTurnTimerBar } from "./OkeyTurnTimerBar";
 import { useOkeyRackDrag } from "./useOkeyRackDrag";
+import { OkeyTurnWarningToast } from "./OkeyTurnWarningToast";
 
 type TileRect = { x: number; y: number; width: number; height: number };
 
@@ -72,6 +73,8 @@ export function OkeyPlayerRack({
   onTileMeasured,
   onRackMeasured,
   turnTimerActive = false,
+  turnWarningToastVisible = false,
+  showTurnTimer = true,
   turnTimerResetKey,
   dealResetKey,
   isDealer = false,
@@ -112,6 +115,8 @@ export function OkeyPlayerRack({
   onTileMeasured?: (tileId: string, rect: TileRect) => void;
   onRackMeasured?: (rect: TileRect) => void;
   turnTimerActive?: boolean;
+  turnWarningToastVisible?: boolean;
+  showTurnTimer?: boolean;
   turnTimerResetKey?: string;
   dealResetKey?: string;
   isDealer?: boolean;
@@ -533,7 +538,7 @@ export function OkeyPlayerRack({
             if (!rowLayout) return 0;
 
             const bottomInset =
-              row === "bottom" ? rackTileHeight * 0.38 : 0;
+              row === "bottom" ? rackTileHeight * 0.44 : 0;
 
             return (
               rowLayout.y +
@@ -622,7 +627,7 @@ export function OkeyPlayerRack({
 
   const renderRackRow = (row: RackRow) => {
     const bottomInset =
-      row === "bottom" ? rackTileHeight * 0.38 : 0;
+      row === "bottom" ? rackTileHeight * 0.44 : 0;
 
     return (
       <View
@@ -716,8 +721,10 @@ export function OkeyPlayerRack({
         onLayout={measureViewport}
         style={[styles.playerRack, layout.playerRack]}
       >
+        <OkeyTurnWarningToast visible={turnWarningToastVisible} />
         <OkeyTurnTimerBar
           active={turnTimerActive}
+          visible={showTurnTimer}
           resetKey={turnTimerResetKey}
           style={styles.rackTurnTimer}
         />

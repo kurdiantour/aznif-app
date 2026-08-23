@@ -21,6 +21,7 @@ export function createDominoTwoVsTwoPendingMove(input: {
 }
 
 export function isDominoTwoVsTwoMoveCommitted(state: any, version: number, pending: PendingMultiplayerMove | null) {
-  return Boolean(pending && version > pending.baseVersion &&
-    boardContainsMove(state?.board, pending.tile.id, pending.branch));
+  if (!pending || version <= pending.baseVersion) return false;
+  const boardEmpty = !state?.board?.centerTile;
+  return boardEmpty || boardContainsMove(state?.board, pending.tile.id, pending.branch);
 }

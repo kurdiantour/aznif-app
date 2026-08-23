@@ -74,7 +74,7 @@ export function OkeyOpponentSeat({
   dealResetKey,
   dealOrder = 0,
   dealOrigin,
-  timerDurationMs = 20_000,
+  timerDurationMs = 30_000,
   onMeasured,
   onPress,
 }: {

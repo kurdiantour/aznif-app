@@ -4,83 +4,43 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   getNextOkeyMatchTurnDeadline,
   projectOkeyMatchPublicState,
-  resolveAuthoritativeMatchDeadline,
+  startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
-
+import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 
 const MATCH_LIMIT = 100;
 
 type MatchRow = {
   id: string;
   version: number | string;
-  status: "playing" | "finished";
-  turn_deadline_at: string | null;
+  status: "finished";
   settlement_at: string | null;
 };
 
-type SeatRow = {
-  user_id: string;
-  player_index: number;
+type RecoverableRoundRow = {
+  id: string;
+  version: number | string;
+  status: "playing";
+  next_round_eligible_at: string;
 };
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
   });
-}
-
-function createCommandId() {
-  return crypto.randomUUID();
-}
-
-function isExpired(
-  timestamp: string | null | undefined,
-  now: number,
-) {
-  if (!timestamp) {
-    return false;
-  }
-
-  const parsed = Date.parse(timestamp);
-
-  return Number.isFinite(parsed) && parsed <= now;
-}
-
-function getWinnerTeamId(
-  state: OkeyAuthoritativeMatchState,
-): "teamA" | "teamB" | null {
-  if (!state.matchFinished) {
-    return null;
-  }
-
-  return state.matchWinnerTeamId;
 }
 
 serve(async (request) => {
   if (request.method !== "POST") {
-    return json(
-      {
-        error: "method_not_allowed",
-      },
-      405,
-    );
+    return json({ error: "method_not_allowed" }, 405);
   }
 
-  const supabaseUrl =
-    Deno.env.get("SUPABASE_URL");
-
-  const serviceKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  const workerSecret =
-    Deno.env.get("OKEY_WORKER_SECRET");
-
-  const receivedWorkerSecret =
-    request.headers.get("x-okey-worker-key");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const workerSecret = Deno.env.get("OKEY_WORKER_SECRET");
+  const receivedWorkerSecret = request.headers.get("x-okey-worker-key");
 
   if (
     !supabaseUrl ||
@@ -88,40 +48,38 @@ serve(async (request) => {
     !workerSecret ||
     receivedWorkerSecret !== workerSecret
   ) {
-    return json(
-      {
-        error: "unauthorized",
-      },
-      401,
-    );
+    return json({ error: "unauthorized" }, 401);
   }
 
-  const service = createClient(
-    supabaseUrl,
-    serviceKey,
-    {
-      auth: {
-        persistSession: false,
+  const service = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false },
+  });
+
+  const broadcast = async (
+    matchId: string,
+    version: number,
+  ) => {
+    const channel = service.channel(`okey-match:${matchId}`);
+
+    await channel.send({
+      type: "broadcast",
+      event: "state_update",
+      payload: {
+        matchId,
+        version,
       },
-    },
-  );
+    });
 
+    await service.removeChannel(channel);
+  };
 
-  const {
-    data: matches,
-    error: matchesError,
-  } = await service
+  const { data: settlementMatches, error: matchesError } = await service
     .schema("okey")
     .from("matches")
-    .select(
-      "id, version, status, turn_deadline_at, settlement_at",
-    )
-    .or(
-      "status.eq.playing,and(status.eq.finished,settlement_at.is.null)",
-    )
-    .order("updated_at", {
-      ascending: true,
-    })
+    .select("id, version, status, settlement_at")
+    .eq("status", "finished")
+    .is("settlement_at", null)
+    .order("updated_at", { ascending: true })
     .limit(MATCH_LIMIT);
 
   if (matchesError) {
@@ -139,8 +97,6 @@ serve(async (request) => {
     );
   }
 
-  let processed = 0;
-  let settled = 0;
   let recoveredSettlements = 0;
   let skipped = 0;
   let failed = 0;
@@ -150,284 +106,64 @@ serve(async (request) => {
     error: string;
   }> = [];
 
-  for (
-    const rawMatch of (matches ?? []) as MatchRow[]
-  ) {
-    const match = rawMatch;
-
+  for (const match of (settlementMatches ?? []) as MatchRow[]) {
     try {
-      const [
-        {
-          data: stateRow,
-          error: stateError,
-        },
-        {
-          data: rawSeats,
-          error: seatsError,
-        },
-      ] = await Promise.all([
-        service
+      const { data: stateRow, error: stateError } =
+        await service
           .schema("okey")
           .from("match_private_states")
           .select("state")
           .eq("match_id", match.id)
-          .single(),
+          .single();
 
-        service
-          .schema("okey")
-          .from("match_seats")
-          .select(
-            "user_id, player_index",
-          )
-          .eq("match_id", match.id),
-      ]);
-
-      const seats =
-        (rawSeats ?? []) as SeatRow[];
-
-      if (
-        stateError ||
-        seatsError ||
-        !stateRow ||
-        seats.length !== 4
-      ) {
+      if (stateError || !stateRow) {
         skipped += 1;
         continue;
       }
 
-      const originalState =
+      const state =
         stateRow.state as OkeyAuthoritativeMatchState;
-      if (match.status === "finished") {
-        const winnerTeamId =
-          getWinnerTeamId(originalState);
 
-        if (!winnerTeamId && originalState.leaveTerminationReason !== "no-humans") {
-          throw new Error(
-            "finished_match_missing_winner_team",
-          );
-        }
-
-        const {
-          error: settlementError,
-        } = await service.rpc(
-          "okey_settle_match",
-          {
-            p_match_id: match.id,
-            p_winner_team_id: winnerTeamId,
-          },
-        );
-
-        if (settlementError) {
-          throw new Error(
-            `settlement_recovery_failed: ${settlementError.message}`,
-          );
-        }
-
-        settled += 1;
-        recoveredSettlements += 1;
-
-        try {
-          const channel = service.channel(
-            `okey-match:${match.id}`,
-          );
-
-          await channel.send({
-            type: "broadcast",
-            event: "state_update",
-            payload: {
-              matchId: match.id,
-              version: Number(match.version),
-              status: "finished",
-              projection: projectOkeyMatchPublicState(
-                originalState,
-                Number(match.version),
-                null,
-              ),
-            },
-          });
-
-          await service.removeChannel(channel);
-        } catch (broadcastError) {
-          console.error(
-            `Okey recovery broadcast failed for ${match.id}`,
-            broadcastError,
-          );
-        }
-
+      if (!state.matchFinished) {
+        skipped += 1;
         continue;
       }
 
-      let nextState = originalState;
-      let changed = false;
-
-      const now = Date.now();
+      const winnerTeamId = state.matchWinnerTeamId;
 
       if (
-        isExpired(
-          match.turn_deadline_at,
-          now,
-        )
+        !winnerTeamId &&
+        state.leaveTerminationReason !== "no-humans"
       ) {
-        nextState =
-          resolveAuthoritativeMatchDeadline(
-            nextState,
-            match.turn_deadline_at,
-          );
-
-        changed = true;
-      }
-
-
-
-      if (!changed) {
-        skipped += 1;
-        continue;
-      }
-
-      const actorSeat =
-        seats.find(
-          (seat) =>
-            seat.player_index ===
-            originalState.roundState.currentPlayerIndex,
-        ) ?? seats[0];
-
-      if (!actorSeat?.user_id) {
-        skipped += 1;
-        continue;
-      }
-
-      const expectedVersion =
-        Number(match.version);
-
-      if (
-        !Number.isSafeInteger(expectedVersion) ||
-        expectedVersion < 0
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      const nextVersion =
-        expectedVersion + 1;
-
-      const deadline =
-        getNextOkeyMatchTurnDeadline(
-          nextState,
-        );
-
-      const {
-        data: commit,
-        error: commitError,
-      } = await service
-        .rpc(
-          "okey_commit_authoritative_command",
-          {
-            p_match_id: match.id,
-            p_user_id: actorSeat.user_id,
-            p_command_id:
-              createCommandId(),
-            p_expected_version:
-              expectedVersion,
-            p_command_type:
-              "system-maintenance",
-            p_state: nextState,
-            p_projection:
-              projectOkeyMatchPublicState(
-                nextState,
-                nextVersion,
-                deadline,
-              ),
-            p_status:
-              nextState.matchFinished
-                ? "finished"
-                : "playing",
-            p_turn_deadline_at:
-              deadline,
-          },
-        )
-        .single();
-
-      if (commitError || !commit) {
-        const versionConflict =
-          commitError?.message.includes(
-            "version_conflict",
-          ) ?? false;
-
-        if (versionConflict) {
-          skipped += 1;
-          continue;
-        }
-
         throw new Error(
-          commitError?.message ??
-            "maintenance_commit_failed",
+          "finished_match_missing_winner_team",
         );
       }
 
-      processed += 1;
-
-
-      try {
-        const channel = service.channel(
-          `okey-match:${match.id}`,
-        );
-
-        await channel.send({
-          type: "broadcast",
-          event: "state_update",
-          payload: {
-            matchId: match.id,
-            version: Number((commit as { version: number }).version),
-            status:
-              nextState.matchFinished
-                ? "finished"
-                : "playing",
-            projection: projectOkeyMatchPublicState(
-              nextState,
-              Number((commit as { version: number }).version),
-              deadline,
-            ),
-          },
+      const { error: settlementError } =
+        await service.rpc("okey_settle_match", {
+          p_match_id: match.id,
+          p_winner_team_id: winnerTeamId,
         });
 
-        await service.removeChannel(channel);
-      } catch (broadcastError) {
-        console.error(
-          `Okey maintenance broadcast failed for ${match.id}`,
-          broadcastError,
+      if (settlementError) {
+        throw new Error(
+          `settlement_recovery_failed: ${settlementError.message}`,
         );
       }
 
+      recoveredSettlements += 1;
 
-      if (nextState.matchFinished) {
-        const winnerTeamId =
-          getWinnerTeamId(nextState);
-
-        if (!winnerTeamId && nextState.leaveTerminationReason !== "no-humans") {
-          throw new Error(
-            "finished_match_missing_winner_team",
-          );
-        }
-
-        const {
-          error: settlementError,
-        } = await service.rpc(
-          "okey_settle_match",
-          {
-            p_match_id: match.id,
-            p_winner_team_id:
-              winnerTeamId,
-          },
+      try {
+        await broadcast(
+          match.id,
+          Number(match.version),
         );
-
-        if (settlementError) {
-
-          throw new Error(
-            `settlement_failed: ${settlementError.message}`,
-          );
-        }
-
-        settled += 1;
+      } catch (broadcastError) {
+        console.error(
+          `Okey recovery broadcast failed for ${match.id}`,
+          broadcastError,
+        );
       }
     } catch (error) {
       failed += 1;
@@ -449,11 +185,126 @@ serve(async (request) => {
     }
   }
 
+  const maintenanceNow = new Date().toISOString();
+  const { data: recoverableRounds, error: recoveryQueryError } = await service
+    .schema("okey")
+    .from("matches")
+    .select("id, version, status, next_round_eligible_at")
+    .eq("status", "playing")
+    .not("next_round_eligible_at", "is", null)
+    .lte("next_round_eligible_at", maintenanceNow)
+    .order("next_round_eligible_at", { ascending: true })
+    .limit(MATCH_LIMIT);
+
+  if (recoveryQueryError) {
+    return json(
+      {
+        error: "next_round_recovery_query_failed",
+        details: recoveryQueryError.message,
+      },
+      500,
+    );
+  }
+
+  let recoveredRounds = 0;
+  let recoveryConflicts = 0;
+
+  for (const match of (recoverableRounds ?? []) as RecoverableRoundRow[]) {
+    try {
+      const { data: stateRow, error: stateError } = await service
+        .schema("okey")
+        .from("match_private_states")
+        .select("state")
+        .eq("match_id", match.id)
+        .single();
+
+      if (stateError || !stateRow) {
+        skipped += 1;
+        continue;
+      }
+
+      const state = stateRow.state as OkeyAuthoritativeMatchState;
+      const eligibleAtMs = Date.parse(state.nextRoundEligibleAt ?? "");
+      if (
+        state.matchFinished ||
+        state.roundState.phase !== "finished" ||
+        !Number.isFinite(eligibleAtMs) ||
+        eligibleAtMs > Date.now()
+      ) {
+        skipped += 1;
+        continue;
+      }
+
+      const { data: claimantSeat, error: seatError } = await service
+        .schema("okey")
+        .from("match_seats")
+        .select("user_id")
+        .eq("match_id", match.id)
+        .order("player_index", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (seatError || !claimantSeat?.user_id) {
+        skipped += 1;
+        continue;
+      }
+
+      const expectedVersion = Number(match.version);
+      const nextState = startAuthoritativeOkeyNextRound(state);
+      const nextVersion = expectedVersion + 1;
+      const deadline = getNextOkeyMatchTurnDeadline(nextState);
+      const { data: commit, error: commitError } = await service
+        .rpc("okey_commit_authoritative_command", {
+          p_match_id: match.id,
+          p_user_id: claimantSeat.user_id,
+          p_command_id: await deterministicCommandId(
+            "okey:" + match.id +
+              ":maintenance-next-round:" + expectedVersion +
+              ":" + state.currentRound,
+          ),
+          p_expected_version: expectedVersion,
+          p_command_type: "start-next-round",
+          p_state: nextState,
+          p_projection: projectOkeyMatchPublicState(
+            nextState,
+            nextVersion,
+            deadline,
+          ),
+          p_status: "playing",
+          p_turn_deadline_at: deadline,
+        })
+        .single();
+
+      if (commitError || !commit) {
+        if (commitError?.message?.includes("version_conflict")) {
+          recoveryConflicts += 1;
+          continue;
+        }
+        throw new Error(commitError?.message ?? "next_round_recovery_commit_failed");
+      }
+
+      recoveredRounds += 1;
+      try {
+        await broadcast(match.id, Number((commit as { version: number }).version));
+      } catch (broadcastError) {
+        console.error(
+          "Okey next-round recovery broadcast failed for " + match.id,
+          broadcastError,
+        );
+      }
+    } catch (error) {
+      failed += 1;
+      const message = error instanceof Error ? error.message : "unknown_recovery_error";
+      failures.push({ matchId: match.id, error: message });
+    }
+  }
+
   return json({
-    scanned: matches?.length ?? 0,
-    processed,
-    settled,
+    scanned: settlementMatches?.length ?? 0,
     recoveredSettlements,
+    recoverableRoundsScanned: recoverableRounds?.length ?? 0,
+    recoveredRounds,
+    recoveryConflicts,
     skipped,
     failed,
     failures,

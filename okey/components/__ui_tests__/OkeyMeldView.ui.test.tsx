@@ -1,5 +1,6 @@
 import { expect, test } from "@jest/globals";
 import { render } from "@testing-library/react-native";
+import { Image } from "expo-image";
 import { Text } from "react-native";
 
 import {
@@ -8,6 +9,8 @@ import {
   chunkOkeyMeldRows,
   getOkeyMeldWidth,
 } from "../OkeyMeldView";
+import { OkeyPlayerMeldArea } from "../OkeyTableMeldAreas";
+import { createInitialOkeyGame } from "../../engine/okey-engine";
 import type { OkeyMeld, OkeyTile } from "../../types/okey";
 
 function tile(id: string, color: OkeyTile["color"], value = 6): OkeyTile {
@@ -59,4 +62,70 @@ test("runs stay fully separated and table meld rows remain stable", () => {
   expect(getOkeyMeldWidth(melds[0], 18, FOUR_TILE_SET_REVEAL)).toBe(54);
   expect(chunkOkeyMeldRows(melds)).toEqual([[melds[0], melds[1]], [melds[2], melds[3]], [melds[4]]]);
   expect(chunkOkeyMeldRows(melds, 3)).toEqual([[melds[0], melds[1]], [melds[2]]]);
+});
+
+test("an eliminated player's committed meld area has a glass lock overlay", () => {
+  const state = createInitialOkeyGame(0);
+  const meld: OkeyMeld = {
+    id: "frozen-meld",
+    ownerId: state.players[0].id,
+    kind: "run",
+    score: 18,
+    tiles: [
+      tile("frozen-5", "blue", 5),
+      tile("frozen-6", "blue", 6),
+      tile("frozen-7", "blue", 7),
+    ],
+  };
+  const player = {
+    ...state.players[0],
+    opened: true,
+    eliminated: true,
+    melds: [meld],
+    scoreOpened: 18,
+  };
+
+  const view = render(
+    <OkeyPlayerMeldArea
+      player={player}
+      allPlayers={[player]}
+      okeyTile={state.okeyTile}
+      position="bottom"
+    />,
+  );
+
+  expect(
+    view.getByTestId("okey-eliminated-meld-overlay-" + player.id),
+  ).toBeTruthy();
+});
+
+test("a real joker in a meld is always face-down while a fake joker stays face-up", () => {
+  const realJoker = tile("real-joker", okeyTile.color, okeyTile.value);
+  const fakeJoker: OkeyTile = {
+    ...tile("fake-joker", "black", 0),
+    isFakeJoker: true,
+  };
+  const regularTile = tile("regular", "blue", 6);
+  const meld: OkeyMeld = {
+    id: "joker-meld",
+    ownerId: "player",
+    kind: "run",
+    score: 19,
+    tiles: [regularTile, realJoker, fakeJoker],
+  };
+
+  const view = render(
+    <OkeyMeldView
+      meld={meld}
+      okeyTile={okeyTile}
+      renderTile={(entry) => (
+        <Text testID={`custom-tile-${entry.id}`}>{entry.id}</Text>
+      )}
+    />,
+  );
+
+  expect(view.queryByTestId("custom-tile-real-joker")).toBeNull();
+  expect(view.getByTestId("custom-tile-fake-joker")).toBeTruthy();
+  expect(view.getByTestId("custom-tile-regular")).toBeTruthy();
+  expect(view.UNSAFE_getAllByType(Image)).toHaveLength(1);
 });

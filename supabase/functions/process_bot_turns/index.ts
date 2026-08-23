@@ -1,10 +1,11 @@
 // @ts-nocheck
 
 import { reduceTwoVsTwoBotPass, reduceTwoVsTwoPlay } from "../../../domino/modes/two-vs-two/authoritative/domino-two-vs-two-command-reducer.ts";
-import { finalizeTwoVsTwoRound, isTwoVsTwoRoundTransitionPending } from "../../../domino/modes/two-vs-two/lifecycle/domino-two-vs-two-round-transition.ts";
+import { finalizeTwoVsTwoRound } from "../../../domino/modes/two-vs-two/lifecycle/domino-two-vs-two-round-transition.ts";
 import { buildTwoVsTwoCommit } from "../../../domino/modes/two-vs-two/server/domino-two-vs-two-commit-contract.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 import {
   applyMove,
   canAnyPlayerMove,
@@ -110,187 +111,142 @@ function pickBotMove(hand: any[], state: any) {
 }
 
 
-const OKEY_MATCH_LIMIT = 100;
-
-type OkeyMatchRow = {
-  id: string;
+type OkeyAuthoritativeBundle = {
   version: number | string;
   status: "playing" | "finished";
-};
-
-type OkeySeatRow = {
-  user_id: string;
+  turn_deadline_at: string | null;
   player_index: number;
+  state: OkeyAuthoritativeMatchState;
+  command_applied: boolean;
 };
 
-async function processOkeyBotTurns(matchId?: string | null) {
-  let query = svc
-    .schema("okey")
-    .from("matches")
-    .select("id, version, status")
-    .eq("status", "playing")
-    .order("updated_at", { ascending: true })
-    .limit(OKEY_MATCH_LIMIT);
+async function processOkeyBotTurn(
+  matchId: string,
+  requesterUserId: string,
+  claimedVersion: number,
+  claimedActorId: string,
+) {
+  try {
+    const { data: bundleRaw, error: bundleError } = await svc
+      .rpc("okey_get_authoritative_bundle", {
+        p_match_id: matchId,
+        p_user_id: requesterUserId,
+        p_command_id: null,
+      })
+      .single();
 
-  if (matchId) {
-    query = query.eq("id", matchId);
-  }
-
-  const { data: rawMatches, error: matchesError } = await query;
-  if (matchesError) throw matchesError;
-
-  let processed = 0;
-  let skipped = 0;
-  let failed = 0;
-  const failures: Array<{ matchId: string; error: string }> = [];
-
-  for (const match of (rawMatches ?? []) as OkeyMatchRow[]) {
-    try {
-      const [stateResult, seatsResult] = await Promise.all([
-        svc
-          .schema("okey")
-          .from("match_private_states")
-          .select("state")
-          .eq("match_id", match.id)
-          .single(),
-        svc
-          .schema("okey")
-          .from("match_seats")
-          .select("user_id, player_index")
-          .eq("match_id", match.id),
-      ]);
-
-      if (stateResult.error || seatsResult.error || !stateResult.data) {
-        skipped += 1;
-        continue;
-      }
-
-      const seats = (seatsResult.data ?? []) as OkeySeatRow[];
-      if (seats.length !== 4) {
-        skipped += 1;
-        continue;
-      }
-
-      const originalState = stateResult.data.state as OkeyAuthoritativeMatchState;
-      if (originalState.matchFinished) {
-        skipped += 1;
-        continue;
-      }
-
-      const currentPlayerIndex = originalState.roundState.currentPlayerIndex;
-      const currentPlayer = originalState.roundState.players[currentPlayerIndex];
-      if (!currentPlayer?.controlledByBot) {
-        skipped += 1;
-        continue;
-      }
-
-      const actorSeat = seats.find(
-        (seat) => seat.player_index === currentPlayerIndex,
-      );
-      if (!actorSeat?.user_id) {
-        skipped += 1;
-        continue;
-      }
-
-      const expectedVersion = Number(match.version);
-      if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
-        skipped += 1;
-        continue;
-      }
-
-      const nextState = settleAuthoritativeOkeyRound({
-        ...originalState,
-        roundState: playBotTurn(originalState.roundState, {
-          difficulty: currentPlayer.botDifficulty ?? "normal",
-        }),
-      });
-
-      const nextVersion = expectedVersion + 1;
-      const deadline = getNextOkeyMatchTurnDeadline(nextState);
-
-      const { data: commit, error: commitError } = await svc
-        .rpc("okey_commit_authoritative_command", {
-          p_match_id: match.id,
-          p_user_id: actorSeat.user_id,
-          p_command_id: crypto.randomUUID(),
-          p_expected_version: expectedVersion,
-          p_command_type: "system-bot-turn",
-          p_state: nextState,
-          p_projection: projectOkeyMatchPublicState(
-            nextState,
-            nextVersion,
-            deadline,
-          ),
-          p_status: nextState.matchFinished ? "finished" : "playing",
-          p_turn_deadline_at: deadline,
-        })
-        .single();
-
-      if (commitError || !commit) {
-        if (commitError?.message?.includes("version_conflict")) {
-          skipped += 1;
-          continue;
-        }
-        throw new Error(commitError?.message ?? "okey_bot_commit_failed");
-      }
-
-      const committedVersion = Number((commit as { version: number }).version);
-
-      try {
-        const channel = svc.channel(`okey-match:${match.id}`);
-        await channel.send({
-          type: "broadcast",
-          event: "state_update",
-          payload: {
-            matchId: match.id,
-            version: committedVersion,
-            status: nextState.matchFinished ? "finished" : "playing",
-            projection: projectOkeyMatchPublicState(
-              nextState,
-              committedVersion,
-              deadline,
-            ),
-          },
-        });
-        await svc.removeChannel(channel);
-      } catch (broadcastError) {
-        console.error(`Okey bot broadcast failed for ${match.id}`, broadcastError);
-      }
-
-      if (nextState.matchFinished) {
-        const winnerTeamId = nextState.matchWinnerTeamId;
-        if (!winnerTeamId && nextState.leaveTerminationReason !== "no-humans") {
-          throw new Error("finished_match_missing_winner_team");
-        }
-
-        const { error: settlementError } = await svc.rpc("okey_settle_match", {
-          p_match_id: match.id,
-          p_winner_team_id: winnerTeamId,
-        });
-        if (settlementError) {
-          throw new Error(`okey_bot_settlement_failed: ${settlementError.message}`);
-        }
-      }
-
-      processed += 1;
-    } catch (error) {
-      failed += 1;
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push({ matchId: match.id, error: message });
-      console.error(`process_bot_turns Okey failed for ${match.id}`, error);
+    const bundle = bundleRaw as OkeyAuthoritativeBundle | null;
+    if (bundleError || !bundle) {
+      return { ok: true, processed: false, reason: "match_not_found_or_forbidden" };
     }
-  }
+    if (bundle.status !== "playing") {
+      return { ok: true, processed: false, reason: "match_not_playing" };
+    }
 
-  return {
-    ok: true,
-    mode: "okey",
-    scanned: rawMatches?.length ?? 0,
-    processed,
-    skipped,
-    failed,
-    failures,
-  };
+    const originalState = bundle.state;
+    if (originalState.matchFinished) {
+      return { ok: true, processed: false, reason: "match_finished" };
+    }
+
+    const expectedVersion = Number(bundle.version);
+    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+      return { ok: true, processed: false, reason: "invalid_version" };
+    }
+    if (expectedVersion !== claimedVersion) {
+      return { ok: true, processed: false, reason: "stale_bot_turn" };
+    }
+
+    const currentPlayerIndex = originalState.roundState.currentPlayerIndex;
+    const currentPlayer = originalState.roundState.players[currentPlayerIndex];
+    if (currentPlayer?.id !== claimedActorId) {
+      return { ok: true, processed: false, reason: "stale_bot_turn" };
+    }
+    if (!currentPlayer.controlledByBot) {
+      return { ok: true, processed: false, reason: "current_player_is_human" };
+    }
+
+    const actorUserId = currentPlayer.id;
+
+    const nextState = settleAuthoritativeOkeyRound({
+      ...originalState,
+      roundState: playBotTurn(originalState.roundState, {
+        difficulty: currentPlayer.botDifficulty ?? "normal",
+      }),
+    });
+
+    const nextVersion = expectedVersion + 1;
+    const deadline = getNextOkeyMatchTurnDeadline(nextState);
+
+    const { data: commit, error: commitError } = await svc
+      .rpc("okey_commit_authoritative_command", {
+        p_match_id: matchId,
+        p_user_id: actorUserId,
+        p_command_id: await deterministicCommandId(
+          `okey:${matchId}:system-bot-turn:${expectedVersion}`,
+        ),
+        p_expected_version: expectedVersion,
+        p_command_type: "system-bot-turn",
+        p_state: nextState,
+        p_projection: projectOkeyMatchPublicState(
+          nextState,
+          nextVersion,
+          deadline,
+        ),
+        p_status: nextState.matchFinished ? "finished" : "playing",
+        p_turn_deadline_at: deadline,
+      })
+      .single();
+
+    if (commitError || !commit) {
+      if (commitError?.message?.includes("version_conflict")) {
+        return { ok: true, processed: false, reason: "stale_bot_controller" };
+      }
+      throw new Error(commitError?.message ?? "okey_bot_commit_failed");
+    }
+    if ((commit as { applied?: boolean }).applied === false) {
+      return { ok: true, processed: false, reason: "already_processed" };
+    }
+
+    const committedVersion = Number((commit as { version: number }).version);
+
+    try {
+      const channel = svc.channel(`okey-match:${matchId}`);
+      await channel.send({
+        type: "broadcast",
+        event: "state_update",
+        payload: {
+          matchId,
+          version: committedVersion,
+        },
+      });
+      await svc.removeChannel(channel);
+    } catch (broadcastError) {
+      console.error(`Okey bot broadcast failed for ${matchId}`, broadcastError);
+    }
+
+    if (nextState.matchFinished) {
+      const winnerTeamId = nextState.matchWinnerTeamId;
+      if (!winnerTeamId && nextState.leaveTerminationReason !== "no-humans") {
+        throw new Error("finished_match_missing_winner_team");
+      }
+
+      const { error: settlementError } = await svc.rpc("okey_settle_match", {
+        p_match_id: matchId,
+        p_winner_team_id: winnerTeamId,
+      });
+      if (settlementError) {
+        throw new Error(`okey_bot_settlement_failed: ${settlementError.message}`);
+      }
+    }
+
+    return { ok: true, processed: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`process_bot_turns Okey failed for ${matchId}`, error);
+    return { ok: false, processed: false, error: message };
+  }
 }
+
 
 serve(async (req) => {
   try {
@@ -301,7 +257,13 @@ serve(async (req) => {
       return json({ error: "Server configuration is incomplete" }, 503);
     }
 
-    const { mode = "1v1", room_id, match_id } = await req.json();
+    const {
+      mode = "1v1",
+      room_id,
+      match_id,
+      expected_version,
+      expected_actor_id,
+    } = await req.json();
     if (mode !== "1v1" && mode !== "2v2" && mode !== "okey")
       return json({ error: "Invalid mode" }, 400);
 
@@ -315,8 +277,52 @@ serve(async (req) => {
     );
 
     if (mode === "okey") {
-      if (!isTrustedWorker) return json({ error: "Unauthorized" }, 401);
-      return json(await processOkeyBotTurns(match_id ?? null));
+      if (!match_id) return json({ error: "Missing match_id" }, 400);
+      if (
+        !Number.isSafeInteger(expected_version) ||
+        expected_version < 0 ||
+        typeof expected_actor_id !== "string" ||
+        expected_actor_id.length === 0
+      ) {
+        return json({ error: "Invalid Okey bot turn claim" }, 400);
+      }
+
+      let requesterUserId: string | null = null;
+
+      if (isTrustedWorker) {
+        const { data: seat, error: seatError } = await svc
+          .schema("okey")
+          .from("match_seats")
+          .select("user_id")
+          .eq("match_id", match_id)
+          .order("player_index", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (seatError) throw seatError;
+        requesterUserId = seat?.user_id ?? null;
+      } else {
+        const token = (req.headers.get("authorization") || "")
+          .replace(/^Bearer\s+/i, "")
+          .trim();
+        if (!token) return json({ error: "Unauthorized" }, 401);
+
+        const { data: userData, error: userError } = await svc.auth.getUser(token);
+        if (userError || !userData.user) {
+          return json({ error: "Invalid auth token" }, 401);
+        }
+        requesterUserId = userData.user.id;
+      }
+
+      if (!requesterUserId) {
+        return json({ ok: true, processed: false, reason: "match_has_no_seats" });
+      }
+
+      return json(await processOkeyBotTurn(
+        match_id,
+        requesterUserId,
+        expected_version,
+        expected_actor_id,
+      ));
     }
 
     if (!room_id) return json({ error: "Missing room_id" }, 400);
@@ -364,7 +370,7 @@ serve(async (req) => {
     if (
       !currentTurnPlayerId ||
       state.winningTeamId ||
-      (state.roundWinnerPlayerId && (mode !== "2v2" || isTwoVsTwoRoundTransitionPending(state)))
+      state.roundWinnerPlayerId
     ) {
       return json({ ok: true, processed: false, reason: "no_open_bot_turn" });
     }
@@ -513,11 +519,11 @@ serve(async (req) => {
 
     transition = finalizeTwoVsTwoRound({
       transition,
-      players,
+
       roomId: room_id,
       committedVersion: Number(room.version) + 1,
       completedAt,
-      shuffleSeed: crypto.getRandomValues(new Uint32Array(1))[0],
+
     });
     const {
       nextState,
@@ -576,4 +582,5 @@ serve(async (req) => {
     return json({ error: failure.message, failure }, 500);
   }
 });
+
 

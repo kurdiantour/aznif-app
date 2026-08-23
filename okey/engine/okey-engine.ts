@@ -391,11 +391,20 @@ function getSpendCandidatePlayerIndexes(state: OkeyGameState, playerIndex: numbe
   const ownIndexes = [playerIndex];
   const teammateIndexes = state.players
     .map((entry, index) => ({ entry, index }))
-    .filter(({ entry, index }) => index !== playerIndex && entry.teamId === player.teamId && entry.opened)
+    .filter(({ entry, index }) =>
+      index !== playerIndex &&
+      entry.teamId === player.teamId &&
+      entry.opened &&
+      !entry.eliminated
+    )
     .map(({ index }) => index);
   const opponentIndexes = state.players
     .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => entry.teamId !== player.teamId && entry.opened)
+    .filter(({ entry }) =>
+      entry.teamId !== player.teamId &&
+      entry.opened &&
+      !entry.eliminated
+    )
     .map(({ index }) => index);
 
   return [...ownIndexes, ...teammateIndexes, ...opponentIndexes];
@@ -501,7 +510,7 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
 
   for (const targetPlayerIndex of getSpendCandidatePlayerIndexes(state, playerIndex)) {
     const targetPlayer = state.players[targetPlayerIndex];
-    if (!targetPlayer.opened) continue;
+    if (!targetPlayer.opened || targetPlayer.eliminated) continue;
 
     let bestForPlayer: SpendTarget | null = null;
     for (let meldIndex = 0; meldIndex < targetPlayer.melds.length; meldIndex += 1) {
@@ -553,7 +562,7 @@ function findSpecificSpendTarget(
   if (!allowedIndexes.has(targetPlayerIndex)) return null;
 
   const targetPlayer = state.players[targetPlayerIndex];
-  if (!targetPlayer?.opened) return null;
+  if (!targetPlayer?.opened || targetPlayer.eliminated) return null;
 
   const meldIndex = targetPlayer.melds.findIndex((meld) => meld.id === targetMeldId);
   if (meldIndex < 0) return null;
@@ -624,7 +633,7 @@ function findKonkanSetLockTarget(
   if (targetPlayerIndex < 0) return null;
 
   const targetPlayer = state.players[targetPlayerIndex];
-  if (!targetPlayer.opened) return null;
+  if (!targetPlayer.opened || targetPlayer.eliminated) return null;
   const meldIndex = targetPlayer.melds.findIndex((meld) => meld.id === targetMeldId);
   if (meldIndex < 0) return null;
 
@@ -831,9 +840,11 @@ function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
       return !owner || !state.players[owner.playerIndex]?.eliminated;
     });
   const completedSetTiles = state.players.flatMap((player) =>
-    player.melds
-      .filter((meld) => isCompleteFourColorSet(meld))
-      .flatMap((meld) => meld.tiles),
+    player.eliminated
+      ? []
+      : player.melds
+          .filter((meld) => isCompleteFourColorSet(meld))
+          .flatMap((meld) => meld.tiles),
   );
   const rebuildPool = [...discardPool, ...completedSetTiles];
   if (rebuildPool.length === 0) return finishTileCycleLimit(state);
@@ -842,7 +853,9 @@ function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
     ...state,
     players: state.players.map((player) => ({
       ...player,
-      melds: player.melds.filter((meld) => !isCompleteFourColorSet(meld)),
+      melds: player.eliminated
+        ? player.melds
+        : player.melds.filter((meld) => !isCompleteFourColorSet(meld)),
     })),
     deck: shuffle(rebuildPool),
     discardPile: topDiscard ? [topDiscard] : [],
@@ -882,7 +895,8 @@ export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGame
     : currentKonkanDiscardPickCount;
   const nextDrawnTile = withJokerOrigin(drawnTile, preparedState.okeyTile, "natural");
 
-  const startsPendingKonkan = fromDiscard && !player.opened && !player.konkan;
+  const startsPendingKonkan =
+    restrictedKonkanDiscardPick && !player.opened && !player.konkan;
   const nextPlayers = preparedState.players.map((entry, index) =>
     index === preparedState.currentPlayerIndex
       ? {
@@ -903,7 +917,11 @@ export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGame
       ? { ...preparedState.konkanDiscardPickCounts, [player.id]: nextKonkanDiscardPickCount }
       : preparedState.konkanDiscardPickCounts,
     mustFinishAfterSecondKonkanDiscardPickPlayerId:
-      restrictedKonkanDiscardPick && nextKonkanDiscardPickCount === OKEY_RULESET_V1.konkan.maximumRestrictedDiscardPicks
+      restrictedKonkanDiscardPick &&
+      (
+        player.opened ||
+        nextKonkanDiscardPickCount === OKEY_RULESET_V1.konkan.maximumRestrictedDiscardPicks
+      )
         ? player.id
         : preparedState.mustFinishAfterSecondKonkanDiscardPickPlayerId,
     hasDrawnThisTurn: true,
@@ -1283,9 +1301,13 @@ export function getRoundResultScoreDetails(state: OkeyGameState) {
   if (state.endReason === "win" && winner) {
     for (const player of state.players) {
       const isWinnerTeam = player.teamId === winner.teamId;
-      const handScore = getHandScore(player.hand, state.okeyTile);
+      const handScore = player.eliminated
+        ? 0
+        : getHandScore(player.hand, state.okeyTile);
       const points = isWinnerTeam
         ? 0
+        : player.eliminated
+          ? 100
         : winnerUsedKonkan
           ? player.opened
             ? OKEY_RULESET_V1.scoring.openedOpponentKonkanBonus + handScore

@@ -147,18 +147,17 @@ export function syncSlotsWithTiles(current: RackSlots, tiles: OkeyTile[], fixedD
   }
 
   if (fixedDrawTileId && availableIds.has(fixedDrawTileId) && !knownIds.has(fixedDrawTileId)) {
-    const drawRow: RackRow = "top";
-    const drawSlotIndex = 0;
-    let emptySlotIndex = drawSlotIndex;
-    while (emptySlotIndex < RACK_ROW_CAPACITY && next[drawRow][emptySlotIndex] !== null) {
-      emptySlotIndex += 1;
-    }
+    const firstRowSlotIndex = next.top.findIndex((tileId) => tileId === null);
+    const secondRowSlotIndex = next.bottom.findIndex((tileId) => tileId === null);
+    const emptySlot =
+      firstRowSlotIndex >= 0
+        ? { row: "top" as const, slotIndex: firstRowSlotIndex }
+        : secondRowSlotIndex >= 0
+          ? { row: "bottom" as const, slotIndex: secondRowSlotIndex }
+          : null;
 
-    if (emptySlotIndex < RACK_ROW_CAPACITY) {
-      for (let slotIndex = emptySlotIndex; slotIndex > drawSlotIndex; slotIndex -= 1) {
-        next[drawRow][slotIndex] = next[drawRow][slotIndex - 1];
-      }
-      next[drawRow][drawSlotIndex] = fixedDrawTileId;
+    if (emptySlot) {
+      next[emptySlot.row][emptySlot.slotIndex] = fixedDrawTileId;
       knownIds.add(fixedDrawTileId);
     }
   }

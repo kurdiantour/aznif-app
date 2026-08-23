@@ -1703,11 +1703,12 @@ if (
           eliminated={!!humanPlayer.eliminated}
           onExternalDropPlaced={handleExternalDropPlaced}
 
-turnTimerActive={
-  turnTimerVisible &&
-  state.currentPlayerIndex === 0 &&
-  !turnPresentationBlocked
-}          turnTimerResetKey={turnTimerResetKey}
+          turnTimerActive={
+            turnTimerVisible &&
+            state.currentPlayerIndex === 0 &&
+            !turnPresentationBlocked
+          }
+          turnTimerResetKey={turnTimerResetKey}
           dealResetKey={dealLifecycleKey}
           isDealer={onlineGameplayReady && state.dealerIndex === 0}
           dealOrigin={dealOrigin}

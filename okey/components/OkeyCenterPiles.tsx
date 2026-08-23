@@ -231,7 +231,7 @@ export function OkeyCenterPiles({
             onLayout={index === 8 ? measureDeckTop : undefined}
             style={[styles.drawStackLayer, { top: index * 3 }, index === 8 && hideTopDeckTile ? styles.hiddenRackTile : undefined]}
           >
-            <OkeyTileBack />
+            <OkeyTileBack unstyled width={42} height={58} />
           </View>
         ))}
         {deckCount > 0 ? <Text style={styles.deckCount}>{deckCount}</Text> : null}

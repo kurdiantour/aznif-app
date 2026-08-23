@@ -3,10 +3,12 @@ import { DominoTwoVsTwoCommandService } from "../../../domino/modes/two-vs-two/s
 
 import move from "./move.ts";
 import pass from "./pass.ts";
+import start_next_hand from "./next-hand.ts";
 
 const commandService = new DominoTwoVsTwoCommandService({
   move,
   pass,
+  start_next_hand,
 });
 
 serve((request) => commandService.handle(request));

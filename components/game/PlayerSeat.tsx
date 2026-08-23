@@ -22,6 +22,7 @@ type Props = {
   dealPlayerCount?: number;
   dealRotation?: -90 | 0 | 90;
   onPress?: () => void;
+  onFlightOriginChange?: (rect: { x: number; y: number; width: number; height: number }) => void;
 };
 
 const TURN_DURATION_SECONDS = DOMINO_HUMAN_TURN_DURATION_SECONDS;
@@ -115,6 +116,7 @@ export default function PlayerSeat({
   dealPlayerCount = 1,
   dealRotation = 0,
   onPress,
+  onFlightOriginChange,
 }: Props) {
   const tileCount =
     remainingTiles ??
@@ -153,8 +155,9 @@ export default function PlayerSeat({
   );
 
   const updateWrapperOrigin = () => {
-    wrapperRef.current?.measureInWindow((x, y) => {
+    wrapperRef.current?.measureInWindow((x, y, width, height) => {
       setWrapperOrigin({ x, y });
+      onFlightOriginChange?.({ x: x + width * 0.58, y: y + height * 0.55, width: 18, height: 38 });
     });
   };
 

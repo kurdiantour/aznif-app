@@ -1,5 +1,5 @@
 import BoardBoneyard from "@/components/game/BoardBoneyard";
-import DominoBoard, { getDominoBoardPreviewTargets, getDominoBoardTileMetrics } from "@/components/game/DominoBoard";
+import DominoBoard, { getDominoBoardPreviewTargets, getDominoBoardTileMetrics, getDominoBoardTileTarget } from "@/components/game/DominoBoard";
 import { DominoTileData, GameState, KozelBranch, Player } from "@/domino/types/domino-game";
 import {
   forwardRef,
@@ -30,6 +30,7 @@ type Props = {
   shouldRenderPlayedBoardTiles?: boolean;
   finalTileAnimationTileId?: string | null;
   onFinalTileAnimationComplete?: () => void;
+  hiddenTileId?: string | null;
 };
 
 const BOARD_BOUNDARY: {
@@ -59,6 +60,7 @@ export default forwardRef(function BoardArea(
     shouldRenderPlayedBoardTiles = true,
     finalTileAnimationTileId = null,
     onFinalTileAnimationComplete,
+    hiddenTileId = null,
   }: Props,
   ref,
 ) {
@@ -173,6 +175,34 @@ export default forwardRef(function BoardArea(
         boardSurfaceRef.current.measureInWindow((x, y, width, height) => {
           resolve({ x: x + width / 2, y: y + height / 2 });
         });
+      }),
+    getPreviewRect: (tile: DominoTileData, branch: KozelBranch) =>
+      new Promise<{ x: number; y: number; width: number; height: number; rotation?: number } | null>((resolve) => {
+        if (!boardSurfaceRef.current) return resolve(null);
+        const target = !board.centerTile
+          ? { x: 0, y: 0, width: tileMetrics.centerWidth, height: tileMetrics.centerHeight, scale: 1, rotation: tile.left === tile.right ? 0 : tile.left < tile.right ? 270 : 90 }
+          : getDominoBoardPreviewTargets(board, tile, [branch], surfaceSize.width, surfaceSize.height, BOARD_BOUNDARY)[0];
+        if (!target) return resolve(null);
+        boardSurfaceRef.current.measureInWindow((surfaceX, surfaceY) => resolve({
+          x: surfaceX + surfaceSize.width / 2 + (target.x - target.width / 2) * target.scale,
+          y: surfaceY + surfaceSize.height / 2 + (target.y - target.height / 2) * target.scale,
+          width: target.width * target.scale,
+          height: target.height * target.scale,
+          rotation: target.rotation,
+        }));
+      }),
+    getTileRect: (tileId: string) =>
+      new Promise<{ x: number; y: number; width: number; height: number; rotation?: number } | null>((resolve) => {
+        if (!boardSurfaceRef.current) return resolve(null);
+        const target = getDominoBoardTileTarget(board, tileId, surfaceSize.width, surfaceSize.height, BOARD_BOUNDARY);
+        if (!target) return resolve(null);
+        boardSurfaceRef.current.measureInWindow((surfaceX, surfaceY) => resolve({
+          x: surfaceX + surfaceSize.width / 2 + (target.x - target.width / 2) * target.scale,
+          y: surfaceY + surfaceSize.height / 2 + (target.y - target.height / 2) * target.scale,
+          width: target.width * target.scale,
+          height: target.height * target.scale,
+          rotation: target.rotation,
+        }));
       }),
     findDropBranch: (
       tile: DominoTileData,
@@ -425,6 +455,7 @@ export default forwardRef(function BoardArea(
               boardWidth={surfaceSize.width}
               boardHeight={surfaceSize.height}
               boundary={BOARD_BOUNDARY}
+              hiddenTileId={hiddenTileId}
               winningTileId={isCenterFinalTile ? null : finalTileAnimationTileId}
               winningTranslateY={finalTileTranslateY}
               winningScale={finalTileScale}

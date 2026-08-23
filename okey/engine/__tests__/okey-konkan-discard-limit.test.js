@@ -48,6 +48,15 @@ function assert(condition, message) { if (!condition) throw new Error(message); 
 }
 
 {
+  const openedPlayers = state().players.map((entry, index) =>
+    index === 0 ? { ...entry, opened: true, scoreOpened: 42 } : entry
+  );
+  const next = drawTile(state({ players: openedPlayers }), "discard");
+  assert(next.konkanDiscardPickCounts.human === 1, "Opened player's first restricted pick should be counted.");
+  assert(next.mustFinishAfterSecondKonkanDiscardPickPlayerId === "human", "Opened player's first KonKan discard pick must force same-turn finish.");
+}
+
+{
   const picked = drawTile(state({ konkanDiscardPickCounts: { human: 1 } }), "discard");
   const burned = discardTile(picked, picked.players[0].hand[0].id);
   assert(burned.players[0].eliminated === true, "Discarding after second restricted pick should eliminate player.");
@@ -71,4 +80,3 @@ function assert(condition, message) { if (!condition) throw new Error(message); 
   assert(unlimited.discardPile.length === 0, "KonKan vs KonKan discard pick should ignore the limit.");
   assert(unlimited.konkanDiscardPickCounts.human === 2, "KonKan vs KonKan discard pick should not increment restricted count.");
 }
-

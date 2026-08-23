@@ -66,16 +66,39 @@ nameText: {
 meldArea: {
   alignItems: "flex-start",
 },
+  leftMeldArea: {
+    direction: "ltr",
+    alignItems: "flex-start",
+  },
+  topMeldContent: {
+    alignItems: "flex-end",
+  },
+  meldPlacementGuide: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(248,215,116,0.58)",
+    borderRadius: 8,
+    backgroundColor: "rgba(248,215,116,0.10)",
+  },
 
 
 
 meldContent: {
+  position: "relative",
   width: "100%",
   minHeight: 50,
   flexDirection: "column",
   alignItems: "flex-start",
   justifyContent: "flex-start",
   rowGap: 2,
+},
+
+eliminatedMeldOverlay: {
+  ...StyleSheet.absoluteFillObject,
+  zIndex: 100,
+  borderRadius: 8,
+  backgroundColor: "rgba(255,255,255,0.42)",
 },
 
 meldRow: {

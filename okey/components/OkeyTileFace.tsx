@@ -310,19 +310,21 @@ type OkeyTileBackProps = {
   small?: boolean;
   width?: number;
   height?: number;
+  unstyled?: boolean;
 };
 
 export function OkeyTileBack({
   small,
   width,
   height,
+  unstyled,
 }: OkeyTileBackProps) {
   return (
     <Image
       source={TILE_IMAGES.back}
       style={[
-        styles.tileBack,
-        small ? styles.tileBackSmall : undefined,
+        unstyled ? undefined : styles.tileBack,
+        !unstyled && small ? styles.tileBackSmall : undefined,
         width !== undefined && height !== undefined
           ? {
               width,

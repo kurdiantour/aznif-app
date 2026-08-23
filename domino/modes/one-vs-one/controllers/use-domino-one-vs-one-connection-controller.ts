@@ -25,8 +25,8 @@ export function useDominoOneVsOneConnectionController(args: {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const startInFlightRef = useRef(false);
   const pollInFlightRef = useRef(false);
-  const takeoverRosterInFlightRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
+  const lastRosterActivityRef = useRef(Date.now());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectPolicyRef = useRef(new RealtimeReconnectPolicy());
 
@@ -48,6 +48,7 @@ export function useDominoOneVsOneConnectionController(args: {
     if (!args.adapter) throw new Error("No 1v1 room id");
     const { rows, profiles } = await args.adapter.getRoster(includeProfiles);
     args.setPlayers(rows);
+    lastRosterActivityRef.current = Date.now();
     if (profiles !== null) {
       args.setProfiles(new Map(profiles.map((profile: any) => [profile.id, profile])));
     }
@@ -121,6 +122,7 @@ export function useDominoOneVsOneConnectionController(args: {
         onRosterInvalidated: () => {
           if (!mounted) return;
           markActivity();
+          lastRosterActivityRef.current = Date.now();
           void refreshPlayers();
         },
         onTakeoverInvalidated: () => {
@@ -188,13 +190,22 @@ export function useDominoOneVsOneConnectionController(args: {
     ) return;
 
     const interval = setInterval(() => {
-      if (pollInFlightRef.current || Date.now() - lastActivityRef.current < 12_000) return;
+      if (pollInFlightRef.current) return;
+      const now = Date.now();
+      const snapshotIsStale = now - lastActivityRef.current >= 12_000;
+      const rosterIsStale = now - lastRosterActivityRef.current >= 12_000;
+      if (!snapshotIsStale && !rosterIsStale) return;
       pollInFlightRef.current = true;
-      void Promise.all([refreshSnapshot(), refreshPlayers(false)])
-        .then(() => { lastActivityRef.current = Date.now(); })
+      const fallback = snapshotIsStale
+        ? Promise.all([refreshSnapshot(), refreshPlayers(false)])
+        : refreshPlayers(false);
+      void fallback
+        .then(() => {
+          if (snapshotIsStale) lastActivityRef.current = Date.now();
+        })
         .catch((error) => console.warn("1v1 snapshot fallback watchdog failed", error))
         .finally(() => { pollInFlightRef.current = false; });
-    }, 5_000);
+    }, 3_000);
 
     return () => {
       clearInterval(interval);
@@ -210,28 +221,6 @@ export function useDominoOneVsOneConnectionController(args: {
     refreshPlayers,
   ]);
 
-  useEffect(() => {
-    if (!args.roomId || args.loading) return;
-
-    const reconcileTakeoverRoster = async () => {
-      if (takeoverRosterInFlightRef.current) return;
-      takeoverRosterInFlightRef.current = true;
-      try {
-        await refreshPlayers(false);
-      } catch (error) {
-        console.warn("1v1 takeover roster reconcile failed", error);
-      } finally {
-        takeoverRosterInFlightRef.current = false;
-      }
-    };
-
-    void reconcileTakeoverRoster();
-    const interval = setInterval(() => void reconcileTakeoverRoster(), 2_000);
-    return () => {
-      clearInterval(interval);
-      takeoverRosterInFlightRef.current = false;
-    };
-  }, [args.roomId, args.loading, refreshPlayers]);
   useEffect(() => {
     if (!args.roomId || args.loading || !args.adapter || !args.rawState) return;
     if (

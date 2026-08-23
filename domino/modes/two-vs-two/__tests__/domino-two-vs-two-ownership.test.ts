@@ -7,7 +7,7 @@ test('2v2 dispatcher delegates stable actions to its mode command service', () =
   assert.match(source, /DominoTwoVsTwoCommandService/);
   assert.match(source, /move,/);
   assert.match(source, /pass,/);
-  assert.doesNotMatch(source, /next_hand|nextHand/);
+  assert.match(source, /start_next_hand/);
   assert.doesNotMatch(source, /switch \(action\)/);
 });
 
@@ -46,7 +46,8 @@ test('2v2 Edge handlers delegate transitions and commits to mode server ownershi
     assert.match(source, /buildTwoVsTwoCommit/);
   }
   assert.match(readFileSync('supabase/functions/submit_two_vs_two/move.ts', 'utf8'), /finalizeTwoVsTwoRound/);
-  assert.equal(existsSync('supabase/functions/submit_two_vs_two/next-hand.ts'), false);
+  assert.equal(existsSync('supabase/functions/submit_two_vs_two/next-hand.ts'), true);
+  assert.match(readFileSync('supabase/functions/submit_two_vs_two/next-hand.ts', 'utf8'), /startTwoVsTwoNextHand/);
   const bot = readFileSync('supabase/functions/process_bot_turns/index.ts', 'utf8');
   assert.match(bot, /reduceTwoVsTwoPlay/);
   assert.match(bot, /reduceTwoVsTwoBotPass/);

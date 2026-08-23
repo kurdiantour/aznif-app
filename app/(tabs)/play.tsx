@@ -116,6 +116,7 @@ export default function PlayScreen() {
         />
 
         {__DEV__ ? (
+          <>
           <GameCard
             isTablet={isTablet}
             title="Okey Preview"
@@ -123,6 +124,14 @@ export default function PlayScreen() {
             icon="flask-outline"
             onPress={() => router.push("/okey/preview")}
           />
+          <GameCard
+            isTablet={isTablet}
+            title="Domino 2v2 Preview"
+            subtitle="You + 3 local bots"
+            icon="flask-outline"
+            onPress={() => router.push("/domino/preview")}
+          />
+          </>
         ) : (
           <View
             style={[

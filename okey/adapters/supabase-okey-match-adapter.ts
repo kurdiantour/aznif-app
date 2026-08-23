@@ -1,6 +1,12 @@
 import { supabase } from "@/lib/supabase";
 
-import type { OnlineOkeyMatchAdapter } from "@/okey/adapters/okey-match-adapter";
+import type {
+  OkeyBotTurnClaim,
+  OkeyBotTurnResult,
+  OkeyEliminatedTurnClaim,
+  OkeyNextRoundClaim,
+  OnlineOkeyMatchAdapter,
+} from "@/okey/adapters/okey-match-adapter";
 
 import type {
   OkeyAuthoritativeCommand,
@@ -35,6 +41,12 @@ function createCommandId(): string {
   );
 }
 
+export type OkeyTurnTimeoutClaim = {
+  expectedVersion: number;
+  expectedTurnDeadlineAt: string;
+  expectedTurnPlayerId: string;
+};
+
 export class SupabaseOkeyMatchAdapter
   implements OnlineOkeyMatchAdapter
 {
@@ -62,17 +74,16 @@ export class SupabaseOkeyMatchAdapter
     | Promise<void>
     | null = null;
 
-  private resolveTimeoutPromise:
+  private realtimeRefreshPromise:
     | Promise<void>
     | null = null;
 
-  private timeoutTimer:
-    | ReturnType<typeof setTimeout>
+  private pendingRealtimeVersion:
+    | number
     | null = null;
 
-  private scheduledDeadline:
-    | string
-    | null = null;
+  private authoritativeCommandTail:
+    Promise<void> = Promise.resolve();
 
   private serverClockOffsetMs = 0;
 
@@ -81,6 +92,16 @@ export class SupabaseOkeyMatchAdapter
   constructor(
     private readonly matchId: string,
   ) {}
+
+  async getCurrentUserId() {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return data.user?.id ?? null;
+  }
+
+  getServerClockOffsetMs(): number {
+    return this.serverClockOffsetMs;
+  }
 
   getSnapshot():
     | OkeyMatchServerProjection
@@ -99,9 +120,6 @@ export class SupabaseOkeyMatchAdapter
 
     if (this.snapshot) {
       listener(this.snapshot);
-      this.scheduleTimeout(
-        this.snapshot,
-      );
     }
 
     if (!this.channel) {
@@ -119,87 +137,77 @@ export class SupabaseOkeyMatchAdapter
     };
   }
 
+  private enqueueAuthoritativeCommand(
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const run =
+      this.authoritativeCommandTail.then(
+        operation,
+      );
+
+    this.authoritativeCommandTail =
+      run.catch(() => {});
+
+    return run;
+  }
+
+  private async readFunctionErrorBody(
+    error: unknown,
+  ): Promise<{
+    code?: string;
+    error?: string;
+    serverNow?: string;
+    expiresAt?: string;
+  } | null> {
+    try {
+      if (
+        error &&
+        typeof error === "object" &&
+        "context" in error &&
+        error.context &&
+        typeof error.context === "object" &&
+        "json" in error.context &&
+        typeof error.context.json === "function"
+      ) {
+        return await error.context.json();
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
+  private isAuthoritativeSyncResult(
+    errorBody: {
+      code?: string;
+      error?: string;
+    } | null,
+  ): boolean {
+    return (
+      errorBody?.error === "version_conflict" ||
+      errorBody?.error === "already_processed" ||
+      errorBody?.error === "already_started" ||
+      errorBody?.code === "already_processed"
+    );
+  }
+
+  private async syncAfterConflict(): Promise<void> {
+    try {
+      await this.refresh();
+    } catch {
+      // Realtime remains subscribed and can deliver the latest projection.
+    }
+  }
+
   async dispatch(
     command:
       OkeyAuthoritativeCommand,
   ): Promise<void> {
+    const commandId = createCommandId();
 
-    if (
-      this.snapshot?.version ===
-      undefined
-    ) {
-      await this.refresh();
-    }
-
-    const expectedVersion =
-      this.snapshot?.version;
-
-    if (
-      expectedVersion === undefined
-    ) {
-      throw new Error(
-        "okey_snapshot_unavailable",
-      );
-    }
-
-    const commandId =
-      createCommandId();
-
-    const { data, error } =
-      await supabase.functions.invoke(
-        "okey_match",
-        {
-          body: {
-            action: "command",
-            matchId: this.matchId,
-            commandId,
-            expectedVersion,
-            command,
-          },
-        },
-      );
-
-    if (error) {
-      let errorBody:
-        | { error?: string }
-        | null = null;
-
-      try {
-        if (
-          "context" in error &&
-          error.context
-        ) {
-          errorBody =
-            await error.context.json();
-        }
-      } catch {
-        errorBody = null;
-      }
-
-      if (
-        errorBody?.error ===
-        "turn_deadline_expired"
-      ) {
-        await this.resolveTimeout();
-        return;
-      }
-
-      await this.refresh();
-
-      throw error;
-    }
-
-    this.publishResponse(data);
-  }
-
-  async resolveTimeout(): Promise<void> {
-    if (this.resolveTimeoutPromise) {
-      return this.resolveTimeoutPromise;
-    }
-
-    this.resolveTimeoutPromise =
-      (async () => {
-
+    return this.enqueueAuthoritativeCommand(
+      async () => {
         if (
           this.snapshot?.version ===
           undefined
@@ -211,193 +219,189 @@ export class SupabaseOkeyMatchAdapter
           this.snapshot?.version;
 
         if (
-          expectedVersion ===
-          undefined
+          expectedVersion === undefined
         ) {
-          return;
+          throw new Error(
+            "okey_snapshot_unavailable",
+          );
         }
-
-        const commandId =
-          createCommandId();
 
         const { data, error } =
           await supabase.functions.invoke(
             "okey_match",
             {
               body: {
-                action:
-                  "resolve-timeout",
-
-                matchId:
-                  this.matchId,
-
+                action: "command",
+                matchId: this.matchId,
                 commandId,
-
                 expectedVersion,
+                command,
               },
             },
           );
 
         if (error) {
-          let errorBody: {
-            code?: string;
-            error?: string;
-            serverNow?: string;
-            expiresAt?: string;
-          } | null = null;
-
-          try {
-            if ("context" in error && error.context) {
-              errorBody = await error.context.json();
-            }
-          } catch {
-            errorBody = null;
-          }
-
-          this.syncServerClock(errorBody?.serverNow);
+          const errorBody =
+            await this.readFunctionErrorBody(
+              error,
+            );
 
           if (
-            errorBody?.code === "turn_timer_not_expired" &&
-            typeof errorBody.expiresAt === "string" &&
-            this.snapshot
+            errorBody?.error ===
+              "turn_deadline_expired" ||
+            this.isAuthoritativeSyncResult(
+              errorBody,
+            )
           ) {
-            this.scheduleTimeout({
-              ...this.snapshot,
-              turnDeadlineAt: errorBody.expiresAt,
-            });
+            await this.syncAfterConflict();
             return;
           }
 
-          try {
-            await this.refresh();
-          } catch {
+          await this.refresh();
+          throw error;
+        }
 
-          }
+        this.publishResponse(data);
+      },
+    );
+  }
 
+  async processBotTurn(
+    claim: OkeyBotTurnClaim,
+  ): Promise<OkeyBotTurnResult> {
+    const { data, error } = await supabase.functions.invoke(
+      "process_bot_turns",
+      {
+        body: {
+          mode: "okey",
+          match_id: this.matchId,
+          expected_version: claim.expectedVersion,
+          expected_actor_id: claim.expectedActorId,
+        },
+      },
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return data as OkeyBotTurnResult;
+  }
+
+  async playEliminatedTurn(
+    claim: OkeyEliminatedTurnClaim,
+  ): Promise<void> {
+    const commandId = createCommandId();
+
+    return this.enqueueAuthoritativeCommand(async () => {
+      const { data, error } = await supabase.functions.invoke(
+        "okey_match",
+        {
+          body: {
+            action: "play-eliminated",
+            matchId: this.matchId,
+            commandId,
+            expectedVersion: claim.expectedVersion,
+            expectedActorId: claim.expectedActorId,
+          },
+        },
+      );
+
+      if (error) {
+        const errorBody = await this.readFunctionErrorBody(error);
+        if (this.isAuthoritativeSyncResult(errorBody)) {
+          await this.syncAfterConflict();
           return;
         }
 
+        await this.refresh();
+        throw error;
+      }
 
-        this.publishResponse(data);
-      })().finally(() => {
-        this.resolveTimeoutPromise =
-          null;
-      });
-
-    return this.resolveTimeoutPromise;
+      this.publishResponse(data);
+    });
   }
 
+  async startNextRound(
+    claim: OkeyNextRoundClaim,
+  ): Promise<void> {
+    const commandId = createCommandId();
+
+    return this.enqueueAuthoritativeCommand(async () => {
+      const { data, error } = await supabase.functions.invoke(
+        "okey_match",
+        {
+          body: {
+            action: "start-next-round",
+            matchId: this.matchId,
+            commandId,
+            expectedVersion: claim.expectedVersion,
+            expectedRound: claim.expectedRound,
+          },
+        },
+      );
+
+      if (error) {
+        const errorBody = await this.readFunctionErrorBody(error);
+        if (this.isAuthoritativeSyncResult(errorBody)) {
+          await this.syncAfterConflict();
+          return;
+        }
+
+        await this.refresh();
+        throw error;
+      }
+
+      this.publishResponse(data);
+    });
+  }
+
+  async resolveTimeout(
+    claim: OkeyTurnTimeoutClaim,
+  ): Promise<any> {
+    const commandId = createCommandId();
+
+    return this.enqueueAuthoritativeCommand(
+      async () => {
+        const { data, error } =
+          await supabase.functions.invoke(
+            "okey_match",
+            {
+              body: {
+                action: "resolve-timeout",
+                matchId: this.matchId,
+                commandId,
+                expectedVersion: claim.expectedVersion,
+                expectedTurnDeadlineAt: claim.expectedTurnDeadlineAt,
+                expectedTurnPlayerId: claim.expectedTurnPlayerId,
+              },
+            },
+          );
+
+        if (error) {
+          const errorBody =
+            await this.readFunctionErrorBody(
+              error,
+            );
+
+          this.syncServerClock(
+            errorBody?.serverNow,
+          );
+
+          throw errorBody || error;
+        }
+
+        this.publishResponse(data);
+        return data;
+      },
+    );
+  }
 
   private syncServerClock(serverNow: unknown): void {
     if (typeof serverNow !== "string") return;
     const serverNowMs = Date.parse(serverNow);
     if (!Number.isFinite(serverNowMs)) return;
     this.serverClockOffsetMs = serverNowMs - Date.now();
-  }
-
-  private clearTimeoutTimer(): void {
-    if (this.timeoutTimer) {
-      clearTimeout(
-        this.timeoutTimer,
-      );
-
-      this.timeoutTimer = null;
-    }
-
-    this.scheduledDeadline = null;
-  }
-
-
-  private mergePublicProjection(
-    projection: OkeyMatchServerProjection,
-  ): OkeyMatchServerProjection {
-    const previous = this.snapshot;
-
-    if (!previous) {
-      return projection;
-    }
-
-    const previousPlayers = new Map(
-      previous.players.map((player) => [
-        player.id,
-        player,
-      ]),
-    );
-
-    return {
-      ...projection,
-      players: projection.players.map(
-        (player) => {
-          const previousPlayer =
-            previousPlayers.get(player.id);
-
-          return previousPlayer?.hand
-            ? {
-                ...player,
-                hand: previousPlayer.hand,
-              }
-            : player;
-        },
-      ),
-      settlement:
-        previous.settlement ?? null,
-    };
-  }
-
-  private scheduleTimeout(
-    snapshot:
-      OkeyMatchServerProjection,
-  ): void {
-    const deadline =
-      snapshot.turnDeadlineAt;
-
-    if (
-      snapshot.phase !== "playing" ||
-      !deadline
-    ) {
-      this.clearTimeoutTimer();
-      return;
-    }
-
-    if (
-      this.timeoutTimer &&
-      this.scheduledDeadline ===
-        deadline
-    ) {
-      return;
-    }
-
-    this.clearTimeoutTimer();
-
-    const deadlineMs =
-      Date.parse(deadline);
-
-    if (
-      !Number.isFinite(
-        deadlineMs,
-      )
-    ) {
-      return;
-    }
-
-    this.scheduledDeadline =
-      deadline;
-
-    const delay =
-      Math.max(
-        0,
-        deadlineMs -
-          (Date.now() + this.serverClockOffsetMs),
-      );
-
-    this.timeoutTimer =
-      setTimeout(() => {
-        this.timeoutTimer = null;
-        this.scheduledDeadline =
-          null;
-
-        void this.resolveTimeout();
-      }, delay);
   }
 
   async reconnect(): Promise<void> {
@@ -411,53 +415,66 @@ export class SupabaseOkeyMatchAdapter
   }
 
   async leave(): Promise<void> {
-    if (
-      this.snapshot?.version ===
-      undefined
-    ) {
-      await this.refresh();
-    }
+    const commandId = createCommandId();
 
-    const expectedVersion =
-      this.snapshot?.version;
+    await this.enqueueAuthoritativeCommand(
+      async () => {
+        if (
+          this.snapshot?.version ===
+          undefined
+        ) {
+          await this.refresh();
+        }
 
-    if (expectedVersion === undefined) {
-      throw new Error(
-        "okey_snapshot_unavailable",
-      );
-    }
+        const expectedVersion =
+          this.snapshot?.version;
 
-    const { error } =
-      await supabase.functions.invoke(
-        "okey_match",
-        {
-          body: {
-            action: "manual-leave",
-            matchId: this.matchId,
-            commandId: createCommandId(),
-            expectedVersion,
-          },
-        },
-      );
+        if (expectedVersion === undefined) {
+          throw new Error(
+            "okey_snapshot_unavailable",
+          );
+        }
 
-    if (error) {
-      throw error;
-    }
+        const { error } =
+          await supabase.functions.invoke(
+            "okey_match",
+            {
+              body: {
+                action: "manual-leave",
+                matchId: this.matchId,
+                commandId,
+                expectedVersion,
+              },
+            },
+          );
+
+        if (error) {
+          const errorBody =
+            await this.readFunctionErrorBody(
+              error,
+            );
+
+          if (
+            this.isAuthoritativeSyncResult(
+              errorBody,
+            )
+          ) {
+            await this.syncAfterConflict();
+            return;
+          }
+
+          throw error;
+        }
+      },
+    );
 
     await leaveOkeyRoom(
       this.matchId,
     );
 
     this.closeRealtimeChannel();
-
-    this.clearTimeoutTimer();
-
     this.snapshot = null;
-
-    this.resolveTimeoutPromise =
-      null;
   }
-
   async refresh(): Promise<void> {
     if (this.refreshPromise) {
       return this.refreshPromise;
@@ -486,6 +503,80 @@ export class SupabaseOkeyMatchAdapter
       });
 
     return this.refreshPromise;
+  }
+
+  private refreshAfterRealtimeInvalidation(
+    version: number,
+  ): Promise<void> {
+    this.pendingRealtimeVersion = Math.max(
+      this.pendingRealtimeVersion ?? -1,
+      version,
+    );
+
+    if (this.realtimeRefreshPromise) {
+      return this.realtimeRefreshPromise;
+    }
+
+    this.realtimeRefreshPromise = (async () => {
+      let retryDelayMs = 50;
+
+      while (
+        !this.closed &&
+        this.pendingRealtimeVersion !== null
+      ) {
+        const targetVersion =
+          this.pendingRealtimeVersion;
+        this.pendingRealtimeVersion = null;
+
+        if (
+          (this.snapshot?.version ?? -1) >=
+          targetVersion
+        ) {
+          retryDelayMs = 50;
+          continue;
+        }
+
+        try {
+          await this.refresh();
+        } catch {
+          this.pendingRealtimeVersion = Math.max(
+            this.pendingRealtimeVersion ?? -1,
+            targetVersion,
+          );
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, retryDelayMs),
+          );
+          retryDelayMs = Math.min(
+            retryDelayMs * 2,
+            1_000,
+          );
+          continue;
+        }
+
+        if (
+          (this.snapshot?.version ?? -1) <
+          targetVersion
+        ) {
+          this.pendingRealtimeVersion = Math.max(
+            this.pendingRealtimeVersion ?? -1,
+            targetVersion,
+          );
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, retryDelayMs),
+          );
+          retryDelayMs = Math.min(
+            retryDelayMs * 2,
+            1_000,
+          );
+        } else {
+          retryDelayMs = 50;
+        }
+      }
+    })().finally(() => {
+      this.realtimeRefreshPromise = null;
+    });
+
+    return this.realtimeRefreshPromise;
   }
 
   private publishResponse(data: unknown): void {
@@ -532,9 +623,6 @@ export class SupabaseOkeyMatchAdapter
     }
 
     this.snapshot = snapshot;
-    this.scheduleTimeout(
-      snapshot,
-    );
 
     for (
       const listener of
@@ -571,14 +659,11 @@ export class SupabaseOkeyMatchAdapter
           const message = payload as {
             matchId?: string;
             version?: number;
-            projection?:
-              OkeyMatchServerProjection;
           };
 
           if (
             message.matchId !== this.matchId ||
-            typeof message.version !== "number" ||
-            !message.projection
+            typeof message.version !== "number"
           ) {
             return;
           }
@@ -591,11 +676,9 @@ export class SupabaseOkeyMatchAdapter
             return;
           }
 
-          this.publish(
-            this.mergePublicProjection(
-              message.projection,
-            ),
-          );
+          void this.refreshAfterRealtimeInvalidation(
+            message.version,
+          ).catch(() => {});
         },
       )
       .subscribe((status) => {
@@ -609,7 +692,7 @@ export class SupabaseOkeyMatchAdapter
 
   private closeRealtimeChannel(): void {
     this.closed = true;
-    this.clearTimeoutTimer();
+    this.pendingRealtimeVersion = null;
 
     if (!this.channel) {
       return;
@@ -622,3 +705,4 @@ export class SupabaseOkeyMatchAdapter
     this.channel = null;
   }
 }
+

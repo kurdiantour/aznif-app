@@ -77,7 +77,7 @@ begin
   if v_player_is_bot or v_timeout_count >= 2 then
     new.turn_deadline_at := null;
   else
-    new.turn_deadline_at := clock_timestamp() + interval '25 seconds';
+    new.turn_deadline_at := clock_timestamp() + interval '30 seconds';
   end if;
 
   if new.public_projection is not null then

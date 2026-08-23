@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -36,8 +37,6 @@ import {
 } from "@/okey/match/okey-match-state";
 
 
-const BOT_TURN_DURATION_MS = 20000;
-const BOT_ACTION_DELAY_MS = 1200;
 const FINISH_REVEAL_MS = 5350;
 
 
@@ -83,6 +82,19 @@ export function getNextLocalPreviewDealerIndex(
 }
 
 
+export function canCommitLocalPreviewBotTurn(
+  state: OkeyMatchState["roundState"],
+  expectedPlayerId: string,
+  presentationBlocked: boolean,
+): boolean {
+  const player = state.players[state.currentPlayerIndex];
+  return (
+    !presentationBlocked &&
+    state.phase === "playing" &&
+    player?.id === expectedPlayerId &&
+    isOkeyBotControlled(player)
+  );
+}
 export function useLocalOkeyPreviewGame(): OkeyGameController {
   const [match, setMatch] =
     useState<OkeyMatchState>(() =>
@@ -92,6 +104,8 @@ export function useLocalOkeyPreviewGame(): OkeyGameController {
 
   const [turnPresentationBlocked, setTurnPresentationBlocked] =
     useState(false);
+  const turnPresentationBlockedRef = useRef(turnPresentationBlocked);
+  turnPresentationBlockedRef.current = turnPresentationBlocked;
 
 
   const updateRound = useCallback(
@@ -122,41 +136,35 @@ useEffect(() => {
     match.roundState.players[
       match.roundState.currentPlayerIndex
     ];
+  const expectedPlayerId = player?.id ?? "";
 
-  if (
-    turnPresentationBlocked ||
-    match.roundState.phase !== "playing" ||
-    !isOkeyBotControlled(player)
-  ) {
+  if (!canCommitLocalPreviewBotTurn(
+    match.roundState,
+    expectedPlayerId,
+    turnPresentationBlocked,
+  )) {
     return;
   }
 
-  const startedAt = Date.now();
-
-  const timer = setInterval(() => {
-    if (
-      Date.now() - startedAt >=
-      BOT_TURN_DURATION_MS
-    ) {
-      clearInterval(timer);
-      return;
-    }
-
+  const timer = setTimeout(() => {
     updateRound((state) =>
-      playBotTurn(state),
+      canCommitLocalPreviewBotTurn(
+        state,
+        expectedPlayerId,
+        turnPresentationBlockedRef.current,
+      )
+        ? playBotTurn(state)
+        : state,
     );
-  }, BOT_ACTION_DELAY_MS);
+  }, 0);
 
-  return () =>
-    clearInterval(timer);
+  return () => clearTimeout(timer);
 }, [
   turnPresentationBlocked,
   match.roundState.currentPlayerIndex,
   match.roundState.phase,
   updateRound,
 ]);
-
-
   // --------------------------------------------------
   // FINISH REVEAL POPUP
   // --------------------------------------------------

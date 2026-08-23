@@ -1,5 +1,45 @@
 import type { OkeyPlayer, OkeyTile } from "@/okey/types/okey";
 
+export function getOkeyAuthoritativeRoundPresentation({
+  eligibleAt,
+  serverNowMs,
+  countdownSeconds,
+}: {
+  eligibleAt: string | null;
+  serverNowMs: number;
+  countdownSeconds: number;
+}): {
+  showFinishReveal: boolean;
+  countdownRemaining: number;
+  msUntilCountdown: number;
+  msUntilNextCountdownTick: number;
+} | null {
+  const eligibleAtMs = Date.parse(eligibleAt ?? "");
+  if (!Number.isFinite(eligibleAtMs) || !Number.isFinite(serverNowMs)) {
+    return null;
+  }
+
+  const countdownDurationMs = Math.max(0, countdownSeconds) * 1_000;
+  const countdownStartsAtMs = eligibleAtMs - countdownDurationMs;
+  const remainingMs = Math.max(0, eligibleAtMs - serverNowMs);
+  const countdownRemaining = Math.min(
+    countdownSeconds,
+    Math.ceil(remainingMs / 1_000),
+  );
+
+  return {
+    showFinishReveal: serverNowMs < countdownStartsAtMs,
+    countdownRemaining,
+    msUntilCountdown: Math.max(0, countdownStartsAtMs - serverNowMs),
+    msUntilNextCountdownTick: countdownRemaining <= 0
+      ? 0
+      : Math.max(
+          1,
+          remainingMs - (countdownRemaining - 1) * 1_000,
+        ),
+  };
+}
+
 export function createOkeyMeldPresentationFrames(
   presentedPlayers: OkeyPlayer[],
   targetPlayers: OkeyPlayer[],
@@ -85,3 +125,42 @@ export type EliminatedTurnFlight = {
 };
 export type MeldDropRect = { playerId: string; meldId: string; x: number; y: number; width: number; height: number };
 export type MeldOffset = { x: number; y: number };
+export type LocalOkeyTurnSequenceState = {
+  marker: string | null;
+  sequence: number;
+};
+
+export function advanceLocalOkeyTurnSequence(
+  current: LocalOkeyTurnSequenceState,
+  marker: string | null,
+): LocalOkeyTurnSequenceState {
+  if (current.marker === marker) return current;
+  return { marker, sequence: current.sequence + 1 };
+}
+
+export function getOkeyTurnIdentity({
+  round,
+  playerIndex,
+  playerId,
+  onlineDeadlineAt,
+  localSequence,
+}: {
+  round: number;
+  playerIndex: number;
+  playerId: string;
+  onlineDeadlineAt?: string | null;
+  localSequence?: number;
+}): string {
+  const occurrence = onlineDeadlineAt ?? `local-${localSequence ?? 0}`;
+  return `${round}-${playerIndex}-${playerId}-${occurrence}`;
+}
+
+export function getOrCreateLocalOkeyTurnDeadline(
+  current: { turnIdentity: string; deadlineMs: number } | null,
+  turnIdentity: string,
+  now: number,
+  durationMs: number,
+): { turnIdentity: string; deadlineMs: number } {
+  if (current?.turnIdentity === turnIdentity) return current;
+  return { turnIdentity, deadlineMs: now + durationMs };
+}

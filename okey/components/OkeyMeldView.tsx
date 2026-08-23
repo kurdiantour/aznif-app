@@ -91,6 +91,7 @@ export function OkeyMeldView({
       }}
     >
       {meld.tiles.map((tile, tileIndex) => {
+        const isWildcard = isOkeyWildcard(tile, okeyTile);
         const layout: TileLayout = {
           stacked,
           left: stacked
@@ -114,13 +115,19 @@ export function OkeyMeldView({
               elevation: layout.zIndex,
             }}
           >
-            {renderTile ? (
+            {isWildcard ? (
+              <OkeyTileBack
+                width={tileWidth}
+                height={tileHeight}
+                unstyled
+              />
+            ) : renderTile ? (
               renderTile(tile, tileIndex, layout)
             ) : tile.id === meld.lockedTileId ? (
               <OkeyTileBack
-                small
                 width={tileWidth}
                 height={tileHeight}
+                unstyled
               />
             ) : (
               <OkeyTileFace
@@ -128,10 +135,7 @@ export function OkeyMeldView({
                 compact
                 width={tileWidth}
                 height={tileHeight}
-                isWildcard={isOkeyWildcard(
-                  tile,
-                  okeyTile,
-                )}
+                isWildcard={isWildcard}
               />
             )}
           </View>

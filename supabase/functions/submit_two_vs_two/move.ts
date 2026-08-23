@@ -137,14 +137,14 @@ export default async function handler(req: Request): Promise<Response> {
       canAnyPlayerMove: (candidateHands, candidateBoard, candidateSpinner) =>
         canAnyPlayerMove(candidateHands, candidateBoard, candidateSpinner, false, null),
     });
-    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+
     const transition = finalizeTwoVsTwoRound({
       transition: baseTransition,
-      players,
+
       roomId: room_id,
       committedVersion: Number(room.version) + 1,
       completedAt,
-      shuffleSeed: seed,
+
     });
     const {
       nextState,

@@ -55,7 +55,7 @@ begin
     if v_player_is_bot or v_timeout_count >= 2 then
       v_effective_deadline := null;
     else
-      v_effective_deadline := clock_timestamp() + interval '25 seconds';
+      v_effective_deadline := clock_timestamp() + interval '30 seconds';
     end if;
 
     if v_effective_projection is not null then

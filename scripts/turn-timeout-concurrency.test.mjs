@@ -29,6 +29,10 @@ const okeyAdapterSource = readFileSync(
   "okey/adapters/supabase-okey-match-adapter.ts",
   "utf8",
 );
+const okeyTimeoutControllerSource = readFileSync(
+  "okey/hooks/useOkeyTimeoutController.ts",
+  "utf8",
+);
 const apiSource = readFileSync(
   "domino/modes/two-vs-two/adapters/domino-two-vs-two-supabase-api.ts",
   "utf8",
@@ -176,12 +180,12 @@ test("Okey timeout uses server deadline and atomic expectedVersion", () => {
   for (const code of EXPECTED_CODES) {
     assert.match(okeyMatchSource, new RegExp(`"${code}"`));
   }
-  assert.match(okeyMatchSource, /p_expected_version:\s*body\.expectedVersion/);
+  assert.match(okeyMatchSource, /p_expected_version:\s*action === "manual-leave"\s*\?\s*Number\(bundle\.version\)\s*:\s*\(clientExpectedVersion\s*\?\?\s*Number\(bundle\.version\)\)/);
   assert.match(okeyMatchSource, /serverNow: new Date\(\)\.toISOString\(\)/);
   assert.match(okeyMatchSource, /retryAfterMs: Math\.max/);
   assert.match(okeyAdapterSource, /serverClockOffsetMs/);
-  assert.match(okeyAdapterSource, /deadlineMs -\s*\(Date\.now\(\) \+ this\.serverClockOffsetMs\)/);
-  assert.doesNotMatch(okeyAdapterSource, /deadlineMs -\s*Date\.now\(\) \+\s*150/);
+  assert.match(okeyTimeoutControllerSource, /expiresAtMs - synchronizedNow/);
+  assert.match(okeyTimeoutControllerSource, /deadlineMs - synchronizedNow/);
 });
 
 

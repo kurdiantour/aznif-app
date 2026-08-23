@@ -20,12 +20,13 @@ import { getPlayerIndex, getRelativeSeat } from '@/lib/multiplayer/core/player-n
 import { runMultiplayerAction } from '@/lib/multiplayer/core/multiplayer-action';
 import { buildRoundResult } from '@/domino/shared/lifecycle/round-result';
 import { useRoundLifecycle } from '@/domino/shared/lifecycle/use-round-lifecycle';
-import { PLAYER_TURN_DURATION_SECONDS } from '@/domino/shared/game-shared';
+import { PLAYER_TURN_DURATION_SECONDS, ROUND_TRANSITION_SYNC_MS } from '@/domino/shared/game-shared';
 import { SupabaseDominoTwoVsTwoAdapter } from '../adapters/supabase-domino-two-vs-two-adapter';
 import { createDominoTwoVsTwoPendingMove, isDominoTwoVsTwoMoveCommitted, normalizeDominoTwoVsTwoSnapshot } from './domino-two-vs-two-controller';
 import { useDominoTwoVsTwoBotController } from './domino-two-vs-two-bot-controller';
 import { useDominoTwoVsTwoConnectionController } from './domino-two-vs-two-connection-controller';
 import { useDominoTwoVsTwoTimeoutController, useDominoTwoVsTwoTurnClock } from './domino-two-vs-two-timeout-controller';
+import { useDominoTwoVsTwoRoundSync } from './use-domino-two-vs-two-round-sync';
 
 type UseTwoVsTwoResult = Omit<DominoGameViewModel, 'playTile' | 'passTurn'> & {
   loading: boolean;
@@ -49,6 +50,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   const adapter = useMemo(() => roomId ? new SupabaseDominoTwoVsTwoAdapter(roomId) : null, [roomId]);
 
   const latestVersionRef = useRef(-1);
+  const rawStateRef = useRef<any>(null);
   const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
   const timeoutPassInFlightRef = useRef(false);
   const timeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,6 +70,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
   useEffect(() => {
     roomIdRef.current = roomId;
     latestVersionRef.current = -1;
+    rawStateRef.current = null;
     pendingMoveRef.current = null;
     activeTurnKeyRef.current = null;
     timeoutPassInFlightRef.current = false;
@@ -94,6 +97,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
         ? `${version}:${turnStartedAt}:${currentTurnPlayerId}`
         : null;
     clearTimeoutRetry();
+    rawStateRef.current = nextRawState;
     setRawState(nextRawState);
     const pending = pendingMoveRef.current;
     if (
@@ -128,48 +132,22 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const applyRealtimeRoom = useCallback((updatedRoom: unknown) => {
     if (!updatedRoom) return;
-    const room = updatedRoom as any;
-    const publicState = room.state ?? {};
-    const version = getSnapshotVersion(room);
-    if (version >= 0 && version < latestVersionRef.current) return;
-    if (version >= 0) latestVersionRef.current = version;
 
-    setRawState((previousState: any) => {
-      const nextRawState = {
-        ...(previousState ?? {}),
-        ...room,
-        ...publicState,
-        privateHands: previousState?.privateHands,
-        debugPrivateHandsRaw: previousState?.debugPrivateHandsRaw,
-        myHand: previousState?.myHand ?? [],
-        mode: '2v2',
-        currentTurnPlayerId:
-          publicState.currentTurnPlayerId ??
-          room.current_turn_player_id ??
-          previousState?.currentTurnPlayerId ??
-          null,
-      };
-      const turnStartedAt =
-        nextRawState.turnStartedAt ?? nextRawState.updated_at ?? null;
-      const nextTurnPlayerId = nextRawState.currentTurnPlayerId ?? null;
-      activeTurnKeyRef.current =
-        version >= 0 &&
-        typeof turnStartedAt === 'string' &&
-        typeof nextTurnPlayerId === 'string'
-          ? String(version) + ':' + turnStartedAt + ':' + nextTurnPlayerId
-          : null;
-      clearTimeoutRetry();
-      const pending = pendingMoveRef.current;
-      if (
-        pending &&
-        isDominoTwoVsTwoMoveCommitted(nextRawState, version, pending)
-      ) {
-        pendingMoveRef.current = null;
-        setPendingMove(null);
-      }
-      return nextRawState;
-    });
-  }, [clearTimeoutRetry]);
+    // IMPORTANT:
+    // A 2v2 Realtime room payload contains public room state only.
+    // Never merge that public state with private hand data from the previous
+    // snapshot. Doing so can create an impossible mixed snapshot at a round
+    // boundary (for example: Round 2 board/turn + Round 1 private hand).
+    //
+    // The connection controller immediately follows room invalidation with
+    // refreshSnapshot(), which fetches the authoritative snapshot containing
+    // both the current public state and this player's current private hand.
+    // Until that full snapshot arrives, keep rendering the last internally
+    // consistent snapshot instead of publishing a partially-updated one.
+    //
+    // This intentionally makes Realtime an invalidation signal, not a second
+    // source of truth.
+  }, []);
 
   useDominoTwoVsTwoConnectionController({
     roomId,
@@ -297,10 +275,31 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   const playTile = async (tile: DominoTileData, branch?: KozelBranch) => {
     if (!roomId) throw new Error('No 2v2 room id');
-    if (pendingMoveRef.current || rawState?.roundWinnerPlayerId) return false;
+    if (rawState?.roundWinnerPlayerId) {
+      console.warn('[2v2 playTile rejected]', {
+        reason: 'round_winner_player_id',
+        roomId,
+        tileId: tile.id,
+        snapshotVersion: latestVersionRef.current,
+        roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
+      });
+      return false;
+    }
 
     const resolvedBranch = branch ?? availableBranchesForTile(tile)[0];
-    if (!resolvedBranch) return false;
+    if (!resolvedBranch) {
+      console.warn('[2v2 playTile rejected]', {
+        reason: 'no_available_branch',
+        roomId,
+        tileId: tile.id,
+        requestedBranch: branch ?? null,
+        snapshotVersion: latestVersionRef.current,
+        boardEmpty: !board.centerTile,
+        isOpeningRound,
+        openingDouble,
+      });
+      return false;
+    }
 
     const pending = createDominoTwoVsTwoPendingMove({
       roomId, tile, branch: resolvedBranch,
@@ -389,11 +388,32 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     });
   }, [playersRows, rawState]);
 
+  const roundWinnerPlayerId = rawState?.roundWinnerPlayerId ?? null;
+  const winningTeamId = rawState?.winningTeamId ?? null;
+  const completedRoundId = rawState?.lastCompletedRound?.id ?? null;
+  const { startNextRound } = useDominoTwoVsTwoRoundSync({
+    roomId,
+    adapter,
+    completedRoundId,
+    roundWinnerPlayerId,
+    winningTeamId,
+    status: rawState?.status,
+    hasAuthoritativeActiveHand:
+      rawState?.status === 'started' &&
+      !roundWinnerPlayerId &&
+      !winningTeamId &&
+      !!rawState?.currentTurnPlayerId &&
+      Array.isArray(rawState?.myHand) &&
+      rawState.myHand.length > 0,
+    syncIntervalMs: ROUND_TRANSITION_SYNC_MS,
+    applySnapshot,
+    refreshSnapshot,
+  });
   const { phase, roundResult, nextRoundCountdown } = useRoundLifecycle({
-    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
-    winningTeamId: rawState?.winningTeamId ?? null,
+    roundWinnerPlayerId,
+    winningTeamId,
     buildRoundResult: createRoundResult,
-    serverAuthoritative: true,
+    startNextRound,
   });
 
   return {

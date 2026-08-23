@@ -1,0 +1,4 @@
+-- Migration history marker.
+-- This migration is already applied on the linked Supabase project.
+-- Its final schema changes are already incorporated into the canonical
+-- migrations currently stored in this repository.

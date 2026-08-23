@@ -22,6 +22,7 @@ export interface DominoTwoVsTwoAdapter {
   getSnapshot(): Promise<any>;
   getRoster(includeProfiles?: boolean): Promise<{ rows: any[]; profiles: any[] | null }>;
   dispatch(command: DominoTwoVsTwoCommand): Promise<any>;
+  startNextHand(completedRoundId: string): Promise<any>;
   processBotTurn(): Promise<any>;
   subscribe(observer: DominoTwoVsTwoSubscription): () => void;
 }

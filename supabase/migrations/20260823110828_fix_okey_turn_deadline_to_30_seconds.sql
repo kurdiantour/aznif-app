@@ -1,0 +1,3 @@
+-- Migration history marker.
+-- This migration is already applied on the linked Supabase project.
+-- Okey's canonical turn deadline is already 30 seconds in the repository.

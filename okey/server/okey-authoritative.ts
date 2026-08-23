@@ -8,6 +8,7 @@ import {
   getRoundResultScoreDetails,
   lockKonkanSet,
   openPlayerMelds,
+  playEliminatedTurn,
   spendTileOnMeld,
 } from "../engine/okey-engine.ts";
 
@@ -26,7 +27,7 @@ import type {
   OkeyTile,
 } from "../types/okey.ts";
 
-export const OKEY_SERVER_TURN_SECONDS = 20;
+export const OKEY_SERVER_TURN_SECONDS = 30;
 export const OKEY_MAX_ROUNDS = 7;
 
 export type OkeyTeamId =
@@ -107,6 +108,8 @@ export type OkeyAuthoritativeMatchState = {
 
   matchWinnerTeamId:
     OkeyTeamId | null;
+
+  nextRoundEligibleAt: string | null;
 
   timeoutCountsByPlayerId:
     Record<string, number>;
@@ -294,6 +297,8 @@ export function createAuthoritativeOkeyMatch(
     matchFinished: false,
 
     matchWinnerTeamId: null,
+
+    nextRoundEligibleAt: null,
 
     timeoutCountsByPlayerId:
       Object.fromEntries(
@@ -646,6 +651,8 @@ export type OkeyMatchServerProjection =
 
     matchWinnerTeamId:
       OkeyTeamId | null;
+
+    nextRoundEligibleAt: string | null;
 
     settlement?: OkeyMatchSettlement | null;
 
@@ -1168,14 +1175,14 @@ const lastTimeoutDiscardEvent:
     : null;
 
 
-return reconcileAuthoritativeBotOwnership(
-  settleAuthoritativeOkeyRound({
-    ...match,
-    timeoutCountsByPlayerId: nextTimeoutCounts,
-    lastTimeoutDiscardEvent,
-    roundState: nextRoundState,
-  }),
-);
+  return reconcileAuthoritativeBotOwnership(
+    settleAuthoritativeOkeyRound({
+      ...match,
+      timeoutCountsByPlayerId: nextTimeoutCounts,
+      lastTimeoutDiscardEvent,
+      roundState: nextRoundState,
+    }),
+  );
 }
 
 export function getNextOkeyTurnDeadline(
@@ -1210,8 +1217,8 @@ export function getNextOkeyMatchTurnDeadline(
 
   if (
     !player ||
-    isOkeyBotControlled(player) ||
-    (match.timeoutCountsByPlayerId?.[player.id] ?? 0) >= 2
+    player.eliminated ||
+    isOkeyBotControlled(player)
   ) {
     return null;
   }
@@ -1325,6 +1332,9 @@ export function projectOkeyMatchState(
     matchWinnerTeamId:
       match.matchWinnerTeamId,
 
+    nextRoundEligibleAt:
+      match.nextRoundEligibleAt ?? null,
+
     lastTimeoutDiscardEvent:
       match.lastTimeoutDiscardEvent ??
   null,
@@ -1346,4 +1356,85 @@ export function projectOkeyMatchPublicState(
     version,
     turnDeadlineAt,
   );
+}
+
+export function applyAuthoritativeOkeyEliminatedTurn(
+  match: OkeyAuthoritativeMatchState,
+  expectedActorId: string,
+): OkeyAuthoritativeMatchState {
+  if (match.matchFinished || match.roundState.phase !== "playing") {
+    throw new OkeyCommandError("command_rejected");
+  }
+
+  const actor =
+    match.roundState.players[match.roundState.currentPlayerIndex];
+  if (!actor?.eliminated || actor.id !== expectedActorId) {
+    throw new OkeyCommandError("command_rejected");
+  }
+
+  const nextRoundState = playEliminatedTurn(match.roundState);
+  if (nextRoundState === match.roundState) {
+    throw new OkeyCommandError("command_rejected");
+  }
+
+  return settleAuthoritativeOkeyRound({
+    ...match,
+    roundState: nextRoundState,
+  });
+}
+
+export function getOkeyMatchTurnDeadlineAfterTransition(
+  previousMatch: OkeyAuthoritativeMatchState,
+  nextMatch: OkeyAuthoritativeMatchState,
+  currentDeadline: string | null,
+  now = Date.now(),
+): string | null {
+  const nextDeadline = getNextOkeyMatchTurnDeadline(nextMatch, now);
+  if (!nextDeadline) return null;
+
+  const previousPlayer =
+    previousMatch.roundState.players[previousMatch.roundState.currentPlayerIndex];
+  const nextPlayer =
+    nextMatch.roundState.players[nextMatch.roundState.currentPlayerIndex];
+  const sameTurn =
+    previousMatch.currentRound === nextMatch.currentRound &&
+    previousMatch.roundState.currentPlayerIndex ===
+      nextMatch.roundState.currentPlayerIndex &&
+    previousPlayer?.id === nextPlayer?.id;
+
+  return sameTurn && currentDeadline ? currentDeadline : nextDeadline;
+}
+
+export function startAuthoritativeOkeyNextRound(
+  match: OkeyAuthoritativeMatchState,
+): OkeyAuthoritativeMatchState {
+  if (match.matchFinished || match.roundState.phase !== "finished") {
+    throw new OkeyCommandError("command_rejected");
+  }
+
+  const finishedRound = match.roundState;
+  const repeatsCurrentRound = finishedRound.endReason === "tile-cycle-limit";
+  const completedResult = match.roundResults.some(
+    (result) => result.round === match.currentRound,
+  );
+
+  if (!repeatsCurrentRound && !completedResult) {
+    throw new OkeyCommandError("command_rejected");
+  }
+
+  const dealerIndex = repeatsCurrentRound
+    ? finishedRound.dealerIndex
+    : getNextRoundDealerIndex(finishedRound);
+
+  return {
+    ...match,
+    currentRound: repeatsCurrentRound
+      ? match.currentRound
+      : match.currentRound + 1,
+    nextRoundEligibleAt: null,
+    roundState: createAuthoritativeOkeyGame(
+      getPlayerIdentities(finishedRound),
+      dealerIndex,
+    ),
+  };
 }

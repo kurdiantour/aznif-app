@@ -97,7 +97,7 @@ const animation = Animated.timing(progress, {
     >
       {locked ? (
         <OkeyTileBack
-          small
+          unstyled
           width={TABLE_MELD_TILE_WIDTH}
           height={TABLE_MELD_TILE_HEIGHT}
         />
@@ -346,6 +346,7 @@ export function OkeyPlayerMeldArea({
   allPlayers,
   okeyTile,
   position,
+  showPlacementGuide = false,
   onMeldMeasured,
   meldOffsets = {},
   onMeldOffsetChange,
@@ -355,6 +356,7 @@ export function OkeyPlayerMeldArea({
   allPlayers: OkeyPlayer[];
   okeyTile: OkeyTile;
   position: "top" | "left" | "right" | "bottom";
+  showPlacementGuide?: boolean;
   onMeldMeasured?: (playerId: string, meldId: string, rect: MeldRect) => void;
   meldOffsets?: Record<string, MeldOffset>;
   onMeldOffsetChange?: (playerId: string, meldId: string, offset: MeldOffset) => void;
@@ -416,11 +418,16 @@ export function OkeyPlayerMeldArea({
       style={[
         styles.meldArea,
         layout.meldAreas[position],
+        position === "left" && styles.leftMeldArea,
+        showPlacementGuide && styles.meldPlacementGuide,
       ]}
       pointerEvents="box-none"
     >
       {meldRows.length > 0 ? (
-        <View style={styles.meldContent} pointerEvents="box-none">
+        <View
+          style={[styles.meldContent, position === "top" && styles.topMeldContent]}
+          pointerEvents="box-none"
+        >
           {meldRows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.meldRow} pointerEvents="box-none">
               {row.map((meld) => (
@@ -444,6 +451,13 @@ export function OkeyPlayerMeldArea({
               ))}
             </View>
           ))}
+          {player.eliminated ? (
+            <View
+              testID={"okey-eliminated-meld-overlay-" + player.id}
+              pointerEvents="none"
+              style={styles.eliminatedMeldOverlay}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -470,6 +484,7 @@ export function OkeyPlayerMeldArea({
 export function OkeyTableMeldAreas({
   players,
   okeyTile,
+  showPlacementGuides = false,
   onMeldMeasured,
   meldOffsets,
   onMeldOffsetChange,
@@ -477,6 +492,7 @@ export function OkeyTableMeldAreas({
 }: {
   players: OkeyPlayer[];
   okeyTile: OkeyTile;
+  showPlacementGuides?: boolean;
   onMeldMeasured?: (
     playerId: string,
     meldId: string,
@@ -497,6 +513,7 @@ export function OkeyTableMeldAreas({
         player={players[1]}
         okeyTile={okeyTile}
         position="top"
+        showPlacementGuide={showPlacementGuides}
         onMeldMeasured={onMeldMeasured}
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
@@ -508,6 +525,7 @@ export function OkeyTableMeldAreas({
         player={players[2]}
         okeyTile={okeyTile}
         position="left"
+        showPlacementGuide={showPlacementGuides}
         onMeldMeasured={onMeldMeasured}
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
@@ -519,6 +537,7 @@ export function OkeyTableMeldAreas({
         player={players[3]}
         okeyTile={okeyTile}
         position="right"
+        showPlacementGuide={showPlacementGuides}
         onMeldMeasured={onMeldMeasured}
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
@@ -530,6 +549,7 @@ export function OkeyTableMeldAreas({
         player={players[0]}
         okeyTile={okeyTile}
         position="bottom"
+        showPlacementGuide={showPlacementGuides}
         onMeldMeasured={onMeldMeasured}
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}

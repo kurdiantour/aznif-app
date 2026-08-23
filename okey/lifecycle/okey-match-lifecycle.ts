@@ -1,7 +1,9 @@
+import { OKEY_RULESET_V1 } from "@/okey/rules/okey-ruleset-v1";
 import { resolveTimeoutTurn } from "@/okey/engine/okey-timeout";
 import { ROUND_RESULT_COUNTDOWN_SECONDS, settleFinishedRound, type OkeyMatchState } from "@/okey/match/okey-match-state";
 
-export const OKEY_TURN_DEADLINE_MS = 20_000;
+export const OKEY_TURN_DEADLINE_MS =
+  OKEY_RULESET_V1.match.turnDurationSeconds * 1000;
 export const OKEY_FINISH_REVEAL_MS = 5_350;
 
 export type OkeyResumeResult = { match: OkeyMatchState; turnExpired: boolean };
@@ -22,3 +24,4 @@ export function reconcileOkeyMatchAfterInterruption(match: OkeyMatchState, elaps
   if (roundState === match.roundState) return { match, turnExpired: false };
   return { match: settleFinishedRound({ ...match, roundState }), turnExpired: true };
 }
+
