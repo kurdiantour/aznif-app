@@ -1,7 +1,6 @@
 import { DominoTileData } from "@/domino/types/domino-game";
 import { Image } from "expo-image";
-import { StyleSheet, View, Text } from "react-native";
-import { useState } from "react";
+import { StyleSheet, View } from "react-native";
 
 const dominoImages: Record<string, any> = {
   "0-0": require("@/assets/domino-set/0-0.webp"),
@@ -59,8 +58,6 @@ export default function DominoTile({
 }: Props) {
   const imageKey = getImageKey(tile.left, tile.right);
 
-  const [imageError, setImageError] = useState(false);
-
   const finalRotation = ((rotation % 360) + 360) % 360;
 
   const isSideways = finalRotation === 90 || finalRotation === 270;
@@ -91,13 +88,7 @@ export default function DominoTile({
           contentFit="contain"
           transition={0}
           cachePolicy="memory-disk"
-          onError={() => setImageError(true)}
         />
-        {imageError && (
-          <View style={[styles.fallback, { width, height }]}>
-            <Text style={styles.fallbackText}>Missing image</Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -119,3 +110,4 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 });
+

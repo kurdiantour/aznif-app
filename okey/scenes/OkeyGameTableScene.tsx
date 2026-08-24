@@ -70,6 +70,8 @@ import type {
 const OKEY_TURN_DURATION_SECONDS = 20;
 const TIMEOUT_TURN_WATCHDOG_MS = 2500;
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
+const PLAYER_PREVIEW_MELD_TILE_WIDTH = 22;
+const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 29;
 
 type OkeyGameTableSceneProps = {
   controller?: OkeyGameController;
@@ -1077,9 +1079,32 @@ requestAnimationFrame(() => {
     });
   };
   const isInsideHumanMeldDropZone = (point: { x: number; y: number }) => {
-    return isPointInsideRect(point, humanMeldDropZone.current);
-  };
-  const registerMeldDropRect = (playerId: string, meldId: string, rect: { x: number; y: number; width: number; height: number }) => {
+    const table = screenRectRef.current;
+    if (table.width <= 0 || table.height <= 0) return false;
+
+    // Group drops may land anywhere on the table surface. Existing rack,
+    // draw/discard, and active popup flows retain priority over this route.
+    if (
+      showScoreDetails ||
+      showRoundResultPopup ||
+      showMatchResultPopup ||
+      showDiscardHistory ||
+      showFinalTileCelebration ||
+      isDiscardDragActive
+    ) {
+      return false;
+    }
+
+    const forbiddenRects = [
+      rackRectRef.current,
+      deckTopRectRef.current,
+      discardTopRectRef.current,
+    ];
+    if (forbiddenRects.some((rect) => rect && isPointInsideRect(point, rect))) {
+      return false;
+    }
+    return isPointInsideRect(point, table);
+  };  const registerMeldDropRect = (playerId: string, meldId: string, rect: { x: number; y: number; width: number; height: number }) => {
     meldDropRectsRef.current = [
       ...meldDropRectsRef.current.filter((entry) => entry.playerId !== playerId || entry.meldId !== meldId),
       { playerId, meldId, ...rect },
@@ -1225,6 +1250,9 @@ if (
     // Lock the turn before starting draw/discard state updates or animations.
     timeoutTurnKeyRef.current = turnKey;
     setSelectedTileId(null);
+    if (!humanPlayer.opened && previewMelds.length > 0) {
+      setPreviewMelds([]);
+    }
 
     if (!state.hasDrawnThisTurn) {
       const forcedTile = state.deck[0] ?? null;
@@ -1248,7 +1276,7 @@ if (
     }
 
     beginTimeoutHumanTurn();
-  }, [beginTimeoutHumanTurn, currentRound, isAppActive, pendingTimeoutDiscardTileId, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, state.currentPlayerIndex, state.deck, state.hasDrawnThisTurn, state.phase, tileFlight, turnTimedOut]);
+  }, [beginTimeoutHumanTurn, humanPlayer.opened, previewMelds.length, currentRound, isAppActive, pendingTimeoutDiscardTileId, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, state.currentPlayerIndex, state.deck, state.hasDrawnThisTurn, state.phase, tileFlight, turnTimedOut]);
   useEffect(() => {
     const pending = eliminatedTurnFlightRef.current;
     if (pending?.stage === "committing") {
@@ -1578,7 +1606,12 @@ if (
                         key={meld.id}
                         onPress={() => setPreviewMelds((current) => current.filter((entry) => entry.id !== meld.id))}
                       >
-                        <OkeyMeldView meld={meld} okeyTile={state.okeyTile} />
+                        <OkeyMeldView
+                          meld={meld}
+                          okeyTile={state.okeyTile}
+                          tileWidth={PLAYER_PREVIEW_MELD_TILE_WIDTH}
+                          tileHeight={PLAYER_PREVIEW_MELD_TILE_HEIGHT}
+                        />
                       </Pressable>
                     ))}
                   </View>

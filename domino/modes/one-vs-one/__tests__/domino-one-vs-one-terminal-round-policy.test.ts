@@ -25,7 +25,7 @@ function functionBody(name: string) {
 
 test("second timeout records one atomic idempotent terminal event", () => {
   const apply = functionBody("apply_one_vs_one_timeout_strike_takeover");
-  assert.match(strikePolicy, /IF COALESCE\(v_next_strikes, 0\) >= 2 THEN/);
+  assert.match(strikePolicy, /IF COALESCE\(v_acting_strikes, 0\) >= 2 THEN/);
   assert.match(apply, /FROM public\.one_vs_one_rooms[\s\S]*FOR UPDATE/);
   assert.match(apply, /UPDATE public\.one_vs_one_players[\s\S]*AND bot_takeover = false/);
   assert.match(apply, /IF FOUND THEN[\s\S]*IF NOT EXISTS/);
@@ -45,8 +45,8 @@ test("Manual Leave and timeout use the same shared terminal-round resolver", () 
   );
   assert.match(sharedResolver, /p_game = 'domino' AND p_mode = '1v1'/);
   assert.match(sharedResolver, /resolve_one_vs_one_terminal_round\(p_room_id\)/);
-  assert.match(legacyAdapter, /resolve_multiplayer_terminal_round\('domino', '1v1', p_room_id\)/);
-  assert.match(trigger, /resolve_multiplayer_terminal_round\('domino', '1v1', NEW\.id\)/);
+  assert.match(legacyAdapter, /resolve_multiplayer_terminal_round\(\s*'domino',\s*'1v1',\s*p_room_id\s*\)/);
+  assert.match(trigger, /resolve_multiplayer_terminal_round\(\s*'domino',\s*'1v1',\s*NEW\.id\s*\)/);
 });
 
 test("Manual Leave keeps its production terminal and settlement contract", () => {
@@ -83,8 +83,8 @@ test("presence and unsupported game modes cannot create terminal effects", () =>
   assert.doesNotMatch(migration, /two_vs_two_(rooms|players|moves)/);
   assert.doesNotMatch(migration, /okey_/i);
   assert.equal((migration.match(/SET search_path = ''/g) ?? []).length, 5);
-  assert.match(migration, /REVOKE ALL ON FUNCTION public\.resolve_multiplayer_terminal_round/);
-  assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.resolve_multiplayer_terminal_round[\s\S]*TO service_role/);
+  assert.match(migration, /REVOKE ALL\s+ON FUNCTION public\.resolve_multiplayer_terminal_round/);
+  assert.match(migration, /GRANT EXECUTE\s+ON FUNCTION public\.resolve_multiplayer_terminal_round[\s\S]*TO service_role/);
 });
 
 test("migration has an executable rollback to the exact legacy policy", () => {

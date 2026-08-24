@@ -145,6 +145,7 @@ export function useOkeyRackDrag({
   const committedRackSlotsRef = useRef(committedRackSlots);
   const tileByIdRef = useRef(new Map(tiles.map((tile) => [tile.id, tile])));
   const okeyTileRef = useRef(okeyTile);
+  const stagedTileIdSetRef = useRef(stagedTileIdSet);
 
   const rackTileWidthRef = useRef(rackTileWidth);
   const rackTileHeightRef = useRef(rackTileHeight);
@@ -179,6 +180,10 @@ export function useOkeyRackDrag({
   useEffect(() => {
     okeyTileRef.current = okeyTile;
   }, [okeyTile]);
+
+  useEffect(() => {
+    stagedTileIdSetRef.current = stagedTileIdSet;
+  }, [stagedTileIdSet]);
 
   useEffect(() => {
     rackTileWidthRef.current = rackTileWidth;
@@ -547,7 +552,7 @@ export function useOkeyRackDrag({
         const rowTiles = getRowTilesFromSlots(
           rackSlotsRef.current[origin.row],
           tileByIdRef.current,
-          stagedTileIdSet,
+          stagedTileIdSetRef.current,
         );
 
         const meld = getBestMeldIncludingSlot(
@@ -572,7 +577,6 @@ export function useOkeyRackDrag({
       clearLongPressTimer,
       setCurrentInsertionTarget,
       setDragPositionFromTouch,
-      stagedTileIdSet,
     ],
   );
 

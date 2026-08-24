@@ -18,7 +18,9 @@ export type ExternalDropPlacement = { tileId: string; point: { x: number; y: num
 
 export const ROW_ORDER: RackRow[] = ["bottom", "top"];
 export const GROUP_LONG_PRESS_MS = 600;
-export const GROUP_LONG_PRESS_MOVE_TOLERANCE = 8;
+// Allow normal finger jitter while the user holds a tile to activate group drag.
+// The drag activation threshold still handles intentional early movement.
+export const GROUP_LONG_PRESS_MOVE_TOLERANCE = 24;
 export const DRAG_ACTIVATION_DISTANCE = 4;
 export const ROW_SNAP_PADDING_RATIO = 0.45;
 export const SLOT_TARGET_HYSTERESIS_RATIO = 0.35;

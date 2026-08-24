@@ -1,0 +1,2 @@
+DROP FUNCTION IF EXISTS
+public.evaluate_two_vs_two_abandonments_and_forfeits(uuid);

@@ -70,7 +70,7 @@ test("timeout takeover is strike-driven and has no heartbeat or worker watchdog"
     "utf8",
   );
   assert.match(migration, /consecutive_timeout_strikes = consecutive_timeout_strikes \+ 1/);
-  assert.match(migration, /IF COALESCE\(v_next_strikes, 0\) >= 2 THEN/);
+  assert.match(migration, /IF COALESCE\(v_acting_strikes, 0\) >= 2 THEN/);
   assert.match(migration, /apply_one_vs_one_timeout_strike_takeover/);
   assert.match(migration, /Heartbeat \/ presence \/ reconnect \/ disconnect are intentionally NOT defined here/);
 });
@@ -142,3 +142,4 @@ test("Domino module owns canonical core paths and legacy shims are removed", () 
   const edgeHandler = readFileSync("supabase/functions/submit_one_vs_one/index.ts", "utf8");
   assert.match(edgeHandler, /domino\/modes\/one-vs-one/);
 });
+
