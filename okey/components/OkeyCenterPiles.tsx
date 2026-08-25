@@ -91,8 +91,8 @@ export function OkeyCenterPiles({
   }, [onDiscardDragPointChange]);
   const discardDragHandlers = useMemo(
     () => PanResponder.create({
-      onStartShouldSetPanResponder: () => !!topDiscard,
-      onMoveShouldSetPanResponder: (_, gesture) => !!topDiscard && Math.hypot(gesture.dx, gesture.dy) > 3,
+      onStartShouldSetPanResponder: () => !!displayedTopDiscard,
+      onMoveShouldSetPanResponder: (_, gesture) => !!displayedTopDiscard && Math.hypot(gesture.dx, gesture.dy) > 3,
       onPanResponderGrant: () => {
         measureRoot();
         measureDiscardTop();
@@ -101,7 +101,7 @@ export function OkeyCenterPiles({
       },
       onPanResponderMove: (_, gesture) => {
         const distance = Math.hypot(gesture.dx, gesture.dy);
-        if (canDrawDiscard && !!topDiscard && distance > 8 && !discardDragStartedRef.current) {
+        if (canDrawDiscard && !!displayedTopDiscard && distance > 8 && !discardDragStartedRef.current) {
           discardDragStartedRef.current = true;
         }
         if (discardDragStartedRef.current) {
@@ -112,7 +112,7 @@ export function OkeyCenterPiles({
       },
       onPanResponderRelease: (_, gesture) => {
         const distance = Math.hypot(gesture.dx, gesture.dy);
-        if (!topDiscard) return;
+        if (!displayedTopDiscard) return;
         if (distance < 8) {
           onViewDiscards?.();
           clearDiscardDrag();
@@ -129,11 +129,11 @@ export function OkeyCenterPiles({
         clearDiscardDrag();
       },
     }),
-    [canDrawDiscard, clearDiscardDrag, measureDiscardTop, measureRoot, onDiscardDragPointChange, onDiscardDroppedOnRack, onViewDiscards, setDiscardDragPositionFromGesture, topDiscard],
+    [canDrawDiscard, clearDiscardDrag, measureDiscardTop, measureRoot, onDiscardDragPointChange, onDiscardDroppedOnRack, onViewDiscards, setDiscardDragPositionFromGesture, displayedTopDiscard],
   );
   return (
     <View style={[styles.centerPiles, layout.centerPiles, discardDragPosition && styles.activeDiscardDragLayer]}>
-      <View testID="okey-discard-pile" ref={rootRef} onLayout={measureRoot} style={[styles.discardPileNatural, !topDiscard && styles.disabled]}>
+      <View testID="okey-discard-pile" ref={rootRef} onLayout={measureRoot} style={[styles.discardPileNatural, !displayedTopDiscard && styles.disabled]}>
         <View style={[styles.discardUnderTile, styles.discardUnderLeft]}>
           <OkeyTileBack />
         </View>
@@ -175,7 +175,7 @@ export function OkeyCenterPiles({
           <View ref={discardTopRef} collapsable={false} onLayout={measureDiscardTop} style={styles.emptyDiscard} />
         )}
         {discardCount > 0 ? <Text style={styles.discardCount}>{discardCount}</Text> : null}
-        {topDiscard && discardDragPosition ? (
+        {displayedTopDiscard && discardDragPosition ? (
           <View
             pointerEvents="none"
             style={[
@@ -191,11 +191,11 @@ export function OkeyCenterPiles({
             ]}
           >
             <OkeyTileFace
-              tile={topDiscard}
+              tile={displayedTopDiscard}
               compact
               width={discardTileSize.width}
               height={discardTileSize.height}
-              isWildcard={isOkeyWildcard(topDiscard, okeyTile)}
+              isWildcard={isOkeyWildcard(displayedTopDiscard, okeyTile)}
             />
           </View>
         ) : null}

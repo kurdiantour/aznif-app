@@ -43,12 +43,10 @@ import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay
 import {
   type MeldDropRect,
   type MeldOffset,
-  type QueuedOpponentDiscardFlight,
   type ScreenRect,
   type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
 import {
-  createOpponentDiscardFlight,
   findClosestMeldDropTarget,
   isPointInsideRect,
   toLocalScreenRect,
@@ -408,14 +406,18 @@ const turnView = useMemo(
     setDiscardPresentationFallback,
     holdDiscardUntilAuthoritative,
     releaseAuthoritativeDiscardHold,
-    opponentTurnTransitionActive,
-    setOpponentTurnTransitionActive,
+    launchTileFlight,
     presentedTablePlayers,
     setPresentedPlayers,
+    presentedTopDiscard,
+    setPresentedTopDiscard,
     resetPresentationRuntime,
     awaitingDiscardRemovalTileIdRef,
     activePresentationRef,
-  } = useOkeyTileFlightCoordinator(state.players);
+  } = useOkeyTileFlightCoordinator(
+    state.players,
+    state.discardPile[state.discardPile.length - 1] ?? null,
+  );
   const stableOpponentTileCounts = useMemo(
     () => Object.fromEntries(
       presentedTablePlayers.map((player) => [player.id, player.hand.length]),
@@ -586,16 +588,6 @@ const shouldShowScorePopup =
       screenRectRef.current = { x, y, width, height };
     });
   };
-  const buildOpponentDiscardFlight = useCallback(
-    (entry: QueuedOpponentDiscardFlight): TileFlight | null => createOpponentDiscardFlight(
-      entry,
-      opponentSeatRectsRef.current[entry.ownerPlayerId] ?? null,
-      discardTopRectRef.current,
-      screenRectRef.current,
-    ),
-    [],
-  );
-
   const {
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
@@ -610,12 +602,7 @@ const shouldShowScorePopup =
     rackRectRef,
     activePresentationRef,
     setPresentedPlayers,
-    setDiscardPresentationFallback,
-    setOpponentTurnTransitionActive,
-    setHideDeckTopTile,
-    setHideDiscardTopTile,
-    setTileFlight,
-    buildOpponentDiscardFlight,
+    launchTileFlight,
     toLocalRect,
   });
 
@@ -806,7 +793,6 @@ const shouldShowScorePopup =
     setHideDeckTopTile,
     setHideDiscardTopTile,
     setDiscardPresentationFallback,
-    setOpponentTurnTransitionActive,
     setTileFlight,
     toLocalRect,
     activePresentationRef,
@@ -815,6 +801,7 @@ const shouldShowScorePopup =
   const completeActivePresentation = useOkeyTileFlightCompletion({
     tileFlight,
     topDiscard,
+    setPresentedTopDiscard,
     activePresentationRef,
     setTileFlight,
     setHiddenRackTileIds,
@@ -822,7 +809,6 @@ const shouldShowScorePopup =
     setHideDiscardTopTile,
     setDiscardPresentationFallback,
     holdDiscardUntilAuthoritative,
-    setOpponentTurnTransitionActive,
     toLocalRect,
     resetTimeoutPresentation,
     startNextQueuedPresentation,
@@ -1003,12 +989,20 @@ const shouldShowScorePopup =
   useEffect(() => {
     if (lastPresentationResumeTokenRef.current === lifecycleResumeToken) return;
     lastPresentationResumeTokenRef.current = lifecycleResumeToken;
-    resetPresentationRuntime(state.players);
+    resetPresentationRuntime(
+      state.players,
+      state.discardPile[state.discardPile.length - 1] ?? null,
+    );
     setDiscardDropPlacement(null);
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
     setDiscardDragPoint(null);
-  }, [lifecycleResumeToken, resetPresentationRuntime, state.players]);
+  }, [
+    lifecycleResumeToken,
+    resetPresentationRuntime,
+    state.discardPile,
+    state.players,
+  ]);
 
   const turnTimerVisible = onlineGameplayReady && (state.phase === "playing" || showFinishRevealPopup);
 
@@ -1192,7 +1186,10 @@ const shouldShowScorePopup =
     hoveredMeldTargetRef.current = null;
     meldDropRectsRef.current = [];
 
-    resetPresentationRuntime(state.players);
+    resetPresentationRuntime(
+      state.players,
+      state.discardPile[state.discardPile.length - 1] ?? null,
+    );
 
     setPreviewMelds([]);
     setTableMeldOffsets({});
@@ -1213,6 +1210,7 @@ const shouldShowScorePopup =
   }, [
     currentRound,
     resetPresentationRuntime,
+    state.discardPile,
     state.players,
   ]);
 
@@ -1351,7 +1349,7 @@ const shouldShowScorePopup =
             {onlineGameplayReady ? (
               <MemoizedOkeyCenterPiles
                 deckCount={state.deck.length}
-                topDiscard={topDiscard}
+                topDiscard={presentedTopDiscard}
                 discardCount={state.discardPile.length}
                 canDraw={canDraw}
                 canDrawDiscard={canDrawDiscard}
@@ -1565,3 +1563,4 @@ const finishRevealStyles = StyleSheet.create({
     borderColor: "rgba(248,243,223,0.22)",
   },
 });
+

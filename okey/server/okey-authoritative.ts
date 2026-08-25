@@ -110,6 +110,10 @@ export type OkeyAuthoritativeMatchState = {
   matchWinnerTeamId:
     OkeyTeamId | null;
 
+  forcedKonkanTeamId?: OkeyTeamId | null;
+
+  roundStartsAt?: string | null;
+
   nextRoundEligibleAt: string | null;
 
   timeoutCountsByPlayerId:
@@ -298,6 +302,10 @@ export function createAuthoritativeOkeyMatch(
     matchFinished: false,
 
     matchWinnerTeamId: null,
+
+    forcedKonkanTeamId: null,
+
+    roundStartsAt: null,
 
     nextRoundEligibleAt: null,
 
@@ -569,6 +577,7 @@ export function settleAuthoritativeOkeyRound(
  */
 export function startAuthoritativeOkeyNextRound(
   match: OkeyAuthoritativeMatchState,
+  now = Date.now(),
 ): OkeyAuthoritativeMatchState {
   if (match.matchFinished || match.roundState.phase !== "finished") {
     throw new OkeyCommandError("command_rejected");
@@ -588,16 +597,47 @@ export function startAuthoritativeOkeyNextRound(
     ? finishedRound.dealerIndex
     : getNextRoundDealerIndex(finishedRound);
 
+  const nextRound = repeatsCurrentRound ? match.currentRound : match.currentRound + 1;
+  const isDetermineRound = !repeatsCurrentRound && nextRound === OKEY_RULESET_V1.match.determineRound;
+  const scoreGap = Math.abs(match.matchScores.teamA - match.matchScores.teamB);
+  const trailingTeamId: OkeyTeamId | null = match.matchScores.teamA === match.matchScores.teamB
+    ? null
+    : match.matchScores.teamA > match.matchScores.teamB ? "teamA" : "teamB";
+
+  if (isDetermineRound && trailingTeamId && scoreGap >= OKEY_RULESET_V1.match.konkanRecoveryPoints) {
+    return {
+      ...match,
+      matchFinished: true,
+      matchWinnerTeamId: trailingTeamId === "teamA" ? "teamB" : "teamA",
+      nextRoundEligibleAt: null,
+      forcedKonkanTeamId: null,
+      roundStartsAt: null,
+    };
+  }
+
+  const forcedKonkanTeamId = isDetermineRound && trailingTeamId && scoreGap >= OKEY_RULESET_V1.match.normalRecoveryPoints
+    ? trailingTeamId
+    : null;
+  const roundStartsAt = forcedKonkanTeamId
+    ? new Date(now + OKEY_RULESET_V1.match.forceKonkanAnnouncementMs).toISOString()
+    : null;
+  const nextRoundState = createAuthoritativeOkeyGame(getPlayerIdentities(finishedRound), dealerIndex);
+  const forceKonkanRoundState = forcedKonkanTeamId
+    ? {
+        ...nextRoundState,
+        players: nextRoundState.players.map((player) => player.teamId === forcedKonkanTeamId
+          ? { ...player, konkan: true, konkanEntryReason: "forced-final-round" as const }
+          : player),
+      }
+    : nextRoundState;
+
   return {
     ...match,
-    currentRound: repeatsCurrentRound
-      ? match.currentRound
-      : match.currentRound + 1,
+    currentRound: nextRound,
     nextRoundEligibleAt: null,
-    roundState: createAuthoritativeOkeyGame(
-      getPlayerIdentities(finishedRound),
-      dealerIndex,
-    ),
+    forcedKonkanTeamId,
+    roundStartsAt,
+    roundState: forceKonkanRoundState,
   };
 }
 
@@ -685,6 +725,10 @@ export type OkeyMatchServerProjection =
       OkeyTeamId | null;
 
     nextRoundEligibleAt: string | null;
+
+    forcedKonkanTeamId: OkeyTeamId | null;
+
+    roundStartsAt: string | null;
 
     settlement?: OkeyMatchSettlement | null;
 
@@ -1258,9 +1302,12 @@ export function getNextOkeyMatchTurnDeadline(
     return null;
   }
 
+  const configuredStartMs = Date.parse(match.roundStartsAt ?? "");
+  const deadlineBaseMs = Number.isFinite(configuredStartMs) ? Math.max(now, configuredStartMs) : now;
+
   return getNextOkeyTurnDeadline(
     match.roundState,
-    now,
+    deadlineBaseMs,
   );
 }
 
@@ -1416,6 +1463,12 @@ export function projectOkeyMatchState(
 
     matchWinnerTeamId:
       match.matchWinnerTeamId,
+
+    forcedKonkanTeamId:
+      match.forcedKonkanTeamId ?? null,
+
+    roundStartsAt:
+      match.roundStartsAt ?? null,
 
     nextRoundEligibleAt:
       match.nextRoundEligibleAt ?? null,

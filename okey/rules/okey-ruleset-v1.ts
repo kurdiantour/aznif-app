@@ -69,6 +69,10 @@ export const OKEY_RULESET_V1 = {
   },
   match: {
     roundCount: 7,
+    determineRound: 7,
+    normalRecoveryPoints: 200,
+    konkanRecoveryPoints: 400,
+    forceKonkanAnnouncementMs: 5_000,
     nextRoundDealer: "previous-round-winner",
     cycleLimitDealer: "same-dealer",
     tiedLowestScoreHasNoWinner: true,

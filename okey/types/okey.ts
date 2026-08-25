@@ -18,7 +18,7 @@ export type OkeyBotDifficulty = "easy" | "normal" | "hard";
 
 export type OkeyTeamId = "teamA" | "teamB";
 
-export type OkeyKonkanEntryReason = "discard-pick" | "forced-table-add" | "joker-replacement";
+export type OkeyKonkanEntryReason = "discard-pick" | "forced-table-add" | "joker-replacement" | "forced-final-round";
 
 export type OkeyMeldKind = "run" | "set";
 

@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import {
-  type QueuedOpponentDiscardFlight,
   type ScreenRect,
   type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
@@ -36,7 +35,13 @@ type ActivePresentation = {
 
 type QueuedPresentationEvent = {
   event: OkeyActionEvent;
-  projectionState: OkeyGameState | null;
+};
+
+type LaunchTileFlightOptions = {
+  flight: TileFlight;
+  hideDeckTopTile?: boolean;
+  hideDiscardTopTile?: boolean;
+  discardFallback?: OkeyTile | null;
 };
 
 type PresentationSurface = {
@@ -48,7 +53,6 @@ type PresentationSurface = {
     fallback: OkeyTile | null;
     untilTileId: string | null;
   };
-  opponentTurnTransitionActive: boolean;
 };
 
 const createPresentationSurface = (): PresentationSurface => ({
@@ -57,13 +61,17 @@ const createPresentationSurface = (): PresentationSurface => ({
   hideDeckTopTile: false,
   hideDiscardTopTile: false,
  discardPresentation: { fallback: null, untilTileId: null },
-  opponentTurnTransitionActive: false,
 });
 
-export function useOkeyTileFlightCoordinator(initialPlayers: OkeyGameState["players"]) {
+export function useOkeyTileFlightCoordinator(
+  initialPlayers: OkeyGameState["players"],
+  initialTopDiscard: OkeyTile | null,
+) {
   const [surface, setSurface] = useState<PresentationSurface>(createPresentationSurface);
   const [presentedTablePlayers, setPresentedTablePlayers] =
     useState(initialPlayers);
+  const [presentedTopDiscard, setPresentedTopDiscard] =
+    useState<OkeyTile | null>(initialTopDiscard);
 
   const setSurfaceField = useCallback(<Key extends keyof PresentationSurface>(
     key: Key,
@@ -113,8 +121,30 @@ export function useOkeyTileFlightCoordinator(initialPlayers: OkeyGameState["play
         }
       : current);
   }, []);
-  const setOpponentTurnTransitionActive = useCallback((action: SetStateAction<boolean>) =>
-    setSurfaceField("opponentTurnTransitionActive", action), [setSurfaceField]);
+  const launchTileFlight = useCallback((options: LaunchTileFlightOptions) => {
+    setSurface((current) => {
+      const hasDiscardFallback =
+        Object.prototype.hasOwnProperty.call(options, "discardFallback");
+
+      return {
+        ...current,
+        tileFlight: options.flight,
+        hideDeckTopTile: options.hideDeckTopTile
+          ? true
+          : current.hideDeckTopTile,
+        hideDiscardTopTile:
+          options.hideDiscardTopTile || hasDiscardFallback
+            ? true
+            : current.hideDiscardTopTile,
+        discardPresentation: hasDiscardFallback
+          ? {
+              fallback: options.discardFallback ?? null,
+              untilTileId: null,
+            }
+          : current.discardPresentation,
+      };
+    });
+  }, []);
 
   const awaitingDiscardRemovalTileIdRef = useRef<string | null>(null);
   const activePresentationRef = useRef<ActivePresentation>({
@@ -128,11 +158,15 @@ export function useOkeyTileFlightCoordinator(initialPlayers: OkeyGameState["play
     setPresentedTablePlayers(players);
   }, []);
 
-  const resetPresentationRuntime = useCallback((players: OkeyGameState["players"]) => {
+  const resetPresentationRuntime = useCallback((
+    players: OkeyGameState["players"],
+    topDiscard: OkeyTile | null,
+  ) => {
     activePresentationRef.current.resetOpponent?.();
     activePresentationRef.current.resetTimeout?.();
     awaitingDiscardRemovalTileIdRef.current = null;
     setPresentedTablePlayers(players);
+    setPresentedTopDiscard(topDiscard);
     setSurface(createPresentationSurface());
   }, []);
 
@@ -145,14 +179,15 @@ export function useOkeyTileFlightCoordinator(initialPlayers: OkeyGameState["play
     setHideDeckTopTile,
     hideDiscardTopTile: surface.hideDiscardTopTile,
     setHideDiscardTopTile,
-   discardPresentationFallback: surface.discardPresentation.fallback,
+    discardPresentationFallback: surface.discardPresentation.fallback,
     setDiscardPresentationFallback,
     holdDiscardUntilAuthoritative,
     releaseAuthoritativeDiscardHold,
-    opponentTurnTransitionActive: surface.opponentTurnTransitionActive,
-    setOpponentTurnTransitionActive,
+    launchTileFlight,
     presentedTablePlayers,
     setPresentedPlayers,
+    presentedTopDiscard,
+    setPresentedTopDiscard,
     resetPresentationRuntime,
     awaitingDiscardRemovalTileIdRef,
     activePresentationRef,
@@ -170,14 +205,7 @@ type UseOkeyOpponentTileFlightCoordinatorInput = {
   rackRectRef: MutableRefObject<ScreenRect | null>;
   activePresentationRef: MutableRefObject<ActivePresentation>;
   setPresentedPlayers: (players: OkeyGameState["players"]) => void;
-  setDiscardPresentationFallback: Dispatch<SetStateAction<OkeyTile | null>>;
-  setOpponentTurnTransitionActive: Dispatch<SetStateAction<boolean>>;
-  setHideDeckTopTile: Dispatch<SetStateAction<boolean>>;
-  setHideDiscardTopTile: Dispatch<SetStateAction<boolean>>;
-  setTileFlight: Dispatch<SetStateAction<TileFlight | null>>;
-  buildOpponentDiscardFlight: (
-    entry: QueuedOpponentDiscardFlight,
-  ) => TileFlight | null;
+  launchTileFlight: (options: LaunchTileFlightOptions) => void;
   toLocalRect: (rect: ScreenRect) => ScreenRect;
 };
 
@@ -207,42 +235,12 @@ export function useOkeyOpponentTileFlightCoordinator({
   rackRectRef,
   activePresentationRef,
   setPresentedPlayers,
-  setDiscardPresentationFallback,
-  setOpponentTurnTransitionActive,
-  setHideDeckTopTile,
-  setHideDiscardTopTile,
-  setTileFlight,
-  buildOpponentDiscardFlight,
+  launchTileFlight,
   toLocalRect,
 }: UseOkeyOpponentTileFlightCoordinatorInput) {
   const presentationQueueRef = useRef<QueuedPresentationEvent[]>([]);
   const [actionEventTick, setActionEventTick] = useState(0);
 
-  const [presentedOpponentPlayerId, setPresentedOpponentPlayerId] =
-    useState<string | null>(null);
-
-  const startDiscardFlight = useCallback(
-    (entry: QueuedOpponentDiscardFlight): boolean => {
-      const discardFlight = buildOpponentDiscardFlight(entry);
-      if (!discardFlight) return false;
-
-      const previousDiscard =
-        state.discardPile[entry.discardCount - 2] ?? null;
-
-      setPresentedOpponentPlayerId(entry.ownerPlayerId);
-      setDiscardPresentationFallback(previousDiscard);
-      setHideDiscardTopTile(true);
-      setTileFlight(discardFlight);
-      return true;
-    },
-    [
-      buildOpponentDiscardFlight,
-      setDiscardPresentationFallback,
-      setHideDiscardTopTile,
-      setTileFlight,
-      state.discardPile,
-    ],
-  );
 
   const startNextQueuedPresentation = useCallback((): boolean => {
     // `tileFlight` is the only visual busy condition. Game progression is never
@@ -253,7 +251,7 @@ export function useOkeyOpponentTileFlightCoordinator({
       const queued = presentationQueueRef.current[0];
       if (!queued || queued.event.version > (projectionVersion ?? -1)) break;
       const event = queued.event;
-      const eventState = queued.projectionState ?? state;
+      const eventState = state;
       const isEliminatedEvent = event.payload.reason === "eliminated";
       const actorIndex = eventState.players.findIndex(
         (player) => player.id === event.actorPlayerId,
@@ -269,7 +267,6 @@ export function useOkeyOpponentTileFlightCoordinator({
 
       if (event.type === "open" || event.type === "meld" || event.type === "konkan") {
         consumeEvent();
-        setPresentedOpponentPlayerId(event.actorPlayerId);
         continue;
       }
 
@@ -295,19 +292,19 @@ export function useOkeyOpponentTileFlightCoordinator({
         };
 
         consumeEvent();
-        setPresentedOpponentPlayerId(event.actorPlayerId);
 
-        if (source === "deck") setHideDeckTopTile(true);
-        else setHideDiscardTopTile(true);
-
-        setTileFlight({
-          id: `opponent-draw-${event.version}-${event.sequence}`,
-          tile: source === "discard"
-            ? ((event.payload.tile as OkeyTile | null) ?? null)
-            : null,
-          face: source === "discard" ? "front" : "back",
-          from: toLocalRect(sourceRect),
-          to: toLocalRect(landingRect),
+        launchTileFlight({
+          flight: {
+            id: `opponent-draw-${event.version}-${event.sequence}`,
+            tile: source === "discard"
+              ? ((event.payload.tile as OkeyTile | null) ?? null)
+              : null,
+            face: source === "discard" ? "front" : "back",
+            from: toLocalRect(sourceRect),
+            to: toLocalRect(landingRect),
+          },
+          hideDeckTopTile: source === "deck",
+          hideDiscardTopTile: source === "discard",
         });
         return true;
       }
@@ -339,31 +336,50 @@ export function useOkeyOpponentTileFlightCoordinator({
           height: discardRect.height,
         };
         consumeEvent();
-        setDiscardPresentationFallback(
-          eventState.discardPile[discardIndex - 1] ?? null,
-        );
-        setHideDiscardTopTile(true);
-        setTileFlight({
-          id: `eliminated-discard-${event.version}-${event.sequence}`,
+        launchTileFlight({
+          flight: {
+            id: `eliminated-discard-${event.version}-${event.sequence}`,
+            tile,
+            face: "front",
+            from: toLocalRect(sourceRect),
+            to: toLocalRect(discardRect),
+          },
+          discardFallback:
+            eventState.discardPile[discardIndex - 1] ?? null,
+        });
+        return true;
+      }
+      const sourceSeatRect =
+        opponentSeatRectsRef.current[event.actorPlayerId] ?? null;
+      const discardRect = discardTopRectRef.current;
+      if (!sourceSeatRect || !discardRect) return false;
+
+      const sourceRect: ScreenRect = {
+        x: sourceSeatRect.x + sourceSeatRect.width / 2 - discardRect.width / 2,
+        y: sourceSeatRect.y + sourceSeatRect.height / 2 - discardRect.height / 2,
+        width: discardRect.width,
+        height: discardRect.height,
+      };
+
+      const previousDiscard =
+        discardIndex > 0
+          ? eventState.discardPile[discardIndex - 1] ?? null
+          : null;
+
+      consumeEvent();
+      launchTileFlight({
+        flight: {
+          id: `opponent-discard-${event.version}-${event.sequence}`,
           tile,
           face: "front",
           from: toLocalRect(sourceRect),
           to: toLocalRect(discardRect),
-        });
-        return true;
-      }
-      if (!startDiscardFlight({
-        tile,
-        ownerPlayerId: event.actorPlayerId,
-        discardCount: discardIndex >= 0 ? discardIndex + 1 : eventState.discardPile.length,
-        animateWallDraw: false,
-      })) return false;
-
-      consumeEvent();
+        },
+        discardFallback: previousDiscard,
+      });
       return true;
     }
 
-    setPresentedOpponentPlayerId(null);
     return false;
   }, [
     deckTopRectRef,
@@ -371,11 +387,8 @@ export function useOkeyOpponentTileFlightCoordinator({
     opponentSeatRectsRef,
     rackRectRef,
     projectionVersion,
-    setHideDeckTopTile,
-    setHideDiscardTopTile,
+    launchTileFlight,
     setPresentedPlayers,
-    setTileFlight,
-    startDiscardFlight,
     state.discardPile,
     state.players,
     tileFlight,
@@ -386,15 +399,11 @@ export function useOkeyOpponentTileFlightCoordinator({
     if (tileFlight) return;
 
     if (presentationQueueRef.current.length === 0) {
-      setOpponentTurnTransitionActive(false);
-      setPresentedOpponentPlayerId(null);
-      return;
+        return;
     }
 
-    setOpponentTurnTransitionActive(true);
     startNextQueuedPresentation();
   }, [
-    setOpponentTurnTransitionActive,
     startNextQueuedPresentation,
     tileFlight,
   ]);
@@ -403,7 +412,7 @@ export function useOkeyOpponentTileFlightCoordinator({
     if (!adapter) return;
 
     return adapter.subscribeActionEvents((event) => {
-      presentationQueueRef.current.push({ event, projectionState: null });
+      presentationQueueRef.current.push({ event });
       presentationQueueRef.current.sort(
         (left, right) =>
           left.event.version - right.event.version ||
@@ -420,15 +429,12 @@ export function useOkeyOpponentTileFlightCoordinator({
    */
   useLayoutEffect(() => {
     if (projectionVersion === null) return;
-    const ready = presentationQueueRef.current.filter(
+
+    const hasReadyEvent = presentationQueueRef.current.some(
       (queued) => queued.event.version <= projectionVersion,
     );
-    if (ready.length === 0) return;
-    ready.forEach((queued) => {
-      if (!queued.projectionState) queued.projectionState = state;
-    });
+    if (!hasReadyEvent) return;
 
-    setOpponentTurnTransitionActive(true);
 
     // If another flight is active, do nothing else. The scene calls
     // startNextQueuedPresentation() when that flight completes.
@@ -438,22 +444,17 @@ export function useOkeyOpponentTileFlightCoordinator({
   }, [
     actionEventTick,
     projectionVersion,
-    setOpponentTurnTransitionActive,
     startNextQueuedPresentation,
-    state.discardPile,
-    state.players,
     tileFlight,
   ]);
 
   const resetOpponentPresentation = useCallback(() => {
     presentationQueueRef.current = [];
-    setPresentedOpponentPlayerId(null);
   }, []);
 
   activePresentationRef.current.resetOpponent = resetOpponentPresentation;
 
   return {
-    presentedOpponentPlayerId,
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
   };
@@ -482,7 +483,6 @@ type UseOkeyTimeoutTileFlightCoordinatorInput = {
   setHideDeckTopTile: Dispatch<SetStateAction<boolean>>;
   setHideDiscardTopTile: Dispatch<SetStateAction<boolean>>;
   setDiscardPresentationFallback: Dispatch<SetStateAction<OkeyTile | null>>;
-  setOpponentTurnTransitionActive: Dispatch<SetStateAction<boolean>>;
   setTileFlight: Dispatch<SetStateAction<TileFlight | null>>;
   toLocalRect: (rect: ScreenRect) => ScreenRect;
   activePresentationRef: MutableRefObject<ActivePresentation>;
@@ -502,7 +502,6 @@ export function useOkeyTimeoutTileFlightCoordinator({
   setHideDeckTopTile,
   setHideDiscardTopTile,
   setDiscardPresentationFallback,
-  setOpponentTurnTransitionActive,
   setTileFlight,
   toLocalRect,
   activePresentationRef,
@@ -562,8 +561,7 @@ export function useOkeyTimeoutTileFlightCoordinator({
         discardRect,
         previousDiscard,
       };
-      setOpponentTurnTransitionActive(true);
-      setDiscardPresentationFallback(previousDiscard);
+        setDiscardPresentationFallback(previousDiscard);
       setHideDiscardTopTile(true);
       setTileFlight({
         id: `online-timeout-discard-${event.id}`,
@@ -593,7 +591,6 @@ export function useOkeyTimeoutTileFlightCoordinator({
       discardRect,
       previousDiscard,
     };
-    setOpponentTurnTransitionActive(true);
     setDiscardPresentationFallback(previousDiscard);
     setHideDeckTopTile(true);
     setHideDiscardTopTile(true);
@@ -614,11 +611,6 @@ export function useOkeyTimeoutTileFlightCoordinator({
     onlineProjection,
     rackRectRef,
     rackTileRectsRef,
-    setDiscardPresentationFallback,
-    setHideDeckTopTile,
-    setHideDiscardTopTile,
-    setOpponentTurnTransitionActive,
-    setTileFlight,
     state.discardPile,
     tileFlight,
     toLocalRect,
@@ -640,6 +632,7 @@ export function useOkeyTimeoutTileFlightCoordinator({
 export function useOkeyTileFlightCompletion(input: {
   tileFlight: TileFlight | null;
   topDiscard: OkeyTile | null;
+  setPresentedTopDiscard: Dispatch<SetStateAction<OkeyTile | null>>;
   activePresentationRef: MutableRefObject<ActivePresentation>;
   setTileFlight: Dispatch<SetStateAction<TileFlight | null>>;
   setHiddenRackTileIds: Dispatch<SetStateAction<string[]>>;
@@ -647,18 +640,31 @@ export function useOkeyTileFlightCompletion(input: {
   setHideDiscardTopTile: Dispatch<SetStateAction<boolean>>;
   setDiscardPresentationFallback: Dispatch<SetStateAction<OkeyTile | null>>;
   holdDiscardUntilAuthoritative: (tile: OkeyTile) => void;
-  setOpponentTurnTransitionActive: Dispatch<SetStateAction<boolean>>;
   toLocalRect: (rect: ScreenRect) => ScreenRect;
   resetTimeoutPresentation: () => void;
   startNextQueuedPresentation: () => boolean;
 }) {
   return () => {
-    const landedDiscardTile = input.tileFlight?.id.includes("discard-")
-      ? input.tileFlight.tile
+    const completedFlight = input.tileFlight;
+    const landedDiscardTile = completedFlight?.id.includes("discard-")
+      ? completedFlight.tile
       : null;
+
+    if (landedDiscardTile) {
+      input.setPresentedTopDiscard(landedDiscardTile);
+    } else if (
+      completedFlight?.id.includes("draw-") &&
+      completedFlight.face === "front"
+    ) {
+      // A tile drawn from the discard pile is now in flight; reveal the
+      // authoritative tile underneath only after the flight lands.
+      input.setPresentedTopDiscard(input.topDiscard);
+    }
+
     input.setTileFlight(null);
-    input.setHiddenRackTileIds([]);
-   input.setHideDeckTopTile(false);
+    // Keep a locally discarded rack tile hidden until the authoritative hand
+    // no longer contains it. OkeyGameTableScene owns that release.
+    input.setHideDeckTopTile(false);
 
     if (landedDiscardTile) {
       if (input.topDiscard?.id === landedDiscardTile.id) {
@@ -692,18 +698,13 @@ export function useOkeyTileFlightCompletion(input: {
         onlineTimeoutFlight.eventId;
       input.resetTimeoutPresentation();
       requestAnimationFrame(() => {
-        if (!input.startNextQueuedPresentation()) {
-          input.setOpponentTurnTransitionActive(false);
-        }
+        input.startNextQueuedPresentation();
       });
       return;
     }
 
     requestAnimationFrame(() => {
-      if (!input.startNextQueuedPresentation()) {
-        input.setOpponentTurnTransitionActive(false);
-      }
+      input.startNextQueuedPresentation();
     });
   };
 }
-
