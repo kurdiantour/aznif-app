@@ -326,30 +326,128 @@ function normalizeOpenMelds(melds: OkeyMeld[], okeyTile: OkeyTile): { melds: Oke
   }
   return { melds: normalized, score: normalized.reduce((total, meld) => total + meld.score, 0) };
 }
+
+export function getRemainingPlayerMeldSlots(
+  state: OkeyGameState,
+  playerIndex: number,
+): number {
+  return Math.max(0, MAX_PLAYER_MELDS - (state.players[playerIndex]?.melds.length ?? MAX_PLAYER_MELDS));
+}
+
+function validateOpenPlayerMelds(
+  state: OkeyGameState,
+  playerIndex: number,
+  melds: OkeyMeld[],
+): { melds: OkeyMeld[]; score: number; openedTileIds: Set<string> } | null {
+  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return null;
+  const player = state.players[playerIndex];
+  if (!player || player.eliminated || player.konkan || melds.length === 0) return null;
+
+  const normalized = normalizeOpenMelds(melds, state.okeyTile);
+  if (!normalized || normalized.melds.length === 0) return null;
+  if (normalized.melds.length > getRemainingPlayerMeldSlots(state, playerIndex)) return null;
+
+  const handTileIds = new Set(player.hand.map((tile) => tile.id));
+  const openedTileIdList = normalized.melds.flatMap((meld) => meld.tiles.map((tile) => tile.id));
+  const openedTileIds = new Set(openedTileIdList);
+  if (openedTileIds.size !== openedTileIdList.length || openedTileIdList.some((id) => !handTileIds.has(id))) return null;
+
+  const requiredOpenScore = player.opened ? 0 : getRequiredOpenScore(state, playerIndex);
+  return normalized.score >= requiredOpenScore
+    ? { ...normalized, openedTileIds }
+    : null;
+}
+
+export type OkeyOpenAction =
+  | {
+      allowed: true;
+      mode: "open-melds";
+      melds: OkeyMeld[];
+      score: number;
+      requiredScore: number;
+      remainingSlots: number;
+    }
+  | {
+      allowed: true;
+      mode: "declare-konkan";
+      orderedRunTileIds: string[];
+      requiredScore: number;
+      remainingSlots: number;
+    }
+  | {
+      allowed: false;
+      mode: null;
+      requiredScore: number;
+      remainingSlots: number;
+    };
+
+export function getOkeyOpenAction(
+  state: OkeyGameState,
+  playerIndex: number,
+  melds: OkeyMeld[],
+  orderedKonkanCandidates: string[][],
+): OkeyOpenAction {
+  const player = state.players[playerIndex];
+  const requiredScore = player?.opened ? 0 : getRequiredOpenScore(state, playerIndex);
+  const remainingSlots = getRemainingPlayerMeldSlots(state, playerIndex);
+  if (player?.konkan) {
+    const orderedRunTileIds = orderedKonkanCandidates.find(
+      (tileIds) => canDeclareKonkanOpen(state, playerIndex, tileIds),
+    );
+    return orderedRunTileIds
+      ? { allowed: true, mode: "declare-konkan", orderedRunTileIds, requiredScore, remainingSlots }
+      : { allowed: false, mode: null, requiredScore, remainingSlots };
+  }
+
+  const validation = validateOpenPlayerMelds(state, playerIndex, melds);
+  return validation
+    ? {
+        allowed: true,
+        mode: "open-melds",
+        melds,
+        score: melds.reduce((total, meld) => total + meld.score, 0),
+        requiredScore,
+        remainingSlots,
+      }
+    : { allowed: false, mode: null, requiredScore, remainingSlots };
+}
+
+export type OkeyRackDiscardAction =
+  | { type: "discard"; tileId: string }
+  | { type: "open-and-discard"; tileId: string; melds: OkeyMeld[]; score: number };
+
+export function getOkeyRackDiscardAction(
+  state: OkeyGameState,
+  playerIndex: number,
+  melds: OkeyMeld[],
+  discardTileId: string,
+): OkeyRackDiscardAction {
+  if (state.players[playerIndex]?.opened) return { type: "discard", tileId: discardTileId };
+  const candidateMelds = melds.filter(
+    (meld) => meld.tiles.every((tile) => tile.id !== discardTileId),
+  );
+  return validateOpenPlayerMelds(state, playerIndex, candidateMelds)
+    ? {
+        type: "open-and-discard",
+        tileId: discardTileId,
+        melds: candidateMelds,
+        score: candidateMelds.reduce((total, meld) => total + meld.score, 0),
+      }
+    : { type: "discard", tileId: discardTileId };
+}
+
 export function openPlayerMelds(
   state: OkeyGameState,
   playerIndex: number,
   melds: OkeyMeld[],
   score: number,
 ): OkeyGameState {
-  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return state;
   const player = state.players[playerIndex];
-  if (!player || player.eliminated || melds.length === 0) return state;
-  if (player.konkan) return state;
-
-  const normalized = normalizeOpenMelds(melds, state.okeyTile);
-  if (!normalized || normalized.melds.length === 0) return state;
-  melds = normalized.melds;
-  score = normalized.score;
-  if (player.melds.length + melds.length > MAX_PLAYER_MELDS) return state;
-
-  const handTileIds = new Set(player.hand.map((tile) => tile.id));
-  const openedTileIdList = melds.flatMap((meld) => meld.tiles.map((tile) => tile.id));
-  const openedTileIds = new Set(openedTileIdList);
-  if (openedTileIds.size !== openedTileIdList.length || openedTileIdList.some((id) => !handTileIds.has(id))) return state;
-
-  const requiredOpenScore = player.opened ? 0 : getRequiredOpenScore(state, playerIndex);
-  if (score < requiredOpenScore) return state;
+  const validation = validateOpenPlayerMelds(state, playerIndex, melds);
+  if (!player || !validation) return state;
+  melds = validation.melds;
+  score = validation.score;
+  const openedTileIds = validation.openedTileIds;
   const nextHand = player.hand.filter((tile) => !openedTileIds.has(tile.id));
   const nextMelds = [
     ...player.melds,
@@ -656,6 +754,33 @@ export function canLockKonkanSet(
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
   return !player?.eliminated && !!tile && findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null;
+}
+
+export type OkeyTableMeldAction = {
+  type: "lock-konkan" | "spend";
+  tileId: string;
+  targetPlayerId: string;
+  targetMeldId: string;
+};
+
+export function resolveTableMeldAction(
+  state: OkeyGameState,
+  playerIndex: number,
+  tileId: string,
+  targetPlayerId: string,
+  targetMeldId: string,
+): OkeyTableMeldAction | null {
+  const action = {
+    tileId,
+    targetPlayerId,
+    targetMeldId,
+  };
+  if (canLockKonkanSet(state, playerIndex, tileId, targetPlayerId, targetMeldId)) {
+    return { type: "lock-konkan", ...action };
+  }
+  return canSpendTileOnMeld(state, playerIndex, tileId, targetPlayerId, targetMeldId)
+    ? { type: "spend", ...action }
+    : null;
 }
 
 export function lockKonkanSet(

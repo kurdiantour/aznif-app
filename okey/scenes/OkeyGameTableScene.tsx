@@ -23,7 +23,7 @@ import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import { styles } from "@/okey/components/okeyStyles";
-import { canDeclareKonkanOpen, canLockKonkanSet, canSpendTileOnMeld, getRequiredOpenScore, getRoundResultScoreDetails, MAX_PLAYER_MELDS } from "@/okey/engine/okey-engine";
+import { getOkeyOpenAction, getOkeyRackDiscardAction, getRoundResultScoreDetails, resolveTableMeldAction } from "@/okey/engine/okey-engine";
 import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
@@ -707,7 +707,6 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
   const canDrawDiscard = canDraw && !topDiscardIsBlocked;
   const canDiscard = isHumanTurn && state.hasDrawnThisTurn && !!selectedTile;
   const canDiscardTile = isHumanTurn && state.hasDrawnThisTurn;
-  const requiredOpenScore = getRequiredOpenScore(state, 0);
   const previewScore = previewMelds.reduce((total, meld) => total + meld.score, 0);
   // Manual staging and rack-layout detection are separate sources of intent.
   // Merge them once here; every authoritative opening command must consume
@@ -716,16 +715,16 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     melds: [...previewMelds, ...openableRackMelds.melds],
     score: previewScore + openableRackMelds.score,
   }), [openableRackMelds.melds, openableRackMelds.score, previewMelds, previewScore]);
-  const orderedKonkanRunTileIds = useMemo(() => {
-    return getOrderedKonkanRunCandidates(openableRackMelds.contiguousGroups)
-      .find((tileIds) => canDeclareKonkanOpen(state, 0, tileIds)) ?? null;
-  }, [openableRackMelds.contiguousGroups, state]);
-  const remainingMeldSlots = Math.max(0, MAX_PLAYER_MELDS - humanPlayer.melds.length);
-  const canOpenActiveMelds = isHumanTurn && !humanPlayer.eliminated && (humanPlayer.konkan
-    ? orderedKonkanRunTileIds !== null
-    : openIntent.melds.length > 0 &&
-      openIntent.melds.length <= remainingMeldSlots &&
-      (humanPlayer.opened || openIntent.score >= requiredOpenScore));
+  const openAction = useMemo(
+    () => getOkeyOpenAction(
+      state,
+      0,
+      openIntent.melds,
+      getOrderedKonkanRunCandidates(openableRackMelds.contiguousGroups),
+    ),
+    [openIntent.melds, openableRackMelds.contiguousGroups, state],
+  );
+  const remainingMeldSlots = openAction.remainingSlots;
 
   // PRESENTATION CONTRACT (tested): discard landing is a two-phase handoff.
   // Keep this ordering unless the complete draw/discard animation suite is run;
@@ -902,25 +901,20 @@ requestAnimationFrame(() => {
     }
 
     pendingDiscardTileIdRef.current = null;
-    const discardOpenMelds = openIntent.melds.filter(
-      (meld) => meld.tiles.every((tile) => tile.id !== tileId),
-    );
-    const discardOpenScore = discardOpenMelds.reduce(
-      (total, meld) => total + meld.score,
+    const discardAction = getOkeyRackDiscardAction(
+      state,
       0,
+      openIntent.melds,
+      tileId,
     );
-    const pendingCanOpen =
-      !humanPlayer.opened &&
-      discardOpenMelds.length > 0 &&
-      discardOpenScore >= requiredOpenScore;
     awaitingDiscardRemovalTileIdRef.current = tileId;
     setSelectedTileId(null);
     setHiddenRackTileIds([tileId]);
     setHideDiscardTopTile(false);
-    if (pendingCanOpen) {
-      commitOpenIntent(discardOpenMelds, discardOpenScore, tileId);
+    if (discardAction.type === "open-and-discard") {
+      commitOpenIntent(discardAction.melds, discardAction.score, discardAction.tileId);
     } else {
-      discard(tileId);
+      discard(discardAction.tileId);
     }
     return true;
   };
@@ -1092,8 +1086,7 @@ requestAnimationFrame(() => {
     findClosestMeldDropTarget(
       meldDropRectsRef.current,
       point,
-      (rect) => canLockKonkanSet(state, 0, tileId, rect.playerId, rect.meldId)
-        || canSpendTileOnMeld(state, 0, tileId, rect.playerId, rect.meldId),
+      (rect) => resolveTableMeldAction(state, 0, tileId, rect.playerId, rect.meldId) !== null,
     );
   const updateTileDragMeldTarget = (tileId: string | null, point: { x: number; y: number } | null) => {
     const target = tileId && point ? getClosestValidMeldDropTarget(tileId, point) : null;
@@ -1105,22 +1098,29 @@ requestAnimationFrame(() => {
     );
   };
   const dropTileOnTableMeld = (tileId: string, _point: { x: number; y: number }) => {
-    if (!isHumanTurn) return false;
     const target = hoveredMeldTargetRef.current;
     if (!target) return false;
 
-    if (canLockKonkanSet(state, 0, tileId, target.playerId, target.meldId)) {
+    const action = resolveTableMeldAction(
+      state,
+      0,
+      tileId,
+      target.playerId,
+      target.meldId,
+    );
+    if (!action) return false;
+
+    if (action.type === "lock-konkan") {
       awaitingDiscardRemovalTileIdRef.current = tileId;
       setHiddenRackTileIds([tileId]);
-      lockKonkanSetOnTable(tileId, target.playerId, target.meldId);
+      lockKonkanSetOnTable(action.tileId, action.targetPlayerId, action.targetMeldId);
       setSelectedTileId(null);
       return true;
     }
-    if (!canSpendTileOnMeld(state, 0, tileId, target.playerId, target.meldId)) return false;
 
     awaitingDiscardRemovalTileIdRef.current = tileId;
     setHiddenRackTileIds([tileId]);
-    spendTileOnTableMeld(tileId, target.playerId, target.meldId);
+    spendTileOnTableMeld(action.tileId, action.targetPlayerId, action.targetMeldId);
     setSelectedTileId(null);
     return true;
   };
@@ -1671,14 +1671,14 @@ requestAnimationFrame(() => {
           />
         ) : null}
         <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
-          {canOpenActiveMelds ? (
+          {openAction.allowed ? (
             <Pressable
               style={styles.openSetsButton}
               onPress={() => {
-                if (humanPlayer.konkan) {
-                  if (orderedKonkanRunTileIds) declareKonkan(orderedKonkanRunTileIds);
-                } else {
-                  commitOpenIntent(openIntent.melds, openIntent.score);
+                if (openAction.mode === "declare-konkan") {
+                  declareKonkan(openAction.orderedRunTileIds);
+                } else if (openAction.mode === "open-melds") {
+                  commitOpenIntent(openAction.melds, openAction.score);
                 }
                 setSelectedTileId(null);
               }}
@@ -1697,7 +1697,7 @@ requestAnimationFrame(() => {
             ) : (
               <View style={styles.playerSetScoreValueRow}>
                 <Text style={styles.playerSetScoreTarget}>
-                  {humanPlayer.opened ? humanPlayer.scoreOpened : requiredOpenScore}
+                  {humanPlayer.opened ? humanPlayer.scoreOpened : openAction.requiredScore}
                 </Text>
                 <Text style={styles.playerSetScoreSlash}>{" / "}</Text>
                 <Text style={styles.playerSetScoreCurrent}>
