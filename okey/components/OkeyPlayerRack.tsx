@@ -167,9 +167,9 @@ export function OkeyPlayerRack({
   onTileDragPointChange,
   hiddenTileIds = [],
   skipEnterAnimationTileIds = [],
-  fixedDrawTileId,
   onTileMeasured,
   onRackMeasured,
+  onDrawLandingRectChange,
   turnTimerActive = false,
   turnWarningToastVisible = false,
   showTurnTimer = true,
@@ -209,9 +209,9 @@ export function OkeyPlayerRack({
   ) => void;
   hiddenTileIds?: string[];
   skipEnterAnimationTileIds?: string[];
-  fixedDrawTileId?: string | null;
   onTileMeasured?: (tileId: string, rect: TileRect) => void;
   onRackMeasured?: (rect: TileRect) => void;
+  onDrawLandingRectChange?: (rect: TileRect | null) => void;
   turnTimerActive?: boolean;
   turnWarningToastVisible?: boolean;
   showTurnTimer?: boolean;
@@ -333,8 +333,7 @@ export function OkeyPlayerRack({
     tiles,
     okeyTile,
     stagedTileIdSet,
-    fixedDrawTileId,
-    rackTileWidth,
+      rackTileWidth,
     rackTileHeight,
     rackTileStride,
     viewportOriginRef,
@@ -350,6 +349,39 @@ export function OkeyPlayerRack({
     clearEnteringTilesForDrag,
     clearReturningJokerForTile,
   });
+
+  useEffect(() => {
+    const topSlotIndex = committedRackSlots.top.findIndex((tileId) => tileId === null);
+    const bottomSlotIndex = committedRackSlots.bottom.findIndex((tileId) => tileId === null);
+    const target = topSlotIndex >= 0
+      ? { row: "top" as const, slotIndex: topSlotIndex }
+      : bottomSlotIndex >= 0
+        ? { row: "bottom" as const, slotIndex: bottomSlotIndex }
+        : null;
+    const viewport = viewportOriginRef.current;
+    const rowLayout = target ? rowLayouts[target.row] : null;
+
+    if (!target || !rowLayout || viewport.width <= 0 || viewport.height <= 0) {
+      onDrawLandingRectChange?.(null);
+      return;
+    }
+
+    const bottomInset = target.row === "bottom" ? rackTileHeight * 0.44 : 0;
+    onDrawLandingRectChange?.({
+      x: viewport.x + target.slotIndex * rackTileStride,
+      y: viewport.y + rowLayout.y + rowLayout.height - rackTileHeight - bottomInset,
+      width: rackTileWidth,
+      height: rackTileHeight,
+    });
+  }, [
+    committedRackSlots,
+    onDrawLandingRectChange,
+    rackTileHeight,
+    rackTileStride,
+    rackTileWidth,
+    rackViewportWidth,
+    rowLayouts,
+  ]);
 
   const measureViewport = useCallback(() => {
     rackRef.current?.measureInWindow((x, y, width, height) => {

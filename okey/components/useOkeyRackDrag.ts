@@ -48,7 +48,6 @@ type UseOkeyRackDragParams = {
   tiles: OkeyTile[];
   okeyTile: OkeyTile;
   stagedTileIdSet: Set<string>;
-  fixedDrawTileId?: string | null;
 
   rackTileWidth: number;
   rackTileHeight: number;
@@ -84,7 +83,6 @@ export function useOkeyRackDrag({
   tiles,
   okeyTile,
   stagedTileIdSet,
-  fixedDrawTileId,
   rackTileWidth,
   rackTileHeight,
   rackTileStride,
@@ -192,9 +190,9 @@ export function useOkeyRackDrag({
 
   useEffect(() => {
     setCommittedRackSlots((current) =>
-      syncSlotsWithTiles(current, tiles, fixedDrawTileId),
+      syncSlotsWithTiles(current, tiles),
     );
-  }, [fixedDrawTileId, tiles]);
+  }, [tiles]);
 
   useEffect(() => {
     draggedMeldScale.stopAnimation();

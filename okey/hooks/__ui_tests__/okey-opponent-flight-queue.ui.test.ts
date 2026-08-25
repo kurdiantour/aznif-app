@@ -7,10 +7,10 @@ test("opponent Draw always resumes the queued Discard owned by the same player",
     "utf8",
   );
 
-  expect(coordinator).toContain("queuedPresentationActionsRef.current.push({");
+  expect(coordinator).toContain("presentationQueueRef.current.push({ event, projectionState: null })");
   expect(coordinator).toContain("ownerPlayerId: event.actorPlayerId");
   expect(coordinator).toMatch(
-    /if \(!startDiscardFlight\(next\.entry\)\) return false;\s*queuedPresentationActionsRef\.current\.shift\(\)/,
+    /if \(!startDiscardFlight\(\{[\s\S]*?ownerPlayerId: event\.actorPlayerId,[\s\S]*?\}\)\) return false;\s*presentationQueueRef\.current\.shift\(\)/,
   );
 });
 

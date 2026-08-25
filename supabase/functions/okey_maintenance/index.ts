@@ -132,6 +132,14 @@ serve(async (request) => {
           .is("settlement_at", null);
         if (testSettlementError) throw new Error(testSettlementError.message);
         recoveredSettlements += 1;
+        try {
+          await broadcast(match.id, Number(match.version));
+        } catch (broadcastError) {
+          console.error(
+            `Okey test recovery broadcast failed for ${match.id}`,
+            broadcastError,
+          );
+        }
         continue;
       }
       const { data: stateRow, error: stateError } =

@@ -28,7 +28,7 @@ import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
 import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
-import { useOkeyOpponentTileFlightCoordinator, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
+import { useOkeyOpponentTileFlightCoordinator, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import {
   getOkeyRoomStatus,
@@ -41,7 +41,6 @@ import {
 } from "@/okey/multiplayer/okey-room-api";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import {
-  type EliminatedTurnFlight,
   type MeldDropRect,
   type MeldOffset,
   type QueuedOpponentDiscardFlight,
@@ -61,7 +60,6 @@ import type {
 } from "@/okey/types/okey";import type { Player } from "@/domino/types/domino-game";
 
 
-const TIMEOUT_TURN_WATCHDOG_MS = 2500;
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
 const PLAYER_PREVIEW_MELD_TILE_WIDTH = 22;
 const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 29;
@@ -323,10 +321,7 @@ const {
   declareKonkan,
   spendTileOnTableMeld,
   lockKonkanSetOnTable,
-  playEliminated,
-  pendingTimeoutDiscardTileId,
   turnTimeLeft,
-  commitPendingTimeoutDiscard,
   isAppActive,
   lifecycleResumeToken,
   onlineProjection,
@@ -335,18 +330,13 @@ const {
 } = onlineController;
 
 const takeoverExitStartedRef = useRef(false);
-
-useEffect(() => {
-  if (!onlineMatchId || !onlineProjection) return;
-  const viewer = onlineProjection.players.find((player) => Array.isArray(player.hand));
-  if (
-    (viewer?.controlledByBot === true || viewer?.kind === "bot") &&
-    !takeoverExitStartedRef.current
-  ) {
-    takeoverExitStartedRef.current = true;
-    router.replace("/okey");
-  }
-}, [onlineMatchId, onlineProjection, router]);
+const previousViewerControlRef = useRef<{
+  matchId: string;
+  playerId: string;
+  controlled: boolean;
+} | null>(null);
+const pendingTakeoverTimeoutEventIdRef = useRef<string | null>(null);
+const lastPresentationResumeTokenRef = useRef(lifecycleResumeToken);
 
 const handleConfirmLeaveMatch = useCallback(async () => {
   if (isLeavingMatch) return;
@@ -414,23 +404,28 @@ const turnView = useMemo(
     setHideDeckTopTile,
     hideDiscardTopTile,
     setHideDiscardTopTile,
-    drawFlightTileId,
-    setDrawFlightTileId,
-  } = useOkeyTileFlightCoordinator();
+   discardPresentationFallback,
+    setDiscardPresentationFallback,
+    holdDiscardUntilAuthoritative,
+    releaseAuthoritativeDiscardHold,
+    opponentTurnTransitionActive,
+    setOpponentTurnTransitionActive,
+    presentedTablePlayers,
+    setPresentedPlayers,
+    resetPresentationRuntime,
+    awaitingDiscardRemovalTileIdRef,
+    activePresentationRef,
+  } = useOkeyTileFlightCoordinator(state.players);
+  const stableOpponentTileCounts = useMemo(
+    () => Object.fromEntries(
+      presentedTablePlayers.map((player) => [player.id, player.hand.length]),
+    ),
+    [presentedTablePlayers],
+  );
   const [discardDropPlacement, setDiscardDropPlacement] = useState<{ tileId: string; point: { x: number; y: number }; nonce: number } | null>(null);
   const [isDiscardDragActive, setIsDiscardDragActive] = useState(false);
   const [hoveredMeldTarget, setHoveredMeldTarget] = useState<{ playerId: string; meldId: string } | null>(null);
   const [discardDragPoint, setDiscardDragPoint] = useState<{ x: number; y: number } | null>(null);
-  const [discardPresentationFallback, setDiscardPresentationFallback] = useState<OkeyTile | null>(null);
-  const [
-  opponentTurnTransitionActive,
-  setOpponentTurnTransitionActive,
-] = useState(false);
-  const [stableOpponentTileCounts, setStableOpponentTileCounts] = useState<Record<string, number>>(() =>
-    Object.fromEntries(state.players.slice(1).map((player) => [player.id, player.hand.length])),
-  );
-  const [presentedTablePlayers, setPresentedTablePlayers] = useState(() => state.players);
-  const presentedTablePlayersRef = useRef(state.players);
   const screenRef = useRef<View | null>(null);
   const screenRectRef = useRef<ScreenRect>({ x: 0, y: 0, width: 0, height: 0 });
   const deckTopRectRef = useRef<ScreenRect | null>(null);
@@ -438,14 +433,8 @@ const turnView = useMemo(
   const opponentSeatRectsRef = useRef<Record<string, ScreenRect>>({});
   const rackRectRef = useRef<ScreenRect | null>(null);
   const rackTileRectsRef = useRef<Record<string, ScreenRect>>({});
-  const pendingDrawFlightRef = useRef<{ tileId: string; tile: OkeyTile | null; sourceRect: ScreenRect; face: "front" | "back" } | null>(null);
-  const timeoutDrawLandingRectRef = useRef<ScreenRect | null>(null);
+  const drawLandingRectRef = useRef<ScreenRect | null>(null);
   const timeoutWarningTurnRef = useRef<string | null>(null);
-  const pendingDiscardTileIdRef = useRef<string | null>(null);
-  const pendingDiscardLandingTileIdRef = useRef<string | null>(null);
-  const awaitingDiscardRemovalTileIdRef = useRef<string | null>(null);
-  const eliminatedTurnFlightRef = useRef<EliminatedTurnFlight | null>(null);
-  const discardAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPresentationRoundRef = useRef(currentRound);
   const humanMeldDropZoneRef = useRef<View | null>(null);
   const meldDropRectsRef = useRef<MeldDropRect[]>([]);
@@ -581,34 +570,6 @@ const matchSettlementRewards = useMemo(
 );
 const matchSettlementLoading =
   matchFinished && !onlineProjection?.settlement;
-
-useEffect(() => {
-  if (!matchSettlementLoading || !onlineAdapter) return;
-
-  let cancelled = false;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
-  let attempts = 0;
-
-  const refreshSettlement = async () => {
-    if (cancelled) return;
-    attempts += 1;
-    try {
-      await onlineAdapter.refresh();
-    } catch {
-      // Settlement recovery is idempotent; retry briefly while the popup loads.
-    }
-
-    if (!cancelled && attempts < 4) {
-      retryTimer = setTimeout(refreshSettlement, 500);
-    }
-  };
-
-  void refreshSettlement();
-  return () => {
-    cancelled = true;
-    if (retryTimer) clearTimeout(retryTimer);
-  };
-}, [matchSettlementLoading, onlineAdapter]);
 const shouldShowScorePopup =
   showScoreDetails ||
   showRoundResultPopup;
@@ -635,17 +596,9 @@ const shouldShowScorePopup =
     [],
   );
 
-const setPresentedPlayers = useCallback((players: typeof state.players) => {
-    presentedTablePlayersRef.current = players;
-    setPresentedTablePlayers(players);
-  }, []);
-
-
   const {
-    suppressNextOpponentDiscardFlightTileIdRef,
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
-    resetOpponentPresentation,
   } = useOkeyOpponentTileFlightCoordinator({
     state,
     adapter: onlineAdapter,
@@ -654,7 +607,8 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     deckTopRectRef,
     discardTopRectRef,
     opponentSeatRectsRef,
-    presentedTablePlayersRef,
+    rackRectRef,
+    activePresentationRef,
     setPresentedPlayers,
     setDiscardPresentationFallback,
     setOpponentTurnTransitionActive,
@@ -726,112 +680,11 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
   );
   const remainingMeldSlots = openAction.remainingSlots;
 
-  // PRESENTATION CONTRACT (tested): discard landing is a two-phase handoff.
-  // Keep this ordering unless the complete draw/discard animation suite is run;
-  // otherwise the previous top discard can flash after the flight lands.
-  const finishTileFlight = () => {
-    const pendingDiscardTileId = pendingDiscardTileIdRef.current;
-    const landedDiscardTile = tileFlight?.id.includes("discard-")
-      ? tileFlight.tile
-      : null;
-    setTileFlight(null);
-    // Online discard confirmation can arrive after the flight completes. Keep
-    // the tile hidden until the authoritative hand no longer contains it so it
-    // cannot flash back into the rack between animation and confirmation.
-    setHiddenRackTileIds(pendingDiscardTileId ? [pendingDiscardTileId] : []);
-    setDrawFlightTileId(null);
-    setHideDeckTopTile(false);
-    if (landedDiscardTile) {
-      // Keep the landed tile on top until the authoritative pile contains it.
-      // This prevents the old discard from flashing during a delayed update.
-      setDiscardPresentationFallback(landedDiscardTile);
-      if (topDiscard?.id === landedDiscardTile.id) {
-        setHideDiscardTopTile(false);
-        setDiscardPresentationFallback(null);
-      } else {
-        pendingDiscardLandingTileIdRef.current = landedDiscardTile.id;
-        setHideDiscardTopTile(true);
-      }
-    } else {
-      setHideDiscardTopTile(false);
-      setDiscardPresentationFallback(null);
-    }
-
-    const onlineTimeoutFlight = onlineTimeoutDiscardFlightRef.current;
-    if (onlineTimeoutFlight?.stage === "deck-to-rack") {
-      onlineTimeoutFlight.stage = "rack-to-discard";
-      setDiscardPresentationFallback(onlineTimeoutFlight.previousDiscard);
-      setHideDiscardTopTile(true);
-      setTileFlight({
-        id: `online-timeout-discard-${onlineTimeoutFlight.eventId}`,
-        tile: onlineTimeoutFlight.tile,
-        face: "front",
-        from: toLocalRect(onlineTimeoutFlight.rackRect),
-        to: toLocalRect(onlineTimeoutFlight.discardRect),
-      });
-      return;
-    }
-    if (onlineTimeoutFlight?.stage === "rack-to-discard") {
-      resetTimeoutPresentation();
-      requestAnimationFrame(() => {
-        const started = startNextQueuedPresentation();
-        if (!started) setOpponentTurnTransitionActive(false);
-      });
-      return;
-    }
-
-    const eliminatedFlight = eliminatedTurnFlightRef.current;
-    if (eliminatedFlight?.stage === "draw") {
-      eliminatedFlight.stage = "discard";
-      setTileFlight({
-        id: `eliminated-discard-${eliminatedFlight.tile.id}-${Date.now()}`,
-        tile: eliminatedFlight.tile,
-        face: "front",
-        from: toLocalRect(eliminatedFlight.playerRect),
-        to: toLocalRect(eliminatedFlight.discardRect),
-      });
-      return;
-    }
-    if (eliminatedFlight?.stage === "discard") {
-      eliminatedFlight.stage = "committing";
-      suppressNextOpponentDiscardFlightTileIdRef.current = eliminatedFlight.tile.id;
-      playEliminated();
-      return;
-    }
-
-    if (pendingDiscardTileId) {
-      pendingDiscardTileIdRef.current = null;
-      awaitingDiscardRemovalTileIdRef.current = pendingDiscardTileId;
-      if (discardAdvanceTimerRef.current) clearTimeout(discardAdvanceTimerRef.current);
-      if (pendingTimeoutDiscardTileId === pendingDiscardTileId) {
-        commitPendingTimeoutDiscard();
-      } else {
-        discard(pendingDiscardTileId);
-      }
-      return;
-    }
-
-requestAnimationFrame(() => {
-  const started =
-    startNextQueuedPresentation();
-
-  if (!started) {
-    setOpponentTurnTransitionActive(false);
-  }
-});
-  };
   // Release the landing fallback only after authoritative state confirms the same
   // tile. This covers delayed online confirmation without touching game logic.
   useEffect(() => {
-    const pendingTileId = pendingDiscardLandingTileIdRef.current;
-    if (!pendingTileId || topDiscard?.id !== pendingTileId) return;
-
-    pendingDiscardLandingTileIdRef.current = null;
-    setHideDiscardTopTile(false);
-    setDiscardPresentationFallback((current) =>
-      current?.id === pendingTileId ? null : current,
-    );
-  }, [setHideDiscardTopTile, topDiscard?.id]);
+    releaseAuthoritativeDiscardHold(topDiscard?.id ?? null);
+  }, [releaseAuthoritativeDiscardHold, topDiscard?.id]);
   const startDrawFlight = (source: "deck" | "discard") => {
     if (!canDraw) return;
     draw(source);
@@ -842,18 +695,16 @@ requestAnimationFrame(() => {
     if (tileFlight) return;
     const drawnTile = source === "deck" ? state.deck[0] ?? null : topDiscard;
     const sourceRect = source === "deck" ? deckTopRectRef.current : discardTopRectRef.current;
-    if (!drawnTile || !sourceRect) return;
+    const targetRect = drawLandingRectRef.current;
+    if (!drawnTile || !sourceRect || !targetRect) return;
 
-    pendingDrawFlightRef.current = {
-      tileId: drawnTile.id,
+    setTileFlight({
+      id: `draw-${drawnTile.id}-${Date.now()}`,
       tile: source === "deck" ? null : drawnTile,
-      sourceRect,
       face: source === "deck" ? "back" : "front",
-    };
-    setDrawFlightTileId(drawnTile.id);
-    setHiddenRackTileIds([drawnTile.id]);
-    if (source === "deck") setHideDeckTopTile(true);
-    if (source === "discard") setHideDiscardTopTile(true);
+      from: toLocalRect(sourceRect),
+      to: toLocalRect(targetRect),
+    });
   };
   const isPointInsideRack = (point: { x: number; y: number }) => {
     const rackRect = rackRectRef.current;
@@ -873,9 +724,7 @@ requestAnimationFrame(() => {
     const tileId = topDiscard.id;
     draw("discard");
     if (tileFlight) return true;
-    pendingDrawFlightRef.current = null;
-    setDrawFlightTileId(null);
-    setHideDiscardTopTile(false);
+   setHideDiscardTopTile(false);
     setDiscardDropPlacement({ tileId, point, nonce: Date.now() });
     return true;
   };
@@ -895,12 +744,6 @@ requestAnimationFrame(() => {
   const commitDiscardFromRack = (tileId: string) => {
     if (!canDiscardTile) return false;
 
-    if (discardAdvanceTimerRef.current) {
-      clearTimeout(discardAdvanceTimerRef.current);
-      discardAdvanceTimerRef.current = null;
-    }
-
-    pendingDiscardTileIdRef.current = null;
     const discardAction = getOkeyRackDiscardAction(
       state,
       0,
@@ -931,12 +774,14 @@ requestAnimationFrame(() => {
     if (!canDiscardTile) return;
 
     const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
-    const sourceRect = rackTileRectsRef.current[tileId] ?? timeoutDrawLandingRectRef.current;
+    const sourceRect = rackTileRectsRef.current[tileId];
     const targetRect = discardTopRectRef.current;
 
     if (!commitDiscardFromRack(tileId)) return;
     if (tileFlight || !tile || !sourceRect || !targetRect) return;
 
+    setDiscardPresentationFallback(topDiscard);
+    setHideDiscardTopTile(true);
     setTileFlight({
       id: `discard-${tileId}-${Date.now()}`,
       tile,
@@ -946,90 +791,110 @@ requestAnimationFrame(() => {
     });
   };
 
-  const completePendingDrawFlight = useCallback((tileId: string, targetRect: ScreenRect) => {
-    const pending = pendingDrawFlightRef.current;
-    if (!pending || pending.tileId !== tileId) return;
 
-    pendingDrawFlightRef.current = null;
-    setTileFlight({
-      id: `draw-${pending.tileId}-${Date.now()}`,
-      tile: pending.tile,
-      face: pending.face,
-      from: toLocalRect(pending.sourceRect),
-      to: toLocalRect(targetRect),
-    });
-  }, [setTileFlight, toLocalRect]);
-
-
-  const {
-    onlineTimeoutDiscardFlightRef,
-    resetTimeoutPresentation,
-  } = useOkeyTimeoutTileFlightCoordinator({
+  const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     isOnline: true,
     onlineMatchId,
     onlineProjection,
     state,
     humanPlayer,
-    pendingTimeoutDiscardTileId,
     tileFlight,
-    pendingDrawFlightRef,
-    timeoutDrawLandingRectRef,
-    pendingDiscardTileIdRef,
     rackRectRef,
     rackTileRectsRef,
     deckTopRectRef,
     discardTopRectRef,
-    setSelectedTileId,
-    setHiddenRackTileIds,
     setHideDeckTopTile,
     setHideDiscardTopTile,
     setDiscardPresentationFallback,
     setOpponentTurnTransitionActive,
     setTileFlight,
     toLocalRect,
-    commitPendingTimeoutDiscard,
-    completePendingDrawFlight,
+    activePresentationRef,
   });
 
-
+  const completeActivePresentation = useOkeyTileFlightCompletion({
+    tileFlight,
+    topDiscard,
+    activePresentationRef,
+    setTileFlight,
+    setHiddenRackTileIds,
+   setHideDeckTopTile,
+    setHideDiscardTopTile,
+    setDiscardPresentationFallback,
+    holdDiscardUntilAuthoritative,
+    setOpponentTurnTransitionActive,
+    toLocalRect,
+    resetTimeoutPresentation,
+    startNextQueuedPresentation,
+  });
   useEffect(() => {
-    if (!pendingTimeoutDiscardTileId) {
-      if (discardAdvanceTimerRef.current) {
-        clearTimeout(discardAdvanceTimerRef.current);
-        discardAdvanceTimerRef.current = null;
+    if (!onlineMatchId || !onlineProjection || takeoverExitStartedRef.current) return;
+
+    const viewer = onlineProjection.players.find((player) => Array.isArray(player.hand));
+    if (!viewer) return;
+
+    const controlled = viewer.controlledByBot === true || viewer.kind === "bot";
+    const previous = previousViewerControlRef.current;
+    previousViewerControlRef.current = {
+      matchId: onlineMatchId,
+      playerId: viewer.id,
+      controlled,
+    };
+
+    if (!controlled) {
+      pendingTakeoverTimeoutEventIdRef.current = null;
+      return;
+    }
+
+    const timeoutEvent = onlineProjection.lastTimeoutDiscardEvent;
+    const isFreshTakeover =
+      previous?.matchId === onlineMatchId &&
+      previous.playerId === viewer.id &&
+      previous.controlled === false;
+    if (
+      pendingTakeoverTimeoutEventIdRef.current === null &&
+      isFreshTakeover &&
+      timeoutEvent?.playerId === viewer.id
+    ) {
+      const eventId = timeoutEvent.id;
+      if (activePresentationRef.current.completedTimeoutEventId === eventId) {
+        takeoverExitStartedRef.current = true;
+        router.replace("/okey");
+        return;
+      }
+      if (activePresentationRef.current.onlineTimeout?.eventId === eventId) {
+        pendingTakeoverTimeoutEventIdRef.current = eventId;
+        return;
+      }
+      // No valid event presentation was started (for example, missing geometry).
+      // Preserve the existing immediate exit instead of trapping the viewer.
+      takeoverExitStartedRef.current = true;
+      router.replace("/okey");
+      return;
+    }
+
+    const pendingEventId = pendingTakeoverTimeoutEventIdRef.current;
+    if (pendingEventId) {
+      if (activePresentationRef.current.completedTimeoutEventId === pendingEventId) {
+        pendingTakeoverTimeoutEventIdRef.current = null;
+        takeoverExitStartedRef.current = true;
+        router.replace("/okey");
+      } else if (activePresentationRef.current.onlineTimeout?.eventId !== pendingEventId) {
+        // Presentation became unavailable before completion; never leave the
+        // already-taken-over viewer stuck on the table.
+        pendingTakeoverTimeoutEventIdRef.current = null;
+        takeoverExitStartedRef.current = true;
+        router.replace("/okey");
       }
       return;
     }
 
-    if (discardAdvanceTimerRef.current) clearTimeout(discardAdvanceTimerRef.current);
-    discardAdvanceTimerRef.current = setTimeout(() => {
-      discardAdvanceTimerRef.current = null;
-      pendingDrawFlightRef.current = null;
-      timeoutDrawLandingRectRef.current = null;
-      pendingDiscardTileIdRef.current = null;
-      setTileFlight(null);
-      setDrawFlightTileId(null);
-      setHiddenRackTileIds([]);
-      setHideDeckTopTile(false);
-      setHideDiscardTopTile(false);
-      commitPendingTimeoutDiscard();
-    }, TIMEOUT_TURN_WATCHDOG_MS);
+    // An already-taken-over initial snapshot has no local transition to present.
+    takeoverExitStartedRef.current = true;
+    router.replace("/okey");
+  }, [onlineMatchId, onlineProjection, router, tileFlight]);
 
-    return () => {
-      if (discardAdvanceTimerRef.current) {
-        clearTimeout(discardAdvanceTimerRef.current);
-        discardAdvanceTimerRef.current = null;
-      }
-    };
-  }, [commitPendingTimeoutDiscard, pendingTimeoutDiscardTileId, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, setHideDiscardTopTile, setTileFlight]);
-  useEffect(() => {
-    const pending = pendingDrawFlightRef.current;
-    if (!pending) return;
-    const targetRect = rackTileRectsRef.current[pending.tileId];
-    if (!targetRect) return;
 
-    completePendingDrawFlight(pending.tileId, targetRect);
-  }, [completePendingDrawFlight, humanPlayer.hand, tileFlight]);
   useEffect(() => {
     const tileId = awaitingDiscardRemovalTileIdRef.current;
     if (!tileId || humanPlayer.hand.some((tile) => tile.id === tileId)) return;
@@ -1037,10 +902,6 @@ requestAnimationFrame(() => {
     awaitingDiscardRemovalTileIdRef.current = null;
     setHiddenRackTileIds((current) => current.filter((entry) => entry !== tileId));
   }, [humanPlayer.hand, setHiddenRackTileIds]);
-
-  useEffect(() => () => {
-    if (discardAdvanceTimerRef.current) clearTimeout(discardAdvanceTimerRef.current);
-  }, []);
 
   const measureHumanMeldDropZone = () => {
     humanMeldDropZoneRef.current?.measureInWindow((x, y, width, height) => {
@@ -1140,89 +1001,17 @@ requestAnimationFrame(() => {
     return true;
   };
   useEffect(() => {
-    if (lifecycleResumeToken === 0) return;
-    if (discardAdvanceTimerRef.current) clearTimeout(discardAdvanceTimerRef.current);
-    discardAdvanceTimerRef.current = null;
-    pendingDrawFlightRef.current = null;
-    pendingDiscardTileIdRef.current = null;
-    resetOpponentPresentation();
-    setPresentedPlayers(state.players);
-    resetTimeoutPresentation();
-    eliminatedTurnFlightRef.current = null;
-    setTileFlight(null);
-    setHiddenRackTileIds([]);
-    setHideDeckTopTile(false);
-    setHideDiscardTopTile(false);
-    setDiscardPresentationFallback(null);
-    setDrawFlightTileId(null);
+    if (lastPresentationResumeTokenRef.current === lifecycleResumeToken) return;
+    lastPresentationResumeTokenRef.current = lifecycleResumeToken;
+    resetPresentationRuntime(state.players);
     setDiscardDropPlacement(null);
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
     setDiscardDragPoint(null);
-    setOpponentTurnTransitionActive(false);
-  }, [lifecycleResumeToken, resetOpponentPresentation, resetTimeoutPresentation, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, setHideDiscardTopTile, setTileFlight]);
+  }, [lifecycleResumeToken, resetPresentationRuntime, state.players]);
 
   const turnTimerVisible = onlineGameplayReady && (state.phase === "playing" || showFinishRevealPopup);
 
-  useEffect(() => {
-    const pending = eliminatedTurnFlightRef.current;
-    if (pending?.stage === "committing") {
-      if (state.currentPlayerIndex !== pending.playerIndex) eliminatedTurnFlightRef.current = null;
-      return;
-    }
-    if (!isAppActive || pending || tileFlight || state.phase !== "playing") return;
-
-    const playerIndex = state.currentPlayerIndex;
-    const player = state.players[playerIndex];
-    if (!player?.eliminated) return;
-
-    const timer = setTimeout(() => {
-      const tile = state.deck[0];
-      const deckRect = deckTopRectRef.current;
-      const discardRect = discardTopRectRef.current;
-      const playerAreaRect = playerIndex === 0 ? rackRectRef.current : opponentSeatRectsRef.current[player.id];
-      if (!tile || !deckRect || !discardRect || !playerAreaRect) {
-        playEliminated();
-        return;
-      }
-
-      const playerRect = {
-        x: playerAreaRect.x + playerAreaRect.width / 2 - discardRect.width / 2,
-        y: playerAreaRect.y + playerAreaRect.height / 2 - discardRect.height / 2,
-        width: discardRect.width,
-        height: discardRect.height,
-      };
-      eliminatedTurnFlightRef.current = {
-        playerIndex,
-        playerId: player.id,
-        tile,
-        stage: "draw",
-        playerRect,
-        discardRect,
-      };
-      setHideDeckTopTile(true);
-      setTileFlight({
-        id: `eliminated-draw-${tile.id}-${Date.now()}`,
-        tile: null,
-        face: "back",
-        from: toLocalRect(deckRect),
-        to: toLocalRect(playerRect),
-      });
-    }, 650);
-
-    return () => clearTimeout(timer);
-  }, [isAppActive, playEliminated, setHideDeckTopTile, setTileFlight, state.currentPlayerIndex, state.deck, state.phase, state.players, tileFlight, toLocalRect]);
-  useEffect(() => {
-    setStableOpponentTileCounts((current) => {
-      const next = Object.fromEntries(
-        state.players.slice(1).map((player) => [player.id, player.hand.length]),
-      );
-      const unchanged =
-        Object.keys(next).length === Object.keys(current).length &&
-        Object.entries(next).every(([playerId, count]) => current[playerId] === count);
-      return unchanged ? current : next;
-    });
-  }, [state.players]);
   const localPlayerIndex = useMemo(
     () => onlineRoom?.members.find((member) => member.userId === currentUserId)?.playerIndex ?? null,
     [currentUserId, onlineRoom?.members],
@@ -1378,20 +1167,19 @@ requestAnimationFrame(() => {
   const handleRackMeasured = useStableEvent((rect: ScreenRect) => {
     rackRectRef.current = rect;
   });
+  const handleDrawLandingRectChange = useStableEvent((rect: ScreenRect | null) => {
+    drawLandingRectRef.current = rect;
+  });
   const handleRackTileMeasured = useStableEvent((tileId: string, rect: ScreenRect) => {
     rackTileRectsRef.current[tileId] = rect;
-    completePendingDrawFlight(tileId, rect);
   });
   const handleMoveRackTile = useStableEvent((tileId: string, targetIndex: number) => {
     setSelectedTileId(tileId);
     emitFeedback("rack-move", `rack-move:${tileId}:${targetIndex}:${Date.now()}`);
   });
   const skipEnterAnimationTileIds = useMemo(
-    () => [
-      ...(drawFlightTileId ? [drawFlightTileId] : []),
-      ...(discardDropPlacement ? [discardDropPlacement.tileId] : []),
-    ],
-    [discardDropPlacement, drawFlightTileId],
+    () => discardDropPlacement ? [discardDropPlacement.tileId] : [],
+    [discardDropPlacement],
   );
   useEffect(() => {
     if (lastPresentationRoundRef.current === currentRound) return;
@@ -1400,31 +1188,11 @@ requestAnimationFrame(() => {
     // A new round is a hard presentation boundary. No animation, cached tile,
     // meld, popup, measurement target, or pending visual action from the
     // previous round may survive into the new authoritative round.
-    if (discardAdvanceTimerRef.current) {
-      clearTimeout(discardAdvanceTimerRef.current);
-      discardAdvanceTimerRef.current = null;
-    }
-
-    pendingDrawFlightRef.current = null;
-    timeoutDrawLandingRectRef.current = null;
     timeoutWarningTurnRef.current = null;
-    pendingDiscardTileIdRef.current = null;
-    pendingDiscardLandingTileIdRef.current = null;
-    awaitingDiscardRemovalTileIdRef.current = null;
-    eliminatedTurnFlightRef.current = null;
     hoveredMeldTargetRef.current = null;
     meldDropRectsRef.current = [];
 
-    resetOpponentPresentation();
-    resetTimeoutPresentation();
-
-    setTileFlight(null);
-    setHiddenRackTileIds([]);
-    setHideDeckTopTile(false);
-    setHideDiscardTopTile(false);
-    setDrawFlightTileId(null);
-    setDiscardPresentationFallback(null);
-    setOpponentTurnTransitionActive(false);
+    resetPresentationRuntime(state.players);
 
     setPreviewMelds([]);
     setTableMeldOffsets({});
@@ -1442,22 +1210,9 @@ requestAnimationFrame(() => {
     setTurnWarningToastVisible(false);
     setProfilePlayer(null);
 
-    setPresentedPlayers(state.players);
-    setStableOpponentTileCounts(
-      Object.fromEntries(
-        state.players.slice(1).map((player) => [player.id, player.hand.length]),
-      ),
-    );
   }, [
     currentRound,
-    resetOpponentPresentation,
-    resetTimeoutPresentation,
-    setDrawFlightTileId,
-    setHiddenRackTileIds,
-    setHideDeckTopTile,
-    setHideDiscardTopTile,
-    setPresentedPlayers,
-    setTileFlight,
+    resetPresentationRuntime,
     state.players,
   ]);
 
@@ -1722,8 +1477,7 @@ requestAnimationFrame(() => {
           onTileDragPointChange={handleTileDragPointChange}
           hiddenTileIds={hiddenRackTileIds}
           skipEnterAnimationTileIds={skipEnterAnimationTileIds}
-          fixedDrawTileId={drawFlightTileId}
-          externalDropPlacement={discardDropPlacement}
+         externalDropPlacement={discardDropPlacement}
           externalHoverPoint={discardDragPoint}
           eliminated={!!humanPlayer.eliminated}
           onExternalDropPlaced={handleExternalDropPlaced}
@@ -1739,13 +1493,14 @@ requestAnimationFrame(() => {
           isDealer={onlineGameplayReady && state.dealerIndex === 0}
           dealOrigin={dealOrigin}
           onRackMeasured={handleRackMeasured}
+          onDrawLandingRectChange={handleDrawLandingRectChange}
           onTileMeasured={handleRackTileMeasured}
 
           onMoveTile={handleMoveRackTile}
 
         />
         {tileFlight ? (
-          <OkeyTileFlightOverlay key={tileFlight.id} flight={tileFlight} okeyTile={state.okeyTile} onDone={finishTileFlight} />
+          <OkeyTileFlightOverlay key={tileFlight.id} flight={tileFlight} okeyTile={state.okeyTile} onDone={completeActivePresentation} />
         ) : null}
       </View>
       <PlayerProfilePopup

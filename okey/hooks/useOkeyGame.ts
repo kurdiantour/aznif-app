@@ -295,11 +295,6 @@ export function useOkeyGame(
     AppState.currentState,
   );
 
-  const [
-    pendingTimeoutDiscardTileId,
-    setPendingTimeoutDiscardTileId,
-  ] = useState<string | null>(null);
-
   const [presentationTick, setPresentationTick] = useState(0);
   const [terminalPresentation, setTerminalPresentation] = useState<{
     stage: "finish" | "round" | "match";
@@ -482,9 +477,6 @@ export function useOkeyGame(
             nextState !== "active"
           ) {
             setIsAppActive(false);
-            setPendingTimeoutDiscardTileId(
-              null,
-            );
             return;
           }
 
@@ -774,12 +766,9 @@ export function useOkeyGame(
     });
   }, [onlineProjection]);
 
-  const commitPendingTimeoutDiscard =
-    useCallback(() => {
-      setPendingTimeoutDiscardTileId(
-        null,
-      );
-    }, []);
+  useEffect(() => {
+    playEliminated();
+  }, [playEliminated]);
 
   const roundResults = useMemo(
     () => onlineProjection ? projectAuthoritativeRoundResults(onlineProjection) : [],
@@ -856,11 +845,7 @@ export function useOkeyGame(
     declareKonkan,
     spendTileOnTableMeld,
     lockKonkanSetOnTable,
-    playEliminated,
-
-    pendingTimeoutDiscardTileId,
     turnTimeLeft,
-    commitPendingTimeoutDiscard,
 
   };
 }

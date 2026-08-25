@@ -539,6 +539,9 @@ export class SupabaseOkeyMatchAdapter
     }
 
     const initialProjection = this.snapshot === null;
+    if (!initialProjection) {
+      this.publishActionEvents(response.actionEvents ?? []);
+    }
     this.publish({
       ...response.projection,
       settlement: "settlement" in response
@@ -547,8 +550,6 @@ export class SupabaseOkeyMatchAdapter
     });
     if (initialProjection && this.actionEventVersion === null) {
       this.actionEventVersion = response.projection.version;
-    } else {
-      this.publishActionEvents(response.actionEvents ?? []);
     }
   }
   private publish(
@@ -631,11 +632,22 @@ export class SupabaseOkeyMatchAdapter
             return;
           }
 
+          const isSettlementInvalidation =
+            this.snapshot !== null &&
+            message.version === this.snapshot.version &&
+            this.snapshot.matchFinished &&
+            !this.snapshot.settlement;
+
           if (
             this.snapshot &&
-            message.version <=
-              this.snapshot.version
+            message.version <= this.snapshot.version &&
+            !isSettlementInvalidation
           ) {
+            return;
+          }
+
+          if (isSettlementInvalidation) {
+            void this.refresh().catch(() => {});
             return;
           }
 

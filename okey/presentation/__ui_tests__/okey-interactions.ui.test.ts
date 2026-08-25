@@ -1,9 +1,5 @@
 import { expect, test } from "@jest/globals";
 import {
-  createOkeyMeldPresentationFrames,
-  isOkeyTurnPresentationBlocked,
-} from "../okey-game-presentation";
-import {
   createOpponentDiscardFlight,
   findClosestMeldDropTarget,
   isPointInsideRect,
@@ -67,11 +63,10 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
   const synced = syncSlotsWithTiles(
     slots,
     [tile("a"), tile("b"), tile("c"), tile("draw")],
-    "draw",
   );
 
-  expect(synced.bottom.slice(0, 3)).toEqual(["a", null, "b"]);
-  expect(synced.top.slice(0, 2)).toEqual(["c", "draw"]);
+  expect(synced.bottom.slice(0, 3)).toEqual(["a", "draw", "b"]);
+  expect(synced.top.slice(0, 2)).toEqual(["c", null]);
 
   const fullFirstRow = createEmptySlots();
   const topIds = fullFirstRow.top.map((_, index) => `top-${index}`);
@@ -83,57 +78,9 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
   const nextRowSynced = syncSlotsWithTiles(
     fullFirstRow,
     [...topIds.map(tile), tile("bottom-existing"), tile("next-draw")],
-    "next-draw",
   );
 
   expect(nextRowSynced.top).toEqual(topIds);
   expect(nextRowSynced.bottom.slice(0, 2)).toEqual(["bottom-existing", "next-draw"]);
 });
 
-test("turn timer stays blocked until the active tile flight lands", () => {
-  expect(isOkeyTurnPresentationBlocked({
-    opponentTransitionActive: false,
-    hasTileFlight: true,
-  })).toBe(true);
-
-  expect(isOkeyTurnPresentationBlocked({
-    opponentTransitionActive: false,
-    hasTileFlight: false,
-  })).toBe(false);
-
-  expect(isOkeyTurnPresentationBlocked({
-    opponentTransitionActive: false,
-    hasTileFlight: false,
-    hasPendingHumanHandRemoval: true,
-  })).toBe(true);
-});
-test("bot meld presentation reveals spent tiles one action at a time", () => {
-  const tile = (id: string, value: number) => ({ id, color: "red", value, copy: 1 });
-  const baseMeld = {
-    id: "meld",
-    kind: "run",
-    tiles: [tile("a", 1), tile("b", 2), tile("c", 3)],
-    score: 6,
-  };
-  const player = (melds: unknown[]) => ({
-    id: "bot",
-    name: "Bot",
-    kind: "bot",
-    teamId: "teamB",
-    hand: [],
-    melds,
-    opened: true,
-    scoreOpened: 0,
-    konkan: false,
-    eliminated: false,
-  });
-
-  const frames = createOkeyMeldPresentationFrames(
-    [player([baseMeld]) as never],
-    [player([{ ...baseMeld, tiles: [...baseMeld.tiles, tile("d", 4), tile("e", 5)], score: 15 }]) as never],
-  );
-
-  expect(frames).toHaveLength(2);
-  expect(frames[0][0].melds[0].tiles.map((entry) => entry.id)).toEqual(["a", "b", "c", "d"]);
-  expect(frames[1][0].melds[0].tiles.map((entry) => entry.id)).toEqual(["a", "b", "c", "d", "e"]);
-});

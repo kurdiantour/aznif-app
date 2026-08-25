@@ -17,11 +17,11 @@ export type DraggingMeld = OkeyMeld & { tileIds: string[]; touchedTileIndex: num
 export type ExternalDropPlacement = { tileId: string; point: { x: number; y: number }; nonce: number };
 
 export const ROW_ORDER: RackRow[] = ["bottom", "top"];
-export const GROUP_LONG_PRESS_MS = 600;
+export const GROUP_LONG_PRESS_MS = 150;
 // Allow normal finger jitter while the user holds a tile to activate group drag.
 // The drag activation threshold still handles intentional early movement.
 export const GROUP_LONG_PRESS_MOVE_TOLERANCE = 24;
-export const DRAG_ACTIVATION_DISTANCE = 4;
+export const DRAG_ACTIVATION_DISTANCE = 2;
 export const ROW_SNAP_PADDING_RATIO = 0.45;
 export const SLOT_TARGET_HYSTERESIS_RATIO = 0.35;
 export const RACK_TILE_ENTER_MS = 620;
@@ -135,7 +135,7 @@ export function getInitialRackSlots(tiles: OkeyTile[]): RackSlots {
   return slots;
 }
 
-export function syncSlotsWithTiles(current: RackSlots, tiles: OkeyTile[], fixedDrawTileId?: string | null): RackSlots {
+export function syncSlotsWithTiles(current: RackSlots, tiles: OkeyTile[]): RackSlots {
   const availableIds = new Set(tiles.map((tile) => tile.id));
   const knownIds = new Set<string>();
   const next = createEmptySlots();
@@ -146,22 +146,6 @@ export function syncSlotsWithTiles(current: RackSlots, tiles: OkeyTile[], fixedD
       next[row][slotIndex] = tileId;
       knownIds.add(tileId);
     });
-  }
-
-  if (fixedDrawTileId && availableIds.has(fixedDrawTileId) && !knownIds.has(fixedDrawTileId)) {
-    const firstRowSlotIndex = next.top.findIndex((tileId) => tileId === null);
-    const secondRowSlotIndex = next.bottom.findIndex((tileId) => tileId === null);
-    const emptySlot =
-      firstRowSlotIndex >= 0
-        ? { row: "top" as const, slotIndex: firstRowSlotIndex }
-        : secondRowSlotIndex >= 0
-          ? { row: "bottom" as const, slotIndex: secondRowSlotIndex }
-          : null;
-
-    if (emptySlot) {
-      next[emptySlot.row][emptySlot.slotIndex] = fixedDrawTileId;
-      knownIds.add(fixedDrawTileId);
-    }
   }
 
 for (const tile of tiles) {
