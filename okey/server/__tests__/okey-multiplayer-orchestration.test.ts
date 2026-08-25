@@ -20,30 +20,33 @@ test("Okey bot handoff remains exact-match, one-turn and idempotent", () => {
   const controller = read("okey/controllers/okey-multiplayer-bot-controller.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
 
-  assert.match(controller, /inFlightRef\.current/);
+  assert.match(controller, /inFlightTurnKeysRef\.current/);
   assert.match(controller, /player\?\.controlledByBot/);
-  assert.match(worker, /processOkeyBotTurn\(matchId: string, requesterUserId: string\)/);
+  assert.match(worker, /processOkeyBotTurn\([\s\S]*claimedVersion: number,[\s\S]*claimedActorId: string/);
   assert.doesNotMatch(worker, /while \(true\)/);
-  assert.match(worker, /system-bot-turn:\$\{expectedVersion\}/);
+  assert.match(worker, /system-bot-\$\{botStep\}:\$\{expectedVersion\}/);
+  assert.match(worker, /hasDrawnThisTurn[\s\S]*\? "discard"[\s\S]*: "draw"/);
+  assert.match(worker, /botStep === "draw"[\s\S]*drawTile[\s\S]*playBotTurn/);
   assert.match(worker, /reason: "already_processed"/);
   assert.match(worker, /reason: "stale_bot_controller"/);
-  assert.match(worker, /currentPlayer\?\.controlledByBot/);
+  assert.match(worker, /currentPlayer\.controlledByBot/);
+  assert.doesNotMatch(worker, /handOffOkeyBotTurn/);
+  assert.doesNotMatch(worker, /successor Bot handoff/);
 });
 
-test("Okey timeout ownership is server-only like the stable Domino lifecycle", () => {
+test("Okey timeout claims remain current-player-only and exact-version", () => {
   const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
-  const maintenance = read("supabase/functions/okey_maintenance/index.ts");
+  const timeoutController = read("okey/hooks/useOkeyTimeoutController.ts");
   const publish = adapter.slice(
     adapter.indexOf("private publish("),
     adapter.indexOf("private openRealtimeChannel"),
   );
 
   assert.doesNotMatch(publish, /scheduleTimeout/);
-  assert.match(maintenance, /\.eq\("status", "playing"\)/);
-  assert.match(maintenance, /\.lte\("turn_deadline_at"/);
-  assert.match(maintenance, /resolveAuthoritativeMatchDeadline/);
-  assert.match(maintenance, /system-timeout:\$\{expectedVersion\}:\$\{match\.turn_deadline_at\}/);
-  assert.match(maintenance, /version_conflict/);
+  assert.match(timeoutController, /currentUserId !== claim\.expectedTurnPlayerId/);
+  assert.match(timeoutController, /expectedVersion/);
+  assert.match(timeoutController, /expectedTurnDeadlineAt/);
+  assert.match(timeoutController, /expectedTurnPlayerId/);
 });
 
 test("Okey maintenance broadcasts the winning timeout commit and hands Bot turns off", () => {
@@ -51,7 +54,7 @@ test("Okey maintenance broadcasts the winning timeout commit and hands Bot turns
   const worker = read("supabase/functions/process_bot_turns/index.ts");
 
   assert.match(maintenance, /state_update/);
-  assert.match(maintenance, /process_bot_turns/);
+  assert.match(maintenance, /handOffOkeyBotTurn/);
   assert.match(maintenance, /x-okey-worker-key/);
   assert.match(maintenance, /settlement_at/);
   assert.match(worker, /if \(isTrustedWorker\)/);

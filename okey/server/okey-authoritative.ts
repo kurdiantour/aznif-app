@@ -618,6 +618,12 @@ export type OkeyAuthoritativeCommand =
       score: number;
     }
   | {
+      type: "open-and-discard";
+      melds: OkeyMeld[];
+      score: number;
+      tileId: string;
+    }
+  | {
       type: "declare-konkan";
       orderedRunTileIds: string[];
     }
@@ -657,6 +663,9 @@ export type OkeyServerProjection =
 
     turnDeadlineAt:
       string | null;
+
+    turnDurationSeconds:
+      number;
   };
 export type OkeyMatchServerProjection =
   OkeyServerProjection & {
@@ -769,6 +778,13 @@ export function applyAuthoritativeOkeyCommand(
         command.score,
       );
       break;
+
+    case "open-and-discard": {
+      const opened = openPlayerMelds(state, actorPlayerIndex, command.melds, command.score);
+      next = opened === state ? state : discardTile(opened, command.tileId);
+      if (next === opened) next = state;
+      break;
+    }
 
     case "declare-konkan":
       next = declareKonkanOpen(
@@ -1000,7 +1016,7 @@ export function deriveOkeyDailyQuestGameplayEvents(
       push(actorBefore.id, "okey_konkan_entered");
     }
 
-    if (command.type === "open-melds" && !actorBefore.opened && actorAfter.opened) {
+    if ((command.type === "open-melds" || command.type === "open-and-discard") && !actorBefore.opened && actorAfter.opened) {
       push(actorBefore.id, "okey_meld_opened");
       if (actorAfter.scoreOpened >= 130) {
         push(
@@ -1341,6 +1357,9 @@ export function projectOkeyState(
     version,
 
     turnDeadlineAt,
+
+    turnDurationSeconds:
+      OKEY_SERVER_TURN_SECONDS,
   };
 }
 
@@ -1423,4 +1442,5 @@ export function projectOkeyMatchPublicState(
     turnDeadlineAt,
   );
 }
+
 

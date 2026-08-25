@@ -298,7 +298,6 @@ function normalizeOnlineError(
       );
 }
 export function useOkeyGame(
-  onlineTableId?: string,
   onlineMatchId?: string,
 ) {
 
@@ -322,8 +321,6 @@ export function useOkeyGame(
   const [onlineError, setOnlineError] =
     useState<Error | null>(null);
 
-  const [onlineCommandPending, setOnlineCommandPending] =
-    useState(false);
 
   const hasLoadedSavedGame = true;
 
@@ -338,8 +335,6 @@ export function useOkeyGame(
     setLifecycleResumeToken,
   ] = useState(0);
 
-  // The scene reports active tile animation through this controller hook.
-  const [, setTurnPresentationBlocked] = useState(false);
 
   const matchRef = useRef(match);
   const onlineAdapterRef =
@@ -694,42 +689,22 @@ export function useOkeyGame(
       async (
         command: OkeyAuthoritativeCommand,
       ) => {
-        const adapter =
-          onlineAdapterRef.current;
+        const adapter = onlineAdapterRef.current;
 
         if (!adapter) {
-          setOnlineError(
-            new Error(
-              "okey_online_adapter_unavailable",
-            ),
-          );
+          setOnlineError(new Error("okey_online_adapter_unavailable"));
           return;
         }
 
-        if (onlineCommandPending) {
-          return;
-        }
-
-        setOnlineCommandPending(true);
         setOnlineError(null);
 
         try {
-          await adapter.dispatch(
-            command,
-          );
+          await adapter.dispatch(command);
         } catch (error) {
-          setOnlineError(
-            normalizeOnlineError(
-              error,
-            ),
-          );
-        } finally {
-          setOnlineCommandPending(
-            false,
-          );
+          setOnlineError(normalizeOnlineError(error));
         }
       },
-      [onlineCommandPending],
+      [],
     );
 
   const reconnectOnline =
@@ -769,10 +744,6 @@ export function useOkeyGame(
           null;
       }
     }, []);
-
-  const newGame = useCallback(() => {
-    void reconnectOnline();
-  }, [reconnectOnline]);
 
   const nextRoundClaimRef = useRef<string | null>(null);
   const eliminatedTurnClaimRef = useRef<string | null>(null);
@@ -967,31 +938,15 @@ export function useOkeyGame(
     [dispatchOnline],
   );
 
-  // Rack ordering is presentation-only in the online client.
-  // OkeyPlayerRack owns the local visual order, so these controller
-  // callbacks remain no-ops for API compatibility with the scene.
-  const sortHand = useCallback(() => {}, []);
-
-  const moveTile = useCallback(
-    (_tileId: string, _targetIndex: number) => {},
-    [],
-  );
-
-  const moveTiles = useCallback(
-    (_tileIds: string[], _targetIndex: number) => {},
-    [],
-  );
-
-  const openMelds = useCallback(
+  const commitOpenIntent = useCallback(
     (
       melds: OkeyMeld[],
       score: number,
+      discardTileId?: string,
     ) => {
-      void dispatchOnline({
-        type: "open-melds",
-        melds,
-        score,
-      });
+      void dispatchOnline(discardTileId
+        ? { type: "open-and-discard", melds, score, tileId: discardTileId }
+        : { type: "open-melds", melds, score });
     },
     [dispatchOnline],
   );
@@ -1003,13 +958,6 @@ export function useOkeyGame(
         orderedRunTileIds,
       });
     }, [dispatchOnline]);
-
-  // Kept for controller compatibility. Online gameplay uses
-  // spendTileOnTableMeld / lockKonkanSetOnTable server commands.
-  const spendTile = useCallback(
-    (_tileId: string) => {},
-    [],
-  );
 
   const spendTileOnTableMeld =
     useCallback(
@@ -1044,27 +992,6 @@ export function useOkeyGame(
       },
       [dispatchOnline],
     );
-
-  const spendOrDiscardTile =
-    useCallback(
-      (tileId: string) => {
-        if (state.hasDrawnThisTurn) {
-          void dispatchOnline({
-            type: "discard",
-            tileId,
-          });
-        }
-      },
-      [
-        dispatchOnline,
-        state.hasDrawnThisTurn,
-      ],
-    );
-
-  // Timeout gameplay is server-authoritative online. The scene still
-  // consumes these callbacks, so keep the API without local mutation.
-  const beginTimeoutHumanTurn =
-    useCallback(() => null, []);
 
   const playEliminated = useCallback(() => {
     const adapter = onlineAdapterRef.current;
@@ -1133,23 +1060,14 @@ export function useOkeyGame(
     state,
 
     isOnline,
-    onlineTableId:
-      onlineTableId ?? null,
-    onlineMatchId:
-      onlineMatchId ?? null,
-
     onlineReady,
-    onlineError,
-    onlineCommandPending,
     onlineProjection,
     onlineAdapter,
 
-    reconnectOnline,
     leaveOnlineMatch,
 
     isAppActive,
     lifecycleResumeToken,
-    setTurnPresentationBlocked,
 
     currentRound:
       match.currentRound,
@@ -1182,25 +1100,16 @@ export function useOkeyGame(
     roundResultCountdownRemaining:
       match.roundResultCountdownRemaining,
 
-    resetGame: newGame,
-    newGame,
-    nextRound,
-
     draw,
     discard,
-    sortHand,
-    moveTile,
-    moveTiles,
-    openMelds,
+    commitOpenIntent,
     declareKonkan,
-    spendTile,
     spendTileOnTableMeld,
     lockKonkanSetOnTable,
     playEliminated,
-    spendOrDiscardTile,
 
     pendingTimeoutDiscardTileId,
-    beginTimeoutHumanTurn,
+    turnTimeLeft,
     commitPendingTimeoutDiscard,
 
   };

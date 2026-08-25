@@ -21,6 +21,18 @@ enable_signup = true
 [functions.process_bot_turns]
 verify_jwt = false
 
+[functions.okey_room]
+verify_jwt = true
+
+[functions.okey_match]
+verify_jwt = true
+
+[functions.okey_test_match]
+verify_jwt = true
+
+[functions.okey_maintenance]
+verify_jwt = false
+
 [functions.submit_one_vs_one]
 verify_jwt = true
 

@@ -71,6 +71,8 @@ export function useOkeyTimeoutController(input: {
   ) => {
     if (
       !input.adapter ||
+      !input.currentUserId ||
+      input.currentUserId !== claim.expectedTurnPlayerId ||
       input.timeoutPassInFlightRef.current ||
       input.matchIdRef.current !== claimMatchId ||
       input.activeTurnKeyRef.current !== turnKey
@@ -126,6 +128,8 @@ export function useOkeyTimeoutController(input: {
   useEffect(() => {
     if (
       !input.matchId ||
+      !input.currentUserId ||
+      input.currentUserId !== input.currentPlayerId ||
       input.turnTimeLeft > 0 ||
       input.projection?.matchFinished ||
       input.timeoutPassInFlightRef.current ||
@@ -152,6 +156,7 @@ export function useOkeyTimeoutController(input: {
   }, [
     input.activeTurnKeyRef,
     input.currentPlayerId,
+    input.currentUserId,
     input.projection,
     input.matchId,
     input.timeoutPassInFlightRef,

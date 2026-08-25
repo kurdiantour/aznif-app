@@ -49,7 +49,7 @@ test("table meld is exposed as one meaningful summary", () => {
 });
 
 test("active timer and match result are announced with semantic roles", () => {
-  const timer = render(<OkeyTurnTimerBar active durationMs={25_000} />);
+  const timer = render(<OkeyTurnTimerBar active remainingSeconds={25} durationSeconds={30} />);
   expect(timer.getByRole("timer").props.accessibilityLabel).toBe("کاتی نۆبەت، 25 چرکە");
 
   const result = render(

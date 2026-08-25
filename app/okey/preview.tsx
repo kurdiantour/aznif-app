@@ -1,48 +1,69 @@
-import { Redirect } from "expo-router";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Redirect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { useLocalOkeyPreviewGame } from "@/okey/hooks/useLocalOkeyPreviewGame";
-import OkeyGameTableScene from "@/okey/scenes/OkeyGameTableScene";
+import { supabase } from "@/lib/supabase";
 
 export default function OkeyPreviewScreen() {
-  const controller = useLocalOkeyPreviewGame();
+  const router = useRouter();
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!__DEV__) {
-    return <Redirect href="/okey" />;
-  }
+  const createOrResumeTestMatch = useCallback(async () => {
+    setError(null);
+    const { data, error: invokeError } = await supabase.functions.invoke(
+      "okey_test_match",
+      { body: { action: "create-or-resume" } },
+    );
+    if (invokeError || typeof data?.matchId !== "string") {
+      let serverError: string | null = null;
+      try {
+        if (invokeError && "context" in invokeError && invokeError.context) {
+          const body = await invokeError.context.json();
+          serverError = typeof body?.error === "string" ? body.error : null;
+        }
+      } catch {
+        serverError = null;
+      }
+      throw new Error(serverError ?? invokeError?.message ?? "test_match_creation_failed");
+    }
+
+    router.replace({
+      pathname: "/okey/game",
+      params: {
+        matchId: data.matchId,
+        tableId: "preview-test",
+        mode: "fun",
+      },
+    });
+  }, [router]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    let active = true;
+    void createOrResumeTestMatch().catch((caught) => {
+      if (active) {
+        setError(caught instanceof Error ? caught.message : "test_match_creation_failed");
+      }
+    });
+    return () => { active = false; };
+  }, [attempt, createOrResumeTestMatch]);
+
+  if (!__DEV__) return <Redirect href="/okey" />;
 
   return (
     <View style={styles.container}>
-      <OkeyGameTableScene
-        controller={controller}
-        preview
-      />
-
-      <View pointerEvents="box-none" style={styles.devOverlay}>
-        <View style={styles.devPanel}>
-          <Text style={styles.devTitle}>
-            Okey Bot Test
-          </Text>
-
-          <Text style={styles.devText}>
-            You + 3 local bots
-          </Text>
-
-          <Pressable
-            onPress={controller.newGame}
-            style={styles.restartButton}
-          >
-            <Text style={styles.restartText}>
-              Restart Game
-            </Text>
+      <ActivityIndicator color="#fff" size="large" />
+      <Text style={styles.title}>Preparing real Okey test match</Text>
+      <Text style={styles.subtitle}>Authenticated player + 3 server Bots</Text>
+      {error ? (
+        <>
+          <Text style={styles.error}>{error}</Text>
+          <Pressable style={styles.retry} onPress={() => setAttempt((value) => value + 1)}>
+            <Text style={styles.retryText}>Retry</Text>
           </Pressable>
-        </View>
-      </View>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -50,43 +71,15 @@ export default function OkeyPreviewScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  devOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "flex-end",
-    justifyContent: "flex-start",
-    paddingTop: 44,
-    paddingRight: 10,
-  },
-  devPanel: {
-    width: 150,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(0,0,0,0.48)",
-  },
-  devTitle: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  devText: {
-    marginTop: 4,
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  restartButton: {
-    marginTop: 8,
     alignItems: "center",
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    justifyContent: "center",
+    gap: 12,
+    padding: 24,
+    backgroundColor: "#13251e",
   },
-  restartText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "700",
-  },
+  title: { color: "#fff", fontSize: 18, fontWeight: "800", textAlign: "center" },
+  subtitle: { color: "rgba(255,255,255,0.7)", fontSize: 13, textAlign: "center" },
+  error: { color: "#ff9b9b", fontSize: 13, textAlign: "center" },
+  retry: { marginTop: 4, borderRadius: 10, backgroundColor: "#2e7d57", paddingHorizontal: 24, paddingVertical: 10 },
+  retryText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });

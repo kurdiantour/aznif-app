@@ -69,7 +69,6 @@ export const OKEY_RULESET_V1 = {
   },
   match: {
     roundCount: 7,
-    turnDurationSeconds: 25,
     nextRoundDealer: "previous-round-winner",
     cycleLimitDealer: "same-dealer",
     tiedLowestScoreHasNoWinner: true,

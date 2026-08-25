@@ -30,7 +30,7 @@ import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
 import { mapOkeySettlementToPopupRewards } from "@/okey/presentation/okey-match-rewards";
-import type { OkeyGameController } from "@/okey/controllers/okey-game-controller";
+import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
 import { useOkeyOpponentTileFlightCoordinator, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
 import { useStableEvent } from "@/okey/hooks/useStableEvent";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
@@ -46,7 +46,6 @@ import {
 import { getRelativeSeatMap, type RelativeSeat } from "@/okey/multiplayer/relative-seat-map";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import {
-  isOkeyTurnPresentationBlocked,
   type EliminatedTurnFlight,
   type MeldDropRect,
   type MeldOffset,
@@ -67,21 +66,15 @@ import type {
 } from "@/okey/types/okey";import type { Player } from "@/domino/types/domino-game";
 
 
-const OKEY_TURN_DURATION_SECONDS = 20;
 const TIMEOUT_TURN_WATCHDOG_MS = 2500;
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
 const PLAYER_PREVIEW_MELD_TILE_WIDTH = 22;
 const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 29;
 
-type OkeyGameTableSceneProps = {
-  controller?: OkeyGameController;
-  preview?: boolean;
-};
-
-export default function OkeyGameTableScene(props: OkeyGameTableSceneProps) {
+export default function OkeyGameTableScene() {
   return (
     <OkeyResponsiveLayoutProvider>
-      <OkeyGameTableSceneContent {...props} />
+      <OkeyGameTableSceneContent />
     </OkeyResponsiveLayoutProvider>
   );
 }
@@ -94,22 +87,16 @@ function getRouteParam(
     : value;
 }
 
-function OkeyGameTableSceneContent({ controller, preview = false }: OkeyGameTableSceneProps) {
+function OkeyGameTableSceneContent() {
   const router = useRouter();
   const { party } = useGameParty();
   const params = useLocalSearchParams<{
   matchId?: string | string[];
-  tableId?: string | string[];
-  table?: string | string[];
   mode?: string | string[];
 }>();
 
 const onlineMatchId =
   getRouteParam(params.matchId);
-
-const onlineTableId =
-  getRouteParam(params.tableId) ??
-  getRouteParam(params.table);
 
 const okeyMatchMode: OkeyMatchMode =
   getRouteParam(params.mode) === "aznif"
@@ -126,26 +113,21 @@ const [
 ] = useState(false);
 
 useEffect(() => {
-  if (preview) return;
   let active = true;
   void supabase.auth.getUser().then(({ data }) => {
     if (active) setCurrentUserId(data.user?.id ?? null);
   });
   return () => { active = false; };
-}, [preview]);
+}, []);
 // Okey is an authoritative online game. A matchId is issued only by the
 // matchmaking service, so a direct link must not fall back to a local game.
 useEffect(() => {
-  if (!preview && !onlineMatchId) {
+  if (!onlineMatchId) {
     router.replace("/okey");
   }
-}, [onlineMatchId, preview, router]);
+}, [onlineMatchId, router]);
 
 useEffect(() => {
-  if (preview) {
-    setOnlineRoom(null);
-    return;
-  }
   if (!onlineMatchId) {
     setOnlineRoom(null);
     return;
@@ -179,11 +161,10 @@ useEffect(() => {
     active = false;
     unsubscribe();
   };
-}, [onlineMatchId, preview]);
+}, [onlineMatchId]);
 
 useEffect(() => {
   if (
-    preview ||
     !onlineMatchId ||
     !currentUserId ||
     !party ||
@@ -195,7 +176,7 @@ useEffect(() => {
 
   setOnlineRoom(null);
   router.replace("/okey");
-}, [currentUserId, onlineMatchId, party, preview, router]);
+}, [currentUserId, onlineMatchId, party, router]);
 const handleCancelWaiting = useCallback(async () => {
   if (
     !onlineMatchId || leavingWaitingRoom || onlineRoom?.countdownEndsAt ||
@@ -297,7 +278,6 @@ const okeyChatTransport = useMemo<GameChatTransport>(() => {
 }, []);
 
 const onlineController = useOkeyGame(
-  onlineTableId,
   activeOnlineMatchId,
 );
 
@@ -320,54 +300,42 @@ const {
   matchFinished,
   matchWinnerTeamId,
   showMatchResultPopup,
-  newGame,
   roundResultCountdownRemaining,
   draw,
   discard,
-  moveTile,
-  moveTiles,
-  openMelds,
+  commitOpenIntent,
   declareKonkan,
   spendTileOnTableMeld,
   lockKonkanSetOnTable,
   playEliminated,
   pendingTimeoutDiscardTileId,
-  beginTimeoutHumanTurn,
+  turnTimeLeft,
   commitPendingTimeoutDiscard,
   isAppActive,
   lifecycleResumeToken,
-  setTurnPresentationBlocked,
   isOnline,
   onlineReady,
   onlineProjection,
   onlineAdapter,
   leaveOnlineMatch,
-} = controller ?? onlineController;
+} = onlineController;
 
 const takeoverExitStartedRef = useRef(false);
 
 useEffect(() => {
-  if (preview || !onlineMatchId || !onlineReady || !onlineProjection) return;
-
-  const viewer = onlineProjection.players.find((player) =>
-    Array.isArray(player.hand),
-  );
-
+  if (!onlineMatchId || !onlineReady || !onlineProjection) return;
+  const viewer = onlineProjection.players.find((player) => Array.isArray(player.hand));
   if (
     (viewer?.controlledByBot === true || viewer?.kind === "bot") &&
     !takeoverExitStartedRef.current
   ) {
     takeoverExitStartedRef.current = true;
-    // Timeout takeover already ended this Human's control of the seat.
-    // Navigating away tears down room heartbeats, realtime subscriptions and
-    // scheduled client timeout claims. Do not turn takeover into manual leave.
     router.replace("/okey");
   }
-}, [onlineMatchId, onlineProjection, onlineReady, preview, router]);
+}, [onlineMatchId, onlineProjection, onlineReady, router]);
 
 const handleConfirmLeaveMatch = useCallback(async () => {
   if (isLeavingMatch) return;
-
   setIsLeavingMatch(true);
   try {
     await leaveOnlineMatch();
@@ -379,15 +347,11 @@ const handleConfirmLeaveMatch = useCallback(async () => {
   }
 }, [isLeavingMatch, leaveOnlineMatch, router]);
 
-// The hook has a fully dealt local initial value while it waits for the
-// authoritative projection. Keep it behind this lifecycle boundary so waiting
-// rooms never receive gameplay data or deal triggers.
+// Do not expose the hook's local initial value while the authoritative match loads.
 const onlineGameplayReady =
-  preview || (
-    onlineRoom?.status === "playing" &&
-    onlineReady &&
-    state.phase === "playing"
-  );
+  onlineRoom?.status === "playing" &&
+  onlineReady &&
+  state.phase === "playing";
 
 const initialStartTransitionPending =
   initialStartTransitionMatchId === onlineMatchId &&
@@ -406,16 +370,25 @@ useEffect(() => {
 }, [initialStartTransitionMatchId, onlineGameplayReady, onlineMatchId]);
 
 const dealLifecycleKey = onlineGameplayReady
-  ? `playing-${onlineMatchId ?? "preview"}-${currentRound}`
+  ? `playing-${onlineMatchId}-${currentRound}`
   : "waiting";
-  const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
-  const [rackSetScore, setRackSetScore] = useState(0);
-  const [openableRackMelds, setOpenableRackMelds] = useState<{ melds: OkeyMeld[]; score: number; contiguousGroups: OkeyTile[][] }>({ melds: [], score: 0, contiguousGroups: [] });
+const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
+const [rackSetScore, setRackSetScore] = useState(0);
+const [openableRackMelds, setOpenableRackMelds] = useState<{
+  melds: OkeyMeld[];
+  score: number;
+  contiguousGroups: OkeyTile[][];
+}>({ melds: [], score: 0, contiguousGroups: [] });
+const turnView = useMemo(
+  () => selectOkeyTurnView(onlineProjection),
+  [onlineProjection],
+);
   const [previewMelds, setPreviewMelds] = useState<OkeyMeld[]>([]);
   const [tableMeldOffsets, setTableMeldOffsets] = useState<Record<string, MeldOffset>>({});
   const [showScoreDetails, setShowScoreDetails] = useState(false);
   const [showDiscardHistory, setShowDiscardHistory] = useState(false);
   const [showFinalTileCelebration, setShowFinalTileCelebration] = useState(false);
+  const [turnWarningToastVisible, setTurnWarningToastVisible] = useState(false);
   const [dealOrigin, setDealOrigin] = useState<{ x: number; y: number } | null>(null);
   const [profilePlayer, setProfilePlayer] = useState<Player | null>(null);
   const {
@@ -434,7 +407,6 @@ const dealLifecycleKey = onlineGameplayReady
   const [isDiscardDragActive, setIsDiscardDragActive] = useState(false);
   const [hoveredMeldTarget, setHoveredMeldTarget] = useState<{ playerId: string; meldId: string } | null>(null);
   const [discardDragPoint, setDiscardDragPoint] = useState<{ x: number; y: number } | null>(null);
-  const [turnTimedOut, setTurnTimedOut] = useState(false);
   const [discardPresentationFallback, setDiscardPresentationFallback] = useState<OkeyTile | null>(null);
   const [
   opponentTurnTransitionActive,
@@ -454,12 +426,13 @@ const dealLifecycleKey = onlineGameplayReady
   const rackTileRectsRef = useRef<Record<string, ScreenRect>>({});
   const pendingDrawFlightRef = useRef<{ tileId: string; tile: OkeyTile | null; sourceRect: ScreenRect; face: "front" | "back" } | null>(null);
   const timeoutDrawLandingRectRef = useRef<ScreenRect | null>(null);
+  const timeoutWarningTurnRef = useRef<string | null>(null);
   const pendingDiscardTileIdRef = useRef<string | null>(null);
   const pendingDiscardLandingTileIdRef = useRef<string | null>(null);
   const awaitingDiscardRemovalTileIdRef = useRef<string | null>(null);
   const eliminatedTurnFlightRef = useRef<EliminatedTurnFlight | null>(null);
   const discardAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const timeoutTurnKeyRef = useRef<string | null>(null);
+  const lastPresentationRoundRef = useRef(currentRound);
   const humanMeldDropZoneRef = useRef<View | null>(null);
   const meldDropRectsRef = useRef<MeldDropRect[]>([]);
   const hoveredMeldTargetRef = useRef<MeldDropRect | null>(null);
@@ -626,6 +599,9 @@ const shouldShowScorePopup =
   showScoreDetails ||
   showRoundResultPopup;
   const previewTileIds = useMemo(() => previewMelds.flatMap((meld) => meld.tiles.map((tile) => tile.id)), [previewMelds]);
+  useEffect(() => {
+    if (humanPlayer.opened && previewMelds.length > 0) setPreviewMelds([]);
+  }, [humanPlayer.opened, previewMelds.length]);
   const toLocalRect = useCallback(
     (rect: ScreenRect) => toLocalScreenRect(rect, screenRectRef.current),
     [],
@@ -652,16 +628,16 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
 
 
   const {
-    previousDiscardCountRef,
     pendingOpponentDiscardAfterDrawRef,
     suppressNextOpponentDiscardFlightTileIdRef,
-    botPresentationTimerRef,
     startOpponentPostDrawSequence,
     startNextQueuedOpponentDiscardFlight,
     retryQueuedOpponentFlight,
     resetOpponentPresentation,
   } = useOkeyOpponentTileFlightCoordinator({
     state,
+    adapter: onlineAdapter,
+    projectionVersion: onlineProjection ? Number(onlineProjection.version) : null,
     tileFlight,
     deckTopRectRef,
     discardTopRectRef,
@@ -677,54 +653,45 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     toLocalRect,
   });
 
-  const hasUnpresentedOpponentDiscard = state.discardPile
-    .slice(previousDiscardCountRef.current)
-    .some(
-      (_, offset) =>
-        state.discardOwners[previousDiscardCountRef.current + offset]
-          ?.playerIndex !== 0,
-    );
+
+  const isHumanTurn =
+    turnView.phase === "playing" &&
+    turnView.playerId === humanPlayer.id;
+
+  useEffect(() => {
+    setTurnWarningToastVisible(false);
+  }, [currentRound, turnView.deadlineAt, turnView.durationSeconds, turnView.playerId]);
 
   useEffect(() => {
     if (
-      state.currentPlayerIndex !== 0 ||
-      opponentTurnTransitionActive ||
-      hasUnpresentedOpponentDiscard ||
-      botPresentationTimerRef.current
+      !onlineGameplayReady ||
+      !isOnline ||
+      !isAppActive ||
+      !isHumanTurn ||
+      !turnView.playerId ||
+      !turnView.deadlineAt ||
+      turnTimeLeft <= 0 ||
+      turnTimeLeft > 5
     ) {
       return;
     }
 
-    setPresentedPlayers(state.players);
+    const warningKey = `${turnView.playerId}:${turnView.deadlineAt}`;
+    if (timeoutWarningTurnRef.current === warningKey) return;
+
+    timeoutWarningTurnRef.current = warningKey;
+    setTurnWarningToastVisible(true);
+    emitFeedback("timeout-warning", `timeout-warning:${warningKey}`);
   }, [
-    botPresentationTimerRef,
-    hasUnpresentedOpponentDiscard,
-    opponentTurnTransitionActive,
-    setPresentedPlayers,
-    state.currentPlayerIndex,
-    state.players,
+    emitFeedback,
+    isAppActive,
+    isHumanTurn,
+    isOnline,
+    onlineGameplayReady,
+    turnTimeLeft,
+    turnView.deadlineAt,
+    turnView.playerId,
   ]);
-
-  const pendingHumanHandRemovalTileId = awaitingDiscardRemovalTileIdRef.current;
-  const hasPendingHumanHandRemoval =
-    !!pendingHumanHandRemovalTileId &&
-    humanPlayer.hand.some((tile) => tile.id === pendingHumanHandRemovalTileId);
-  const turnPresentationBlocked = isOkeyTurnPresentationBlocked({
-    opponentTransitionActive: opponentTurnTransitionActive,
-    hasUnpresentedOpponentDiscard,
-    hasTileFlight: !!tileFlight,
-    hasPendingHumanHandRemoval,
-  });
-
-  useEffect(() => {
-    setTurnPresentationBlocked(turnPresentationBlocked);
-    return () => setTurnPresentationBlocked(false);
-  }, [setTurnPresentationBlocked, turnPresentationBlocked]);
-
-  const isHumanTurn =
-    state.phase === "playing" &&
-    currentPlayer?.kind === "human" &&
-    !turnPresentationBlocked;
 
   const canDraw = isHumanTurn && !humanPlayer.eliminated && !state.hasDrawnThisTurn;
   const canDrawDiscard = canDraw && !topDiscardIsBlocked;
@@ -732,8 +699,13 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
   const canDiscardTile = isHumanTurn && state.hasDrawnThisTurn;
   const requiredOpenScore = getRequiredOpenScore(state, 0);
   const previewScore = previewMelds.reduce((total, meld) => total + meld.score, 0);
-  const activeOpenMelds = [...previewMelds, ...openableRackMelds.melds];
-  const activeOpenScore = previewScore + openableRackMelds.score;
+  // Manual staging and rack-layout detection are separate sources of intent.
+  // Merge them once here; every authoritative opening command must consume
+  // this canonical intent so the score, animation and committed tiles agree.
+  const openIntent = useMemo(() => ({
+    melds: [...previewMelds, ...openableRackMelds.melds],
+    score: previewScore + openableRackMelds.score,
+  }), [openableRackMelds.melds, openableRackMelds.score, previewMelds, previewScore]);
   const orderedKonkanRunTileIds = useMemo(() => {
     return getOrderedKonkanRunCandidates(openableRackMelds.contiguousGroups)
       .find((tileIds) => canDeclareKonkanOpen(state, 0, tileIds)) ?? null;
@@ -741,9 +713,9 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
   const remainingMeldSlots = Math.max(0, MAX_PLAYER_MELDS - humanPlayer.melds.length);
   const canOpenActiveMelds = isHumanTurn && !humanPlayer.eliminated && (humanPlayer.konkan
     ? orderedKonkanRunTileIds !== null
-    : activeOpenMelds.length > 0 &&
-      activeOpenMelds.length <= remainingMeldSlots &&
-      (humanPlayer.opened || activeOpenScore >= requiredOpenScore));
+    : openIntent.melds.length > 0 &&
+      openIntent.melds.length <= remainingMeldSlots &&
+      (humanPlayer.opened || openIntent.score >= requiredOpenScore));
 
   // PRESENTATION CONTRACT (tested): discard landing is a two-phase handoff.
   // Keep this ordering unless the complete draw/discard animation suite is run;
@@ -930,11 +902,26 @@ requestAnimationFrame(() => {
     }
 
     pendingDiscardTileIdRef.current = null;
+    const discardOpenMelds = openIntent.melds.filter(
+      (meld) => meld.tiles.every((tile) => tile.id !== tileId),
+    );
+    const discardOpenScore = discardOpenMelds.reduce(
+      (total, meld) => total + meld.score,
+      0,
+    );
+    const pendingCanOpen =
+      !humanPlayer.opened &&
+      discardOpenMelds.length > 0 &&
+      discardOpenScore >= requiredOpenScore;
     awaitingDiscardRemovalTileIdRef.current = tileId;
     setSelectedTileId(null);
     setHiddenRackTileIds([tileId]);
     setHideDiscardTopTile(false);
-    discard(tileId);
+    if (pendingCanOpen) {
+      commitOpenIntent(discardOpenMelds, discardOpenScore, tileId);
+    } else {
+      discard(tileId);
+    }
     return true;
   };
 
@@ -1160,14 +1147,7 @@ requestAnimationFrame(() => {
       ...previewMelds,
       { ...meld, id: `human-preview-${Date.now()}-${previewMelds.length}` },
     ];
-    const nextScore = nextMelds.reduce((total, entry) => total + entry.score, 0);
-
-    if (humanPlayer.opened || nextScore >= requiredOpenScore) {
-      openMelds(nextMelds, nextScore);
-      setPreviewMelds([]);
-    } else {
-      setPreviewMelds(nextMelds);
-    }
+    setPreviewMelds(nextMelds);
     setSelectedTileId(null);
     return true;
   };
@@ -1181,7 +1161,6 @@ requestAnimationFrame(() => {
     setPresentedPlayers(state.players);
     resetTimeoutPresentation();
     eliminatedTurnFlightRef.current = null;
-    timeoutTurnKeyRef.current = null;
     setTileFlight(null);
     setHiddenRackTileIds([]);
     setHideDeckTopTile(false);
@@ -1192,91 +1171,11 @@ requestAnimationFrame(() => {
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
     setDiscardDragPoint(null);
-    setTurnTimedOut(false);
     setOpponentTurnTransitionActive(false);
   }, [lifecycleResumeToken, resetOpponentPresentation, resetTimeoutPresentation, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, setHideDiscardTopTile, setTileFlight]);
 
   const turnTimerVisible = onlineGameplayReady && (state.phase === "playing" || showFinishRevealPopup);
-  const turnTimerResetKey = `${currentRound}-${state.currentPlayerIndex}-${state.phase}`;
 
-useEffect(() => {
-  if (
-    isOnline ||
-    !isAppActive ||
-    state.phase !== "playing" ||
-    turnPresentationBlocked
-  ) {
-    setTurnTimedOut(false);
-    return;
-  }
-
-    timeoutTurnKeyRef.current = null;
-    setTurnTimedOut(false);
-    const turnKey = `${currentRound}-${state.currentPlayerIndex}`;
-    const warning = setTimeout(() => emitFeedback("timeout-warning", `timeout-warning:${turnKey}`), (OKEY_TURN_DURATION_SECONDS - 5) * 1000);
-    const timeout = setTimeout(() => {
-      emitFeedback("timeout", `timeout:${turnKey}`);
-      setTurnTimedOut(true);
-    }, OKEY_TURN_DURATION_SECONDS * 1000);
-    return () => {
-      clearTimeout(warning);
-      clearTimeout(timeout);
-    };
-}, [
-  currentRound,
-  emitFeedback,
-  isAppActive,
-  isOnline,
-  turnPresentationBlocked,
-  state.currentPlayerIndex,
-  state.phase,
-]);
-
-  useEffect(() => {
-    // Timeout is resolved once for the whole player turn. Drawing a tile changes
-    // hasDrawnThisTurn, but it must not create a second timeout for the same turn.
-    const turnKey = `${currentRound}-${state.currentPlayerIndex}`;
-if (
-  isOnline ||
-  !isAppActive ||
-  state.phase !== "playing" ||
-  state.currentPlayerIndex !== 0 ||
-  !turnTimedOut
-) {
-  return;
-}    if (timeoutTurnKeyRef.current === turnKey) return;
-    if (tileFlight || pendingTimeoutDiscardTileId || pendingDiscardTileIdRef.current) return;
-
-    // Lock the turn before starting draw/discard state updates or animations.
-    timeoutTurnKeyRef.current = turnKey;
-    setSelectedTileId(null);
-    if (!humanPlayer.opened && previewMelds.length > 0) {
-      setPreviewMelds([]);
-    }
-
-    if (!state.hasDrawnThisTurn) {
-      const forcedTile = state.deck[0] ?? null;
-      if (!forcedTile) {
-        beginTimeoutHumanTurn();
-        return;
-      }
-      if (deckTopRectRef.current) {
-        pendingDrawFlightRef.current = {
-          tileId: forcedTile.id,
-          tile: null,
-          sourceRect: deckTopRectRef.current,
-          face: "back",
-        };
-        setDrawFlightTileId(forcedTile.id);
-        setHiddenRackTileIds([forcedTile.id]);
-        setHideDeckTopTile(true);
-      }
-      beginTimeoutHumanTurn();
-      return;
-    }
-
-    beginTimeoutHumanTurn();
-  }, [beginTimeoutHumanTurn, humanPlayer.opened, previewMelds.length, currentRound, isAppActive, pendingTimeoutDiscardTileId, setDrawFlightTileId, setHiddenRackTileIds, setHideDeckTopTile, state.currentPlayerIndex, state.deck, state.hasDrawnThisTurn, state.phase, tileFlight, turnTimedOut]);
   useEffect(() => {
     const pending = eliminatedTurnFlightRef.current;
     if (pending?.stage === "committing") {
@@ -1360,29 +1259,34 @@ if (
     () => (["top", "left", "right"] as const).map((side) => {
       const serverIndex = relativeSeatMap?.[side] ?? null;
       const member = serverIndex === null ? null : onlineRoom?.members.find((entry) => entry.playerIndex === serverIndex) ?? null;
-      const previewPlayerIndex = side === "top" ? 2 : side === "left" ? 3 : 1;
-      const player = preview ? state.players[previewPlayerIndex] ?? null : playerForSeat(side);
+      const player = playerForSeat(side);
       return {
         side,
         id: player?.id ?? member?.userId ?? `waiting-${side}`,
         name: player?.name ?? member?.displayName ?? "",
         count: onlineGameplayReady ? (player ? stableOpponentTileCounts[player.id] ?? player.hand.length : 0) : 0,
-        active: onlineGameplayReady && !turnPresentationBlocked && currentPlayer?.id === player?.id,
-        timerResetKey: turnTimerResetKey,
+        active: onlineGameplayReady && turnView.playerId === player?.id,
+        turnTimeLeft,
+        turnDurationSeconds: turnView.durationSeconds,
         dealResetKey: dealLifecycleKey,
       };
     }),
-    [currentPlayer?.id, dealLifecycleKey, onlineGameplayReady, onlineRoom?.members, playerForSeat, preview, relativeSeatMap, stableOpponentTileCounts, state.players, turnPresentationBlocked, turnTimerResetKey],
+    [dealLifecycleKey, onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, state.players, turnTimeLeft, turnView.durationSeconds, turnView.playerId],
   );
   const seatOrderedPlayers = useMemo(() => {
     if (!relativeSeatMap) return [state.players[0], state.players[2], state.players[3], state.players[1]];
     return ["bottom", "top", "left", "right"].map((seat) => playerForSeat(seat as RelativeSeat) ?? state.players[0]);
   }, [playerForSeat, relativeSeatMap, state.players]);
-  const presentedSeatOrderedPlayers = useMemo(() =>
-    seatOrderedPlayers.map((player) =>
-      presentedTablePlayers.find((entry) => entry.id === player.id) ?? player,
-    ),
-  [presentedTablePlayers, seatOrderedPlayers]);
+  const presentedSeatOrderedPlayers = useMemo(
+    () =>
+      seatOrderedPlayers.map((player) => {
+        // The local player's melds must reflect authoritative state immediately.
+        // Presentation caching is only needed for opponent draw/discard animation.
+        if (player.id === humanPlayer.id) return player;
+        return presentedTablePlayers.find((entry) => entry.id === player.id) ?? player;
+      }),
+    [humanPlayer.id, presentedTablePlayers, seatOrderedPlayers],
+  );
   const openOpponentProfile = useStableEvent((playerId: string, seat: Player["seat"]) => {
     const player = state.players.find((entry) => entry.id === playerId);
     if (!player) return;
@@ -1393,8 +1297,11 @@ if (
       seat,
       kind: player.kind,
       teamId: player.teamId,
-      isActive: currentPlayer?.id === player.id,
-      timeLeft: OKEY_TURN_DURATION_SECONDS,
+      isActive: turnView.playerId === player.id,
+      timeLeft:
+        turnView.playerId === player.id
+          ? Math.max(0, Math.ceil(turnTimeLeft))
+          : 0,
       tileCount,
       score: 0,
       isLeader: false,
@@ -1444,6 +1351,27 @@ if (
     emitFeedback("rack-select", `rack-select:${tileId}:${Date.now()}`);
   });
   const handleDropMeldGroup = useStableEvent((meld: OkeyMeld, point: { x: number; y: number }) => {
+    if (humanPlayer.opened) {
+      const accepted =
+        isHumanTurn &&
+        isInsideHumanMeldDropZone(point) &&
+        remainingMeldSlots > 0;
+
+      if (!accepted) {
+        emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`);
+        return false;
+      }
+
+      // Once the player has already opened, a dragged meld is a continuation
+      // of their table play, not a second opening flow. Commit it directly
+      // through the authoritative server path while keeping the Open button
+      // available for the normal/manual workflow.
+      commitOpenIntent([meld], meld.score);
+      setSelectedTileId(null);
+      emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
+      return true;
+    }
+
     const accepted = addPreviewMeld(meld, point);
     emitFeedback(accepted ? "rack-move" : "invalid", `meld-drop:${meld.id}:${Date.now()}`);
     return accepted;
@@ -1454,8 +1382,7 @@ if (
     return accepted;
   });
   const handleTileDragPointChange = useStableEvent(updateTileDragMeldTarget);
-  const handleExternalDropPlaced = useStableEvent((tileId: string, targetIndex: number) => {
-    moveTile(tileId, targetIndex);
+  const handleExternalDropPlaced = useStableEvent((tileId: string, _targetIndex: number) => {
     setSelectedTileId(tileId);
     setDiscardDropPlacement(null);
     setDiscardDragPoint(null);
@@ -1468,12 +1395,10 @@ if (
     completePendingDrawFlight(tileId, rect);
   });
   const handleMoveRackTile = useStableEvent((tileId: string, targetIndex: number) => {
-    moveTile(tileId, targetIndex);
     setSelectedTileId(tileId);
     emitFeedback("rack-move", `rack-move:${tileId}:${targetIndex}:${Date.now()}`);
   });
   const handleMoveRackTiles = useStableEvent((tileIds: string[], targetIndex: number) => {
-    moveTiles(tileIds, targetIndex);
     setSelectedTileId(tileIds[0] ?? null);
     emitFeedback("rack-move", `rack-group:${tileIds.join("-")}:${targetIndex}:${Date.now()}`);
   });
@@ -1485,10 +1410,72 @@ if (
     [discardDropPlacement, drawFlightTileId],
   );
   useEffect(() => {
+    if (lastPresentationRoundRef.current === currentRound) return;
+    lastPresentationRoundRef.current = currentRound;
+
+    // A new round is a hard presentation boundary. No animation, cached tile,
+    // meld, popup, measurement target, or pending visual action from the
+    // previous round may survive into the new authoritative round.
+    if (discardAdvanceTimerRef.current) {
+      clearTimeout(discardAdvanceTimerRef.current);
+      discardAdvanceTimerRef.current = null;
+    }
+
+    pendingDrawFlightRef.current = null;
+    timeoutDrawLandingRectRef.current = null;
+    timeoutWarningTurnRef.current = null;
+    pendingDiscardTileIdRef.current = null;
+    pendingDiscardLandingTileIdRef.current = null;
+    awaitingDiscardRemovalTileIdRef.current = null;
+    eliminatedTurnFlightRef.current = null;
+    hoveredMeldTargetRef.current = null;
+    meldDropRectsRef.current = [];
+
+    resetOpponentPresentation();
+    resetTimeoutPresentation();
+
+    setTileFlight(null);
+    setHiddenRackTileIds([]);
+    setHideDeckTopTile(false);
+    setHideDiscardTopTile(false);
+    setDrawFlightTileId(null);
+    setDiscardPresentationFallback(null);
+    setOpponentTurnTransitionActive(false);
+
     setPreviewMelds([]);
+    setTableMeldOffsets({});
     setSelectedTileId(null);
+    setRackSetScore(0);
+    setOpenableRackMelds({ melds: [], score: 0, contiguousGroups: [] });
+    setDiscardDropPlacement(null);
+    setIsDiscardDragActive(false);
+    setHoveredMeldTarget(null);
+    setDiscardDragPoint(null);
+
     setShowScoreDetails(false);
-  }, [currentRound]);
+    setShowDiscardHistory(false);
+    setShowFinalTileCelebration(false);
+    setTurnWarningToastVisible(false);
+    setProfilePlayer(null);
+
+    setPresentedPlayers(state.players);
+    setStableOpponentTileCounts(
+      Object.fromEntries(
+        state.players.slice(1).map((player) => [player.id, player.hand.length]),
+      ),
+    );
+  }, [
+    currentRound,
+    resetOpponentPresentation,
+    resetTimeoutPresentation,
+    setDrawFlightTileId,
+    setHiddenRackTileIds,
+    setHideDeckTopTile,
+    setHideDiscardTopTile,
+    setPresentedPlayers,
+    setTileFlight,
+    state.players,
+  ]);
 
   useEffect(() => {
     if (!showFinishRevealPopup) {
@@ -1696,22 +1683,24 @@ if (
           />
         ) : null}
         <OkeyPlayerSetScore
-          score={previewMelds.length > 0 ? activeOpenScore : rackSetScore}
+          score={previewMelds.length > 0 ? openIntent.score : rackSetScore}
           targetScore={
   humanPlayer.opened
     ? humanPlayer.scoreOpened
     : requiredOpenScore
 }
           canOpen={canOpenActiveMelds}
+          alreadyOpened={humanPlayer.opened}
           konkan={humanPlayer.konkan}
           onOpen={() => {
             if (!canOpenActiveMelds) return;
             if (humanPlayer.konkan) {
               if (orderedKonkanRunTileIds) declareKonkan(orderedKonkanRunTileIds);
             } else {
-              openMelds(activeOpenMelds, activeOpenScore);
+              commitOpenIntent(openIntent.melds, openIntent.score);
             }
-            setPreviewMelds([]);
+            // Keep staged melds visible until the authoritative projection confirms
+            // `humanPlayer.opened`. The existing effect clears them after server ack.
             setSelectedTileId(null);
           }}
         />
@@ -1738,10 +1727,11 @@ if (
 
           turnTimerActive={
             turnTimerVisible &&
-            state.currentPlayerIndex === 0 &&
-            !turnPresentationBlocked
+            turnView.playerId === humanPlayer.id
           }
-          turnTimerResetKey={turnTimerResetKey}
+          turnWarningToastVisible={turnWarningToastVisible}
+          turnTimeLeft={turnTimeLeft}
+          turnDurationSeconds={turnView.durationSeconds}
           dealResetKey={dealLifecycleKey}
           isDealer={onlineGameplayReady && state.dealerIndex === 0}
           dealOrigin={dealOrigin}
@@ -1774,6 +1764,7 @@ if (
   visible={showMatchMenu}
   players={seatOrderedPlayers}
   humanPlayer={humanPlayer}
+  activePlayerId={turnView.playerId}
   translateX={matchMenuTranslateX}
   onClose={closeMatchMenu}
   onLeavePress={() => {
@@ -1818,3 +1809,4 @@ const finishRevealStyles = StyleSheet.create({
     borderColor: "rgba(248,243,223,0.22)",
   },
 });
+

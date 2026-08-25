@@ -6,12 +6,14 @@ export function OkeyPlayerSetScore({
   score,
   targetScore,
   canOpen = false,
+  alreadyOpened = false,
   konkan = false,
   onOpen,
 }: {
   score: number;
   targetScore: number;
   canOpen?: boolean;
+  alreadyOpened?: boolean;
   konkan?: boolean;
   onOpen?: () => void;
 }) {
@@ -23,7 +25,7 @@ export function OkeyPlayerSetScore({
           onPress={onOpen}
         >
           <Text style={styles.openSetsButtonText}>
-            {konkan ? "کۆنکان" : "ڕاخستن"}
+            {konkan ? "کۆنکان" : alreadyOpened ? "دانانی دەستە" : "ڕاخستن"}
           </Text>
         </Pressable>
       ) : null}

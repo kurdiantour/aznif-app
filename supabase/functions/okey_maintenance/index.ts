@@ -7,7 +7,9 @@ import {
   startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeMatchState,
 } from "../../../okey/server/okey-authoritative.ts";
+import type { OkeyActionEvent } from "../../../okey/server/okey-action-events.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
+import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 
 const MATCH_LIMIT = 100;
 
@@ -16,6 +18,7 @@ type MatchRow = {
   version: number | string;
   status: "finished";
   settlement_at: string | null;
+  is_test: boolean;
 };
 
 type RecoverableRoundRow = {
@@ -23,6 +26,12 @@ type RecoverableRoundRow = {
   version: number | string;
   status: "playing";
   next_round_eligible_at: string;
+};
+
+type PlayingMatchRow = {
+  id: string;
+  version: number | string;
+  status: "playing";
 };
 
 function json(body: unknown, status = 200) {
@@ -58,6 +67,7 @@ serve(async (request) => {
   const broadcast = async (
     matchId: string,
     version: number,
+    actionEvents: OkeyActionEvent[] = [],
   ) => {
     const channel = service.channel(`okey-match:${matchId}`);
 
@@ -67,6 +77,7 @@ serve(async (request) => {
       payload: {
         matchId,
         version,
+        actionEvents,
       },
     });
 
@@ -76,7 +87,7 @@ serve(async (request) => {
   const { data: settlementMatches, error: matchesError } = await service
     .schema("okey")
     .from("matches")
-    .select("id, version, status, settlement_at")
+    .select("id, version, status, settlement_at, is_test")
     .eq("status", "finished")
     .is("settlement_at", null)
     .order("updated_at", { ascending: true })
@@ -108,6 +119,21 @@ serve(async (request) => {
 
   for (const match of (settlementMatches ?? []) as MatchRow[]) {
     try {
+      if (match.is_test) {
+        const { error: testSettlementError } = await service
+          .schema("okey")
+          .from("matches")
+          .update({
+            settlement_at: new Date().toISOString(),
+            settlement: { type: "test", economyApplied: false },
+          })
+          .eq("id", match.id)
+          .eq("is_test", true)
+          .is("settlement_at", null);
+        if (testSettlementError) throw new Error(testSettlementError.message);
+        recoveredSettlements += 1;
+        continue;
+      }
       const { data: stateRow, error: stateError } =
         await service
           .schema("okey")
@@ -254,7 +280,7 @@ serve(async (request) => {
       const nextVersion = expectedVersion + 1;
       const deadline = getNextOkeyMatchTurnDeadline(nextState);
       const { data: commit, error: commitError } = await service
-        .rpc("okey_commit_authoritative_command", {
+        .rpc("okey_commit_authoritative_action", {
           p_match_id: match.id,
           p_user_id: claimantSeat.user_id,
           p_command_id: await deterministicCommandId(
@@ -272,6 +298,7 @@ serve(async (request) => {
           ),
           p_status: "playing",
           p_turn_deadline_at: deadline,
+          p_action_events: [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }],
         })
         .single();
 
@@ -285,7 +312,25 @@ serve(async (request) => {
 
       recoveredRounds += 1;
       try {
-        await broadcast(match.id, Number((commit as { version: number }).version));
+        await handOffOkeyBotTurn({
+          supabaseUrl,
+          workerSecret,
+          matchId: match.id,
+          state: nextState,
+          version: Number((commit as { version: number }).version),
+        });
+      } catch (handoffError) {
+        console.error(
+          "Okey next-round Bot handoff failed for " + match.id,
+          handoffError,
+        );
+      }
+      try {
+        await broadcast(
+          match.id,
+          Number((commit as { version: number }).version),
+          (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [],
+        );
       } catch (broadcastError) {
         console.error(
           "Okey next-round recovery broadcast failed for " + match.id,
@@ -299,12 +344,64 @@ serve(async (request) => {
     }
   }
 
+  const { data: playingMatches, error: botRecoveryQueryError } = await service
+    .schema("okey")
+    .from("matches")
+    .select("id, version, status")
+    .eq("status", "playing")
+    .order("updated_at", { ascending: true })
+    .limit(MATCH_LIMIT);
+
+  if (botRecoveryQueryError) {
+    return json(
+      {
+        error: "bot_recovery_query_failed",
+        details: botRecoveryQueryError.message,
+      },
+      500,
+    );
+  }
+
+  let botTurnsHandedOff = 0;
+
+  for (const match of (playingMatches ?? []) as PlayingMatchRow[]) {
+    try {
+      const { data: stateRow, error: stateError } = await service
+        .schema("okey")
+        .from("match_private_states")
+        .select("state")
+        .eq("match_id", match.id)
+        .single();
+
+      if (stateError || !stateRow) {
+        skipped += 1;
+        continue;
+      }
+
+      const handedOff = await handOffOkeyBotTurn({
+        supabaseUrl,
+        workerSecret,
+        matchId: match.id,
+        state: stateRow.state as OkeyAuthoritativeMatchState,
+        version: Number(match.version),
+      });
+
+      if (handedOff) botTurnsHandedOff += 1;
+    } catch (error) {
+      failed += 1;
+      const message = error instanceof Error ? error.message : "unknown_bot_handoff_error";
+      failures.push({ matchId: match.id, error: message });
+    }
+  }
+
   return json({
     scanned: settlementMatches?.length ?? 0,
     recoveredSettlements,
     recoverableRoundsScanned: recoverableRounds?.length ?? 0,
     recoveredRounds,
     recoveryConflicts,
+    playingMatchesScanned: playingMatches?.length ?? 0,
+    botTurnsHandedOff,
     skipped,
     failed,
     failures,

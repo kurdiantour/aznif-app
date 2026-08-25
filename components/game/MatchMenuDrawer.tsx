@@ -13,6 +13,7 @@ type MatchMenuDrawerProps = {
   visible: boolean;
   players: any[];
   humanPlayer?: any | null;
+  activePlayerId?: string | null;
   translateX: Animated.Value;
   onClose: () => void;
   onLeavePress: () => void;
@@ -30,6 +31,7 @@ export default function MatchMenuDrawer({
   visible,
   players,
   humanPlayer,
+  activePlayerId,
   translateX,
   onClose,
   onLeavePress,
@@ -107,7 +109,7 @@ export default function MatchMenuDrawer({
                 {team.players.map((player) => (
                   <View
                     key={player.id}
-                    style={styles.matchMenuPlayerRow}
+                    style={[styles.matchMenuPlayerRow, player.id === activePlayerId && styles.matchMenuPlayerRowActive]}
                   >
                     <PlayerAvatar
                       avatarId={player.avatarId}
@@ -222,6 +224,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "SpedaRegular",
     letterSpacing: 0.75,
+  },
+
+  matchMenuPlayerRowActive: {
+    borderColor: "#ef2424",
+    borderWidth: 1,
   },
 
   matchMenuPlayerRow: {

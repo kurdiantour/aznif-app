@@ -1,9 +1,6 @@
 import { expect, test } from "@jest/globals";
 import {
-  advanceLocalOkeyTurnSequence,
   createOkeyMeldPresentationFrames,
-  getOkeyTurnIdentity,
-  getOrCreateLocalOkeyTurnDeadline,
   isOkeyTurnPresentationBlocked,
 } from "../okey-game-presentation";
 import {
@@ -96,19 +93,16 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
 test("turn timer stays blocked until the active tile flight lands", () => {
   expect(isOkeyTurnPresentationBlocked({
     opponentTransitionActive: false,
-    hasUnpresentedOpponentDiscard: false,
     hasTileFlight: true,
   })).toBe(true);
 
   expect(isOkeyTurnPresentationBlocked({
     opponentTransitionActive: false,
-    hasUnpresentedOpponentDiscard: false,
     hasTileFlight: false,
   })).toBe(false);
 
   expect(isOkeyTurnPresentationBlocked({
     opponentTransitionActive: false,
-    hasUnpresentedOpponentDiscard: false,
     hasTileFlight: false,
     hasPendingHumanHandRemoval: true,
   })).toBe(true);
@@ -142,73 +136,4 @@ test("bot meld presentation reveals spent tiles one action at a time", () => {
   expect(frames).toHaveLength(2);
   expect(frames[0][0].melds[0].tiles.map((entry) => entry.id)).toEqual(["a", "b", "c", "d"]);
   expect(frames[1][0].melds[0].tiles.map((entry) => entry.id)).toEqual(["a", "b", "c", "d", "e"]);
-});
-test("Human -> opponents -> Human again creates a fresh Preview deadline and one warning per Human turn", () => {
-  let sequence = { marker: null as string | null, sequence: 0 };
-  let deadline: { turnIdentity: string; deadlineMs: number } | null = null;
-  let warnedTurnIdentity: string | null = null;
-  const warnings: string[] = [];
-  const consumeWarning = (turnIdentity: string) => {
-    if (warnedTurnIdentity === turnIdentity) return;
-    warnedTurnIdentity = turnIdentity;
-    warnings.push(turnIdentity);
-  };
-
-  sequence = advanceLocalOkeyTurnSequence(sequence, "1-0-human");
-  const firstHumanTurn = getOkeyTurnIdentity({
-    round: 1,
-    playerIndex: 0,
-    playerId: "human",
-    localSequence: sequence.sequence,
-  });
-  deadline = getOrCreateLocalOkeyTurnDeadline(deadline, firstHumanTurn, 1_000, 30_000);
-  expect(deadline.deadlineMs).toBe(31_000);
-  consumeWarning(firstHumanTurn);
-  consumeWarning(firstHumanTurn);
-
-  const afterDraw = advanceLocalOkeyTurnSequence(sequence, "1-0-human");
-  expect(afterDraw).toBe(sequence);
-  expect(getOrCreateLocalOkeyTurnDeadline(deadline, firstHumanTurn, 2_000, 30_000)).toBe(deadline);
-
-  sequence = advanceLocalOkeyTurnSequence(sequence, "1-1-opponent-1");
-  sequence = advanceLocalOkeyTurnSequence(sequence, "1-2-opponent-2");
-  sequence = advanceLocalOkeyTurnSequence(sequence, "1-3-opponent-3");
-  sequence = advanceLocalOkeyTurnSequence(sequence, "1-0-human");
-  const secondHumanTurn = getOkeyTurnIdentity({
-    round: 1,
-    playerIndex: 0,
-    playerId: "human",
-    localSequence: sequence.sequence,
-  });
-  deadline = getOrCreateLocalOkeyTurnDeadline(deadline, secondHumanTurn, 40_000, 30_000);
-  expect(secondHumanTurn).not.toBe(firstHumanTurn);
-  expect(deadline.deadlineMs).toBe(70_000);
-  consumeWarning(secondHumanTurn);
-  consumeWarning(secondHumanTurn);
-
-  expect(warnings).toEqual([firstHumanTurn, secondHumanTurn]);
-});
-
-test("Online turn identity changes only when the authoritative deadline changes", () => {
-  const first = getOkeyTurnIdentity({
-    round: 1,
-    playerIndex: 0,
-    playerId: "human",
-    onlineDeadlineAt: "2026-08-22T10:00:30.000Z",
-  });
-  const afterDraw = getOkeyTurnIdentity({
-    round: 1,
-    playerIndex: 0,
-    playerId: "human",
-    onlineDeadlineAt: "2026-08-22T10:00:30.000Z",
-  });
-  const nextTurn = getOkeyTurnIdentity({
-    round: 1,
-    playerIndex: 0,
-    playerId: "human",
-    onlineDeadlineAt: "2026-08-22T10:02:30.000Z",
-  });
-
-  expect(afterDraw).toBe(first);
-  expect(nextTurn).not.toBe(first);
 });

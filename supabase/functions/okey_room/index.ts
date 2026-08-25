@@ -92,6 +92,9 @@ const TABLE_ECONOMY: Record<string, TableEconomy> = {
 
 
 function withTableEconomy(room: OkeyRoomSnapshot): OkeyRoomSnapshot {
+  if (room.tableId === "preview-test") {
+    return { ...room, entryFee: 0, currency: "fun" };
+  }
   const economy = TABLE_ECONOMY[room.tableId];
   if (!economy) throw new Error("room_has_unknown_table");
   return { ...room, entryFee: economy.entryFee, currency: economy.currency };

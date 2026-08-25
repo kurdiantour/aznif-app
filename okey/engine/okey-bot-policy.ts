@@ -55,12 +55,6 @@ export function handSeatToBot(state: OkeyGameState, playerIndex: number, difficu
   };
 }
 
-export function returnSeatToPlayer(state: OkeyGameState, playerIndex: number): OkeyGameState {
-  const player = state.players[playerIndex];
-  if (!player?.controlledByBot) return state;
-  return { ...state, players: state.players.map((entry, index) => index === playerIndex ? { ...entry, controlledByBot: false } : entry) };
-}
-
 export function createSeededOkeyBotRandom(seed: number): () => number {
   let value = seed >>> 0;
   return () => {

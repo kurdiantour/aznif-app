@@ -10,16 +10,13 @@ import {
 } from "react";
 
 import {
-  createOkeyMeldPresentationFrames,
   type QueuedOpponentDiscardFlight,
   type ScreenRect,
   type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
 import type { OkeyGameState, OkeyTile } from "@/okey/types/okey";
-
-const BOT_DECISION_PAUSE_MS = 2200;
-const BOT_MELD_ACTION_GAP_MS = 650;
-const BOT_DISCARD_AFTER_ACTION_MS = 450;
+import type { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
+import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 export function useOkeyTileFlightCoordinator() {
   const [tileFlight, setTileFlight] = useState<TileFlight | null>(null);
@@ -43,14 +40,33 @@ export function useOkeyTileFlightCoordinator() {
 }
 
 type OpponentDrawFlight = {
+  kind: "draw";
   ownerPlayerId: string;
   eventId: string;
   source: "deck" | "discard";
   tile: OkeyTile | null;
 };
 
+type OpponentDiscardFlight = {
+  kind: "discard";
+  entry: QueuedOpponentDiscardFlight;
+};
+
+type OpponentPlayersSync = {
+  kind: "players-sync";
+  ownerPlayerId: string;
+  players: OkeyGameState["players"];
+};
+
+type OpponentPresentationAction =
+  | OpponentDrawFlight
+  | OpponentDiscardFlight
+  | OpponentPlayersSync;
+
 type UseOkeyOpponentTileFlightCoordinatorInput = {
   state: OkeyGameState;
+  adapter: SupabaseOkeyMatchAdapter | null;
+  projectionVersion: number | null;
   tileFlight: TileFlight | null;
   deckTopRectRef: MutableRefObject<ScreenRect | null>;
   discardTopRectRef: MutableRefObject<ScreenRect | null>;
@@ -69,18 +85,29 @@ type UseOkeyOpponentTileFlightCoordinatorInput = {
 };
 
 /**
- * Owns presentation-only sequencing for remote players.
+ * Presentation-only FIFO for already-committed remote actions.
  *
- * Authoritative game state still comes from useOkeyGame/server. This hook only
- * turns already-committed draw/discard changes into ordered tile-flight visuals.
+ * The server/engine owns legality and turn progression. This hook never delays,
+ * retries, or schedules game actions. It only renders committed action events in
+ * `(version, sequence)` order.
+ *
+ * Important invariants:
+ * - Events are always ingested, even while a tile flight is active.
+ * - Only one visual flight is started at a time.
+ * - An action is removed from the visual queue only after its flight can start.
+ * - Missing layout rects never consume/drop an action; measurement callbacks
+ *   call `retryQueuedOpponentFlight()` to drain again.
+ * - No bot-specific timers, decision pauses, or presentation turn scheduler.
  */
 export function useOkeyOpponentTileFlightCoordinator({
   state,
+  adapter,
+  projectionVersion,
   tileFlight,
   deckTopRectRef,
   discardTopRectRef,
   opponentSeatRectsRef,
-  presentedTablePlayersRef,
+  presentedTablePlayersRef: _presentedTablePlayersRef,
   setPresentedPlayers,
   setDiscardPresentationFallback,
   setOpponentTurnTransitionActive,
@@ -90,320 +117,309 @@ export function useOkeyOpponentTileFlightCoordinator({
   buildOpponentDiscardFlight,
   toLocalRect,
 }: UseOkeyOpponentTileFlightCoordinatorInput) {
-  const previousDiscardCountRef = useRef(state.discardPile.length);
-  const previousDiscardTopTileRef = useRef<OkeyTile | null>(
-    state.discardPile[state.discardPile.length - 1] ?? null,
-  );
-  const previousDeckCountRef = useRef(state.deck.length);
+  const pendingCommittedEventsRef = useRef<OkeyActionEvent[]>([]);
+  const queuedPresentationActionsRef = useRef<OpponentPresentationAction[]>([]);
+  const [actionEventTick, setActionEventTick] = useState(0);
 
-  // These queues preserve draw -> discard order across split/coalesced
-  // authoritative snapshots.
-  const queuedOpponentDrawFlightsRef = useRef<OpponentDrawFlight[]>([]);
+  const [presentedOpponentPlayerId, setPresentedOpponentPlayerId] =
+    useState<string | null>(null);
+
+  // Kept only for compatibility with OkeyGameTableScene. The simplified
+  // coordinator never puts opponent discards in this ref.
   const pendingOpponentDiscardAfterDrawRef =
     useRef<QueuedOpponentDiscardFlight | null>(null);
-  const queuedOpponentDiscardFlightsRef =
-    useRef<QueuedOpponentDiscardFlight[]>([]);
-  const pendingOpponentMeldTargetRef =
-    useRef<OkeyGameState["players"] | null>(null);
+
+  // Kept only for compatibility with the current scene API. There are no bot
+  // presentation timers anymore, so this ref always remains null.
   const botPresentationTimerRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Shared with eliminated-turn presentation so its committed discard is not
-  // animated a second time when it appears in authoritative state.
+  // animated a second time.
   const suppressNextOpponentDiscardFlightTileIdRef =
     useRef<string | null>(null);
 
-  const startOpponentPostDrawSequence = useCallback(
-    (pendingDiscard: QueuedOpponentDiscardFlight) => {
-      if (botPresentationTimerRef.current) {
-        clearTimeout(botPresentationTimerRef.current);
-      }
+  const startDiscardFlight = useCallback(
+    (entry: QueuedOpponentDiscardFlight): boolean => {
+      const discardFlight = buildOpponentDiscardFlight(entry);
+      if (!discardFlight) return false;
 
-      const targetPlayers =
-        pendingOpponentMeldTargetRef.current ?? state.players;
-      const actingPlayer = targetPlayers.find(
-        (player) => player.id === pendingDiscard.ownerPlayerId,
-      );
-      const isBotOpponent =
-        actingPlayer?.kind === "bot" ||
-        actingPlayer?.controlledByBot === true;
+      const previousDiscard =
+        state.discardPile[entry.discardCount - 2] ?? null;
 
-      const startDiscard = () => {
-        botPresentationTimerRef.current = null;
-        pendingOpponentMeldTargetRef.current = null;
-        setPresentedPlayers(targetPlayers);
-
-        const discardFlight = buildOpponentDiscardFlight(pendingDiscard);
-        if (!discardFlight) {
-          setHideDiscardTopTile(false);
-          setDiscardPresentationFallback(null);
-          setOpponentTurnTransitionActive(false);
-          return;
-        }
-
-        setDiscardPresentationFallback(
-          state.discardPile[pendingDiscard.discardCount - 2] ?? null,
-        );
-        setHideDiscardTopTile(true);
-        setTileFlight(discardFlight);
-      };
-
-      // Real online players are presented immediately. Bot pacing is visual only.
-      if (!isBotOpponent) {
-        startDiscard();
-        return;
-      }
-
-      const frames = createOkeyMeldPresentationFrames(
-        presentedTablePlayersRef.current,
-        targetPlayers,
-      );
-
-      const revealFrame = (index: number) => {
-        if (index >= frames.length) {
-          botPresentationTimerRef.current = setTimeout(
-            startDiscard,
-            BOT_DISCARD_AFTER_ACTION_MS,
-          );
-          return;
-        }
-
-        setPresentedPlayers(frames[index]);
-        botPresentationTimerRef.current = setTimeout(
-          () => revealFrame(index + 1),
-          BOT_MELD_ACTION_GAP_MS,
-        );
-      };
-
-      botPresentationTimerRef.current = setTimeout(
-        () => revealFrame(0),
-        BOT_DECISION_PAUSE_MS,
-      );
+      setPresentedOpponentPlayerId(entry.ownerPlayerId);
+      setDiscardPresentationFallback(previousDiscard);
+      setHideDiscardTopTile(true);
+      setTileFlight(discardFlight);
+      return true;
     },
     [
       buildOpponentDiscardFlight,
-      presentedTablePlayersRef,
       setDiscardPresentationFallback,
       setHideDiscardTopTile,
-      setOpponentTurnTransitionActive,
-      setPresentedPlayers,
       setTileFlight,
       state.discardPile,
-      state.players,
     ],
   );
 
-  const startNextQueuedOpponentDiscardFlight = useCallback(() => {
-    const nextDraw = queuedOpponentDrawFlightsRef.current[0];
+  /**
+   * Compatibility entry point used by OkeyGameTableScene after an opponent draw
+   * flight completes. No delay is introduced: either the discard starts now, or
+   * it is kept at the front of the FIFO until geometry is measurable.
+   */
+  const startOpponentPostDrawSequence = useCallback(
+    (pendingDiscard: QueuedOpponentDiscardFlight) => {
+      if (startDiscardFlight(pendingDiscard)) return;
 
-    if (nextDraw) {
-      const sourceRect =
-        nextDraw.source === "deck"
-          ? deckTopRectRef.current
-          : discardTopRectRef.current;
-      const seatRect =
-        opponentSeatRectsRef.current[nextDraw.ownerPlayerId] ?? null;
+      const alreadyQueued = queuedPresentationActionsRef.current.some(
+        (action) =>
+          action.kind === "discard" &&
+          action.entry.ownerPlayerId === pendingDiscard.ownerPlayerId &&
+          action.entry.tile.id === pendingDiscard.tile.id,
+      );
 
-      if (!sourceRect || !seatRect) return false;
+      if (!alreadyQueued) {
+        queuedPresentationActionsRef.current.unshift({
+          kind: "discard",
+          entry: pendingDiscard,
+        });
+      }
 
-      queuedOpponentDrawFlightsRef.current.shift();
+      setOpponentTurnTransitionActive(true);
+    },
+    [setOpponentTurnTransitionActive, startDiscardFlight],
+  );
 
-      const landingRect: ScreenRect = {
-        x: seatRect.x + seatRect.width / 2 - sourceRect.width / 2,
-        y: seatRect.y + seatRect.height / 2 - sourceRect.height / 2,
-        width: sourceRect.width,
-        height: sourceRect.height,
-      };
+  const startNextQueuedOpponentDiscardFlight = useCallback((): boolean => {
+    // `tileFlight` is the only visual busy condition. Game progression is never
+    // blocked here; this only prevents two animations from starting together.
+    if (tileFlight) return false;
 
-      if (nextDraw.source === "deck") setHideDeckTopTile(true);
-      else setHideDiscardTopTile(true);
+    while (queuedPresentationActionsRef.current.length > 0) {
+      const next = queuedPresentationActionsRef.current[0];
+      if (!next) break;
 
-      setTileFlight({
-        id: `opponent-draw-${nextDraw.eventId}`,
-        tile: nextDraw.tile,
-        face: nextDraw.source === "discard" ? "front" : "back",
-        from: toLocalRect(sourceRect),
-        to: toLocalRect(landingRect),
-      });
+      if (next.kind === "players-sync") {
+        queuedPresentationActionsRef.current.shift();
+        setPresentedOpponentPlayerId(next.ownerPlayerId);
+        setPresentedPlayers(next.players);
+        continue;
+      }
 
-      return true;
-    }
-
-    while (queuedOpponentDiscardFlightsRef.current.length > 0) {
-      const next = queuedOpponentDiscardFlightsRef.current[0];
-      if (!next) return false;
-
-      const previousDiscard =
-        state.discardPile[next.discardCount - 2] ?? null;
-
-      if (next.animateWallDraw) {
-        const deckRect = deckTopRectRef.current;
+      if (next.kind === "draw") {
+        const sourceRect =
+          next.source === "deck"
+            ? deckTopRectRef.current
+            : discardTopRectRef.current;
         const seatRect =
           opponentSeatRectsRef.current[next.ownerPlayerId] ?? null;
 
-        if (!deckRect || !seatRect) return false;
-
-        queuedOpponentDiscardFlightsRef.current.shift();
+        // Do not consume the action. onMeasured will call retry and this same
+        // action will be attempted once geometry exists.
+        if (!sourceRect || !seatRect) return false;
 
         const landingRect: ScreenRect = {
-          x: seatRect.x + seatRect.width / 2 - deckRect.width / 2,
-          y: seatRect.y + seatRect.height / 2 - deckRect.height / 2,
-          width: deckRect.width,
-          height: deckRect.height,
+          x: seatRect.x + seatRect.width / 2 - sourceRect.width / 2,
+          y: seatRect.y + seatRect.height / 2 - sourceRect.height / 2,
+          width: sourceRect.width,
+          height: sourceRect.height,
         };
 
-        pendingOpponentDiscardAfterDrawRef.current = next;
-        setDiscardPresentationFallback(previousDiscard);
-        setHideDeckTopTile(true);
-        setHideDiscardTopTile(true);
+        queuedPresentationActionsRef.current.shift();
+        setPresentedOpponentPlayerId(next.ownerPlayerId);
+
+        if (next.source === "deck") setHideDeckTopTile(true);
+        else setHideDiscardTopTile(true);
+
         setTileFlight({
-          id: `opponent-draw-${next.ownerPlayerId}-${next.discardCount}`,
-          tile: null,
-          face: "back",
-          from: toLocalRect(deckRect),
+          id: `opponent-draw-${next.eventId}`,
+          tile: next.tile,
+          face: next.source === "discard" ? "front" : "back",
+          from: toLocalRect(sourceRect),
           to: toLocalRect(landingRect),
         });
         return true;
       }
 
-      setDiscardPresentationFallback(previousDiscard);
-      setHideDiscardTopTile(true);
-      queuedOpponentDiscardFlightsRef.current.shift();
-      startOpponentPostDrawSequence(next);
+      // Discard: never remove it until its flight can actually be created.
+      if (!startDiscardFlight(next.entry)) return false;
+
+      queuedPresentationActionsRef.current.shift();
       return true;
     }
 
+    setPresentedOpponentPlayerId(null);
     return false;
   }, [
     deckTopRectRef,
     discardTopRectRef,
     opponentSeatRectsRef,
-    setDiscardPresentationFallback,
     setHideDeckTopTile,
     setHideDiscardTopTile,
+    setPresentedPlayers,
     setTileFlight,
-    startOpponentPostDrawSequence,
-    state.discardPile,
+    startDiscardFlight,
+    tileFlight,
     toLocalRect,
   ]);
 
   const retryQueuedOpponentFlight = useCallback(() => {
     if (tileFlight) return;
-    if (
-      queuedOpponentDrawFlightsRef.current.length === 0 &&
-      queuedOpponentDiscardFlightsRef.current.length === 0
-    ) {
+
+    if (queuedPresentationActionsRef.current.length === 0) {
+      setOpponentTurnTransitionActive(false);
+      setPresentedOpponentPlayerId(null);
       return;
     }
 
+    setOpponentTurnTransitionActive(true);
     startNextQueuedOpponentDiscardFlight();
   }, [
+    setOpponentTurnTransitionActive,
     startNextQueuedOpponentDiscardFlight,
     tileFlight,
   ]);
 
+  useEffect(() => {
+    if (!adapter) return;
+
+    return adapter.subscribeActionEvents((event) => {
+      pendingCommittedEventsRef.current.push(event);
+      pendingCommittedEventsRef.current.sort(
+        (left, right) =>
+          left.version - right.version || left.sequence - right.sequence,
+      );
+      setActionEventTick((value) => value + 1);
+    });
+  }, [adapter]);
+
+  /**
+   * Ingest every committed event whose authoritative projection is already
+   * available. This intentionally does NOT return when `tileFlight` is active:
+   * incoming events must be queued while the previous animation is playing.
+   */
   useLayoutEffect(() => {
-    const previousCount = previousDiscardCountRef.current;
-    const previousDiscardTopTile = previousDiscardTopTileRef.current;
-    const nextCount = state.discardPile.length;
+    if (projectionVersion === null) return;
 
-    previousDiscardCountRef.current = nextCount;
-    previousDiscardTopTileRef.current =
-      state.discardPile[nextCount - 1] ?? null;
-
-    const wallDrawsThisUpdate = Math.max(
-      0,
-      previousDeckCountRef.current - state.deck.length,
-    );
-    const discardDrawsThisUpdate = Math.max(0, previousCount - nextCount);
-    previousDeckCountRef.current = state.deck.length;
-
-    if (nextCount <= previousCount) {
-      const opponent =
-        state.currentPlayerIndex === 0
-          ? null
-          : state.players[state.currentPlayerIndex] ?? null;
-
-      if (
-        (wallDrawsThisUpdate > 0 || discardDrawsThisUpdate > 0) &&
-        opponent
-      ) {
-        const source =
-          discardDrawsThisUpdate > 0 ? ("discard" as const) : ("deck" as const);
-
-        queuedOpponentDrawFlightsRef.current.push({
-          ownerPlayerId: opponent.id,
-          eventId: `${opponent.id}-${source}-${state.deck.length}-${nextCount}`,
-          source,
-          tile: source === "discard" ? previousDiscardTopTile : null,
-        });
-
-        setOpponentTurnTransitionActive(true);
-
-        if (!tileFlight) {
-          const started = startNextQueuedOpponentDiscardFlight();
-          if (!started) setOpponentTurnTransitionActive(false);
-        }
-      }
-
-      return;
+    const ready: OkeyActionEvent[] = [];
+    while (
+      pendingCommittedEventsRef.current[0] &&
+      pendingCommittedEventsRef.current[0].version <= projectionVersion
+    ) {
+      ready.push(pendingCommittedEventsRef.current.shift()!);
     }
 
-    let remainingWallDraws = wallDrawsThisUpdate;
-    const newOpponentDiscards: QueuedOpponentDiscardFlight[] = [];
+    if (ready.length === 0) return;
 
-    for (let index = previousCount; index < nextCount; index += 1) {
-      const owner = state.discardOwners[index];
-      const discardedTile = state.discardPile[index];
-      const animateWallDraw =
-        !!owner && owner.playerIndex !== 0 && remainingWallDraws-- > 0;
+    let queuedVisual = false;
 
-      if (
-        discardedTile &&
-        suppressNextOpponentDiscardFlightTileIdRef.current === discardedTile.id
-      ) {
-        suppressNextOpponentDiscardFlightTileIdRef.current = null;
+    for (const event of ready) {
+      const actorIndex = state.players.findIndex(
+        (player) => player.id === event.actorPlayerId,
+      );
+      if (actorIndex <= 0 || !event.actorPlayerId) continue;
+
+      if (event.type === "draw") {
+        const source =
+          event.payload.source === "discard" ? "discard" : "deck";
+
+        queuedPresentationActionsRef.current.push({
+          kind: "draw",
+          ownerPlayerId: event.actorPlayerId,
+          eventId: `${event.version}-${event.sequence}`,
+          source,
+          tile:
+            source === "discard"
+              ? ((event.payload.tile as OkeyTile | null) ?? null)
+              : null,
+        });
+        queuedVisual = true;
         continue;
       }
 
-      if (!owner || owner.playerIndex === 0 || !discardedTile) continue;
+      if (event.type === "discard") {
+        const tileId =
+          typeof event.payload.tileId === "string"
+            ? event.payload.tileId
+            : null;
 
-      newOpponentDiscards.push({
-        tile: discardedTile,
-        ownerPlayerId: owner.playerId,
-        discardCount: index + 1,
-        animateWallDraw,
-      });
+        if (
+          tileId &&
+          suppressNextOpponentDiscardFlightTileIdRef.current === tileId
+        ) {
+          suppressNextOpponentDiscardFlightTileIdRef.current = null;
+          continue;
+        }
+
+        const tile =
+          (event.payload.tile as OkeyTile | null) ??
+          (tileId
+            ? state.discardPile.find((entry) => entry.id === tileId) ?? null
+            : null);
+
+        if (!tile) continue;
+
+        const discardIndex = state.discardPile.findIndex(
+          (entry) => entry.id === tile.id,
+        );
+
+        queuedPresentationActionsRef.current.push({
+          kind: "discard",
+          entry: {
+            tile,
+            ownerPlayerId: event.actorPlayerId,
+            discardCount:
+              discardIndex >= 0
+                ? discardIndex + 1
+                : state.discardPile.length,
+            animateWallDraw: false,
+          },
+        });
+        queuedVisual = true;
+        continue;
+      }
+
+      if (
+        event.type === "open" ||
+        event.type === "meld" ||
+        event.type === "konkan"
+      ) {
+        queuedPresentationActionsRef.current.push({
+          kind: "players-sync",
+          ownerPlayerId: event.actorPlayerId,
+          players: state.players,
+        });
+        queuedVisual = true;
+      }
     }
 
-    if (newOpponentDiscards.length === 0) return;
+    if (!queuedVisual) return;
 
     setOpponentTurnTransitionActive(true);
-    pendingOpponentMeldTargetRef.current = state.players;
-    queuedOpponentDiscardFlightsRef.current.push(...newOpponentDiscards);
 
+    // If another flight is active, do nothing else. The scene calls
+    // startNextQueuedOpponentDiscardFlight() when that flight completes.
     if (!tileFlight) {
-      const started = startNextQueuedOpponentDiscardFlight();
-      if (!started) setOpponentTurnTransitionActive(false);
+      startNextQueuedOpponentDiscardFlight();
     }
   }, [
+    actionEventTick,
+    projectionVersion,
     setOpponentTurnTransitionActive,
     startNextQueuedOpponentDiscardFlight,
-    state.currentPlayerIndex,
-    state.deck.length,
-    state.discardOwners,
     state.discardPile,
     state.players,
     tileFlight,
   ]);
 
   const resetOpponentPresentation = useCallback(() => {
-    queuedOpponentDrawFlightsRef.current = [];
-    queuedOpponentDiscardFlightsRef.current = [];
+    pendingCommittedEventsRef.current = [];
+    queuedPresentationActionsRef.current = [];
     pendingOpponentDiscardAfterDrawRef.current = null;
-    pendingOpponentMeldTargetRef.current = null;
+    setPresentedOpponentPlayerId(null);
     suppressNextOpponentDiscardFlightTileIdRef.current = null;
 
+    // Compatibility ref should never hold a timer, but clear defensively.
     if (botPresentationTimerRef.current) {
       clearTimeout(botPresentationTimerRef.current);
       botPresentationTimerRef.current = null;
@@ -418,7 +434,7 @@ export function useOkeyOpponentTileFlightCoordinator({
   );
 
   return {
-    previousDiscardCountRef,
+    presentedOpponentPlayerId,
     pendingOpponentDiscardAfterDrawRef,
     suppressNextOpponentDiscardFlightTileIdRef,
     botPresentationTimerRef,
@@ -778,5 +794,4 @@ export function useOkeyTimeoutTileFlightCoordinator({
     resetTimeoutPresentation,
   };
 }
-
 

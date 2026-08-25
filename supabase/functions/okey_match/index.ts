@@ -19,6 +19,13 @@ import {
 import type {
   OkeyMeld,
 } from "../../../okey/types/okey.ts";
+import {
+  createForcedDrawDiscardEvents,
+  createOkeyCommandActionEvents,
+  type OkeyActionEvent,
+  type OkeyActionEventDraft,
+} from "../../../okey/server/okey-action-events.ts";
+import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 
 type OkeyAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -33,6 +40,7 @@ type OkeyAuthoritativeCommit = {
   version: number;
   state: OkeyAuthoritativeMatchState;
   turn_deadline_at: string | null;
+  action_events?: OkeyActionEvent[];
 };
 
 const corsHeaders = {
@@ -110,6 +118,13 @@ function parseCommand(
           }
         : null;
 
+    case "open-and-discard":
+      return Array.isArray(command.melds) &&
+          typeof command.score === "number" && Number.isFinite(command.score) &&
+          typeof command.tileId === "string"
+        ? { type: "open-and-discard", melds: command.melds as OkeyMeld[], score: command.score, tileId: command.tileId }
+        : null;
+
     case "spend-meld":
     case "lock-konkan":
       return typeof command.tileId === "string" &&
@@ -152,6 +167,9 @@ serve(async (req) => {
 
   const serviceKey =
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  const workerSecret =
+    Deno.env.get("OKEY_WORKER_SECRET");
 
   const authorization =
     req.headers.get("Authorization");
@@ -267,6 +285,7 @@ serve(async (req) => {
 
   const broadcastStateUpdate = async (
     version: number,
+    actionEvents: OkeyActionEvent[] = [],
   ) => {
     const channel = service.channel(
       `okey-match:${matchId}`,
@@ -278,11 +297,23 @@ serve(async (req) => {
       payload: {
         matchId,
         version,
+        actionEvents,
       },
     });
 
     await service.removeChannel(channel);
   };
+
+  const { data: runtimeMatch, error: runtimeMatchError } = await service
+    .schema("okey")
+    .from("matches")
+    .select("is_test")
+    .eq("id", matchId)
+    .maybeSingle();
+  if (runtimeMatchError || !runtimeMatch) {
+    return json({ error: "match_runtime_lookup_failed" }, 500);
+  }
+  const isTestMatch = runtimeMatch.is_test === true;
 
   const settleFinishedState = async (
     state: OkeyAuthoritativeMatchState,
@@ -291,6 +322,28 @@ serve(async (req) => {
       return {
         settlement: null,
         error: null,
+      };
+    }
+
+    if (isTestMatch) {
+      const testSettlement = {
+        type: "test",
+        economyApplied: false,
+        winnerTeamId: state.matchWinnerTeamId,
+      };
+      const { error: testSettlementError } = await service
+        .schema("okey")
+        .from("matches")
+        .update({
+          settlement_at: new Date().toISOString(),
+          settlement: testSettlement,
+        })
+        .eq("id", matchId)
+        .eq("is_test", true)
+        .is("settlement_at", null);
+      return {
+        settlement: testSettlement,
+        error: testSettlementError ? new Error(testSettlementError.message) : null,
       };
     }
 
@@ -421,6 +474,28 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
    * settlement.
    */
   if (isSnapshot) {
+    const afterVersion = Number(body.afterVersion);
+    let actionEvents: OkeyActionEvent[] = [];
+    if (Number.isSafeInteger(afterVersion) && afterVersion >= 0) {
+      const { data: eventRows, error: eventError } = await service
+        .schema("okey")
+        .from("match_action_events")
+        .select("match_id,version,sequence,action_type,actor_player_id,payload,created_at")
+        .eq("match_id", matchId)
+        .gt("version", afterVersion)
+        .order("version", { ascending: true })
+        .order("sequence", { ascending: true });
+      if (eventError) throw eventError;
+      actionEvents = (eventRows ?? []).map((row) => ({
+        matchId: row.match_id,
+        version: Number(row.version),
+        sequence: Number(row.sequence),
+        type: row.action_type,
+        actorPlayerId: row.actor_player_id,
+        payload: row.payload ?? {},
+        createdAt: row.created_at,
+      })) as OkeyActionEvent[];
+    }
     let settlement: unknown = null;
 
     if (state.matchFinished) {
@@ -439,6 +514,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
     return json({
       settlement,
+      actionEvents,
       projection: projectOkeyMatchState(
         state,
         playerIndex,
@@ -486,6 +562,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     return json({
       applied: false,
       settlement,
+      actionEvents,
       projection: projectOkeyMatchState(
         state,
         playerIndex,
@@ -520,6 +597,9 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
   let nextState: OkeyAuthoritativeMatchState;
   let commandType: string;
+  const actingPlayer = state.roundState.players[state.roundState.currentPlayerIndex] ?? null;
+  let actionEventDrafts: OkeyActionEventDraft[] = [];
+
   let acceptedCommand:
     | OkeyAuthoritativeCommand
     | { type: "manual-leave" | "system-timeout" | "system-eliminated-turn" | "start-next-round" };
@@ -755,14 +835,62 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     bundle.turn_deadline_at,
   );
 
+  switch (acceptedCommand.type) {
+    case "manual-leave":
+      actionEventDrafts = [{ type: "leave", actorPlayerId: state.roundState.players[playerIndex]?.id ?? null, payload: {} }];
+      break;
+    case "start-next-round":
+      actionEventDrafts = [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }];
+      break;
+    case "system-timeout": {
+      const event = nextState.lastTimeoutDiscardEvent;
+      const tile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
+      const actorPlayerId = event?.playerId ?? actingPlayer?.id ?? "";
+      actionEventDrafts = event?.source === "rack"
+        ? [{ type: "discard", actorPlayerId, payload: { tileId: tile?.id ?? null, tile, reason: "timeout" } }]
+        : createForcedDrawDiscardEvents({
+            actorPlayerId,
+            source: "deck",
+            tile,
+            reason: "timeout",
+          });
+      break;
+    }
+    case "system-eliminated-turn": {
+      const tile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
+      actionEventDrafts = createForcedDrawDiscardEvents({
+        actorPlayerId: actingPlayer?.id ?? "",
+        source: "deck",
+        tile,
+        reason: "eliminated",
+      });
+      break;
+    }
+    default:
+      actionEventDrafts = createOkeyCommandActionEvents(acceptedCommand, actingPlayer?.id ?? "");
+  }
+  const previousTopDiscard = state.roundState.discardPile[state.roundState.discardPile.length - 1] ?? null;
+  actionEventDrafts = actionEventDrafts.map((event) =>
+    event.type === "draw" && event.payload.source === "discard" && previousTopDiscard
+      ? { ...event, payload: { ...event.payload, tile: previousTopDiscard } }
+      : event
+  );
+  const committedTopDiscard = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
+  actionEventDrafts = actionEventDrafts.map((event) =>
+    event.type === "discard" && committedTopDiscard
+      ? { ...event, payload: { ...event.payload, tileId: committedTopDiscard.id, tile: committedTopDiscard } }
+      : event
+  );
+
   const publicProjection =
     projectOkeyMatchPublicState(
       nextState,
       nextVersion,
       deadline,
     );
-  const dailyQuestEvents =
-    deriveOkeyDailyQuestGameplayEvents(
+  const dailyQuestEvents = isTestMatch
+    ? []
+    : deriveOkeyDailyQuestGameplayEvents(
       state,
       nextState,
       playerIndex,
@@ -775,7 +903,7 @@ const {
   error: commitError,
 } = await service
   .rpc(
-    "okey_commit_authoritative_command_with_events",
+    "okey_commit_authoritative_action_with_events",
     {
       p_match_id: matchId,
       p_user_id: authData.user.id,
@@ -793,6 +921,7 @@ const {
           : "playing",
       p_turn_deadline_at: deadline,
       p_gameplay_events: dailyQuestEvents,
+      p_action_events: actionEventDrafts,
     },
   )
   .single();
@@ -833,12 +962,30 @@ const commit =
   try {
     await broadcastStateUpdate(
       commit.version,
+      commit.action_events ?? [],
     );
   } catch (broadcastError) {
     console.error(
       "Okey match broadcast failed",
       broadcastError,
     );
+  }
+
+  if (!committedState.matchFinished) {
+    try {
+      if (!workerSecret) {
+        throw new Error("okey_worker_secret_not_configured");
+      }
+      await handOffOkeyBotTurn({
+        supabaseUrl,
+        workerSecret,
+        matchId,
+        state: committedState,
+        version: Number(commit.version),
+      });
+    } catch (handoffError) {
+      console.error(`Okey Bot handoff failed for ${matchId}`, handoffError);
+    }
   }
 
   if (committedState.matchFinished) {
@@ -872,6 +1019,7 @@ const commit =
 
     return json({
       applied: commit.applied,
+      actionEvents: commit.action_events ?? [],
       settlement: result.settlement,
       projection: projectOkeyMatchState(
         committedState,
@@ -884,6 +1032,7 @@ const commit =
 
   return json({
     applied: commit.applied,
+    actionEvents: commit.action_events ?? [],
     projection: projectOkeyMatchState(
       committedState,
       playerIndex,

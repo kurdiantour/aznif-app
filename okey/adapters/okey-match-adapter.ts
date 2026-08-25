@@ -1,3 +1,4 @@
+import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 import type {
   OkeyAuthoritativeCommand,
   OkeyMatchServerProjection,
@@ -40,6 +41,8 @@ export interface OnlineOkeyMatchAdapter {
         OkeyMatchServerProjection,
     ) => void,
   ): () => void;
+
+  subscribeActionEvents(listener: (event: OkeyActionEvent) => void): () => void;
 
   dispatch(
     command:

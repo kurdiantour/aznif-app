@@ -70,11 +70,11 @@ export function OkeyOpponentSeat({
   count,
   active,
   side,
-  timerResetKey,
+  turnTimeLeft,
+  turnDurationSeconds,
   dealResetKey,
   dealOrder = 0,
   dealOrigin,
-  timerDurationMs = 30_000,
   onMeasured,
   onPress,
 }: {
@@ -83,11 +83,11 @@ export function OkeyOpponentSeat({
   count: number;
   active: boolean;
   side: "top" | "left" | "right";
-  timerResetKey?: string;
+  turnTimeLeft: number;
+  turnDurationSeconds: number | null;
   dealResetKey?: string;
   dealOrder?: number;
   dealOrigin?: { x: number; y: number } | null;
-  timerDurationMs?: number;
   onMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
   onPress?: () => void;
 }) {
@@ -151,8 +151,8 @@ export function OkeyOpponentSeat({
       <View style={styles.opponentRack}>
         <OkeyTurnTimerBar
           active={active}
-          durationMs={timerDurationMs}
-          resetKey={timerResetKey}
+          remainingSeconds={turnTimeLeft}
+          durationSeconds={turnDurationSeconds}
           orientation="horizontal"
           reverse={side !== "left"}
           style={side === "top" ? styles.opponentTimerTop : side === "left" ? styles.opponentTimerLeft : styles.opponentTimerRight}

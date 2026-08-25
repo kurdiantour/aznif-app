@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
   OkeyBotTurnClaim,
@@ -63,6 +64,12 @@ export class SupabaseOkeyMatchAdapter
           OkeyMatchServerProjection,
       ) => void
     >();
+
+  private readonly actionEventListeners =
+    new Set<(event: OkeyActionEvent) => void>();
+
+  private actionEventVersion: number | null = null;
+  private readonly deliveredActionEventKeys = new Set<string>();
 
   private channel:
     | ReturnType<
@@ -130,8 +137,20 @@ export class SupabaseOkeyMatchAdapter
       this.listeners.delete(listener);
 
       if (
-        this.listeners.size === 0
+        this.listeners.size === 0 &&
+        this.actionEventListeners.size === 0
       ) {
+        this.closeRealtimeChannel();
+      }
+    };
+  }
+
+  subscribeActionEvents(listener: (event: OkeyActionEvent) => void): () => void {
+    this.actionEventListeners.add(listener);
+    if (!this.channel) this.openRealtimeChannel();
+    return () => {
+      this.actionEventListeners.delete(listener);
+      if (this.listeners.size === 0 && this.actionEventListeners.size === 0) {
         this.closeRealtimeChannel();
       }
     };
@@ -489,6 +508,7 @@ export class SupabaseOkeyMatchAdapter
               body: {
                 action: "snapshot",
                 matchId: this.matchId,
+                afterVersion: this.actionEventVersion,
               },
             },
           );
@@ -588,6 +608,7 @@ export class SupabaseOkeyMatchAdapter
       projection?: OkeyMatchServerProjection | null;
       settlement?: OkeyMatchServerProjection["settlement"];
       serverNow?: string;
+      actionEvents?: OkeyActionEvent[];
     };
 
     this.syncServerClock(response.serverNow);
@@ -596,12 +617,18 @@ export class SupabaseOkeyMatchAdapter
       return;
     }
 
+    const initialProjection = this.snapshot === null;
     this.publish({
       ...response.projection,
       settlement: "settlement" in response
         ? response.settlement ?? null
         : this.snapshot?.settlement ?? null,
     });
+    if (initialProjection && this.actionEventVersion === null) {
+      this.actionEventVersion = response.projection.version;
+    } else {
+      this.publishActionEvents(response.actionEvents ?? []);
+    }
   }
   private publish(
     snapshot:
@@ -632,6 +659,20 @@ export class SupabaseOkeyMatchAdapter
     }
   }
 
+  private publishActionEvents(events: OkeyActionEvent[]): void {
+    const ordered = [...events].sort(
+      (left, right) => left.version - right.version || left.sequence - right.sequence,
+    );
+    for (const event of ordered) {
+      if (event.matchId !== this.matchId) continue;
+      const key = `${event.version}:${event.sequence}`;
+      if (this.deliveredActionEventKeys.has(key)) continue;
+      this.deliveredActionEventKeys.add(key);
+      this.actionEventVersion = Math.max(this.actionEventVersion ?? 0, event.version);
+      for (const listener of this.actionEventListeners) listener(event);
+    }
+  }
+
   private openRealtimeChannel(): void {
     this.closed = false;
 
@@ -659,6 +700,7 @@ export class SupabaseOkeyMatchAdapter
           const message = payload as {
             matchId?: string;
             version?: number;
+            actionEvents?: OkeyActionEvent[];
           };
 
           if (
@@ -676,6 +718,12 @@ export class SupabaseOkeyMatchAdapter
             return;
           }
 
+          const hasEventGap =
+            this.actionEventVersion !== null &&
+            message.version > this.actionEventVersion + 1;
+          if (!hasEventGap) {
+            this.publishActionEvents(message.actionEvents ?? []);
+          }
           void this.refreshAfterRealtimeInvalidation(
             message.version,
           ).catch(() => {});

@@ -101,16 +101,14 @@ export function createOkeyMeldPresentationFrames(
 
 export function isOkeyTurnPresentationBlocked({
   opponentTransitionActive,
-  hasUnpresentedOpponentDiscard,
   hasTileFlight,
   hasPendingHumanHandRemoval = false,
 }: {
   opponentTransitionActive: boolean;
-  hasUnpresentedOpponentDiscard: boolean;
   hasTileFlight: boolean;
   hasPendingHumanHandRemoval?: boolean;
 }) {
-  return opponentTransitionActive || hasUnpresentedOpponentDiscard || hasTileFlight || hasPendingHumanHandRemoval;
+  return opponentTransitionActive || hasTileFlight || hasPendingHumanHandRemoval;
 }
 export type ScreenRect = { x: number; y: number; width: number; height: number };
 export type TileFlight = { id: string; tile: OkeyTile | null; face: "front" | "back"; from: ScreenRect; to: ScreenRect };
@@ -125,42 +123,4 @@ export type EliminatedTurnFlight = {
 };
 export type MeldDropRect = { playerId: string; meldId: string; x: number; y: number; width: number; height: number };
 export type MeldOffset = { x: number; y: number };
-export type LocalOkeyTurnSequenceState = {
-  marker: string | null;
-  sequence: number;
-};
 
-export function advanceLocalOkeyTurnSequence(
-  current: LocalOkeyTurnSequenceState,
-  marker: string | null,
-): LocalOkeyTurnSequenceState {
-  if (current.marker === marker) return current;
-  return { marker, sequence: current.sequence + 1 };
-}
-
-export function getOkeyTurnIdentity({
-  round,
-  playerIndex,
-  playerId,
-  onlineDeadlineAt,
-  localSequence,
-}: {
-  round: number;
-  playerIndex: number;
-  playerId: string;
-  onlineDeadlineAt?: string | null;
-  localSequence?: number;
-}): string {
-  const occurrence = onlineDeadlineAt ?? `local-${localSequence ?? 0}`;
-  return `${round}-${playerIndex}-${playerId}-${occurrence}`;
-}
-
-export function getOrCreateLocalOkeyTurnDeadline(
-  current: { turnIdentity: string; deadlineMs: number } | null,
-  turnIdentity: string,
-  now: number,
-  durationMs: number,
-): { turnIdentity: string; deadlineMs: number } {
-  if (current?.turnIdentity === turnIdentity) return current;
-  return { turnIdentity, deadlineMs: now + durationMs };
-}

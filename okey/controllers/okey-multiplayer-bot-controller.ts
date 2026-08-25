@@ -36,6 +36,10 @@ export function useOkeyMultiplayerBotController(input: {
       .finally(() => {
         inFlightTurnKeysRef.current.delete(turnKey);
       });
-  }, [input.matchId, input.projection, input.adapter]);
+  }, [
+    input.matchId,
+    input.projection,
+    input.adapter,
+  ]);
 }
 

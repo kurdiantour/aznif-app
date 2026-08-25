@@ -75,7 +75,8 @@ export function OkeyPlayerRack({
   turnTimerActive = false,
   turnWarningToastVisible = false,
   showTurnTimer = true,
-  turnTimerResetKey,
+  turnTimeLeft,
+  turnDurationSeconds,
   dealResetKey,
   isDealer = false,
   dealOrigin,
@@ -117,7 +118,8 @@ export function OkeyPlayerRack({
   turnTimerActive?: boolean;
   turnWarningToastVisible?: boolean;
   showTurnTimer?: boolean;
-  turnTimerResetKey?: string;
+  turnTimeLeft: number;
+  turnDurationSeconds: number | null;
   dealResetKey?: string;
   isDealer?: boolean;
   dealOrigin?: { x: number; y: number } | null;
@@ -725,7 +727,8 @@ export function OkeyPlayerRack({
         <OkeyTurnTimerBar
           active={turnTimerActive}
           visible={showTurnTimer}
-          resetKey={turnTimerResetKey}
+          remainingSeconds={turnTimeLeft}
+          durationSeconds={turnDurationSeconds}
           style={styles.rackTurnTimer}
         />
 
@@ -811,4 +814,3 @@ export function OkeyPlayerRack({
 
 export const MemoizedOkeyPlayerRack =
   memo(OkeyPlayerRack);
-

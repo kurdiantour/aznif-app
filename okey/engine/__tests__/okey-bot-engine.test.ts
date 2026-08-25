@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chooseBotDiscardTile, chooseBotDrawSource, prepareBotTurn } from "../okey-bot-engine.ts";
-import { createInitialOkeyGame } from "../okey-engine.ts";
+import { chooseBotDiscardTile, chooseBotDrawSource, playBotTurn, prepareBotTurn } from "../okey-bot-engine.ts";
+import { createInitialOkeyGame, drawTile } from "../okey-engine.ts";
 import type { OkeyGameState, OkeyTile } from "../../types/okey.ts";
 
 function tile(id: string, color: OkeyTile["color"], value: number, copy: 1 | 2 = 1): OkeyTile {
@@ -59,6 +59,27 @@ test("discard choice preserves completed and near-completed structures", () => {
   assert.equal(chooseBotDiscardTile(state)?.id, isolated.id);
 });
 
+test("authoritative Bot progression can commit Draw before Discard", () => {
+  const state = botState([
+    tile("r5", "red", 5),
+    tile("r6", "red", 6),
+    tile("r7", "red", 7),
+    tile("b3", "blue", 3),
+  ]);
+  const actorId = state.players[state.currentPlayerIndex].id;
+
+  const afterDraw = drawTile(state, chooseBotDrawSource(state));
+
+  assert.equal(afterDraw.currentPlayerIndex, state.currentPlayerIndex);
+  assert.equal(afterDraw.players[afterDraw.currentPlayerIndex].id, actorId);
+  assert.equal(afterDraw.hasDrawnThisTurn, true);
+
+  const afterDiscard = playBotTurn(afterDraw);
+
+  assert.equal(afterDiscard.hasDrawnThisTurn, false);
+  assert.notEqual(afterDiscard.currentPlayerIndex, state.currentPlayerIndex);
+  assert.equal(afterDiscard.discardPile.length, afterDraw.discardPile.length + 1);
+});
 test("prepared decisions are deterministic and preserve a discard tile", () => {
   const state = botState([
     tile("r5", "red", 5),

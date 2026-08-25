@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
   Animated,
-  Easing,
   View,
   type StyleProp,
   type ViewStyle,
@@ -12,16 +11,16 @@ import { styles } from "./okeyStyles";
 export function OkeyTurnTimerBar({
   active,
   visible = true,
-  durationMs = 30_000,
-  resetKey,
+  remainingSeconds,
+  durationSeconds,
   orientation = "horizontal",
   reverse = false,
   style,
 }: {
   active: boolean;
   visible?: boolean;
-  durationMs?: number;
-  resetKey?: string;
+  remainingSeconds: number;
+  durationSeconds: number | null;
   orientation?: "horizontal" | "vertical";
   reverse?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -31,24 +30,21 @@ export function OkeyTurnTimerBar({
   useEffect(() => {
     progress.stopAnimation();
 
-    if (!active) {
+    const duration =
+      typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0
+        ? durationSeconds
+        : 0;
+    const remaining = Number.isFinite(remainingSeconds)
+      ? Math.max(0, remainingSeconds)
+      : 0;
+
+    if (!active || duration <= 0) {
       progress.setValue(0);
       return;
     }
 
-    progress.setValue(1);
-
-    const animation = Animated.timing(progress, {
-      toValue: 0,
-      duration: durationMs,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    });
-
-    animation.start();
-
-    return () => animation.stop();
-  }, [active, durationMs, progress, resetKey]);
+    progress.setValue(Math.min(1, remaining / duration));
+  }, [active, durationSeconds, progress, remainingSeconds]);
 
   const fillStyle =
     orientation === "horizontal"
@@ -76,7 +72,7 @@ export function OkeyTurnTimerBar({
       accessibilityRole="timer"
       accessibilityLabel={
         active && visible
-          ? `کاتی نۆبەت، ${Math.ceil(durationMs / 1000)} چرکە`
+          ? `کاتی نۆبەت، ${Math.ceil(Math.max(0, remainingSeconds))} چرکە`
           : undefined
       }
       accessibilityLiveRegion="polite"

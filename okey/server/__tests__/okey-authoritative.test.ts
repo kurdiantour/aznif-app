@@ -596,3 +596,98 @@ test("heartbeat and disconnected presence alone cannot trigger Okey takeover", (
   const match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   assert.ok(match.roundState.players.every((player) => !isOkeyBotControlled(player)));
 });
+
+test("open-and-discard atomically opens melds and discards the requested remainder", () => {
+  const initial = createInitialOkeyGame(0);
+  const actorPlayerIndex = 0;
+  const setTiles = [
+    { id: "open-r10", color: "red", value: 10, copy: 1 },
+    { id: "open-b10", color: "blue", value: 10, copy: 1 },
+    { id: "open-k10", color: "black", value: 10, copy: 1 },
+    { id: "open-r11", color: "red", value: 11, copy: 1 },
+    { id: "open-b11", color: "blue", value: 11, copy: 1 },
+    { id: "open-k11", color: "black", value: 11, copy: 1 },
+    { id: "open-r12", color: "red", value: 12, copy: 1 },
+    { id: "open-b12", color: "blue", value: 12, copy: 1 },
+    { id: "open-k12", color: "black", value: 12, copy: 1 },
+  ] as const;
+  const remainder = { id: "open-remainder", color: "yellow", value: 1, copy: 1 } as const;
+  const state = {
+    ...initial,
+    currentPlayerIndex: actorPlayerIndex,
+    hasDrawnThisTurn: true,
+    okeyTile: { id: "okey", color: "yellow", value: 13, copy: 1 } as const,
+    players: initial.players.map((player, index) => index === actorPlayerIndex
+      ? { ...player, hand: [...setTiles, remainder], opened: false, melds: [], scoreOpened: 0, firstOpenScore: null, konkan: false }
+      : player),
+  };
+  const melds = [10, 11, 12].map((value) => ({
+    id: `open-set-${value}`,
+    ownerId: state.players[actorPlayerIndex].id,
+    kind: "set" as const,
+    tiles: state.players[actorPlayerIndex].hand.filter((tile) => tile.value === value),
+    score: value * 3,
+  }));
+
+  const next = applyAuthoritativeOkeyCommand(state, actorPlayerIndex, {
+    type: "open-and-discard",
+    melds,
+    score: 99_999,
+    tileId: remainder.id,
+  });
+
+  assert.equal(next.players[actorPlayerIndex].opened, true);
+  assert.equal(next.players[actorPlayerIndex].hand.some((tile) => tile.id === remainder.id), false);
+  assert.equal(next.discardPile.at(-1)?.id, remainder.id);
+  assert.notEqual(next, state);
+});
+
+test("open-and-discard rolls back the entire command when discard fails after a valid open", () => {
+  const initial = createInitialOkeyGame(0);
+  const actorPlayerIndex = 0;
+  const setTiles = [
+    { id: "rollback-r10", color: "red", value: 10, copy: 1 },
+    { id: "rollback-b10", color: "blue", value: 10, copy: 1 },
+    { id: "rollback-k10", color: "black", value: 10, copy: 1 },
+    { id: "rollback-r11", color: "red", value: 11, copy: 1 },
+    { id: "rollback-b11", color: "blue", value: 11, copy: 1 },
+    { id: "rollback-k11", color: "black", value: 11, copy: 1 },
+    { id: "rollback-r12", color: "red", value: 12, copy: 1 },
+    { id: "rollback-b12", color: "blue", value: 12, copy: 1 },
+    { id: "rollback-k12", color: "black", value: 12, copy: 1 },
+  ] as const;
+  const remainder = { id: "rollback-remainder", color: "yellow", value: 1, copy: 1 } as const;
+  const state = {
+    ...initial,
+    currentPlayerIndex: actorPlayerIndex,
+    hasDrawnThisTurn: true,
+    okeyTile: { id: "okey-rollback", color: "yellow", value: 13, copy: 1 } as const,
+    players: initial.players.map((player, index) => index === actorPlayerIndex
+      ? { ...player, hand: [...setTiles, remainder], opened: false, melds: [], scoreOpened: 0, firstOpenScore: null, konkan: false }
+      : player),
+  };
+  const melds = [10, 11, 12].map((value) => ({
+    id: `rollback-set-${value}`,
+    ownerId: state.players[actorPlayerIndex].id,
+    kind: "set" as const,
+    tiles: state.players[actorPlayerIndex].hand.filter((tile) => tile.value === value),
+    score: value * 3,
+  }));
+  const tileConsumedByOpen = setTiles[0].id;
+
+  assert.throws(
+    () => applyAuthoritativeOkeyCommand(state, actorPlayerIndex, {
+      type: "open-and-discard",
+      melds,
+      score: 99_999,
+      tileId: tileConsumedByOpen,
+    }),
+    (error) => error instanceof OkeyCommandError && error.code === "command_rejected",
+  );
+
+  assert.equal(state.players[actorPlayerIndex].opened, false);
+  assert.equal(state.players[actorPlayerIndex].melds.length, 0);
+  assert.equal(state.players[actorPlayerIndex].hand.length, setTiles.length + 1);
+  assert.notEqual(state.discardPile.at(-1)?.id, tileConsumedByOpen);
+});
+
