@@ -7,7 +7,6 @@ import GameChatDrawer, { type GameChatTransport } from "@/components/game/GameCh
 import type { GameChatMessage } from "@/lib/gameChat";
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
-import GameControls from "@/okey/components/GameControls";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import TableBackground from "@/components/game/TableBackground";
@@ -16,12 +15,11 @@ import { supabase } from "@/lib/supabase";
 import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
-import { OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
+import { mapOkeySettlementToPopupRewards, OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
 import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
 import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
 import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
-import { OkeyPlayerSetScore } from "@/okey/components/OkeyPlayerSetScore";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import { styles } from "@/okey/components/okeyStyles";
@@ -29,10 +27,8 @@ import { canDeclareKonkanOpen, canLockKonkanSet, canSpendTileOnMeld, getRequired
 import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
-import { mapOkeySettlementToPopupRewards } from "@/okey/presentation/okey-match-rewards";
 import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
 import { useOkeyOpponentTileFlightCoordinator, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
-import { useStableEvent } from "@/okey/hooks/useStableEvent";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import {
   getOkeyRoomStatus,
@@ -43,7 +39,6 @@ import {
   subscribeOkeyChat,
   type OkeyRoomSnapshot,
 } from "@/okey/multiplayer/okey-room-api";
-import { getRelativeSeatMap, type RelativeSeat } from "@/okey/multiplayer/relative-seat-map";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import {
   type EliminatedTurnFlight,
@@ -70,6 +65,26 @@ const TIMEOUT_TURN_WATCHDOG_MS = 2500;
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
 const PLAYER_PREVIEW_MELD_TILE_WIDTH = 22;
 const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 29;
+
+type RelativeSeat = "bottom" | "right" | "top" | "left";
+
+function getRelativeSeatMap(localPlayerIndex: number): Record<RelativeSeat, number> {
+  const local = ((localPlayerIndex % 4) + 4) % 4;
+  return {
+    bottom: local,
+    right: (local + 1) % 4,
+    top: (local + 2) % 4,
+    left: (local + 3) % 4,
+  };
+}
+
+function useStableEvent<Args extends unknown[], Result>(handler: (...args: Args) => Result) {
+  const handlerRef = useRef(handler);
+  useLayoutEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
+  return useCallback((...args: Args) => handlerRef.current(...args), []);
+}
 
 export default function OkeyGameTableScene() {
   return (
@@ -279,6 +294,7 @@ const okeyChatTransport = useMemo<GameChatTransport>(() => {
 
 const onlineController = useOkeyGame(
   activeOnlineMatchId,
+  currentUserId,
 );
 
 const {
@@ -313,8 +329,6 @@ const {
   commitPendingTimeoutDiscard,
   isAppActive,
   lifecycleResumeToken,
-  isOnline,
-  onlineReady,
   onlineProjection,
   onlineAdapter,
   leaveOnlineMatch,
@@ -323,7 +337,7 @@ const {
 const takeoverExitStartedRef = useRef(false);
 
 useEffect(() => {
-  if (!onlineMatchId || !onlineReady || !onlineProjection) return;
+  if (!onlineMatchId || !onlineProjection) return;
   const viewer = onlineProjection.players.find((player) => Array.isArray(player.hand));
   if (
     (viewer?.controlledByBot === true || viewer?.kind === "bot") &&
@@ -332,7 +346,7 @@ useEffect(() => {
     takeoverExitStartedRef.current = true;
     router.replace("/okey");
   }
-}, [onlineMatchId, onlineProjection, onlineReady, router]);
+}, [onlineMatchId, onlineProjection, router]);
 
 const handleConfirmLeaveMatch = useCallback(async () => {
   if (isLeavingMatch) return;
@@ -350,7 +364,7 @@ const handleConfirmLeaveMatch = useCallback(async () => {
 // Do not expose the hook's local initial value while the authoritative match loads.
 const onlineGameplayReady =
   onlineRoom?.status === "playing" &&
-  onlineReady &&
+  onlineProjection !== null &&
   state.phase === "playing";
 
 const initialStartTransitionPending =
@@ -566,7 +580,7 @@ const matchSettlementRewards = useMemo(
   [matchWinnerTeamId, onlineProjection?.settlement, viewerTeamId],
 );
 const matchSettlementLoading =
-  isOnline && matchFinished && !onlineProjection?.settlement;
+  matchFinished && !onlineProjection?.settlement;
 
 useEffect(() => {
   if (!matchSettlementLoading || !onlineAdapter) return;
@@ -628,10 +642,8 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
 
 
   const {
-    pendingOpponentDiscardAfterDrawRef,
     suppressNextOpponentDiscardFlightTileIdRef,
-    startOpponentPostDrawSequence,
-    startNextQueuedOpponentDiscardFlight,
+    startNextQueuedPresentation,
     retryQueuedOpponentFlight,
     resetOpponentPresentation,
   } = useOkeyOpponentTileFlightCoordinator({
@@ -665,7 +677,6 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
   useEffect(() => {
     if (
       !onlineGameplayReady ||
-      !isOnline ||
       !isAppActive ||
       !isHumanTurn ||
       !turnView.playerId ||
@@ -686,7 +697,6 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     emitFeedback,
     isAppActive,
     isHumanTurn,
-    isOnline,
     onlineGameplayReady,
     turnTimeLeft,
     turnView.deadlineAt,
@@ -725,11 +735,6 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     const landedDiscardTile = tileFlight?.id.includes("discard-")
       ? tileFlight.tile
       : null;
-    // When an opponent's draw and discard arrive in the same authoritative
-    // update, the discard already exists in state while the draw is flying.
-    // Keep that new top tile concealed until its second flight starts; clearing
-    // this here briefly revealed it during the bot decision pause.
-    const pendingOpponentDiscard = pendingOpponentDiscardAfterDrawRef.current;
     setTileFlight(null);
     // Online discard confirmation can arrive after the flight completes. Keep
     // the tile hidden until the authoritative hand no longer contains it so it
@@ -737,10 +742,7 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     setHiddenRackTileIds(pendingDiscardTileId ? [pendingDiscardTileId] : []);
     setDrawFlightTileId(null);
     setHideDeckTopTile(false);
-    if (pendingOpponentDiscard) {
-      // Preserve the old top only while the following discard flight is pending.
-      setHideDiscardTopTile(true);
-    } else if (landedDiscardTile) {
+    if (landedDiscardTile) {
       // Keep the landed tile on top until the authoritative pile contains it.
       // This prevents the old discard from flashing during a delayed update.
       setDiscardPresentationFallback(landedDiscardTile);
@@ -773,7 +775,7 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
     if (onlineTimeoutFlight?.stage === "rack-to-discard") {
       resetTimeoutPresentation();
       requestAnimationFrame(() => {
-        const started = startNextQueuedOpponentDiscardFlight();
+        const started = startNextQueuedPresentation();
         if (!started) setOpponentTurnTransitionActive(false);
       });
       return;
@@ -798,11 +800,6 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
       return;
     }
 
-    if (pendingOpponentDiscard) {
-      pendingOpponentDiscardAfterDrawRef.current = null;
-      startOpponentPostDrawSequence(pendingOpponentDiscard);
-      return;
-    }
     if (pendingDiscardTileId) {
       pendingDiscardTileIdRef.current = null;
       awaitingDiscardRemovalTileIdRef.current = pendingDiscardTileId;
@@ -817,7 +814,7 @@ const setPresentedPlayers = useCallback((players: typeof state.players) => {
 
 requestAnimationFrame(() => {
   const started =
-    startNextQueuedOpponentDiscardFlight();
+    startNextQueuedPresentation();
 
   if (!started) {
     setOpponentTurnTransitionActive(false);
@@ -837,13 +834,16 @@ requestAnimationFrame(() => {
     );
   }, [setHideDiscardTopTile, topDiscard?.id]);
   const startDrawFlight = (source: "deck" | "discard") => {
-    if (!canDraw || tileFlight) return;
+    if (!canDraw) return;
+    draw(source);
+
+    // The authoritative command must not wait for an existing presentation.
+    // Phase 4 owns queue unification, so skip only this optional flight when
+    // another one is active.
+    if (tileFlight) return;
     const drawnTile = source === "deck" ? state.deck[0] ?? null : topDiscard;
     const sourceRect = source === "deck" ? deckTopRectRef.current : discardTopRectRef.current;
-    if (!drawnTile || !sourceRect) {
-      draw(source);
-      return;
-    }
+    if (!drawnTile || !sourceRect) return;
 
     pendingDrawFlightRef.current = {
       tileId: drawnTile.id,
@@ -855,7 +855,6 @@ requestAnimationFrame(() => {
     setHiddenRackTileIds([drawnTile.id]);
     if (source === "deck") setHideDeckTopTile(true);
     if (source === "discard") setHideDiscardTopTile(true);
-    draw(source);
   };
   const isPointInsideRack = (point: { x: number; y: number }) => {
     const rackRect = rackRectRef.current;
@@ -869,15 +868,16 @@ requestAnimationFrame(() => {
     );
   };
   const handleDiscardDroppedOnRack = (point: { x: number; y: number }) => {
-    if (!canDraw || !topDiscard || tileFlight) return false;
+    if (!canDraw || !topDiscard) return false;
     if (!isPointInsideRack(point)) return false;
 
     const tileId = topDiscard.id;
+    draw("discard");
+    if (tileFlight) return true;
     pendingDrawFlightRef.current = null;
     setDrawFlightTileId(null);
     setHideDiscardTopTile(false);
     setDiscardDropPlacement({ tileId, point, nonce: Date.now() });
-    draw("discard");
     return true;
   };
 
@@ -894,7 +894,7 @@ requestAnimationFrame(() => {
   };
 
   const commitDiscardFromRack = (tileId: string) => {
-    if (!canDiscardTile || tileFlight) return false;
+    if (!canDiscardTile) return false;
 
     if (discardAdvanceTimerRef.current) {
       clearTimeout(discardAdvanceTimerRef.current);
@@ -934,27 +934,15 @@ requestAnimationFrame(() => {
   };
 
   const startDiscardFlight = (tileId: string) => {
-    if (!canDiscardTile || tileFlight) return;
+    if (!canDiscardTile) return;
 
     const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
     const sourceRect = rackTileRectsRef.current[tileId] ?? timeoutDrawLandingRectRef.current;
     const targetRect = discardTopRectRef.current;
 
-    if (!tile || !sourceRect || !targetRect) {
-      void commitDiscardFromRack(tileId);
-      return;
-    }
+    if (!commitDiscardFromRack(tileId)) return;
+    if (tileFlight || !tile || !sourceRect || !targetRect) return;
 
-    if (discardAdvanceTimerRef.current) {
-      clearTimeout(discardAdvanceTimerRef.current);
-      discardAdvanceTimerRef.current = null;
-    }
-
-    pendingDiscardTileIdRef.current = null;
-    setSelectedTileId(null);
-    setHiddenRackTileIds([tileId]);
-    pendingDiscardTileIdRef.current = tileId;
-    setHideDiscardTopTile(false);
     setTileFlight({
       id: `discard-${tileId}-${Date.now()}`,
       tile,
@@ -983,7 +971,7 @@ requestAnimationFrame(() => {
     onlineTimeoutDiscardFlightRef,
     resetTimeoutPresentation,
   } = useOkeyTimeoutTileFlightCoordinator({
-    isOnline,
+    isOnline: true,
     onlineMatchId,
     onlineProjection,
     state,
@@ -1398,10 +1386,6 @@ requestAnimationFrame(() => {
     setSelectedTileId(tileId);
     emitFeedback("rack-move", `rack-move:${tileId}:${targetIndex}:${Date.now()}`);
   });
-  const handleMoveRackTiles = useStableEvent((tileIds: string[], targetIndex: number) => {
-    setSelectedTileId(tileIds[0] ?? null);
-    emitFeedback("rack-move", `rack-group:${tileIds.join("-")}:${targetIndex}:${Date.now()}`);
-  });
   const skipEnterAnimationTileIds = useMemo(
     () => [
       ...(drawFlightTileId ? [drawFlightTileId] : []),
@@ -1515,10 +1499,14 @@ requestAnimationFrame(() => {
 />
 
 {!showMatchMenu ? (
-  <GameControls
-    onOpenMenu={openMatchMenu}
-    onOpenChat={() => setShowGameChat(true)}
-  />
+  <View style={finishRevealStyles.topRightActions}>
+    <Pressable style={finishRevealStyles.topRightActionButton} onPress={openMatchMenu}>
+      <Ionicons name="menu-outline" size={22} color="#f8f3df" />
+    </Pressable>
+    <Pressable style={finishRevealStyles.topRightActionButton} onPress={() => setShowGameChat(true)}>
+      <Ionicons name="chatbubble-ellipses-outline" size={22} color="#f8f3df" />
+    </Pressable>
+  </View>
 ) : null}
 
 
@@ -1682,28 +1670,43 @@ requestAnimationFrame(() => {
             sourceRect={discardTopRectRef.current ? toLocalRect(discardTopRectRef.current) : null}
           />
         ) : null}
-        <OkeyPlayerSetScore
-          score={previewMelds.length > 0 ? openIntent.score : rackSetScore}
-          targetScore={
-  humanPlayer.opened
-    ? humanPlayer.scoreOpened
-    : requiredOpenScore
-}
-          canOpen={canOpenActiveMelds}
-          alreadyOpened={humanPlayer.opened}
-          konkan={humanPlayer.konkan}
-          onOpen={() => {
-            if (!canOpenActiveMelds) return;
-            if (humanPlayer.konkan) {
-              if (orderedKonkanRunTileIds) declareKonkan(orderedKonkanRunTileIds);
-            } else {
-              commitOpenIntent(openIntent.melds, openIntent.score);
-            }
-            // Keep staged melds visible until the authoritative projection confirms
-            // `humanPlayer.opened`. The existing effect clears them after server ack.
-            setSelectedTileId(null);
-          }}
-        />
+        <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
+          {canOpenActiveMelds ? (
+            <Pressable
+              style={styles.openSetsButton}
+              onPress={() => {
+                if (humanPlayer.konkan) {
+                  if (orderedKonkanRunTileIds) declareKonkan(orderedKonkanRunTileIds);
+                } else {
+                  commitOpenIntent(openIntent.melds, openIntent.score);
+                }
+                setSelectedTileId(null);
+              }}
+            >
+              <Text style={styles.openSetsButtonText}>
+                {humanPlayer.konkan ? "کۆنکان" : humanPlayer.opened ? "دانانی دەستە" : "ڕاخستن"}
+              </Text>
+            </Pressable>
+          ) : null}
+          <View style={styles.playerSetScore} pointerEvents="none">
+            <Text style={styles.playerSetScoreLabel}>
+              {humanPlayer.konkan ? "دۆخ" : "نمرەی دەستە"}
+            </Text>
+            {humanPlayer.konkan ? (
+              <Text style={styles.playerSetScoreValue}>کۆنکان</Text>
+            ) : (
+              <View style={styles.playerSetScoreValueRow}>
+                <Text style={styles.playerSetScoreTarget}>
+                  {humanPlayer.opened ? humanPlayer.scoreOpened : requiredOpenScore}
+                </Text>
+                <Text style={styles.playerSetScoreSlash}>{" / "}</Text>
+                <Text style={styles.playerSetScoreCurrent}>
+                  {previewMelds.length > 0 ? openIntent.score : rackSetScore}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
         <MemoizedOkeyPlayerRack
           key={`${dealLifecycleKey}-rack`}
           tiles={onlineGameplayReady ? humanPlayer.hand : EMPTY_OKEY_TILES}
@@ -1739,8 +1742,6 @@ requestAnimationFrame(() => {
           onTileMeasured={handleRackTileMeasured}
 
           onMoveTile={handleMoveRackTile}
-
-          onMoveTiles={handleMoveRackTiles}
 
         />
         {tileFlight ? (
@@ -1809,4 +1810,3 @@ const finishRevealStyles = StyleSheet.create({
     borderColor: "rgba(248,243,223,0.22)",
   },
 });
-

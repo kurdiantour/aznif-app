@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mapOkeySettlementToPopupRewards } from "../okey-match-rewards.ts";
+import { mapOkeySettlementToPopupRewards } from "../../components/OkeyMatchResultPopup.tsx";
 
 const funSettlement = {
   type: "winner" as const,

@@ -49,7 +49,6 @@ type UseOkeyRackDragParams = {
   okeyTile: OkeyTile;
   stagedTileIdSet: Set<string>;
   fixedDrawTileId?: string | null;
-  eliminated: boolean;
 
   rackTileWidth: number;
   rackTileHeight: number;
@@ -60,8 +59,6 @@ type UseOkeyRackDragParams = {
   tileRectsRef: MutableRefObject<Record<string, TileRect>>;
 
   onSelectTile: (tileId: string) => void;
-  onMoveTile: (tileId: string, targetIndex: number) => void;
-  onMoveTiles?: (tileIds: string[], targetIndex: number) => void;
   onDropMeldGroup?: (meld: OkeyMeld, point: { x: number; y: number }) => boolean;
   onDropTile?: (tileId: string, point: { x: number; y: number }) => boolean;
   onTileDragPointChange?: (
@@ -88,7 +85,6 @@ export function useOkeyRackDrag({
   okeyTile,
   stagedTileIdSet,
   fixedDrawTileId,
-  eliminated,
   rackTileWidth,
   rackTileHeight,
   rackTileStride,
@@ -96,8 +92,6 @@ export function useOkeyRackDrag({
   rowLayoutsRef,
   tileRectsRef,
   onSelectTile,
-  onMoveTile,
-  onMoveTiles,
   onDropMeldGroup,
   onDropTile,
   onTileDragPointChange,
@@ -120,8 +114,6 @@ export function useOkeyRackDrag({
   );
   const [draggingTileId, setDraggingTileId] = useState<string | null>(null);
   const [draggingMeld, setDraggingMeld] = useState<DraggingMeld | null>(null);
-  const [insertionTarget, setInsertionTarget] =
-    useState<InsertionTarget | null>(null);
   const [externalHoverTarget, setExternalHoverTarget] =
     useState<InsertionTarget | null>(null);
 
@@ -141,7 +133,6 @@ export function useOkeyRackDrag({
   const tileShiftValuesRef = useRef<Record<string, Animated.ValueXY>>({});
   const tilePanHandlersRef = useRef<Record<string, any>>({});
 
-  const rackSlotsRef = useRef(rackSlots);
   const committedRackSlotsRef = useRef(committedRackSlots);
   const tileByIdRef = useRef(new Map(tiles.map((tile) => [tile.id, tile])));
   const okeyTileRef = useRef(okeyTile);
@@ -152,8 +143,6 @@ export function useOkeyRackDrag({
   const rackTileStrideRef = useRef(rackTileStride);
 
   const onSelectTileRef = useRef(onSelectTile);
-  const onMoveTileRef = useRef(onMoveTile);
-  const onMoveTilesRef = useRef(onMoveTiles);
   const onDropMeldGroupRef = useRef(onDropMeldGroup);
   const onDropTileRef = useRef(onDropTile);
   const onTileDragPointChangeRef = useRef(onTileDragPointChange);
@@ -164,10 +153,6 @@ export function useOkeyRackDrag({
     tileId: string | null;
     point: { x: number; y: number } | null;
   } | null>(null);
-
-  useEffect(() => {
-    rackSlotsRef.current = rackSlots;
-  }, [rackSlots]);
 
   useEffect(() => {
     committedRackSlotsRef.current = committedRackSlots;
@@ -193,8 +178,6 @@ export function useOkeyRackDrag({
 
   useEffect(() => {
     onSelectTileRef.current = onSelectTile;
-    onMoveTileRef.current = onMoveTile;
-    onMoveTilesRef.current = onMoveTiles;
     onDropMeldGroupRef.current = onDropMeldGroup;
     onDropTileRef.current = onDropTile;
     onTileDragPointChangeRef.current = onTileDragPointChange;
@@ -203,8 +186,6 @@ export function useOkeyRackDrag({
     onDropMeldGroup,
     onDropTile,
     onExternalDropPlaced,
-    onMoveTile,
-    onMoveTiles,
     onSelectTile,
     onTileDragPointChange,
   ]);
@@ -233,13 +214,9 @@ export function useOkeyRackDrag({
     }).start();
   }, [draggedMeldScale, draggingMeld]);
 
-  const setCurrentInsertionTarget = useCallback(
-    (target: InsertionTarget | null) => {
-      insertionTargetRef.current = target;
-      setInsertionTarget(target);
-    },
-    [],
-  );
+  const clearInsertionTarget = useCallback(() => {
+    insertionTargetRef.current = null;
+  }, []);
 
   const getTileShiftValue = useCallback((tileId: string) => {
     const existing = tileShiftValuesRef.current[tileId];
@@ -425,7 +402,7 @@ export function useOkeyRackDrag({
         tileId,
         moveX: gesture.moveX,
         moveY: gesture.moveY,
-        sourceSlots: sourceSlots ?? rackSlotsRef.current,
+        sourceSlots: sourceSlots ?? committedRackSlotsRef.current,
         viewport: viewportOriginRef.current,
         rowLayouts: rowLayoutsRef.current,
         rackTileWidth: rackTileWidthRef.current,
@@ -449,7 +426,7 @@ export function useOkeyRackDrag({
         tileIds,
         moveX: gesture.moveX,
         moveY: gesture.moveY,
-        sourceSlots: sourceSlots ?? rackSlotsRef.current,
+        sourceSlots: sourceSlots ?? committedRackSlotsRef.current,
         viewport: viewportOriginRef.current,
         rowLayouts: rowLayoutsRef.current,
         rackTileWidth: rackTileWidthRef.current,
@@ -546,11 +523,11 @@ export function useOkeyRackDrag({
           return;
         }
 
-        const origin = getTileOrigin(rackSlotsRef.current, tileId);
+        const origin = getTileOrigin(committedRackSlotsRef.current, tileId);
         if (!origin) return;
 
         const rowTiles = getRowTilesFromSlots(
-          rackSlotsRef.current[origin.row],
+          committedRackSlotsRef.current[origin.row],
           tileByIdRef.current,
           stagedTileIdSetRef.current,
         );
@@ -570,12 +547,12 @@ export function useOkeyRackDrag({
         );
         setDraggingMeld(meld);
         setDraggingTileId(null);
-        setCurrentInsertionTarget(null);
+        clearInsertionTarget();
       }, GROUP_LONG_PRESS_MS);
     },
     [
       clearLongPressTimer,
-      setCurrentInsertionTarget,
+      clearInsertionTarget,
       setDragPositionFromTouch,
     ],
   );
@@ -585,7 +562,7 @@ export function useOkeyRackDrag({
       draggingMeldRef.current = null;
       setDraggingTileId(null);
       setDraggingMeld(null);
-      setCurrentInsertionTarget(null);
+      clearInsertionTarget();
       dragStartedRef.current = false;
       dragStartSlotsRef.current = null;
 
@@ -599,7 +576,7 @@ export function useOkeyRackDrag({
     [
       cancelScheduledDragPointChange,
       resetNeighborShifts,
-      setCurrentInsertionTarget,
+      clearInsertionTarget,
     ],
   );
 
@@ -626,7 +603,7 @@ export function useOkeyRackDrag({
           draggingMeldRef.current = null;
           setDraggingTileId(null);
           setDraggingMeld(null);
-          setCurrentInsertionTarget(null);
+          clearInsertionTarget();
           resetNeighborShifts();
 
           dragStartSlotsRef.current = cloneSlots(
@@ -732,7 +709,7 @@ export function useOkeyRackDrag({
           const currentDraggingMeld = draggingMeldRef.current;
           const point = getTouchPoint(event, gesture);
           const sourceSlots =
-            dragStartSlotsRef.current ?? rackSlotsRef.current;
+            dragStartSlotsRef.current ?? committedRackSlotsRef.current;
 
           const target = currentDraggingMeld
             ? getGroupInsertionTarget(
@@ -821,15 +798,7 @@ export function useOkeyRackDrag({
 
         onPanResponderTerminate: () => {
           clearLongPressTimer();
-          draggingMeldRef.current = null;
-          dragStartedRef.current = false;
-          setDraggingTileId(null);
-          setDraggingMeld(null);
-          setCurrentInsertionTarget(null);
-          dragStartSlotsRef.current = null;
-          resetNeighborShifts();
-          cancelScheduledDragPointChange();
-          onTileDragPointChangeRef.current?.(null, null);
+          clearDragState();
         },
       }).panHandlers;
 
@@ -837,7 +806,6 @@ export function useOkeyRackDrag({
       return panHandlers;
     },
     [
-      cancelScheduledDragPointChange,
       clearDragState,
       clearEnteringTilesForDrag,
       clearLongPressTimer,
@@ -846,7 +814,7 @@ export function useOkeyRackDrag({
       getInsertionTarget,
       resetNeighborShifts,
       scheduleDragPointChange,
-      setCurrentInsertionTarget,
+      clearInsertionTarget,
       setDragPositionFromTouch,
       snapDragBack,
       startMeldLongPressTimer,
@@ -863,7 +831,6 @@ export function useOkeyRackDrag({
     draggingMeld,
     dragPosition,
     draggedMeldScale,
-    insertionTarget,
     externalHoverTarget,
     getTileShiftValue,
     getTilePanHandlers,

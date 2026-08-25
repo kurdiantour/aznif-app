@@ -1,17 +1,131 @@
 import * as Haptics from "expo-haptics";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 
-import { OkeyFeedbackGate } from "@/okey/feedback/okey-feedback-policy";
-import {
-  getCachedOkeyFeedbackPreferences,
-  loadOkeyFeedbackPreferences,
-  subscribeToOkeyFeedbackPreferences,
-} from "@/okey/feedback/okey-feedback-preferences";
-import type { OkeyFeedbackEvent } from "@/okey/feedback/okey-feedback-types";
-import type { OkeyRoundResult } from "@/okey/match/okey-match-state";
 import type { OkeyGameState, OkeyTeamId } from "@/okey/types/okey";
+
+type OkeyRoundResult = {
+  round: number;
+  winnerTeamId: OkeyTeamId | null;
+};
+
+export type OkeyFeedbackEvent =
+  | "draw-deck" | "draw-discard" | "discard" | "rack-select" | "rack-move"
+  | "meld-open" | "konkan" | "turn-start" | "timeout-warning" | "timeout"
+  | "invalid" | "round-win" | "round-loss" | "round-draw"
+  | "match-win" | "match-loss" | "match-draw";
+
+export type OkeyFeedbackPreferences = {
+  soundEnabled: boolean;
+  hapticsEnabled: boolean;
+};
+
+export const DEFAULT_OKEY_FEEDBACK_PREFERENCES: OkeyFeedbackPreferences = {
+  soundEnabled: true,
+  hapticsEnabled: true,
+};
+
+export const OKEY_FEEDBACK_PREFERENCES_KEY = "okey-feedback-preferences-v1";
+
+const preferenceListeners = new Set<(preferences: OkeyFeedbackPreferences) => void>();
+let cachedPreferences = DEFAULT_OKEY_FEEDBACK_PREFERENCES;
+
+function normalizePreferences(value: unknown): OkeyFeedbackPreferences {
+  if (!value || typeof value !== "object") return DEFAULT_OKEY_FEEDBACK_PREFERENCES;
+  const candidate = value as Partial<OkeyFeedbackPreferences>;
+  return {
+    soundEnabled: typeof candidate.soundEnabled === "boolean" ? candidate.soundEnabled : true,
+    hapticsEnabled: typeof candidate.hapticsEnabled === "boolean" ? candidate.hapticsEnabled : true,
+  };
+}
+
+export async function loadOkeyFeedbackPreferences() {
+  try {
+    const raw = await AsyncStorage.getItem(OKEY_FEEDBACK_PREFERENCES_KEY);
+    cachedPreferences = normalizePreferences(raw ? JSON.parse(raw) : null);
+  } catch {
+    cachedPreferences = DEFAULT_OKEY_FEEDBACK_PREFERENCES;
+  }
+  preferenceListeners.forEach((listener) => listener(cachedPreferences));
+  return cachedPreferences;
+}
+
+export async function saveOkeyFeedbackPreferences(preferences: OkeyFeedbackPreferences) {
+  cachedPreferences = normalizePreferences(preferences);
+  preferenceListeners.forEach((listener) => listener(cachedPreferences));
+  try {
+    await AsyncStorage.setItem(OKEY_FEEDBACK_PREFERENCES_KEY, JSON.stringify(cachedPreferences));
+  } catch (error) {
+    console.warn("Unable to save Okey feedback preferences", error);
+  }
+}
+
+export function getCachedOkeyFeedbackPreferences() {
+  return cachedPreferences;
+}
+
+export function subscribeToOkeyFeedbackPreferences(listener: (preferences: OkeyFeedbackPreferences) => void) {
+  preferenceListeners.add(listener);
+  return () => {
+    preferenceListeners.delete(listener);
+  };
+}
+
+export function useOkeyFeedbackPreferences() {
+  const [preferences, setPreferences] = useState(getCachedOkeyFeedbackPreferences);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToOkeyFeedbackPreferences(setPreferences);
+    void loadOkeyFeedbackPreferences();
+    return unsubscribe;
+  }, []);
+
+  const setSoundEnabled = useCallback((soundEnabled: boolean) => {
+    void saveOkeyFeedbackPreferences({ ...getCachedOkeyFeedbackPreferences(), soundEnabled });
+  }, []);
+  const setHapticsEnabled = useCallback((hapticsEnabled: boolean) => {
+    void saveOkeyFeedbackPreferences({ ...getCachedOkeyFeedbackPreferences(), hapticsEnabled });
+  }, []);
+
+  return { ...preferences, setSoundEnabled, setHapticsEnabled };
+}
+
+export type OkeyFeedbackDecision = {
+  event: OkeyFeedbackEvent;
+  playSound: boolean;
+  playHaptic: boolean;
+};
+
+export class OkeyFeedbackGate {
+  private active = true;
+  private preferences: OkeyFeedbackPreferences;
+  private readonly consumedKeys = new Set<string>();
+  private readonly keyQueue: string[] = [];
+
+  constructor(preferences: OkeyFeedbackPreferences, private readonly maxKeys = 256) {
+    this.preferences = preferences;
+  }
+
+  setActive(active: boolean) { this.active = active; }
+  setPreferences(preferences: OkeyFeedbackPreferences) { this.preferences = preferences; }
+
+  consume(event: OkeyFeedbackEvent, eventKey: string): OkeyFeedbackDecision | null {
+    if (!this.active || this.consumedKeys.has(eventKey)) return null;
+    this.consumedKeys.add(eventKey);
+    this.keyQueue.push(eventKey);
+    while (this.keyQueue.length > this.maxKeys) {
+      const oldest = this.keyQueue.shift();
+      if (oldest) this.consumedKeys.delete(oldest);
+    }
+    return {
+      event,
+      playSound: this.preferences.soundEnabled,
+      playHaptic: this.preferences.hapticsEnabled,
+    };
+  }
+}
 
 const TILE_SOUND = require("@/assets/audio/game/tile-placement-1.mp3");
 const MOVE_SOUND = require("@/assets/audio/game/tile-placement-2.mp3");

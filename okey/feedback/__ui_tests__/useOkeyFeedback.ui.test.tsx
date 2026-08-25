@@ -20,7 +20,7 @@ jest.mock("expo-haptics", () => ({
   impactAsync: mockImpactAsync,
   notificationAsync: mockNotificationAsync,
 }));
-import { saveOkeyFeedbackPreferences } from "../okey-feedback-preferences";
+import { saveOkeyFeedbackPreferences } from "../../hooks/useOkeyFeedback";
 import { useOkeyFeedback } from "../../hooks/useOkeyFeedback";
 
 function Harness() {

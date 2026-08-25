@@ -124,16 +124,6 @@ export function useOkeyOpponentTileFlightCoordinator({
   const [presentedOpponentPlayerId, setPresentedOpponentPlayerId] =
     useState<string | null>(null);
 
-  // Kept only for compatibility with OkeyGameTableScene. The simplified
-  // coordinator never puts opponent discards in this ref.
-  const pendingOpponentDiscardAfterDrawRef =
-    useRef<QueuedOpponentDiscardFlight | null>(null);
-
-  // Kept only for compatibility with the current scene API. There are no bot
-  // presentation timers anymore, so this ref always remains null.
-  const botPresentationTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Shared with eliminated-turn presentation so its committed discard is not
   // animated a second time.
   const suppressNextOpponentDiscardFlightTileIdRef =
@@ -162,35 +152,7 @@ export function useOkeyOpponentTileFlightCoordinator({
     ],
   );
 
-  /**
-   * Compatibility entry point used by OkeyGameTableScene after an opponent draw
-   * flight completes. No delay is introduced: either the discard starts now, or
-   * it is kept at the front of the FIFO until geometry is measurable.
-   */
-  const startOpponentPostDrawSequence = useCallback(
-    (pendingDiscard: QueuedOpponentDiscardFlight) => {
-      if (startDiscardFlight(pendingDiscard)) return;
-
-      const alreadyQueued = queuedPresentationActionsRef.current.some(
-        (action) =>
-          action.kind === "discard" &&
-          action.entry.ownerPlayerId === pendingDiscard.ownerPlayerId &&
-          action.entry.tile.id === pendingDiscard.tile.id,
-      );
-
-      if (!alreadyQueued) {
-        queuedPresentationActionsRef.current.unshift({
-          kind: "discard",
-          entry: pendingDiscard,
-        });
-      }
-
-      setOpponentTurnTransitionActive(true);
-    },
-    [setOpponentTurnTransitionActive, startDiscardFlight],
-  );
-
-  const startNextQueuedOpponentDiscardFlight = useCallback((): boolean => {
+  const startNextQueuedPresentation = useCallback((): boolean => {
     // `tileFlight` is the only visual busy condition. Game progression is never
     // blocked here; this only prevents two animations from starting together.
     if (tileFlight) return false;
@@ -273,10 +235,10 @@ export function useOkeyOpponentTileFlightCoordinator({
     }
 
     setOpponentTurnTransitionActive(true);
-    startNextQueuedOpponentDiscardFlight();
+    startNextQueuedPresentation();
   }, [
     setOpponentTurnTransitionActive,
-    startNextQueuedOpponentDiscardFlight,
+    startNextQueuedPresentation,
     tileFlight,
   ]);
 
@@ -398,15 +360,15 @@ export function useOkeyOpponentTileFlightCoordinator({
     setOpponentTurnTransitionActive(true);
 
     // If another flight is active, do nothing else. The scene calls
-    // startNextQueuedOpponentDiscardFlight() when that flight completes.
+    // startNextQueuedPresentation() when that flight completes.
     if (!tileFlight) {
-      startNextQueuedOpponentDiscardFlight();
+      startNextQueuedPresentation();
     }
   }, [
     actionEventTick,
     projectionVersion,
     setOpponentTurnTransitionActive,
-    startNextQueuedOpponentDiscardFlight,
+    startNextQueuedPresentation,
     state.discardPile,
     state.players,
     tileFlight,
@@ -415,15 +377,8 @@ export function useOkeyOpponentTileFlightCoordinator({
   const resetOpponentPresentation = useCallback(() => {
     pendingCommittedEventsRef.current = [];
     queuedPresentationActionsRef.current = [];
-    pendingOpponentDiscardAfterDrawRef.current = null;
     setPresentedOpponentPlayerId(null);
     suppressNextOpponentDiscardFlightTileIdRef.current = null;
-
-    // Compatibility ref should never hold a timer, but clear defensively.
-    if (botPresentationTimerRef.current) {
-      clearTimeout(botPresentationTimerRef.current);
-      botPresentationTimerRef.current = null;
-    }
   }, []);
 
   useEffect(
@@ -435,11 +390,8 @@ export function useOkeyOpponentTileFlightCoordinator({
 
   return {
     presentedOpponentPlayerId,
-    pendingOpponentDiscardAfterDrawRef,
     suppressNextOpponentDiscardFlightTileIdRef,
-    botPresentationTimerRef,
-    startOpponentPostDrawSequence,
-    startNextQueuedOpponentDiscardFlight,
+    startNextQueuedPresentation,
     retryQueuedOpponentFlight,
     resetOpponentPresentation,
   };

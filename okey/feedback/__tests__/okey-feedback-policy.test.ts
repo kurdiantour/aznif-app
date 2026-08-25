@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { OkeyFeedbackGate } from "../okey-feedback-policy.ts";
+import { OkeyFeedbackGate } from "../../hooks/useOkeyFeedback.ts";
 
 test("each event key is consumed only once across rerenders", () => {
   const gate = new OkeyFeedbackGate({ soundEnabled: true, hapticsEnabled: true });

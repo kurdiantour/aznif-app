@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   memo,
   useCallback,
@@ -6,13 +7,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import {
   Animated,
+  Easing,
+  StyleSheet,
+  Text,
   View,
   type LayoutChangeEvent,
 } from "react-native";
-import { EliminatedPlayerOverlay } from "./EliminatedPlayerOverlay";
 
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import {
@@ -21,6 +25,8 @@ import {
 } from "@/okey/engine/okey-rack-layout";
 import {
   ROW_ORDER,
+  RACK_DEAL_BATCH_STAGGER_MS,
+  RACK_TILE_ENTER_MS,
   getFlatIndexForSlot,
   getSlotEnterDelay,
   type ExternalDropPlacement,
@@ -34,12 +40,6 @@ import {
   getOkeyMeldWidth,
 } from "./OkeyMeldView";
 import {
-  EnteringRackTile,
-  RACK_DEAL_BATCH_STAGGER_MS,
-  RACK_TILE_ENTER_MS,
-  ReturningJokerTile,
-} from "./OkeyRackTileAnimations";
-import {
   RACK_ROW_CAPACITY,
   RACK_TILE_ASPECT_RATIO,
   RACK_TILE_GAP,
@@ -50,9 +50,108 @@ import {
 import { OkeyTileFace } from "./OkeyTileFace";
 import { OkeyTurnTimerBar } from "./OkeyTurnTimerBar";
 import { useOkeyRackDrag } from "./useOkeyRackDrag";
-import { OkeyTurnWarningToast } from "./OkeyTurnWarningToast";
 
 type TileRect = { x: number; y: number; width: number; height: number };
+
+function EnteringRackTile({ children, height, fromX = 0, fromY, delay = 0 }: {
+  children: ReactNode;
+  height: number;
+  fromX?: number;
+  fromY?: number;
+  delay?: number;
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: RACK_TILE_ENTER_MS,
+      delay,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [delay, progress]);
+  return (
+    <Animated.View style={{
+      opacity: progress.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, 1, 1] }),
+      transform: [
+        { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [fromX, 0] }) },
+        { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [fromY ?? -height * 4.2, 0] }) },
+        { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1.08, 1] }) },
+      ],
+    }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+function ReturningJokerTile({ children, height }: { children: ReactNode; height: number }) {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 760,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [progress]);
+  return (
+    <Animated.View style={{
+      opacity: progress,
+      transform: [
+        { translateX: progress.interpolate({ inputRange: [0, 0.58, 1], outputRange: [52, -8, 0] }) },
+        { translateY: progress.interpolate({ inputRange: [0, 0.72, 1], outputRange: [-height * 3.8, height * 0.12, 0] }) },
+        { rotate: progress.interpolate({ inputRange: [0, 0.7, 1], outputRange: ["-18deg", "5deg", "0deg"] }) },
+        { scale: progress.interpolate({ inputRange: [0, 0.72, 1], outputRange: [0.72, 1.08, 1] }) },
+      ],
+    }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+function OkeyTurnWarningToast({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <View pointerEvents="none" accessibilityRole="alert" accessibilityLiveRegion="polite" style={rackOnlyStyles.warning}>
+      <Text style={rackOnlyStyles.warningText}>نۆرەی تۆیە</Text>
+    </View>
+  );
+}
+
+function EliminatedPlayerOverlay() {
+  return (
+    <View accessible accessibilityRole="alert" accessibilityLiveRegion="assertive" accessibilityLabel="دەستەکەت سووتا. تا کۆتایی ئەم ڕاوندە دەرکراویت." style={rackOnlyStyles.eliminated}>
+      <MaterialCommunityIcons name="alert" size={32} color="#ff3131" />
+      <Text style={rackOnlyStyles.eliminatedTitle}>دەستەکەت سووتا</Text>
+      <Text style={rackOnlyStyles.eliminatedMessage}>تا کۆتایی ئەم ڕاوندە دەرکراویت.</Text>
+    </View>
+  );
+}
+
+const rackOnlyStyles = StyleSheet.create({
+  warning: {
+    position: "absolute", top: -10, alignSelf: "center", zIndex: 950, elevation: 12,
+    flexDirection: "row", alignItems: "center", gap: 9, minHeight: 44,
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 22,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.24, shadowRadius: 10,
+  },
+  warningText: {
+    color: "#FFF8E7", fontSize: 16, fontWeight: "700", fontFamily: "SpedaRegular", writingDirection: "rtl",
+  },
+  eliminated: {
+    ...StyleSheet.absoluteFillObject, zIndex: 10000, elevation: 10000,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 22,
+    borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,49,49,0.42)", backgroundColor: "rgba(0,0,0,0.92)",
+  },
+  eliminatedTitle: {
+    marginTop: 8, color: "#ff3131", fontSize: 18, fontWeight: "900", textAlign: "center",
+  },
+  eliminatedMessage: {
+    marginTop: 8, color: "#ffffff", fontSize: 13, fontWeight: "700", textAlign: "center",
+  },
+});
 
 export function OkeyPlayerRack({
   tiles,
@@ -60,7 +159,6 @@ export function OkeyPlayerRack({
   okeyTile,
   onSelectTile,
   onMoveTile,
-  onMoveTiles,
   onRackScoreChange,
   onOpenableMeldsChange,
   stagedTileIds = [],
@@ -90,7 +188,6 @@ export function OkeyPlayerRack({
   okeyTile: OkeyTile;
   onSelectTile: (tileId: string) => void;
   onMoveTile: (tileId: string, targetIndex: number) => void;
-  onMoveTiles?: (tileIds: string[], targetIndex: number) => void;
   onRackScoreChange?: (score: number) => void;
   onOpenableMeldsChange?: (payload: {
     melds: OkeyMeld[];
@@ -174,11 +271,10 @@ export function OkeyPlayerRack({
   const tileRefs = useRef<Record<string, View | null>>({});
   const tileRectsRef = useRef<Record<string, TileRect>>({});
 
-  const initialTileIdsRef = useRef(tiles.map((tile) => tile.id));
   const enterAnimationTimeoutsRef =
     useRef<ReturnType<typeof setTimeout>[]>([]);
   const [enteringTileIds, setEnteringTileIds] = useState<Set<string>>(
-    () => new Set(initialTileIdsRef.current),
+    () => new Set(tiles.map((tile) => tile.id)),
   );
   const [returningJokerTileIds, setReturningJokerTileIds] =
     useState<Set<string>>(() => new Set());
@@ -229,7 +325,6 @@ export function OkeyPlayerRack({
     draggingMeld,
     dragPosition,
     draggedMeldScale,
-    insertionTarget,
     externalHoverTarget,
     getTileShiftValue,
     getTilePanHandlers,
@@ -239,7 +334,6 @@ export function OkeyPlayerRack({
     okeyTile,
     stagedTileIdSet,
     fixedDrawTileId,
-    eliminated,
     rackTileWidth,
     rackTileHeight,
     rackTileStride,
@@ -247,8 +341,6 @@ export function OkeyPlayerRack({
     rowLayoutsRef,
     tileRectsRef,
     onSelectTile,
-    onMoveTile,
-    onMoveTiles,
     onDropMeldGroup,
     onDropTile,
     onTileDragPointChange,
@@ -334,7 +426,6 @@ export function OkeyPlayerRack({
     enterAnimationTimeoutsRef.current = [];
 
     const dealTileIds = tiles.map((tile) => tile.id);
-    initialTileIdsRef.current = dealTileIds;
     setEnteringTileIds(new Set(dealTileIds));
 
     if (dealTileIds.length === 0) return;
@@ -443,7 +534,7 @@ export function OkeyPlayerRack({
     row: RackRow,
     slotIndex: number,
   ) => {
-    const activeTarget = insertionTarget ?? externalHoverTarget;
+    const activeTarget = externalHoverTarget;
 
     if (
       !activeTarget ||

@@ -7,7 +7,7 @@ import {
 import { useProfile } from "@/lib/profile";
 import { signOut } from "@/lib/supabaseAuth";
 import { leaveAllActiveOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
-import { useOkeyFeedbackPreferences } from "@/okey/hooks/useOkeyFeedbackPreferences";
+import { useOkeyFeedbackPreferences } from "@/okey/hooks/useOkeyFeedback";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

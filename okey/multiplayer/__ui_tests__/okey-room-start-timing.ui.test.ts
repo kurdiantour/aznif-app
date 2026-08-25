@@ -1,4 +1,4 @@
-import { getOkeyCountdownStartCheckDelay } from "../okey-room-start-timing";
+import { getOkeyCountdownStartCheckDelay } from "../okey-room-api";
 
 test("countdown start-check is scheduled at the deadline instead of the periodic heartbeat", () => {
   const now = Date.parse("2026-08-13T12:00:00.000Z");

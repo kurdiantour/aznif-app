@@ -92,6 +92,8 @@ export class SupabaseOkeyMatchAdapter
   private authoritativeCommandTail:
     Promise<void> = Promise.resolve();
 
+  private authoritativeCommandsPending = 0;
+
   private serverClockOffsetMs = 0;
 
   private closed = false;
@@ -159,10 +161,24 @@ export class SupabaseOkeyMatchAdapter
   private enqueueAuthoritativeCommand(
     operation: () => Promise<void>,
   ): Promise<void> {
+    this.authoritativeCommandsPending += 1;
     const run =
       this.authoritativeCommandTail.then(
         operation,
-      );
+      ).finally(() => {
+        this.authoritativeCommandsPending -= 1;
+        if (
+          this.authoritativeCommandsPending === 0 &&
+          this.pendingRealtimeVersion !== null
+        ) {
+          const pendingVersion = this.pendingRealtimeVersion;
+          if ((this.snapshot?.version ?? -1) >= pendingVersion) {
+            this.pendingRealtimeVersion = null;
+          } else {
+            void this.refreshAfterRealtimeInvalidation(pendingVersion).catch(() => {});
+          }
+        }
+      });
 
     this.authoritativeCommandTail =
       run.catch(() => {});
@@ -219,68 +235,66 @@ export class SupabaseOkeyMatchAdapter
     }
   }
 
+  private async requireSnapshotVersion(): Promise<number> {
+    if (this.snapshot?.version === undefined) {
+      await this.refresh();
+    }
+    if (this.snapshot?.version === undefined) {
+      throw new Error("okey_snapshot_unavailable");
+    }
+    return this.snapshot.version;
+  }
+
+  private runAuthoritativeMutation(
+    createBody: () => Promise<Record<string, unknown>> | Record<string, unknown>,
+    options: {
+      refreshOnError?: boolean;
+      syncOnError?: (body: { code?: string; error?: string } | null) => boolean;
+    } = {},
+  ): Promise<void> {
+    const commandId = createCommandId();
+    return this.enqueueAuthoritativeCommand(async () => {
+      const { data, error } = await supabase.functions.invoke("okey_match", {
+        body: {
+          ...await createBody(),
+          matchId: this.matchId,
+          commandId,
+        },
+      });
+
+      if (error) {
+        const errorBody = await this.readFunctionErrorBody(error);
+        const shouldSync = options.syncOnError
+          ? options.syncOnError(errorBody)
+          : this.isAuthoritativeSyncResult(errorBody);
+        if (shouldSync) {
+          await this.syncAfterConflict();
+          return;
+        }
+        if (options.refreshOnError !== false) {
+          await this.refresh();
+        }
+        throw error;
+      }
+
+      this.publishResponse(data);
+    });
+  }
+
   async dispatch(
     command:
       OkeyAuthoritativeCommand,
   ): Promise<void> {
-    const commandId = createCommandId();
-
-    return this.enqueueAuthoritativeCommand(
-      async () => {
-        if (
-          this.snapshot?.version ===
-          undefined
-        ) {
-          await this.refresh();
-        }
-
-        const expectedVersion =
-          this.snapshot?.version;
-
-        if (
-          expectedVersion === undefined
-        ) {
-          throw new Error(
-            "okey_snapshot_unavailable",
-          );
-        }
-
-        const { data, error } =
-          await supabase.functions.invoke(
-            "okey_match",
-            {
-              body: {
-                action: "command",
-                matchId: this.matchId,
-                commandId,
-                expectedVersion,
-                command,
-              },
-            },
-          );
-
-        if (error) {
-          const errorBody =
-            await this.readFunctionErrorBody(
-              error,
-            );
-
-          if (
-            errorBody?.error ===
-              "turn_deadline_expired" ||
-            this.isAuthoritativeSyncResult(
-              errorBody,
-            )
-          ) {
-            await this.syncAfterConflict();
-            return;
-          }
-
-          await this.refresh();
-          throw error;
-        }
-
-        this.publishResponse(data);
+    return this.runAuthoritativeMutation(
+      async () => ({
+        action: "command",
+        expectedVersion: await this.requireSnapshotVersion(),
+        command,
+      }),
+      {
+        syncOnError: (body) =>
+          body?.error === "turn_deadline_expired" ||
+          this.isAuthoritativeSyncResult(body),
       },
     );
   }
@@ -310,69 +324,21 @@ export class SupabaseOkeyMatchAdapter
   async playEliminatedTurn(
     claim: OkeyEliminatedTurnClaim,
   ): Promise<void> {
-    const commandId = createCommandId();
-
-    return this.enqueueAuthoritativeCommand(async () => {
-      const { data, error } = await supabase.functions.invoke(
-        "okey_match",
-        {
-          body: {
-            action: "play-eliminated",
-            matchId: this.matchId,
-            commandId,
-            expectedVersion: claim.expectedVersion,
-            expectedActorId: claim.expectedActorId,
-          },
-        },
-      );
-
-      if (error) {
-        const errorBody = await this.readFunctionErrorBody(error);
-        if (this.isAuthoritativeSyncResult(errorBody)) {
-          await this.syncAfterConflict();
-          return;
-        }
-
-        await this.refresh();
-        throw error;
-      }
-
-      this.publishResponse(data);
-    });
+    return this.runAuthoritativeMutation(() => ({
+      action: "play-eliminated",
+      expectedVersion: claim.expectedVersion,
+      expectedActorId: claim.expectedActorId,
+    }));
   }
 
   async startNextRound(
     claim: OkeyNextRoundClaim,
   ): Promise<void> {
-    const commandId = createCommandId();
-
-    return this.enqueueAuthoritativeCommand(async () => {
-      const { data, error } = await supabase.functions.invoke(
-        "okey_match",
-        {
-          body: {
-            action: "start-next-round",
-            matchId: this.matchId,
-            commandId,
-            expectedVersion: claim.expectedVersion,
-            expectedRound: claim.expectedRound,
-          },
-        },
-      );
-
-      if (error) {
-        const errorBody = await this.readFunctionErrorBody(error);
-        if (this.isAuthoritativeSyncResult(errorBody)) {
-          await this.syncAfterConflict();
-          return;
-        }
-
-        await this.refresh();
-        throw error;
-      }
-
-      this.publishResponse(data);
-    });
+    return this.runAuthoritativeMutation(() => ({
+      action: "start-next-round",
+      expectedVersion: claim.expectedVersion,
+      expectedRound: claim.expectedRound,
+    }));
   }
 
   async resolveTimeout(
@@ -434,57 +400,12 @@ export class SupabaseOkeyMatchAdapter
   }
 
   async leave(): Promise<void> {
-    const commandId = createCommandId();
-
-    await this.enqueueAuthoritativeCommand(
-      async () => {
-        if (
-          this.snapshot?.version ===
-          undefined
-        ) {
-          await this.refresh();
-        }
-
-        const expectedVersion =
-          this.snapshot?.version;
-
-        if (expectedVersion === undefined) {
-          throw new Error(
-            "okey_snapshot_unavailable",
-          );
-        }
-
-        const { error } =
-          await supabase.functions.invoke(
-            "okey_match",
-            {
-              body: {
-                action: "manual-leave",
-                matchId: this.matchId,
-                commandId,
-                expectedVersion,
-              },
-            },
-          );
-
-        if (error) {
-          const errorBody =
-            await this.readFunctionErrorBody(
-              error,
-            );
-
-          if (
-            this.isAuthoritativeSyncResult(
-              errorBody,
-            )
-          ) {
-            await this.syncAfterConflict();
-            return;
-          }
-
-          throw error;
-        }
-      },
+    await this.runAuthoritativeMutation(
+      async () => ({
+        action: "manual-leave",
+        expectedVersion: await this.requireSnapshotVersion(),
+      }),
+      { refreshOnError: false },
     );
 
     await leaveOkeyRoom(
@@ -723,6 +644,13 @@ export class SupabaseOkeyMatchAdapter
             message.version > this.actionEventVersion + 1;
           if (!hasEventGap) {
             this.publishActionEvents(message.actionEvents ?? []);
+          }
+          if (this.authoritativeCommandsPending > 0) {
+            this.pendingRealtimeVersion = Math.max(
+              this.pendingRealtimeVersion ?? -1,
+              message.version,
+            );
+            return;
           }
           void this.refreshAfterRealtimeInvalidation(
             message.version,

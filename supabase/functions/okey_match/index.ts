@@ -449,6 +449,17 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
   const playerIndex =
     bundle.player_index as number;
 
+  const projectForViewer = (
+    matchState: OkeyAuthoritativeMatchState,
+    version: number,
+    turnDeadlineAt: string | null,
+  ) => projectOkeyMatchState(
+    matchState,
+    playerIndex,
+    version,
+    turnDeadlineAt,
+  );
+
   const hasManuallyLeft =
     (state.manualLeftPlayerIds ?? [])
       .includes(authData.user.id);
@@ -515,9 +526,8 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     return json({
       settlement,
       actionEvents,
-      projection: projectOkeyMatchState(
+      projection: projectForViewer(
         state,
-        playerIndex,
         bundle.version,
         bundle.turn_deadline_at,
       ),
@@ -545,9 +555,8 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
             applied: false,
             committed: true,
             version: bundle.version,
-            projection: projectOkeyMatchState(
+            projection: projectForViewer(
               state,
-              playerIndex,
               bundle.version,
               bundle.turn_deadline_at,
             ),
@@ -563,9 +572,8 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       applied: false,
       settlement,
       actionEvents,
-      projection: projectOkeyMatchState(
+      projection: projectForViewer(
         state,
-        playerIndex,
         bundle.version,
         bundle.turn_deadline_at,
       ),
@@ -953,6 +961,12 @@ const commit =
 
   const committedState =
     commit.state as OkeyAuthoritativeMatchState;
+  const committedActionEvents = commit.action_events ?? [];
+  const committedProjection = projectForViewer(
+    committedState,
+    commit.version,
+    commit.turn_deadline_at,
+  );
 
   /*
    * The game-state broadcast must not be blocked by a later settlement
@@ -962,7 +976,7 @@ const commit =
   try {
     await broadcastStateUpdate(
       commit.version,
-      commit.action_events ?? [],
+      committedActionEvents,
     );
   } catch (broadcastError) {
     console.error(
@@ -1006,12 +1020,7 @@ const commit =
           details: result.error.message,
           committed: true,
           version: commit.version,
-          projection: projectOkeyMatchState(
-            committedState,
-            playerIndex,
-            commit.version,
-            commit.turn_deadline_at,
-          ),
+          projection: committedProjection,
         },
         500,
       );
@@ -1019,26 +1028,16 @@ const commit =
 
     return json({
       applied: commit.applied,
-      actionEvents: commit.action_events ?? [],
+      actionEvents: committedActionEvents,
       settlement: result.settlement,
-      projection: projectOkeyMatchState(
-        committedState,
-        playerIndex,
-        commit.version,
-        commit.turn_deadline_at,
-      ),
+      projection: committedProjection,
     });
   }
 
   return json({
     applied: commit.applied,
-    actionEvents: commit.action_events ?? [],
-    projection: projectOkeyMatchState(
-      committedState,
-      playerIndex,
-      commit.version,
-      commit.turn_deadline_at,
-    ),
+    actionEvents: committedActionEvents,
+    projection: committedProjection,
   });
 });
 
