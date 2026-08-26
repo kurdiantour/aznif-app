@@ -4,7 +4,7 @@ import test from "node:test";
 
 const grants = readFileSync("supabase/migrations/20260811000800_okey_party_flow_service_access.sql", "utf8")
   .toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
-const atomic = readFileSync("supabase/migrations/20260811001000_atomic_okey_party_matchmaking.sql", "utf8")
+const atomic = readFileSync("supabase/migrations/20260813000400_okey_membership_release.sql", "utf8")
   .toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const gateway = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 

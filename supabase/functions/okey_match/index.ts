@@ -603,6 +603,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     );
   }
 
+  const commandReceivedAtMs = Date.now();
   let nextState: OkeyAuthoritativeMatchState;
   let commandType: string;
   const actingPlayer = state.roundState.players[state.roundState.currentPlayerIndex] ?? null;
@@ -806,6 +807,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
           state,
           playerIndex,
           command,
+          commandReceivedAtMs,
         );
 
       commandType = command.type;
@@ -875,7 +877,11 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       break;
     }
     default:
-      actionEventDrafts = createOkeyCommandActionEvents(acceptedCommand, actingPlayer?.id ?? "");
+      actionEventDrafts = createOkeyCommandActionEvents(
+        acceptedCommand,
+        actingPlayer?.id ?? "",
+        state.roundState,
+      );
   }
   const previousTopDiscard = state.roundState.discardPile[state.roundState.discardPile.length - 1] ?? null;
   actionEventDrafts = actionEventDrafts.map((event) =>

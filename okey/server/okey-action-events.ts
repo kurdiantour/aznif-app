@@ -1,5 +1,5 @@
 import type { OkeyAuthoritativeCommand } from "./okey-authoritative.ts";
-import type { OkeyMeld, OkeyTile } from "../types/okey.ts";
+import type { OkeyMeld, OkeyTile, OkeyGameState } from "../types/okey.ts";
 
 export type OkeyActionEventType =
   | "draw"
@@ -26,6 +26,7 @@ export type OkeyActionEvent = OkeyActionEventDraft & {
 export function createOkeyCommandActionEvents(
   command: OkeyAuthoritativeCommand,
   actorPlayerId: string,
+  stateBeforeCommand?: OkeyGameState,
 ): OkeyActionEventDraft[] {
   switch (command.type) {
     case "draw":
@@ -39,8 +40,19 @@ export function createOkeyCommandActionEvents(
         { type: "open", actorPlayerId, payload: { melds: command.melds, score: command.score } },
         { type: "discard", actorPlayerId, payload: { tileId: command.tileId } },
       ];
-    case "declare-konkan":
-      return [{ type: "konkan", actorPlayerId, payload: { kind: "declare", orderedRunTileIds: command.orderedRunTileIds } }];
+    case "declare-konkan": {
+      const actor = stateBeforeCommand?.players.find((player) => player.id === actorPlayerId);
+      const tileById = new Map(actor?.hand.map((tile) => [tile.id, tile]) ?? []);
+      const runTiles = command.orderedRunTileIds.map((tileId) => tileById.get(tileId)).filter((tile): tile is OkeyTile => !!tile);
+      const runIds = new Set(command.orderedRunTileIds);
+      const completionMeldTiles = actor?.hand.filter((tile) => !runIds.has(tile.id)) ?? [];
+      return [{ type: "konkan", actorPlayerId, payload: {
+        kind: "declare",
+        orderedRunTileIds: command.orderedRunTileIds,
+        runTiles,
+        completionMeldTiles,
+      } }];
+    }
     case "spend-meld":
       return [{ type: "meld", actorPlayerId, payload: {
         kind: "spend", tileId: command.tileId,
@@ -75,10 +87,16 @@ export function createBotPostDrawActionEvents(input: {
   spentTileIds: string[];
   declaredKonkan: boolean;
   discardedTile: OkeyTile | null;
+  konkanRunTiles?: OkeyTile[];
+  konkanCompletionMeldTiles?: OkeyTile[];
 }): OkeyActionEventDraft[] {
   const events: OkeyActionEventDraft[] = [];
   if (input.declaredKonkan) {
-    events.push({ type: "konkan", actorPlayerId: input.actorPlayerId, payload: { kind: "declare" } });
+    events.push({ type: "konkan", actorPlayerId: input.actorPlayerId, payload: {
+      kind: "declare",
+      runTiles: input.konkanRunTiles ?? [],
+      completionMeldTiles: input.konkanCompletionMeldTiles ?? [],
+    } });
   }
   if (input.openedMelds?.length) {
     events.push({ type: "open", actorPlayerId: input.actorPlayerId, payload: {

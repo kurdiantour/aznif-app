@@ -37,6 +37,7 @@ export type OkeyBotDecision = {
   opened: boolean;
   spentTileIds: string[];
   declaredKonkan: boolean;
+  konkanRunTileIds: string[];
 };
 
 export type PreparedBotTurn = {
@@ -312,6 +313,7 @@ export function prepareBotTurn(
     opened: false,
     spentTileIds: [],
     declaredKonkan: false,
+    konkanRunTileIds: [],
   };
   if (state.phase !== "playing") return { state, discardTileId: null, decision: emptyDecision };
   const player = state.players[state.currentPlayerIndex];
@@ -330,13 +332,15 @@ export function prepareBotTurn(
   }
 
   let declaredKonkan = false;
+  let konkanRunTileIds: string[] = [];
   const openingKonkanRun = findKonkanDeclarationForPlayer(current, current.currentPlayerIndex);
   if (openingKonkanRun && canDeclareKonkanOpen(current, current.currentPlayerIndex, openingKonkanRun)) {
     current = declareKonkanOpen(current, current.currentPlayerIndex, openingKonkanRun);
     declaredKonkan = true;
+    konkanRunTileIds = openingKonkanRun;
   }
   if (current.phase !== "playing") {
-    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan } };
+    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan, konkanRunTileIds } };
   }
 
   const beforeOpen = current.players[current.currentPlayerIndex]?.opened ?? false;
@@ -351,12 +355,13 @@ export function prepareBotTurn(
   if (finishingKonkanRun && canDeclareKonkanOpen(current, current.currentPlayerIndex, finishingKonkanRun)) {
     current = declareKonkanOpen(current, current.currentPlayerIndex, finishingKonkanRun);
     declaredKonkan = true;
+    konkanRunTileIds = finishingKonkanRun;
   }
   if (current.phase !== "playing") {
     return {
       state: current,
       discardTileId: null,
-      decision: { ...emptyDecision, drawSource, opened, spentTileIds: spent.spentTileIds, declaredKonkan },
+      decision: { ...emptyDecision, drawSource, opened, spentTileIds: spent.spentTileIds, declaredKonkan, konkanRunTileIds },
     };
   }
 
@@ -365,7 +370,7 @@ export function prepareBotTurn(
   return {
     state: current,
     discardTileId,
-    decision: { drawSource, discardTileId, opened, spentTileIds: spent.spentTileIds, declaredKonkan },
+    decision: { drawSource, discardTileId, opened, spentTileIds: spent.spentTileIds, declaredKonkan, konkanRunTileIds },
   };
 }
 

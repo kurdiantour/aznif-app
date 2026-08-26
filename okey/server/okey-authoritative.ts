@@ -12,6 +12,8 @@ import {
   spendTileOnMeld,
 } from "../engine/okey-engine.ts";
 
+import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+
 import {
   resolveTimeoutTurn,
 } from "../engine/okey-timeout.ts";
@@ -985,8 +987,9 @@ export function applyAuthoritativeOkeyMatchCommand(
 
   command:
     OkeyAuthoritativeCommand,
+  now = Date.now(),
 ): OkeyAuthoritativeMatchState {
-  if (match.matchFinished) {
+  if (match.matchFinished || isOkeyRoundStartPending(match, now)) {
     throw new OkeyCommandError(
       "command_rejected",
     );
@@ -1264,6 +1267,13 @@ return reconcileAuthoritativeBotOwnership(
 );
 }
 
+export function isOkeyRoundStartPending(
+  match: OkeyAuthoritativeMatchState,
+  now = Date.now(),
+): boolean {
+  const roundStartsAtMs = Date.parse(match.roundStartsAt ?? "");
+  return Number.isFinite(roundStartsAtMs) && now < roundStartsAtMs;
+}
 export function getNextOkeyTurnDeadline(
   state: OkeyGameState,
 
@@ -1315,7 +1325,7 @@ export function applyAuthoritativeOkeyEliminatedTurn(
   match: OkeyAuthoritativeMatchState,
   expectedActorId: string,
 ): OkeyAuthoritativeMatchState {
-  if (match.matchFinished || match.roundState.phase !== "playing") {
+  if (match.matchFinished || match.roundState.phase !== "playing" || isOkeyRoundStartPending(match)) {
     throw new OkeyCommandError("command_rejected");
   }
 

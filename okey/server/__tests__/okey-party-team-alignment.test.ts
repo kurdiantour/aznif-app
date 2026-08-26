@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const sql = readFileSync("supabase/migrations/20260811001000_atomic_okey_party_matchmaking.sql", "utf8")
+const sql = readFileSync("supabase/migrations/20260813000400_okey_membership_release.sql", "utf8")
   .toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const gateway = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 const popup = readFileSync("okey/components/WaitingPlayersPopup.tsx", "utf8");

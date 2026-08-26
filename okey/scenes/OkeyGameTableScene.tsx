@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View, } from "react-native";
 
 import GameChatDrawer, { type GameChatTransport } from "@/components/game/GameChatDrawer";
 import type { GameChatMessage } from "@/lib/gameChat";
@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
+import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
 import { mapOkeySettlementToPopupRewards, OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
 import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
 import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
@@ -51,6 +52,7 @@ import {
   isPointInsideRect,
   toLocalScreenRect,
 } from "@/okey/presentation/okey-table-interactions";
+import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 import type {
   OkeyMeld,
   OkeyTeamId,
@@ -102,26 +104,36 @@ function OkeyGameTableSceneContent() {
   const router = useRouter();
   const { party } = useGameParty();
   const params = useLocalSearchParams<{
-  matchId?: string | string[];
-  mode?: string | string[];
-}>();
+    matchId?: string | string[];
+    mode?: string | string[];
+    tableId?: string | string[];
+  }>();
 
-const onlineMatchId =
-  getRouteParam(params.matchId);
+  const onlineMatchId = getRouteParam(params.matchId);
+  const tableId = getRouteParam(params.tableId);
 
-const okeyMatchMode: OkeyMatchMode =
-  getRouteParam(params.mode) === "aznif"
-    ? "aznif"
-    : "fun";
+  const okeyMatchMode: OkeyMatchMode =
+    getRouteParam(params.mode) === "aznif"
+      ? "aznif"
+      : "fun";
 
-const [onlineRoom, setOnlineRoom] =
-  useState<OkeyRoomSnapshot | null>(null);
-const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [onlineRoom, setOnlineRoom] =
+    useState<OkeyRoomSnapshot | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [konkanRevealData, setKonkanRevealData] = useState<{
+    visible: boolean;
+    runTiles: OkeyTile[];
+    completionMeldTiles: OkeyTile[];
+  }>({
+    visible: false,
+    runTiles: [],
+    completionMeldTiles: [],
+  });
 
-const [
-  leavingWaitingRoom,
-  setLeavingWaitingRoom,
-] = useState(false);
+  const [
+    leavingWaitingRoom,
+    setLeavingWaitingRoom,
+  ] = useState(false);
 
 useEffect(() => {
   let active = true;
@@ -130,6 +142,7 @@ useEffect(() => {
   });
   return () => { active = false; };
 }, []);
+
 // Okey is an authoritative online game. A matchId is issued only by the
 // matchmaking service, so a direct link must not fall back to a local game.
 useEffect(() => {
@@ -326,6 +339,20 @@ const {
   onlineAdapter,
   leaveOnlineMatch,
 } = onlineController;
+
+  useEffect(() => {
+    if (!onlineAdapter) return;
+    const unsubscribe = onlineAdapter.subscribeActionEvents((event) => {
+      if (event.type === "konkan" && event.payload?.kind === "declare") {
+        setKonkanRevealData({
+          visible: true,
+          runTiles: (event.payload.runTiles as OkeyTile[]) ?? [],
+          completionMeldTiles: (event.payload.completionMeldTiles as OkeyTile[]) ?? [],
+        });
+      }
+    });
+    return unsubscribe;
+  }, [onlineAdapter]);
 
 const takeoverExitStartedRef = useRef(false);
 const previousViewerControlRef = useRef<{
@@ -575,6 +602,56 @@ const matchSettlementLoading =
 const shouldShowScorePopup =
   showScoreDetails ||
   showRoundResultPopup;
+  const forcedKonkanAnnouncementEndsAt = onlineProjection?.forcedKonkanTeamId
+    ? Date.parse(onlineProjection.roundStartsAt ?? "")
+    : Number.NaN;
+  const [forceKonkanAnnouncementVisible, setForceKonkanAnnouncementVisible] = useState(false);
+  const forceKonkanPanelProgress = useRef(new Animated.Value(0)).current;
+  const forceKonkanCountdownProgress = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(forceKonkanPanelProgress, {
+      toValue: forceKonkanAnnouncementVisible ? 1 : 0,
+      duration: forceKonkanAnnouncementVisible ? 360 : 260,
+      easing: forceKonkanAnnouncementVisible
+        ? Easing.out(Easing.cubic)
+        : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    forceKonkanCountdownProgress.stopAnimation();
+    if (forceKonkanAnnouncementVisible) {
+      forceKonkanCountdownProgress.setValue(1);
+      Animated.timing(forceKonkanCountdownProgress, {
+        toValue: 0,
+        duration: Math.max(0, forcedKonkanAnnouncementEndsAt - Date.now()),
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [
+    forcedKonkanAnnouncementEndsAt,
+    forceKonkanAnnouncementVisible,
+    forceKonkanCountdownProgress,
+    forceKonkanPanelProgress,
+  ]);
+
+  useEffect(() => {
+    if (!Number.isFinite(forcedKonkanAnnouncementEndsAt)) {
+      setForceKonkanAnnouncementVisible(false);
+      return;
+    }
+
+    const remainingMs = forcedKonkanAnnouncementEndsAt - Date.now();
+    if (remainingMs <= 0) {
+      setForceKonkanAnnouncementVisible(false);
+      return;
+    }
+
+    setForceKonkanAnnouncementVisible(true);
+    const timer = setTimeout(() => setForceKonkanAnnouncementVisible(false), remainingMs);
+    return () => clearTimeout(timer);
+  }, [forcedKonkanAnnouncementEndsAt]);
   const previewTileIds = useMemo(() => previewMelds.flatMap((meld) => meld.tiles.map((tile) => tile.id)), [previewMelds]);
   useEffect(() => {
     if (humanPlayer.opened && previewMelds.length > 0) setPreviewMelds([]);
@@ -1039,10 +1116,9 @@ const shouldShowScorePopup =
         active: onlineGameplayReady && turnView.playerId === player?.id,
         turnTimeLeft,
         turnDurationSeconds: turnView.durationSeconds,
-        dealResetKey: dealLifecycleKey,
       };
     }),
-    [dealLifecycleKey, onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, state.players, turnTimeLeft, turnView.durationSeconds, turnView.playerId],
+    [onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, state.players, turnTimeLeft, turnView.durationSeconds, turnView.playerId],
   );
   const seatOrderedPlayers = useMemo(() => {
     if (!relativeSeatMap) return [state.players[0], state.players[2], state.players[3], state.players[1]];
@@ -1268,12 +1344,9 @@ const shouldShowScorePopup =
     <View style={styles.feltTexture} />
 
     <MemoizedOkeyOpponentSeat
-      key={`${dealLifecycleKey}-top`}
       {...opponentSeats[0]}
       playerId={opponentSeats[0]?.id}
       side="top"
-      dealOrder={2}
-      dealOrigin={dealOrigin}
       onMeasured={handleTopOpponentMeasured}
       onPress={
         opponentSeats[0]?.name
@@ -1283,12 +1356,9 @@ const shouldShowScorePopup =
     />
 
     <MemoizedOkeyOpponentSeat
-      key={`${dealLifecycleKey}-left`}
       {...opponentSeats[1]}
       playerId={opponentSeats[1]?.id}
       side="left"
-      dealOrder={3}
-      dealOrigin={dealOrigin}
       onMeasured={handleLeftOpponentMeasured}
       onPress={
         opponentSeats[1]?.name
@@ -1298,12 +1368,9 @@ const shouldShowScorePopup =
     />
 
     <MemoizedOkeyOpponentSeat
-      key={`${dealLifecycleKey}-right`}
       {...opponentSeats[2]}
       playerId={opponentSeats[2]?.id}
       side="right"
-      dealOrder={1}
-      dealOrigin={dealOrigin}
       onMeasured={handleRightOpponentMeasured}
       onPress={
         opponentSeats[2]?.name
@@ -1437,7 +1504,6 @@ const shouldShowScorePopup =
               }}
             >
               <Text style={styles.openSetsButtonText}>
-                {humanPlayer.konkan ? "کۆنکان" : humanPlayer.opened ? "دانانی دەستە" : "ڕاخستن"}
               </Text>
             </Pressable>
           ) : null}
@@ -1500,6 +1566,42 @@ const shouldShowScorePopup =
         {tileFlight ? (
           <OkeyTileFlightOverlay key={tileFlight.id} flight={tileFlight} okeyTile={state.okeyTile} onDone={completeActivePresentation} />
         ) : null}
+        <OkeyKonkanReveal
+          visible={konkanRevealData.visible}
+          runTiles={konkanRevealData.runTiles}
+          completionMeldTiles={konkanRevealData.completionMeldTiles}
+          okeyTile={state.okeyTile}
+          onClose={() => setKonkanRevealData((prev) => ({ ...prev, visible: false }))}
+        />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            forceKonkanStyles.panel,
+            {
+              opacity: forceKonkanPanelProgress,
+              transform: [{
+                translateY: forceKonkanPanelProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-110, 0],
+                }),
+              }],
+            },
+          ]}
+        >
+          <View style={forceKonkanStyles.titleRow}>
+            <Ionicons name="lock-closed" size={15} color="#f8d774" />
+            <Text style={forceKonkanStyles.text}>کۆنکانی ناچاری</Text>
+          </View>
+          <Text style={forceKonkanStyles.subtitle}>تیمی دواکەوتوو ناچارە کۆنکان بکات</Text>
+          <View style={forceKonkanStyles.progressTrack}>
+            <Animated.View
+              style={[
+                forceKonkanStyles.progressFill,
+                { transform: [{ scaleX: forceKonkanCountdownProgress }] },
+              ]}
+            />
+          </View>
+        </Animated.View>
       </View>
       <PlayerProfilePopup
         player={profilePlayer}
@@ -1562,5 +1664,69 @@ const finishRevealStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(248,243,223,0.22)",
   },
+
 });
+
+const forceKonkanStyles = StyleSheet.create({
+  panel: {
+    position: "absolute",
+    top: 0,
+    left: "30%",
+    right: "30%",
+    zIndex: 950,
+    elevation: 950,
+    minHeight: 88,
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 10,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(17, 18, 17, 0.98)",
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: "rgba(242, 211, 124, 0.38)",
+    shadowColor: "#000",
+    shadowOpacity: 0.48,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  titleRow: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  text: {
+    color: "#f8f3df",
+    fontSize: 17,
+    lineHeight: 25,
+    fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+  subtitle: {
+    marginTop: 1,
+    color: "rgba(248, 243, 223, 0.68)",
+    fontSize: 10,
+    lineHeight: 17,
+    fontFamily: "SpedaRegular",
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+  progressTrack: {
+    width: "72%",
+    height: 2,
+    marginTop: 7,
+    overflow: "hidden",
+    borderRadius: 1,
+    backgroundColor: "rgba(248, 215, 116, 0.16)",
+  },
+  progressFill: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 1,
+    backgroundColor: "#f8d774",
+  },
+});
+
 

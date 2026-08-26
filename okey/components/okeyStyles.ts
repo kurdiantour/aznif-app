@@ -39,7 +39,19 @@ rightSeat: {
     { translateY: -30 },
   ],
 },
-  opponentRack: { height: 26, minWidth: 112, paddingHorizontal: 8, borderRadius: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(76,40,17,0.72)", borderWidth: 1, borderColor: "rgba(255,220,150,0.24)" },
+opponentRack: {
+  height: 26,
+  minWidth: 112,
+  paddingHorizontal: 8,
+  borderRadius: 8,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "flex-start",
+  backgroundColor: "rgba(76,40,17,0.72)",
+  borderWidth: 1,
+  borderColor: "rgba(255,220,150,0.24)",
+},
+
 namePlate: {
   width: 96,
   maxWidth: 96,
@@ -190,6 +202,7 @@ playerSetScoreCurrent: {
   direction: "ltr",
 },
   activeRackDragViewport: { zIndex: 200, elevation: 200 },
+  flippingJokerRackViewport: { zIndex: 6000, elevation: 6000 },
   activeRackDragLayer: {
   zIndex: 10000,
   elevation: 10000,
@@ -260,7 +273,13 @@ borderColor: "rgba(248,215,116,0.20)",
   tileImage: { width: "100%", height: "100%" },
   okeyChip: { position: "absolute", top: 2, right: 2, width: 13, height: 13, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "#facc15" },
   okeyChipText: { color: "#221309", fontSize: 8, fontFamily: "SpedaRegular" },
-  tileBack: { width: 42, height: 58, borderRadius: 6, borderWidth: 1, borderColor: "rgba(83,47,18,0.72)", alignItems: "center", justifyContent: "center" },
+tileBack: {
+  width: 42,
+  height: 58,
+  borderRadius: 6,
+  alignItems: "center",
+  justifyContent: "center"
+},
   tileBackSmall: { width: 20, height: 28, marginHorizontal: -2, borderRadius: 4 },
 });
 

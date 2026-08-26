@@ -1021,7 +1021,7 @@ export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGame
   const nextDrawnTile = withJokerOrigin(drawnTile, preparedState.okeyTile, "natural");
 
   const startsPendingKonkan =
-    restrictedKonkanDiscardPick && !player.opened && !player.konkan;
+    fromDiscard && !player.opened && !player.konkan;
   const nextPlayers = preparedState.players.map((entry, index) =>
     index === preparedState.currentPlayerIndex
       ? {

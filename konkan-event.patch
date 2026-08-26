@@ -1,0 +1,79 @@
+diff --git a/okey/server/okey-action-events.ts b/okey/server/okey-action-events.ts
+--- a/okey/server/okey-action-events.ts
++++ b/okey/server/okey-action-events.ts
+@@ -2 +2 @@
+-import type { OkeyMeld, OkeyTile } from "../types/okey.ts";
++import type { OkeyGameState, OkeyMeld, OkeyTile } from "../types/okey.ts";
+@@ -27,0 +28 @@
++  stateBeforeCommand?: OkeyGameState,
+@@ -42,2 +43,16 @@
+-    case "declare-konkan":
+-      return [{ type: "konkan", actorPlayerId, payload: { kind: "declare", orderedRunTileIds: command.orderedRunTileIds } }];
++    case "declare-konkan": {
++      const actor = stateBeforeCommand?.players.find((player) => player.id === actorPlayerId);
++      const tileById = new Map(actor?.hand.map((tile) => [tile.id, tile]) ?? []);
++      const runTiles = command.orderedRunTileIds.map((tileId) => tileById.get(tileId)).filter((tile): tile is OkeyTile => !!tile);
++      const runIds = new Set(command.orderedRunTileIds);
++      const completionMeldTiles = actor?.hand.filter((tile) => !runIds.has(tile.id)) ?? [];
++      return [{ type: "konkan", actorPlayerId, payload: {
++        kind: "declare",
++        orderedRunTileIds: command.orderedRunTileIds,
++        runTiles,
++        completionMeldTiles,
++      } }];
++    }
+@@ -78,0 +94,2 @@
++  konkanRunTiles?: OkeyTile[];
++  konkanCompletionMeldTiles?: OkeyTile[];
+@@ -83 +100,5 @@
+-    events.push({ type: "konkan", actorPlayerId: input.actorPlayerId, payload: { kind: "declare" } });
++    events.push({ type: "konkan", actorPlayerId: input.actorPlayerId, payload: {
++      kind: "declare",
++      runTiles: input.konkanRunTiles ?? [],
++      completionMeldTiles: input.konkanCompletionMeldTiles ?? [],
++    } });
+diff --git a/supabase/functions/okey_match/index.ts b/supabase/functions/okey_match/index.ts
+--- a/supabase/functions/okey_match/index.ts
++++ b/supabase/functions/okey_match/index.ts
+@@ -880 +880,5 @@
+-      actionEventDrafts = createOkeyCommandActionEvents(acceptedCommand, actingPlayer?.id ?? "");
++      actionEventDrafts = createOkeyCommandActionEvents(
++        acceptedCommand,
++        actingPlayer?.id ?? "",
++        state.roundState,
++      );
+diff --git a/okey/engine/okey-bot-engine.ts b/okey/engine/okey-bot-engine.ts
+--- a/okey/engine/okey-bot-engine.ts
++++ b/okey/engine/okey-bot-engine.ts
+@@ -39,0 +40 @@
++  konkanRunTileIds: string[];
+@@ -314,0 +316 @@
++    konkanRunTileIds: [],
+@@ -332,0 +335 @@
++  let konkanRunTileIds: string[] = [];
+@@ -336,0 +340 @@
++    konkanRunTileIds = openingKonkanRun;
+@@ -339 +343 @@
+-    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan } };
++    return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan, konkanRunTileIds } };
+@@ -353,0 +358 @@
++    konkanRunTileIds = finishingKonkanRun;
+@@ -359 +364 @@
+-      decision: { ...emptyDecision, drawSource, opened, spentTileIds: spent.spentTileIds, declaredKonkan },
++      decision: { ...emptyDecision, drawSource, opened, spentTileIds: spent.spentTileIds, declaredKonkan, konkanRunTileIds },
+@@ -368 +373 @@
+-    decision: { drawSource, discardTileId, opened, spentTileIds: spent.spentTileIds, declaredKonkan },
++    decision: { drawSource, discardTileId, opened, spentTileIds: spent.spentTileIds, declaredKonkan, konkanRunTileIds },
+diff --git a/supabase/functions/process_bot_turns/index.ts b/supabase/functions/process_bot_turns/index.ts
+--- a/supabase/functions/process_bot_turns/index.ts
++++ b/supabase/functions/process_bot_turns/index.ts
+@@ -225,0 +226,2 @@
++      const konkanRunIds = new Set(prepared.decision.konkanRunTileIds);
++      const konkanActorHand = prepared.state.players[currentPlayerIndex]?.hand ?? [];
+@@ -233,0 +237,6 @@
++        konkanRunTiles: prepared.decision.konkanRunTileIds
++          .map((tileId) => konkanActorHand.find((tile) => tile.id === tileId))
++          .filter((tile): tile is NonNullable<typeof tile> => !!tile),
++        konkanCompletionMeldTiles: prepared.decision.declaredKonkan
++          ? konkanActorHand.filter((tile) => !konkanRunIds.has(tile.id))
++          : [],

@@ -1,6 +1,5 @@
 import { expect, test } from "@jest/globals";
 import {
-  createOpponentDiscardFlight,
   findClosestMeldDropTarget,
   isPointInsideRect,
   toLocalScreenRect,
@@ -13,18 +12,9 @@ import {
   syncSlotsWithTiles,
 } from "../../rack/rack-layout";
 
-test("screen coordinates and opponent discard animation targets are stable", () => {
+test("screen coordinates targets are stable", () => {
   const screen = { x: 10, y: 20, width: 400, height: 800 };
   expect(toLocalScreenRect({ x: 30, y: 70, width: 20, height: 30 }, screen)).toEqual({ x: 20, y: 50, width: 20, height: 30 });
-  const flight = createOpponentDiscardFlight(
-    { tile: { id: "tile", color: "red", value: 4, copy: 1 }, ownerPlayerId: "p2", discardCount: 3 },
-    { x: 100, y: 100, width: 60, height: 60 },
-    { x: 200, y: 220, width: 20, height: 30 },
-    screen,
-  );
-  expect(flight?.id).toBe("opponent-discard-tile-3");
-  expect(flight?.from).toEqual({ x: 110, y: 95, width: 20, height: 30 });
-  expect(flight?.to).toEqual({ x: 190, y: 200, width: 20, height: 30 });
 });
 
 test("meld drop selects only a nearby legal target", () => {
@@ -65,8 +55,8 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
     [tile("a"), tile("b"), tile("c"), tile("draw")],
   );
 
-  expect(synced.bottom.slice(0, 3)).toEqual(["a", "draw", "b"]);
-  expect(synced.top.slice(0, 2)).toEqual(["c", null]);
+  expect(synced.bottom.slice(0, 3)).toEqual(["a", null, "b"]);
+  expect(synced.top.slice(0, 2)).toEqual(["c", "draw"]);
 
   const fullFirstRow = createEmptySlots();
   const topIds = fullFirstRow.top.map((_, index) => `top-${index}`);

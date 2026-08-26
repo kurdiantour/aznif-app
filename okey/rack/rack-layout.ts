@@ -110,14 +110,14 @@ export function getDefaultSlotForTileIndex(index: number): DragOrigin | null {
 
 export function getFirstDefaultEmptySlot(slots: RackSlots): DragOrigin | null {
   for (let slotIndex = 0; slotIndex < RACK_ROW_CAPACITY; slotIndex += 1) {
-    if (slots.bottom[slotIndex] === null) {
-      return { row: "bottom", slotIndex };
+    if (slots.top[slotIndex] === null) {
+      return { row: "top", slotIndex };
     }
   }
 
   for (let slotIndex = 0; slotIndex < RACK_ROW_CAPACITY; slotIndex += 1) {
-    if (slots.top[slotIndex] === null) {
-      return { row: "top", slotIndex };
+    if (slots.bottom[slotIndex] === null) {
+      return { row: "bottom", slotIndex };
     }
   }
 

@@ -92,6 +92,7 @@ type OkeyTileFaceProps = {
   isWildcard?: boolean;
   flipped?: boolean;
   onPress?: () => void;
+  onFlipAnimationActiveChange?: (active: boolean) => void;
   panHandlers?: GestureResponderHandlers;
   width?: number;
   height?: number;
@@ -107,6 +108,7 @@ export function OkeyTileFace({
   isWildcard,
   flipped = false,
   onPress,
+  onFlipAnimationActiveChange,
   panHandlers,
   width,
   height,
@@ -117,8 +119,14 @@ export function OkeyTileFace({
   const flipProgress = useRef(
     new Animated.Value(flipped ? 1 : 0),
   ).current;
+  const onFlipAnimationActiveChangeRef = useRef(onFlipAnimationActiveChange);
 
   useEffect(() => {
+    onFlipAnimationActiveChangeRef.current = onFlipAnimationActiveChange;
+  }, [onFlipAnimationActiveChange]);
+
+  useEffect(() => {
+    onFlipAnimationActiveChangeRef.current?.(true);
     const animation = Animated.timing(flipProgress, {
       toValue: flipped ? 1 : 0,
       duration: 1050,
@@ -126,10 +134,13 @@ export function OkeyTileFace({
       useNativeDriver: true,
     });
 
-    animation.start();
+    animation.start(({ finished }) => {
+      if (finished) onFlipAnimationActiveChangeRef.current?.(false);
+    });
 
     return () => {
       animation.stop();
+      onFlipAnimationActiveChangeRef.current?.(false);
     };
   }, [flipProgress, flipped]);
 const tileLift = flipProgress.interpolate({

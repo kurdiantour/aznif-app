@@ -278,6 +278,8 @@ export function OkeyPlayerRack({
   );
   const [returningJokerTileIds, setReturningJokerTileIds] =
     useState<Set<string>>(() => new Set());
+  const [flippingJokerTileIds, setFlippingJokerTileIds] =
+    useState<Set<string>>(() => new Set());
   const previousTileIdsRef = useRef(
     new Set(tiles.map((tile) => tile.id)),
   );
@@ -304,6 +306,18 @@ export function OkeyPlayerRack({
   const clearEnteringTilesForDrag = useCallback(() => {
     setEnteringTileIds(new Set());
   }, []);
+
+  const handleJokerFlipAnimationActiveChange = useCallback(
+    (tileId: string, active: boolean) => {
+      setFlippingJokerTileIds((current) => {
+        const next = new Set(current);
+        if (active) next.add(tileId);
+        else next.delete(tileId);
+        return next;
+      });
+    },
+    [],
+  );
 
   const clearReturningJokerForTile = useCallback(
     (tileId: string) => {
@@ -631,6 +645,9 @@ export function OkeyPlayerRack({
           isOkeyWildcard(tile, okeyTile) &&
           flippedTileIds.has(tile.id)
         }
+        onFlipAnimationActiveChange={(active) =>
+          handleJokerFlipAnimationActiveChange(tile.id, active)
+        }
         onPress={() => onSelectTile(tile.id)}
         onAccessibilityMovePrevious={
           accessibilityIndex > 0
@@ -651,6 +668,7 @@ export function OkeyPlayerRack({
     );
 
     const neighborShift = getTileShiftValue(tile.id);
+    const isFlippingJoker = flippingJokerTileIds.has(tile.id);
 
     return (
       <Animated.View
@@ -674,6 +692,8 @@ export function OkeyPlayerRack({
           })(),
           width: rackTileWidth,
           height: rackTileHeight,
+          zIndex: isFlippingJoker ? 6000 : undefined,
+          elevation: isFlippingJoker ? 6000 : undefined,
           transform: neighborShift.getTranslateTransform(),
         }}
       >
@@ -870,6 +890,8 @@ export function OkeyPlayerRack({
           style={[
             styles.rackTileViewport,
             styles.rackScroll,
+            flippingJokerTileIds.size > 0 &&
+              styles.flippingJokerRackViewport,
             (draggingTile || draggingMeld) &&
               styles.activeRackDragViewport,
           ]}

@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Note: "domino_settle_match" is used in processDominoOneVsOneBotTurn
 
 import { reduceTwoVsTwoBotPass, reduceTwoVsTwoPlay } from "../../../domino/modes/two-vs-two/authoritative/domino-two-vs-two-command-reducer.ts";
 import { finalizeTwoVsTwoRound } from "../../../domino/modes/two-vs-two/lifecycle/domino-two-vs-two-round-transition.ts";
@@ -163,6 +164,13 @@ async function processOkeyBotTurn(
     const isTestMatch = runtimeMatch.is_test === true;
 
     const originalState = bundle.state;
+    const roundStartsAtMs = Date.parse(originalState.roundStartsAt ?? "");
+    const roundStartWaitMs = Number.isFinite(roundStartsAtMs)
+      ? Math.max(0, roundStartsAtMs - Date.now())
+      : 0;
+    if (roundStartWaitMs > 0) {
+      await new Promise((resolve) => globalThis.setTimeout(resolve, roundStartWaitMs));
+    }
     if (originalState.matchFinished) {
       return { ok: true, processed: false, reason: "match_finished" };
     }
@@ -216,6 +224,8 @@ async function processOkeyBotTurn(
             (tile) => tile.id === prepared.discardTileId,
           ) ?? null
         : null;
+      const konkanRunIds = new Set(prepared.decision.konkanRunTileIds);
+      const konkanActorHand = prepared.state.players[currentPlayerIndex]?.hand ?? [];
       actionEventDrafts = createBotPostDrawActionEvents({
         actorPlayerId: currentPlayer.id,
         openedMelds: prepared.decision.opened
@@ -225,6 +235,12 @@ async function processOkeyBotTurn(
         spentTileIds: prepared.decision.spentTileIds,
         declaredKonkan: prepared.decision.declaredKonkan,
         discardedTile,
+        konkanRunTiles: prepared.decision.konkanRunTileIds
+          .map((tileId) => konkanActorHand.find((tile) => tile.id === tileId))
+          .filter((tile): tile is NonNullable<typeof tile> => !!tile),
+        konkanCompletionMeldTiles: prepared.decision.declaredKonkan
+          ? konkanActorHand.filter((tile) => !konkanRunIds.has(tile.id))
+          : [],
       });
     }
 
