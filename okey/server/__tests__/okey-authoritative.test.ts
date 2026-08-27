@@ -12,7 +12,8 @@ import {
   createAuthoritativeOkeyMatch,
   getNextOkeyMatchTurnDeadline,
   getOkeyMatchTurnDeadlineAfterTransition,
-  OKEY_SERVER_TURN_SECONDS,
+  OKEY_DRAW_PHASE_SECONDS,
+  OKEY_THROW_PHASE_SECONDS,
   OkeyCommandError,
   projectOkeyPublicState,
   projectOkeyState,
@@ -33,6 +34,15 @@ test("viewer projection exposes only the viewer hand and never the deck", () => 
   assert.equal(projection.players[0].hand, undefined);
   assert.equal(projection.players[1].hand, undefined);
   assert.equal(projection.players[3].hand, undefined);
+  assert.equal(projection.turnDurationSeconds, 30);
+
+  const drawProjection = projectOkeyState(
+    { ...state, hasDrawnThisTurn: false },
+    2,
+    8,
+    "2026-08-02T12:00:15.000Z",
+  );
+  assert.equal(drawProjection.turnDurationSeconds, 15);
 });
 
 test("public projection exposes no private hand", () => {
@@ -56,82 +66,63 @@ test("invalid engine moves are rejected instead of being committed", () => {
   );
 });
 
-test("Okey turn deadline is fixed at 30 seconds", () => {
-  const match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+test("Okey deadlines are phase-aware: Draw is 15 seconds and Throw is 30 seconds", () => {
+  const initial = createAuthoritativeOkeyMatch(matchPlayers, 0);
   const now = Date.parse("2026-08-02T00:00:00.000Z");
-  assert.equal(OKEY_SERVER_TURN_SECONDS, 30);
-  assert.equal(
-    getNextOkeyMatchTurnDeadline(match, now),
-    "2026-08-02T00:00:30.000Z",
-  );
-});
-
-test("a Human turn receives 30 seconds even with historical timeout count two", () => {
-  const match = createAuthoritativeOkeyMatch(matchPlayers, 0);
-  const player = match.roundState.players[match.roundState.currentPlayerIndex];
-  const now = Date.parse("2026-08-02T00:02:00.000Z");
-  const withHistoricalTimeouts = {
-    ...match,
-    timeoutCountsByPlayerId: {
-      ...match.timeoutCountsByPlayerId,
-      [player.id]: 2,
-    },
+  const drawPhase = {
+    ...initial,
+    roundState: { ...initial.roundState, hasDrawnThisTurn: false },
   };
 
-  assert.equal(isOkeyBotControlled(player), false);
-  assert.equal(
-    getNextOkeyMatchTurnDeadline(withHistoricalTimeouts, now),
-    "2026-08-02T00:02:30.000Z",
-  );
+  assert.equal(OKEY_DRAW_PHASE_SECONDS, 15);
+  assert.equal(OKEY_THROW_PHASE_SECONDS, 30);
+  assert.equal(getNextOkeyMatchTurnDeadline(drawPhase, now), "2026-08-02T00:00:15.000Z");
+  assert.equal(getNextOkeyMatchTurnDeadline(initial, now), "2026-08-02T00:00:30.000Z");
 });
 
-test("a Bot turn has no deadline and the following Human receives 30 seconds", () => {
-  const match = createAuthoritativeOkeyMatch(matchPlayers, 0);
-  const botIndex = match.roundState.currentPlayerIndex;
-  const botOwned = {
-    ...match,
-    roundState: handSeatToBot(match.roundState, botIndex, "normal"),
+test("a successful Human draw starts a fresh 30-second Throw deadline", () => {
+  const initial = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  const drawPhase = {
+    ...initial,
+    roundState: { ...initial.roundState, hasDrawnThisTurn: false },
   };
+  const drawDeadline = "2026-08-02T00:00:15.000Z";
+  const drawCommittedAt = Date.parse("2026-08-02T00:00:10.000Z");
+  const afterDraw = applyAuthoritativeOkeyMatchCommand(
+    drawPhase,
+    drawPhase.roundState.currentPlayerIndex,
+    { type: "draw", source: "deck" },
+    drawCommittedAt,
+  );
 
-  assert.equal(getNextOkeyMatchTurnDeadline(botOwned), null);
-
-  const afterBot = settleAuthoritativeOkeyRound({
-    ...botOwned,
-    roundState: playBotTurn(botOwned.roundState, { difficulty: "normal" }),
-  });
-  const nextPlayer =
-    afterBot.roundState.players[afterBot.roundState.currentPlayerIndex];
-  const now = Date.parse("2026-08-02T00:03:00.000Z");
-
-  assert.equal(afterBot.matchFinished, false);
-  assert.equal(isOkeyBotControlled(nextPlayer), false);
   assert.equal(
-    getNextOkeyMatchTurnDeadline(afterBot, now),
-    "2026-08-02T00:03:30.000Z",
+    getOkeyMatchTurnDeadlineAfterTransition(drawPhase, afterDraw, drawDeadline, drawCommittedAt),
+    "2026-08-02T00:00:40.000Z",
   );
 });
 
-test("same-turn commands preserve deadline while a player change creates a new one", () => {
-  const match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+test("commands within one timer phase preserve its deadline and a player change starts Draw time", () => {
+  const initial = createAuthoritativeOkeyMatch(matchPlayers, 0);
   const currentDeadline = "2026-08-02T00:00:30.000Z";
   const later = Date.parse("2026-08-02T00:00:10.000Z");
 
   assert.equal(
-    getOkeyMatchTurnDeadlineAfterTransition(match, match, currentDeadline, later),
+    getOkeyMatchTurnDeadlineAfterTransition(initial, initial, currentDeadline, later),
     currentDeadline,
   );
 
-  const nextPlayerIndex = (match.roundState.currentPlayerIndex + 1) % match.roundState.players.length;
+  const nextPlayerIndex = (initial.roundState.currentPlayerIndex + 1) % initial.roundState.players.length;
   const nextTurn = {
-    ...match,
+    ...initial,
     roundState: {
-      ...match.roundState,
+      ...initial.roundState,
       currentPlayerIndex: nextPlayerIndex,
+      hasDrawnThisTurn: false,
     },
   };
   assert.equal(
-    getOkeyMatchTurnDeadlineAfterTransition(match, nextTurn, currentDeadline, later),
-    "2026-08-02T00:00:40.000Z",
+    getOkeyMatchTurnDeadlineAfterTransition(initial, nextTurn, currentDeadline, later),
+    "2026-08-02T00:00:25.000Z",
   );
 });
 test("expired deadline is resolved by the server and advances the turn", () => {
@@ -215,7 +206,7 @@ test("second consecutive missed turn repeats exact auto-discard and reaches stre
   const playerIndex = match.roundState.currentPlayerIndex;
   const playerId = match.roundState.players[playerIndex].id;
 
-  match = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
+  match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, playerIndex), expiredDeadline, afterDeadline);
   match = forcePlayerTurn(match, playerIndex);
   const drawnTileId = match.roundState.deck[0].id;
   match = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
@@ -309,72 +300,71 @@ test("manual leave finalizes an already bot-controlled takeover seat", () => {
   assert.ok(finalized.manualLeftPlayerIds.includes(originalPlayerId));
   assert.strictEqual(finalized.roundState.players[playerIndex], botBeforeFinalLeave);
 });
-test("a valid human move resets consecutive timeout counts", () => {
+test("a successful Human draw resets the consecutive Draw-timeout streak", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  const playerIndex = match.roundState.currentPlayerIndex;
+  const playerId = match.roundState.players[playerIndex].id;
+
   match = resolveAuthoritativeMatchDeadline(
-    match,
+    forcePlayerTurn(match, playerIndex),
     expiredDeadline,
     afterDeadline,
   );
+  assert.equal(match.timeoutCountsByPlayerId[playerId], 1);
 
-  assert.equal(match.timeoutCountsByPlayerId["player-0"], 1);
-
-  match = forcePlayerTurn(match, 0);
-  match = {
-    ...match,
-    roundState: {
-      ...match.roundState,
-      hasDrawnThisTurn: true,
-    },
-  };
-
-  const tileId = match.roundState.players[0].hand[0].id;
-  const moved = applyAuthoritativeOkeyMatchCommand(
-    match,
-    0,
-    { type: "discard", tileId },
+  const drawPhase = forcePlayerTurn(match, playerIndex);
+  const afterHumanDraw = applyAuthoritativeOkeyMatchCommand(
+    drawPhase,
+    playerIndex,
+    { type: "draw", source: "deck" },
   );
 
-  assert.equal(moved.timeoutCountsByPlayerId["player-0"], 0);
-
-  const timedOutAgain = resolveAuthoritativeMatchDeadline(
-    forcePlayerTurn(moved, 0),
-    expiredDeadline,
-    afterDeadline,
-  );
-
-  assert.equal(timedOutAgain.timeoutCountsByPlayerId["player-0"], 1);
-  assert.equal(
-    isOkeyBotControlled(timedOutAgain.roundState.players[0]),
-    false,
-  );
+  assert.equal(afterHumanDraw.timeoutCountsByPlayerId[playerId], 0);
+  assert.equal(afterHumanDraw.roundState.hasDrawnThisTurn, true);
 });
-test("a Human with historical timeout count two can act and resets the count", () => {
+
+test("Throw timeout only auto-discards and does not increment or trigger Draw-timeout takeover", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
-  const actorPlayerIndex = match.roundState.currentPlayerIndex;
-  const actor = match.roundState.players[actorPlayerIndex];
+  const playerIndex = match.roundState.currentPlayerIndex;
+  const playerId = match.roundState.players[playerIndex].id;
   match = {
     ...match,
-    timeoutCountsByPlayerId: {
-      ...match.timeoutCountsByPlayerId,
-      [actor.id]: 2,
-    },
-    roundState: {
-      ...match.roundState,
-      hasDrawnThisTurn: true,
-    },
+    timeoutCountsByPlayerId: { ...match.timeoutCountsByPlayerId, [playerId]: 1 },
+    roundState: { ...match.roundState, hasDrawnThisTurn: true },
   };
+  const handCountBefore = match.roundState.players[playerIndex].hand.length;
 
-  const tileId = match.roundState.players[actorPlayerIndex].hand[0].id;
-  const moved = applyAuthoritativeOkeyMatchCommand(
+  const afterThrowTimeout = resolveAuthoritativeMatchDeadline(
     match,
-    actorPlayerIndex,
+    expiredDeadline,
+    afterDeadline,
+  );
+
+  assert.equal(afterThrowTimeout.timeoutCountsByPlayerId[playerId], 1);
+  assert.equal(isOkeyBotControlled(afterThrowTimeout.roundState.players[playerIndex]), false);
+  assert.equal(afterThrowTimeout.roundState.players[playerIndex].hand.length, handCountBefore - 1);
+  assert.notEqual(afterThrowTimeout.roundState.currentPlayerIndex, playerIndex);
+});
+
+test("Throw commands do not clear a Draw-timeout streak; only Human draw does", () => {
+  let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  const playerIndex = match.roundState.currentPlayerIndex;
+  const playerId = match.roundState.players[playerIndex].id;
+  match = {
+    ...match,
+    timeoutCountsByPlayerId: { ...match.timeoutCountsByPlayerId, [playerId]: 1 },
+    roundState: { ...match.roundState, hasDrawnThisTurn: true },
+  };
+  const tileId = match.roundState.players[playerIndex].hand[0].id;
+
+  const afterDiscard = applyAuthoritativeOkeyMatchCommand(
+    match,
+    playerIndex,
     { type: "discard", tileId },
   );
 
-  assert.equal(moved.timeoutCountsByPlayerId[actor.id], 0);
+  assert.equal(afterDiscard.timeoutCountsByPlayerId[playerId], 1);
 });
-
 test("manual leave preserves the seat state and bot control across an exact next-round transition", () => {
   const match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   const leavingPlayer = match.roundState.players[1];

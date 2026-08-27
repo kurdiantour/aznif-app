@@ -19,6 +19,7 @@ type GameCardProps = {
   image?: number;
   disabled?: boolean;
   isTablet?: boolean;
+  showComingSoonClock?: boolean;
   onPress?: () => void;
 };
 
@@ -29,6 +30,7 @@ function GameCard({
   image,
   disabled = false,
   isTablet = false,
+  showComingSoonClock = false,
   onPress,
 }: GameCardProps) {
   return (
@@ -57,9 +59,15 @@ function GameCard({
         />
       )}
 
-      <View style={styles.iconBox}>
-        <Ionicons name={icon} size={22} color="#f8d774" />
-      </View>
+      {showComingSoonClock ? (
+        <View style={styles.clockBox}>
+          <Ionicons name="time-outline" size={20} color="#e9d5ff" />
+        </View>
+      ) : (
+        <View style={styles.iconBox}>
+          <Ionicons name={icon} size={22} color="#f8d774" />
+        </View>
+      )}
 
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.92)"]}
@@ -97,68 +105,138 @@ export default function PlayScreen() {
   const isTablet = Math.min(width, height) >= 600;
 
   return (
-    <View style={[styles.content, isTablet && styles.contentTablet]}>
-      <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
-        <GameCard
-          isTablet={isTablet}
-          title="ئەزنیف"
-          icon="grid-outline"
-          image={require("@/assets/images/lobby/aznif-card-v3.png")}
-          onPress={() => router.push("/domino")}
-        />
-
-        <GameCard
-          isTablet={isTablet}
-          title="ئۆکەی"
-          icon="ellipse-outline"
-          image={require("@/assets/images/okey/lobby/okey-card.png")}
-          onPress={() => router.push("/okey")}
-        />
-
-        {__DEV__ ? (
-          <>
-          <GameCard
-            isTablet={isTablet}
-            title="Okey Preview"
-            subtitle="Demo Game"
-            icon="flask-outline"
-            onPress={() => router.push("/okey/preview")}
-          />
-          <GameCard
-            isTablet={isTablet}
-            title="Domino 2v2 Preview"
-            subtitle="You + 3 local bots"
-            icon="flask-outline"
-            onPress={() => router.push("/domino/preview")}
-          />
-          </>
-        ) : (
-          <View
-            style={[
-              styles.card,
-              styles.cardPlaceholder,
-              isTablet && styles.cardTablet,
+    <View style={styles.screenWrapper}>
+      {__DEV__ && (
+        <View style={styles.devButtonsRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.devButton,
+              pressed && styles.devButtonPressed,
             ]}
-            pointerEvents="none"
+            onPress={() => router.push("/okey/preview")}
+          >
+            <Ionicons name="flask-outline" size={12} color="#f8d774" />
+            <Text style={styles.devButtonText}>Okey Preview</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.devButton,
+              pressed && styles.devButtonPressed,
+            ]}
+            onPress={() => router.push("/domino/preview")}
+          >
+            <Ionicons name="flask-outline" size={12} color="#f8d774" />
+            <Text style={styles.devButtonText}>Domino 2v2 Preview</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <View style={[styles.content, isTablet && styles.contentTablet]}>
+        <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
+          <GameCard
+            isTablet={isTablet}
+            title="ئەزنیف"
+            subtitle="توانای خۆت بسەلمێنە"
+            icon="grid-outline"
+            image={require("@/assets/images/lobby/aznif-card-v3.png")}
+            onPress={() => router.push("/domino")}
           />
-        )}
 
-        <View
-          style={[
-            styles.card,
-            styles.cardPlaceholder,
-            isTablet && styles.cardTablet,
-          ]}
-          pointerEvents="none"
-        />
+          <GameCard
+            isTablet={isTablet}
+            title="ئۆکەی"
+            subtitle="توانای خۆت بسەلمێنە"
+            icon="ellipse-outline"
+            image={require("@/assets/images/okey/lobby/okey-card.png")}
+            onPress={() => router.push("/okey")}
+          />
+
+          <GameCard
+            isTablet={isTablet}
+            title="تاولە"
+            subtitle="بەم زووانە"
+            icon="cube-outline"
+            image={require("@/assets/images/lobby/backgammon-card.png")}
+            disabled={true}
+            showComingSoonClock={true}
+          />
+
+          <GameCard
+            isTablet={isTablet}
+            title="دامە"
+            subtitle="بەم زووانە"
+            icon="grid-outline"
+            image={require("@/assets/images/lobby/dame-card.png")}
+            disabled={true}
+            showComingSoonClock={true}
+          />
+        </View>
+
+        <ConsentModal />
       </View>
-
-      <ConsentModal />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenWrapper: {
+    flex: 1,
+    width: "100%",
+  },
+
+  devButtonsRow: {
+    position: "absolute",
+    top: -12,
+    right: 0,
+    flexDirection: "row",
+    gap: 8,
+    zIndex: 10,
+  },
+
+  clockBox: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.55)",
+    backgroundColor: "rgba(15, 11, 42, 0.72)",
+    // Glow effect matching Aznif purple
+    shadowColor: "#a855f7",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 5,
+  },
+
+  devButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(168, 85, 247, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.35)",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+
+  devButtonPressed: {
+    opacity: 0.7,
+  },
+
+  devButtonText: {
+    color: "#e9d5ff",
+    fontSize: 10,
+    fontFamily: "SpedaBold",
+    marginLeft: 4,
+  },
+
   content: {
     alignSelf: "center",
     width: "100%",

@@ -22,7 +22,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.behzadhakeem.dominoapp",
+      "package": "com.aznif.app",
       "intentFilters": [
         {
           "action": "VIEW",

@@ -488,12 +488,14 @@ const turnView = useMemo(
   const opponentSeatRectsRef = useRef<Record<string, ScreenRect>>({});
   const rackRectRef = useRef<ScreenRect | null>(null);
   const rackTileRectsRef = useRef<Record<string, ScreenRect>>({});
+  const lastRackTapRef = useRef<{ tileId: string; tappedAt: number } | null>(null);
   const pendingDeckDropRef = useRef<{
     point: { x: number; y: number };
     previousHandTileIds: Set<string>;
   } | null>(null);
   const drawLandingRectRef = useRef<ScreenRect | null>(null);
   const timeoutWarningTurnRef = useRef<string | null>(null);
+  const warningClockDeadlineRef = useRef<string | null>(null);
   const lastPresentationRoundRef = useRef(currentRound);
   const humanMeldDropZoneRef = useRef<View | null>(null);
   const meldDropRectsRef = useRef<MeldDropRect[]>([]);
@@ -748,15 +750,26 @@ const shouldShowScorePopup =
 
   useEffect(() => {
     setTurnWarningToastVisible(false);
-  }, [currentRound, turnView.deadlineAt, turnView.durationSeconds, turnView.playerId]);
+  }, [currentRound, turnView.deadlineAt, turnView.durationSeconds, turnView.playerId, state.hasDrawnThisTurn]);
 
   useEffect(() => {
+    if (!turnView.deadlineAt) {
+      warningClockDeadlineRef.current = null;
+      return;
+    }
+
+    // A projection can render once with the previous deadline's remaining time.
+    // Wait for the clock's next tick before evaluating the new deadline.
+    if (warningClockDeadlineRef.current !== turnView.deadlineAt) {
+      warningClockDeadlineRef.current = turnView.deadlineAt;
+      return;
+    }
+
     if (
       !onlineGameplayReady ||
       !isAppActive ||
       !isHumanTurn ||
       !turnView.playerId ||
-      !turnView.deadlineAt ||
       turnTimeLeft <= 0 ||
       turnTimeLeft > 5
     ) {
@@ -923,13 +936,11 @@ const shouldShowScorePopup =
       setHiddenRackTileIds([tileId]);
       setHideDiscardTopTile(false);
 
+      const stagedSignatures = stagedOpenAction.melds.map((meld) =>
+        meld.tiles.map((tile) => tile.id).sort().join("|"),
+      );
       setLocalDragCommittedMeldSignatures((current) => [
-        ...new Set([
-          ...current,
-          ...stagedOpenAction.melds.map((meld) =>
-            meld.tiles.map((tile) => tile.id).sort().join("|"),
-          ),
-        ]),
+        ...new Set([...current, ...stagedSignatures]),
       ]);
 
       void commitOpenIntent(
@@ -937,7 +948,11 @@ const shouldShowScorePopup =
         stagedOpenAction.score,
         tileId,
       ).then((accepted) => {
-        if (!accepted) rollbackDiscardPresentation();
+        if (accepted) return;
+        rollbackDiscardPresentation();
+        setLocalDragCommittedMeldSignatures((current) =>
+          current.filter((entry) => !stagedSignatures.includes(entry)),
+        );
       });
       return true;
     }
@@ -1257,9 +1272,10 @@ const shouldShowScorePopup =
         active: onlineGameplayReady && turnView.playerId === player?.id,
         turnTimeLeft,
         turnDurationSeconds: turnView.durationSeconds,
+        turnTimerPhase: state.hasDrawnThisTurn ? "throw" as const : "draw" as const,
       };
     }),
-    [onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, state.players, turnTimeLeft, turnView.durationSeconds, turnView.playerId],
+    [onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, state.players, turnTimeLeft, turnView.durationSeconds, turnView.playerId, state.hasDrawnThisTurn],
   );
   const seatOrderedPlayers = useMemo(() => {
     if (!relativeSeatMap) return [state.players[0], state.players[2], state.players[3], state.players[1]];
@@ -1370,12 +1386,27 @@ const shouldShowScorePopup =
     retryQueuedOpponentFlight();
   });
   const handleRackTileSelect = useStableEvent((tileId: string) => {
+    const tappedAt = Date.now();
+    const previousTap = lastRackTapRef.current;
+    lastRackTapRef.current = { tileId, tappedAt };
+
+    if (
+      canDiscardTile &&
+      previousTap?.tileId === tileId &&
+      tappedAt - previousTap.tappedAt <= 350
+    ) {
+      lastRackTapRef.current = null;
+      startDiscardFlight(tileId);
+      return;
+    }
+
     if (canDiscard && selectedTileId === tileId) {
+      lastRackTapRef.current = null;
       startDiscardFlight(tileId);
       return;
     }
     setSelectedTileId((current) => (current === tileId ? null : tileId));
-    emitFeedback("rack-select", `rack-select:${tileId}:${Date.now()}`);
+    emitFeedback("rack-select", `rack-select:${tileId}:${tappedAt}`);
   });
   const handleDropMeldGroup = useStableEvent((meld: OkeyMeld, point: { x: number; y: number }) => {
     const accepted =
@@ -1395,7 +1426,12 @@ const shouldShowScorePopup =
       setLocalDragCommittedMeldSignatures((current) =>
         current.includes(signature) ? current : [...current, signature],
       );
-      commitOpenIntent([meld], meld.score);
+      void commitOpenIntent([meld], meld.score).then((accepted) => {
+        if (accepted) return;
+        setLocalDragCommittedMeldSignatures((current) =>
+          current.filter((entry) => entry !== signature),
+        );
+      });
       setSelectedTileId(null);
       emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
       return true;
@@ -1461,6 +1497,7 @@ const shouldShowScorePopup =
     // meld, popup, measurement target, or pending visual action from the
     // previous round may survive into the new authoritative round.
     timeoutWarningTurnRef.current = null;
+    warningClockDeadlineRef.current = null;
     hoveredMeldTargetRef.current = null;
     meldDropRectsRef.current = [];
 
@@ -1764,8 +1801,14 @@ const shouldShowScorePopup =
             turnView.playerId === humanPlayer.id
           }
           turnWarningToastVisible={turnWarningToastVisible}
+          turnWarningToastMessage={
+            state.hasDrawnThisTurn
+              ? "هەلدانی تاشەبەردێک انجام بدە"
+              : undefined
+          }
           turnTimeLeft={turnTimeLeft}
           turnDurationSeconds={turnView.durationSeconds}
+          turnTimerPhase={state.hasDrawnThisTurn ? "throw" : "draw"}
           dealResetKey={dealLifecycleKey}
           isDealer={onlineGameplayReady && state.dealerIndex === 0}
           dealOrigin={dealOrigin}

@@ -180,8 +180,7 @@ function spendOneUsefulTile(state: OkeyGameState) {
   if (
     !player ||
     player.hand.length <= 1 ||
-    state.phase !== "playing" ||
-    !player.opened
+    state.phase !== "playing"
   ) {
     return {
       state,
@@ -200,8 +199,6 @@ function spendOneUsefulTile(state: OkeyGameState) {
   );
 
   for (const tile of player.hand) {
-    // Preserve a joker for hand completion instead of spending it as an ordinary extension.
-    if (isOkeyWildcard(tile, state.okeyTile)) continue;
     const candidate = spendTileOnBestMeld(
       state,
       playerIndex,
@@ -216,6 +213,13 @@ function spendOneUsefulTile(state: OkeyGameState) {
       continue;
     }
 
+    const releasedJoker = nextPlayer.hand.some((entry) =>
+      entry.jokerOrigin === "stolen" && !player.hand.some((before) => before.id === entry.id),
+    );
+    // Bot policy: unlike the authoritative Human rule, a closed Bot may not
+    // replace a table joker. Once opened, it may steal and reuse it normally.
+    if (!player.opened && releasedJoker) continue;
+
     const handGain =
       evaluationValue(
         evaluateHand(
@@ -225,9 +229,6 @@ function spendOneUsefulTile(state: OkeyGameState) {
         ),
       ) - baseline;
 
-    const releasedJoker = nextPlayer.hand.some((entry) =>
-      entry.jokerOrigin === "stolen" && !player.hand.some((before) => before.id === entry.id),
-    );
     const value = handGain + tilePenalty(tile, state.okeyTile) + (releasedJoker ? 80 : 0);
 
     if (

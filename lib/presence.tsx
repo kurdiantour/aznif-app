@@ -26,7 +26,7 @@ type PresenceContextValue = {
 
 const PresenceContext = createContext<PresenceContextValue | null>(null);
 
-const ONLINE_WINDOW_MS = 35_000;
+const ONLINE_WINDOW_MS = 120_000;
 
 function routeStatus(pathname: string): PresenceStatus {
   if (
@@ -152,7 +152,7 @@ export function PresenceProvider({ children }: PropsWithChildren) {
         void publishPresence(
           currentStatus(),
         ),
-      15_000,
+      60_000,
     );
 
     const subscription =

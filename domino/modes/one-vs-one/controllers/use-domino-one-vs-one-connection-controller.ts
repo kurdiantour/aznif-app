@@ -1,5 +1,6 @@
 import type { DominoOneVsOneAdapter } from "../adapters/domino-one-vs-one-adapter";
 import { RealtimeReconnectPolicy } from "@/lib/multiplayer/core/realtime-reconnect";
+import { gameRoomConnection } from "@/lib/multiplayer/connection/game-room-connection";
 import { useCallback, useEffect, useRef } from "react";
 import { AppState } from "react-native";
 
@@ -141,6 +142,8 @@ export function useDominoOneVsOneConnectionController(args: {
         const userId = await args.adapter!.getCurrentUserId();
         if (!mounted) return;
         args.setCurrentUserId(userId);
+        await gameRoomConnection.joinRoom("domino_1v1", args.roomId!);
+        if (!mounted) return;
         await Promise.all([loadRoom(), refreshPlayers()]);
         subscribe();
         if (mounted) args.setLoading(false);
@@ -176,7 +179,11 @@ export function useDominoOneVsOneConnectionController(args: {
     if (!args.roomId) return;
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
-      void Promise.all([reconnect(), refreshPlayers(false)])
+      void Promise.all([
+        gameRoomConnection.joinRoom("domino_1v1", args.roomId!),
+        reconnect(),
+        refreshPlayers(false),
+      ])
         .then(() => { lastActivityRef.current = Date.now(); })
         .catch((error) => console.warn("1v1 AppState reconcile failed", error));
     });
@@ -251,3 +258,4 @@ export function useDominoOneVsOneConnectionController(args: {
   ]);
   return { refreshSnapshot, refreshPlayers };
 }
+

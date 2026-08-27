@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { gameRoomConnection } from "@/lib/multiplayer/connection";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
@@ -40,6 +41,13 @@ function createCommandId(): string {
       ).toString(16);
     },
   );
+}
+
+class OkeyAuthoritativeCommandNotAppliedError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "OkeyAuthoritativeCommandNotAppliedError";
+  }
 }
 
 export type OkeyTurnTimeoutClaim = {
@@ -250,6 +258,7 @@ export class SupabaseOkeyMatchAdapter
     options: {
       refreshOnError?: boolean;
       syncOnError?: (body: { code?: string; error?: string } | null) => boolean;
+      notAppliedOnError?: (body: { code?: string; error?: string } | null) => boolean;
     } = {},
   ): Promise<void> {
     const commandId = createCommandId();
@@ -264,6 +273,12 @@ export class SupabaseOkeyMatchAdapter
 
       if (error) {
         const errorBody = await this.readFunctionErrorBody(error);
+        if (options.notAppliedOnError?.(errorBody)) {
+          await this.syncAfterConflict();
+          throw new OkeyAuthoritativeCommandNotAppliedError(
+            errorBody?.error ?? errorBody?.code ?? "okey_command_not_applied",
+          );
+        }
         const shouldSync = options.syncOnError
           ? options.syncOnError(errorBody)
           : this.isAuthoritativeSyncResult(errorBody);
@@ -292,8 +307,10 @@ export class SupabaseOkeyMatchAdapter
         command,
       }),
       {
+        notAppliedOnError: (body) =>
+          body?.error === "version_conflict" ||
+          body?.error === "turn_deadline_expired",
         syncOnError: (body) =>
-          body?.error === "turn_deadline_expired" ||
           this.isAuthoritativeSyncResult(body),
       },
     );
@@ -390,6 +407,7 @@ export class SupabaseOkeyMatchAdapter
   }
 
   async reconnect(): Promise<void> {
+    await gameRoomConnection.joinRoom("okey", this.matchId);
     await reconnectOkeyRoom(
       this.matchId,
     );
@@ -411,6 +429,8 @@ export class SupabaseOkeyMatchAdapter
     await leaveOkeyRoom(
       this.matchId,
     );
+
+    await gameRoomConnection.leaveRoom("okey", this.matchId).catch(() => null);
 
     this.closeRealtimeChannel();
     this.snapshot = null;
@@ -693,4 +713,5 @@ export class SupabaseOkeyMatchAdapter
     this.channel = null;
   }
 }
+
 

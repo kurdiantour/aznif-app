@@ -6,6 +6,8 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import { LinearGradient } from "expo-linear-gradient";
+
 import { styles } from "./okeyStyles";
 
 export function OkeyTurnTimerBar({
@@ -13,6 +15,7 @@ export function OkeyTurnTimerBar({
   visible = true,
   remainingSeconds,
   durationSeconds,
+  phase = "throw",
   orientation = "horizontal",
   reverse = false,
   style,
@@ -21,6 +24,7 @@ export function OkeyTurnTimerBar({
   visible?: boolean;
   remainingSeconds: number;
   durationSeconds: number | null;
+  phase?: "draw" | "throw";
   orientation?: "horizontal" | "vertical";
   reverse?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -91,10 +95,20 @@ export function OkeyTurnTimerBar({
       <Animated.View
         style={[
           styles.turnTimerFill,
+          phase === "draw" && styles.turnTimerFillDraw,
           fillStyle,
           !visible && { opacity: 0 },
         ]}
-      />
+      >
+        {phase === "draw" ? (
+          <LinearGradient
+            colors={["#0b5d2a", "#35d06f", "#168a45"]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{ flex: 1 }}
+          />
+        ) : null}
+      </Animated.View>
     </View>
   );
 }

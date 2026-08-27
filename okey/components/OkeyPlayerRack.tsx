@@ -111,11 +111,11 @@ function ReturningJokerTile({ children, height }: { children: ReactNode; height:
   );
 }
 
-function OkeyTurnWarningToast({ visible }: { visible: boolean }) {
+function OkeyTurnWarningToast({ visible, message = "نۆرەی تۆیە" }: { visible: boolean; message?: string }) {
   if (!visible) return null;
   return (
     <View pointerEvents="none" accessibilityRole="alert" accessibilityLiveRegion="polite" style={rackOnlyStyles.warning}>
-      <Text style={rackOnlyStyles.warningText}>نۆرەی تۆیە</Text>
+      <Text style={rackOnlyStyles.warningText}>{message}</Text>
     </View>
   );
 }
@@ -172,9 +172,11 @@ export function OkeyPlayerRack({
   onDrawLandingRectChange,
   turnTimerActive = false,
   turnWarningToastVisible = false,
+  turnWarningToastMessage,
   showTurnTimer = true,
   turnTimeLeft,
   turnDurationSeconds,
+  turnTimerPhase = "throw",
   dealResetKey,
   isDealer = false,
   dealOrigin,
@@ -214,9 +216,11 @@ export function OkeyPlayerRack({
   onDrawLandingRectChange?: (rect: TileRect | null) => void;
   turnTimerActive?: boolean;
   turnWarningToastVisible?: boolean;
+  turnWarningToastMessage?: string;
   showTurnTimer?: boolean;
   turnTimeLeft: number;
   turnDurationSeconds: number | null;
+  turnTimerPhase?: "draw" | "throw";
   dealResetKey?: string;
   isDealer?: boolean;
   dealOrigin?: { x: number; y: number } | null;
@@ -865,12 +869,13 @@ export function OkeyPlayerRack({
         onLayout={measureViewport}
         style={[styles.playerRack, layout.playerRack]}
       >
-        <OkeyTurnWarningToast visible={turnWarningToastVisible} />
+        <OkeyTurnWarningToast visible={turnWarningToastVisible} message={turnWarningToastMessage} />
         <OkeyTurnTimerBar
           active={turnTimerActive}
           visible={showTurnTimer}
           remainingSeconds={turnTimeLeft}
           durationSeconds={turnDurationSeconds}
+          phase={turnTimerPhase}
           style={styles.rackTurnTimer}
         />
 

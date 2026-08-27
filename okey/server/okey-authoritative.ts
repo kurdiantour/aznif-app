@@ -29,7 +29,8 @@ import type {
   OkeyTile,
 } from "../types/okey.ts";
 
-export const OKEY_SERVER_TURN_SECONDS = 30;
+export const OKEY_DRAW_PHASE_SECONDS = 15;
+export const OKEY_THROW_PHASE_SECONDS = 30;
 export const OKEY_NEXT_ROUND_DELAY_MS = 10_350;
 export const OKEY_MAX_ROUNDS = 7;
 
@@ -1005,8 +1006,11 @@ export function applyAuthoritativeOkeyMatchCommand(
   const actor =
     match.roundState.players[actorPlayerIndex];
 
+  // The persisted field keeps its historical name for snapshot compatibility,
+  // but now tracks consecutive DRAW-phase timeouts only. A successful Human
+  // draw is the sole action that clears that streak.
   const nextTimeoutCounts =
-    actor && !isOkeyBotControlled(actor)
+    command.type === "draw" && actor && !isOkeyBotControlled(actor)
       ? {
           ...(match.timeoutCountsByPlayerId ?? {}),
           [actor.id]: 0,
@@ -1188,11 +1192,16 @@ export function resolveAuthoritativeMatchDeadline(
     );
   }
 
+  const isDrawTimeout =
+    !match.roundState.hasDrawnThisTurn;
+
   const timeoutCounts =
     match.timeoutCountsByPlayerId ?? {};
 
   const timeoutCount =
-    (timeoutCounts[player.id] ?? 0) + 1;
+    isDrawTimeout
+      ? (timeoutCounts[player.id] ?? 0) + 1
+      : (timeoutCounts[player.id] ?? 0);
 
 const nextTimeoutCounts = {
   ...timeoutCounts,
@@ -1224,7 +1233,7 @@ const nextRoundState =
     now,
   );
 const takeoverRoundState =
-  timeoutCount >= 2
+  isDrawTimeout && timeoutCount >= 2
     ? handSeatToBot(
         nextRoundState,
         playerIndex,
@@ -1285,11 +1294,11 @@ export function getNextOkeyTurnDeadline(
     return null;
   }
 
-  return new Date(
-    now +
-      OKEY_SERVER_TURN_SECONDS *
-        1000,
-  ).toISOString();
+  const durationSeconds = state.hasDrawnThisTurn
+    ? OKEY_THROW_PHASE_SECONDS
+    : OKEY_DRAW_PHASE_SECONDS;
+
+  return new Date(now + durationSeconds * 1000).toISOString();
 }
 
 export function getNextOkeyMatchTurnDeadline(
@@ -1365,7 +1374,14 @@ export function getOkeyMatchTurnDeadlineAfterTransition(
       nextMatch.roundState.currentPlayerIndex &&
     previousPlayer?.id === nextPlayer?.id;
 
-  return sameTurn && currentDeadline ? currentDeadline : nextDeadline;
+  const enteredThrowPhase =
+    sameTurn &&
+    !previousMatch.roundState.hasDrawnThisTurn &&
+    nextMatch.roundState.hasDrawnThisTurn;
+
+  return sameTurn && !enteredThrowPhase && currentDeadline
+    ? currentDeadline
+    : nextDeadline;
 }
 
 export function projectOkeyState(
@@ -1416,7 +1432,9 @@ export function projectOkeyState(
     turnDeadlineAt,
 
     turnDurationSeconds:
-      OKEY_SERVER_TURN_SECONDS,
+      state.hasDrawnThisTurn
+        ? OKEY_THROW_PHASE_SECONDS
+        : OKEY_DRAW_PHASE_SECONDS,
   };
 }
 

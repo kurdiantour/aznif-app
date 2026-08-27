@@ -394,7 +394,7 @@ serve(async (req) => {
       }, 500);
     }
 
-    const cutoff = Date.now() - 35_000;
+    const cutoff = Date.now() - 120_000;
     const allAvailable = partyUserIds.every((userId) => {
       const presence = presenceResult.data?.find((row) => row.user_id === userId);
       return presence?.status === "online_available" &&

@@ -1,5 +1,6 @@
 import DominoWaitingPlayersPopup from "@/components/game/DominoWaitingPlayersPopup";
 import { useGameParty } from "@/lib/gameInvitesProvider";
+import { gameRoomConnection } from "@/lib/multiplayer/connection";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentProfile } from "@/lib/profile";
 import { calculateLevelFromPoints } from "@/lib/progression";
@@ -129,18 +130,13 @@ export default function MatchmakingScreen() {
   }, [initialMatchmakingStatus, initialRoomId]);
 
   useEffect(() => {
-    if (currentMatchType !== "private" || !currentRoomId) return;
+    if (!currentRoomId || !localPlayer?.userId) return;
 
-    const heartbeat = () => {
-      void supabase.rpc("heartbeat_private_10_aznif_room", {
-        p_room_id: currentRoomId,
-      });
-    };
-
-    heartbeat();
-    const interval = setInterval(heartbeat, 15_000);
-    return () => clearInterval(interval);
-  }, [currentMatchType, currentRoomId]);
+    const gameType = isOneVsOne ? "domino_1v1" : "domino_2v2";
+    void gameRoomConnection.joinRoom(gameType, currentRoomId).catch((error) => {
+      console.warn("Domino waiting room connection join failed", error);
+    });
+  }, [currentRoomId, isOneVsOne, localPlayer?.userId]);
 
   useEffect(() => {
     if (currentMatchType === "private") return;
@@ -337,6 +333,11 @@ export default function MatchmakingScreen() {
           p_room_id: currentRoomId || null,
         });
     if (error) throw error;
+
+    if (currentRoomId) {
+      const gameType = isOneVsOne ? "domino_1v1" : "domino_2v2";
+      await gameRoomConnection.leaveRoom(gameType, currentRoomId).catch(() => null);
+    }
   }, [currentRoomId, isOneVsOne]);
 
   const handleCancel = useCallback(async () => {
@@ -511,3 +512,4 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(3,0,15,0.54)",
   },
 });
+

@@ -61,7 +61,7 @@ test("authoritative commands are sent one at a time and the queued command uses 
   const first = adapter.dispatch({ type: "draw-deck" } as any);
   const second = adapter.dispatch({ type: "discard", tileId: "tile-1" } as any);
 
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(mockInvoke).toHaveBeenCalledTimes(1);
 
   firstResponse.resolve({
@@ -70,7 +70,7 @@ test("authoritative commands are sent one at a time and the queued command uses 
   });
 
   await first;
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(mockInvoke).toHaveBeenCalledTimes(2);
   expect(mockInvoke.mock.calls[1]?.[1]).toMatchObject({
@@ -83,7 +83,7 @@ test("authoritative commands are sent one at a time and the queued command uses 
   await second;
 });
 
-test("version conflict performs one snapshot sync and resolves without retrying the stale command", async () => {
+test("version conflict performs one snapshot sync and rejects without retrying the stale command", async () => {
   const adapter = new SupabaseOkeyMatchAdapter("match-2");
   setSnapshot(adapter, 4);
 
@@ -103,7 +103,7 @@ test("version conflict performs one snapshot sync and resolves without retrying 
 
   await expect(
     adapter.dispatch({ type: "draw-deck" } as any),
-  ).resolves.toBeUndefined();
+  ).rejects.toThrow("version_conflict");
 
   expect(mockInvoke).toHaveBeenCalledTimes(2);
   expect(mockInvoke.mock.calls.map((call) => (call[1] as any).body.action)).toEqual([
@@ -193,7 +193,7 @@ test("a queued timeout for an older version syncs instead of racing the complete
     expectedTurnPlayerId: "player-1",
   });
 
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(mockInvoke).toHaveBeenCalledTimes(1);
 
   humanResponse.resolve({

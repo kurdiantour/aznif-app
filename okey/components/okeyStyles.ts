@@ -235,7 +235,8 @@ turnTimerTrack: {
   turnTimerTrackVertical: { flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch" },
   turnTimerReverseHorizontal: { flexDirection: "row-reverse" },
   turnTimerReverseVertical: { justifyContent: "flex-start" },
-  turnTimerFill: { backgroundColor: "#ef2424", shadowColor: "#ef2424", shadowOpacity: 0.7, shadowRadius: 6 },
+  turnTimerFill: { backgroundColor: "#ef2424", shadowColor: "#ef2424", shadowOpacity: 0.7, shadowRadius: 6, overflow: "hidden" },
+  turnTimerFillDraw: { backgroundColor: "#168a45", shadowColor: "#35d06f" },
   rackTurnTimer: { left: RACK_TURN_TIMER_LEFT, right: RACK_TURN_TIMER_RIGHT, top: RACK_TURN_TIMER_TOP, height: RACK_TURN_TIMER_HEIGHT },
   opponentTimerTop: { left: 0, right: 0, top: -7, height: 4 },
   

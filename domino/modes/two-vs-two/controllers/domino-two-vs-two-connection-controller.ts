@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
+import { gameRoomConnection } from '@/lib/multiplayer/connection/game-room-connection';
 import type { DominoTwoVsTwoAdapter } from '../adapters/domino-two-vs-two-adapter';
 
 export function useDominoTwoVsTwoConnectionController(input: {
@@ -117,6 +118,8 @@ export function useDominoTwoVsTwoConnectionController(input: {
         if (!mounted) return;
 
         input.setCurrentUserId(userId);
+        await gameRoomConnection.joinRoom('domino_2v2', input.roomId!);
+        if (!mounted) return;
 
         await Promise.all([
           input.refreshSnapshot(),
@@ -164,7 +167,10 @@ export function useDominoTwoVsTwoConnectionController(input: {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') return;
 
-      void reconcile().catch((error) => {
+      void (async () => {
+        await gameRoomConnection.joinRoom('domino_2v2', input.roomId!);
+        await reconcile();
+      })().catch((error) => {
         console.warn('2v2 AppState reconcile failed', error);
       });
     });

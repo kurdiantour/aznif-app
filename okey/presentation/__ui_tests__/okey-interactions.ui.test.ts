@@ -1,4 +1,5 @@
 import { expect, test } from "@jest/globals";
+import { readFileSync } from "node:fs";
 import {
   findClosestMeldDropTarget,
   isPointInsideRect,
@@ -70,3 +71,13 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
   expect(nextRowSynced.bottom.slice(0, 2)).toEqual(["bottom-existing", "next-draw"]);
 });
 
+
+
+test("rapid double tap discards the same rack tile without waiting for a selection render", () => {
+  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
+
+  expect(scene).toContain("const lastRackTapRef = useRef");
+  expect(scene).toMatch(
+    /previousTap\?\.tileId === tileId[\s\S]*?tappedAt - previousTap\.tappedAt <= 350[\s\S]*?startDiscardFlight\(tileId\)/,
+  );
+});

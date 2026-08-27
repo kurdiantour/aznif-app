@@ -15,6 +15,7 @@ export function OkeyOpponentSeat({
   side,
   turnTimeLeft,
   turnDurationSeconds,
+  turnTimerPhase = "throw",
   onMeasured,
   onPress,
 }: {
@@ -25,6 +26,7 @@ export function OkeyOpponentSeat({
   side: "top" | "left" | "right";
   turnTimeLeft: number;
   turnDurationSeconds: number | null;
+  turnTimerPhase?: "draw" | "throw";
   onMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
   onPress?: () => void;
 }) {
@@ -73,6 +75,7 @@ export function OkeyOpponentSeat({
           active={active}
           remainingSeconds={turnTimeLeft}
           durationSeconds={turnDurationSeconds}
+          phase={turnTimerPhase}
           orientation="horizontal"
           reverse={side !== "left"}
           style={side === "top" ? styles.opponentTimerTop : side === "left" ? styles.opponentTimerLeft : styles.opponentTimerRight}

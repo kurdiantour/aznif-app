@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { gameRoomConnection } from "@/lib/multiplayer/connection";
 const COUNTDOWN_START_CLOCK_SAFETY_MS = 75;
 const COUNTDOWN_START_RETRY_MS = 500;
 
@@ -174,7 +175,6 @@ export function subscribeOkeyRoom(
 ) {
   let active = true;
   let refreshInFlight: Promise<void> | null = null;
-  let heartbeatInFlight: Promise<void> | null = null;
   let countdownStartTimer: ReturnType<typeof setTimeout> | null = null;
   let scheduledCountdownDeadline: string | null = null;
   let countdownAwaitingStart = false;
@@ -226,27 +226,6 @@ export function subscribeOkeyRoom(
     return refreshInFlight;
   };
 
-  const heartbeat = () => {
-    if (!active || heartbeatInFlight) {
-      return heartbeatInFlight;
-    }
-
-    heartbeatInFlight = heartbeatOkeyRoom(matchId)
-      .then((room) => {
-        if (active) {
-          deliver(room);
-        }
-      })
-      .catch((error) => {
-        reportError(error);
-        scheduleCountdownStartRetry();
-      })
-      .finally(() => {
-        heartbeatInFlight = null;
-      });
-
-    return heartbeatInFlight;
-  };
 
   const runCountdownStartCheck = async () => {
     const pendingRefresh = refreshInFlight;
@@ -297,17 +276,14 @@ export function subscribeOkeyRoom(
     )
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        void heartbeat();
+        void refresh();
       }
     });
 
-  const heartbeatTimer = setInterval(() => {
-    void heartbeat();
-  }, 60_000);
+  void gameRoomConnection.joinRoom("okey", matchId).catch(reportError);
 
   return () => {
     active = false;
-    clearInterval(heartbeatTimer);
     clearCountdownStartTimer();
     void supabase.removeChannel(channel);
   };
@@ -347,3 +323,4 @@ export async function getActiveOkeyMemberships(): Promise<OkeyActiveMembership[]
 
   return data.memberships as OkeyActiveMembership[];
 }
+
