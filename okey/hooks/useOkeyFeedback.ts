@@ -129,7 +129,6 @@ export class OkeyFeedbackGate {
 
 const TILE_SOUND = require("@/assets/audio/game/tile-placement-1.mp3");
 const MOVE_SOUND = require("@/assets/audio/game/tile-placement-2.mp3");
-const MELD_SOUND = require("@/assets/audio/game/boneyard-draw.mp3");
 const RESULT_SOUND = require("@/assets/audio/game/pass.mp3");
 
 const RESULT_EVENTS = new Set<OkeyFeedbackEvent>([
@@ -167,17 +166,15 @@ function pausePlayersSafely(
 export function useOkeyFeedback() {
   const tilePlayer = useAudioPlayer(TILE_SOUND);
   const movePlayer = useAudioPlayer(MOVE_SOUND);
-  const meldPlayer = useAudioPlayer(MELD_SOUND);
   const resultPlayer = useAudioPlayer(RESULT_SOUND);
 
   const players = useMemo(
     () => ({
       tile: tilePlayer,
       move: movePlayer,
-      meld: meldPlayer,
       result: resultPlayer,
     }),
-    [tilePlayer, movePlayer, meldPlayer, resultPlayer],
+    [tilePlayer, movePlayer, resultPlayer],
   );
 
   const gateRef = useRef(
@@ -236,18 +233,20 @@ export function useOkeyFeedback() {
 
       if (!decision) return false;
 
-      if (decision.playSound) {
+      if (
+        decision.playSound &&
+        event !== "meld-open" &&
+        event !== "konkan"
+      ) {
         const playbackToken = ++playbackTokenRef.current;
 
         const player = RESULT_EVENTS.has(event)
           ? players.result
-          : event === "meld-open" || event === "konkan"
-            ? players.meld
-            : event === "rack-select" ||
-                event === "rack-move" ||
-                event === "invalid"
-              ? players.move
-              : players.tile;
+          : event === "rack-select" ||
+              event === "rack-move" ||
+              event === "invalid"
+            ? players.move
+            : players.tile;
 
         pausePlayersSafely(players);
 
@@ -324,6 +323,7 @@ type OkeyGameFeedbackInput = {
   isAppActive: boolean;
   lifecycleResumeToken: number;
   emitFeedback: EmitOkeyFeedback;
+  suppressLocalMeldFeedbackSignatures?: string[];
 };
 
 export function useOkeyGameFeedback({
@@ -337,6 +337,7 @@ export function useOkeyGameFeedback({
   isAppActive,
   lifecycleResumeToken,
   emitFeedback,
+  suppressLocalMeldFeedbackSignatures = [],
 }: OkeyGameFeedbackInput) {
   const snapshotRef = useRef<OkeyGameState | null>(null);
   const roundResultsCountRef = useRef(roundResults.length);
@@ -405,10 +406,30 @@ export function useOkeyGameFeedback({
             (!previous.players[index]?.opened && player.opened)),
       );
 
-      emitFeedback(
-        enteredKonkan ? "konkan" : "meld-open",
-        `meld:${currentRound}:${currentMeldCount}`,
+      const suppressedLocalSignatures = new Set(
+        suppressLocalMeldFeedbackSignatures,
       );
+      const previousLocalSignatures = new Set(
+        (previous.players[0]?.melds ?? []).map((meld) =>
+          meld.tiles.map((tile) => tile.id).sort().join("|"),
+        ),
+      );
+      const newlyAddedLocalMeldSignatures = (state.players[0]?.melds ?? [])
+        .map((meld) => meld.tiles.map((tile) => tile.id).sort().join("|"))
+        .filter((signature) => !previousLocalSignatures.has(signature));
+      const suppressLocalDragMeldFeedback =
+        !enteredKonkan &&
+        newlyAddedLocalMeldSignatures.length > 0 &&
+        newlyAddedLocalMeldSignatures.every((signature) =>
+          suppressedLocalSignatures.has(signature),
+        );
+
+      if (!suppressLocalDragMeldFeedback) {
+        emitFeedback(
+          enteredKonkan ? "konkan" : "meld-open",
+          `meld:${currentRound}:${currentMeldCount}`,
+        );
+      }
     }
 
     if (
@@ -467,3 +488,4 @@ export function useOkeyGameFeedback({
     state,
   ]);
 }
+

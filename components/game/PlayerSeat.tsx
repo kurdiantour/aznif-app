@@ -118,13 +118,8 @@ export default function PlayerSeat({
   onPress,
   onFlightOriginChange,
 }: Props) {
-  const tileCount =
-    remainingTiles ??
-    (player as any).tiles?.length ??
-    (player as any).hand?.length ??
-    (player as any).tileCount ??
-    (player as any).remainingTiles ??
-    7;
+
+  const tileCount = remainingTiles ?? player.tileCount;
 
   const wrapperRef = useRef<View | null>(null);
 

@@ -6,7 +6,6 @@ import {
 } from "../okey-table-interactions";
 import {
   createEmptySlots,
-  getPreviewSlotsForDrag,
   moveTileIntoSlot,
   moveTilesIntoSlot,
   syncSlotsWithTiles,
@@ -27,7 +26,7 @@ test("meld drop selects only a nearby legal target", () => {
   expect(findClosestMeldDropTarget(rects, { x: 300, y: 300 }, () => true, 40)).toBeNull();
 });
 
-test("rack drag preview moves a tile or a complete meld without duplication", () => {
+test("rack drag moves a tile or a complete meld without duplication", () => {
   const slots = createEmptySlots();
   slots.bottom[0] = "a";
   slots.bottom[1] = "b";
@@ -38,9 +37,6 @@ test("rack drag preview moves a tile or a complete meld without duplication", ()
 
   const group = moveTilesIntoSlot(slots, ["a", "b", "c"], "top", 3);
   expect(group?.slots.top.slice(3, 6)).toEqual(["a", "b", "c"]);
-  const preview = getPreviewSlotsForDrag(group!.slots, slots, ["a", "b", "c"]);
-  expect(preview.bottom.slice(0, 3)).toEqual(["a", "b", "c"]);
-  expect(preview.top.slice(3, 6)).toEqual([null, null, null]);
 });
 
 test("drawn tile uses the first empty rack slot without shifting existing tiles", () => {

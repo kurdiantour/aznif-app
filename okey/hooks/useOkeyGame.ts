@@ -521,20 +521,22 @@ export function useOkeyGame(
     useCallback(
       async (
         command: OkeyAuthoritativeCommand,
-      ) => {
+      ): Promise<boolean> => {
         const adapter = onlineAdapterRef.current;
 
         if (!adapter) {
           setOnlineError(new Error("okey_online_adapter_unavailable"));
-          return;
+          return false;
         }
 
         setOnlineError(null);
 
         try {
           await adapter.dispatch(command);
+          return true;
         } catch (error) {
           setOnlineError(normalizeOnlineError(error));
+          return false;
         }
       },
       [],
@@ -666,7 +668,7 @@ export function useOkeyGame(
 
   const draw = useCallback(
     (source: OkeyDrawSource) => {
-      void dispatchOnline({
+      return dispatchOnline({
         type: "draw",
         source,
       });
@@ -676,7 +678,7 @@ export function useOkeyGame(
 
   const discard = useCallback(
     (tileId: string) => {
-      void dispatchOnline({
+      return dispatchOnline({
         type: "discard",
         tileId,
       });
@@ -690,7 +692,7 @@ export function useOkeyGame(
       score: number,
       discardTileId?: string,
     ) => {
-      void dispatchOnline(discardTileId
+      return dispatchOnline(discardTileId
         ? { type: "open-and-discard", melds, score, tileId: discardTileId }
         : { type: "open-melds", melds, score });
     },
@@ -699,7 +701,7 @@ export function useOkeyGame(
 
   const declareKonkan =
     useCallback((orderedRunTileIds: string[]) => {
-      void dispatchOnline({
+      return dispatchOnline({
         type: "declare-konkan",
         orderedRunTileIds,
       });
@@ -712,7 +714,7 @@ export function useOkeyGame(
         targetPlayerId: string,
         targetMeldId: string,
       ) => {
-        void dispatchOnline({
+        return dispatchOnline({
           type: "spend-meld",
           tileId,
           targetPlayerId,
@@ -729,7 +731,7 @@ export function useOkeyGame(
         targetPlayerId: string,
         targetMeldId: string,
       ) => {
-        void dispatchOnline({
+        return dispatchOnline({
           type: "lock-konkan",
           tileId,
           targetPlayerId,

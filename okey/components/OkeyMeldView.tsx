@@ -23,7 +23,7 @@ type Props = {
   tileWidth?: number;
   tileHeight?: number;
   stackReveal?: number;
-  
+
   renderTile?: (
     tile: OkeyTile,
     tileIndex: number,
@@ -34,11 +34,13 @@ type Props = {
 export function getOkeyMeldWidth(
   meld: OkeyMeld,
   tileWidth: number,
-  stackReveal: number,
+  stackReveal = FOUR_TILE_SET_REVEAL,
 ) {
-  return meld.kind === "set" && meld.tiles.length === 4
-    ? tileWidth + stackReveal * (meld.tiles.length - 1)
-    : tileWidth * meld.tiles.length;
+  if (meld.kind === "set" && meld.tiles.length === 4) {
+    return tileWidth + stackReveal * (meld.tiles.length - 1);
+  }
+
+  return tileWidth * meld.tiles.length;
 }
 
 export function chunkOkeyMeldRows(
@@ -67,9 +69,6 @@ export function OkeyMeldView({
   stackReveal = FOUR_TILE_SET_REVEAL,
   renderTile,
 }: Props) {
-  const stacked =
-    meld.kind === "set" && meld.tiles.length === 4;
-
   const meldWidth = getOkeyMeldWidth(
     meld,
     tileWidth,
@@ -92,14 +91,12 @@ export function OkeyMeldView({
     >
       {meld.tiles.map((tile, tileIndex) => {
         const isWildcard = isOkeyWildcard(tile, okeyTile);
+        const stacked = meld.kind === "set" && meld.tiles.length === 4;
+
         const layout: TileLayout = {
           stacked,
-          left: stacked
-            ? tileIndex * stackReveal
-            : tileIndex * tileWidth,
-          zIndex: stacked
-            ? meld.tiles.length - tileIndex
-            : 1,
+          left: tileIndex * (stacked ? stackReveal : tileWidth),
+          zIndex: stacked ? meld.tiles.length - tileIndex : 1,
         };
 
         return (

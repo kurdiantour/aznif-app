@@ -21,51 +21,6 @@ function getMeldKind(tiles: OkeyTile[], okeyTile: OkeyTile): OkeyMeld["kind"] {
     : "run";
 }
 
-function partitionCompleteGroup(
-  tiles: OkeyTile[],
-  okeyTile: OkeyTile,
-  groupIndex: number,
-): RackOpenLayout | null {
-  const memo = new Map<number, RackOpenLayout | null>();
-
-  const solve = (startIndex: number): RackOpenLayout | null => {
-    if (startIndex === tiles.length) return { melds: [], score: 0 };
-    if (memo.has(startIndex)) return memo.get(startIndex) ?? null;
-
-    for (
-      let endIndex = Math.min(tiles.length, startIndex + 5);
-      endIndex >= startIndex + 3;
-      endIndex -= 1
-    ) {
-      const meldTiles = tiles.slice(startIndex, endIndex);
-      const meldScore = getOrderedMeldScore(meldTiles, okeyTile);
-      if (meldScore === null) continue;
-
-      const remainder = solve(endIndex);
-      if (!remainder) continue;
-
-      const meld: OkeyMeld = {
-        id: `human-pending-${groupIndex}-${startIndex}-${endIndex}`,
-        ownerId: "human",
-        kind: getMeldKind(meldTiles, okeyTile),
-        tiles: meldTiles,
-        score: meldScore,
-      };
-      const result = {
-        melds: [meld, ...remainder.melds],
-        score: meldScore + remainder.score,
-      };
-      memo.set(startIndex, result);
-      return result;
-    }
-
-    memo.set(startIndex, null);
-    return null;
-  };
-
-  return solve(0);
-}
-
 function getRackMeldPlan(contiguousGroups: OkeyTile[][], okeyTile: OkeyTile): RackOpenLayout {
   const groupOffsets = contiguousGroups.reduce<number[]>((offsets, group, groupIndex) => {
     offsets[groupIndex] = groupIndex === 0 ? 0 : offsets[groupIndex - 1] + contiguousGroups[groupIndex - 1].length;

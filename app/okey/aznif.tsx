@@ -26,7 +26,7 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
-import { getBalance } from "@/lib/wallet";
+import { useWallet } from "@/lib/wallet-context";
 import { releaseTakenOverOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
 import {
   matchmakeOkeyRoom,
@@ -86,7 +86,7 @@ function formatAmount(value: number) {
 
 type TableCardProps = {
   table: OkeyTable;
-  balance: number;
+  balance: number | null;
   joining: boolean;
   disabledByOtherJoin: boolean;
   onJoin: () => void;
@@ -99,10 +99,9 @@ function TableCard({
   disabledByOtherJoin,
   onJoin,
 }: TableCardProps) {
-  const affordable = balance >= table.entry;
+  const affordable = balance === null || balance >= table.entry;
 
   const disabled =
-    !affordable ||
     joining ||
     disabledByOtherJoin;
 
@@ -170,31 +169,13 @@ export default function OkeyAznifScreen() {
   const isTablet =
     Math.min(width, height) >= 600;
 
-  const [aznifBalance, setAznifBalance] =
-    useState(0);
+  const { aznifBalance } = useWallet();
 
   const [joiningTableId, setJoiningTableId] =
     useState<string | null>(null);
 
   const [joinError, setJoinError] =
     useState<string | null>(null);
-
-  const loadWalletBalance =
-    useCallback(async () => {
-      try {
-        const wallet = await getBalance();
-
-        setAznifBalance(
-          Number(wallet.balances.mc || 0),
-        );
-      } catch {
-        setAznifBalance(0);
-      }
-    }, []);
-
-  useEffect(() => {
-    void loadWalletBalance();
-  }, [loadWalletBalance]);
 
   useEffect(() => {
     if (!joinError) {
@@ -232,10 +213,6 @@ export default function OkeyAznifScreen() {
         return;
       }
 
-      if (aznifBalance < table.entry) {
-        return;
-      }
-
       setJoinError(null);
       setJoiningTableId(table.id);
 
@@ -259,7 +236,6 @@ export default function OkeyAznifScreen() {
       }
     },
     [
-      aznifBalance,
       joiningTableId,
       openOnlineGame,
     ],

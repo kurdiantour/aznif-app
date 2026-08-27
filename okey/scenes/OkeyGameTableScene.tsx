@@ -24,7 +24,7 @@ import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import { styles } from "@/okey/components/okeyStyles";
-import { getOkeyOpenAction, getOkeyRackDiscardAction, getRoundResultScoreDetails, resolveTableMeldAction } from "@/okey/engine/okey-engine";
+import { getOkeyOpenAction, getRoundResultScoreDetails, resolveTableMeldAction } from "@/okey/engine/okey-engine";
 import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
@@ -61,8 +61,8 @@ import type {
 
 
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
-const PLAYER_PREVIEW_MELD_TILE_WIDTH = 22;
-const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 29;
+const PLAYER_PREVIEW_MELD_TILE_WIDTH = 18;
+const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 24;
 
 type RelativeSeat = "bottom" | "right" | "top" | "left";
 
@@ -100,6 +100,7 @@ function getRouteParam(
     : value;
 }
 
+
 function OkeyGameTableSceneContent() {
   const router = useRouter();
   const { party } = useGameParty();
@@ -120,6 +121,7 @@ function OkeyGameTableSceneContent() {
   const [onlineRoom, setOnlineRoom] =
     useState<OkeyRoomSnapshot | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [konkanFinalPresentationReady, setKonkanFinalPresentationReady] = useState(false);
   const [konkanRevealData, setKonkanRevealData] = useState<{
     visible: boolean;
     runTiles: OkeyTile[];
@@ -129,6 +131,17 @@ function OkeyGameTableSceneContent() {
     runTiles: [],
     completionMeldTiles: [],
   });
+  const closeKonkanReveal = useCallback(() => {
+    setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
+    setKonkanFinalPresentationReady(false);
+  }, []);
+
+  const completeKonkanFinalTile = useCallback(() => {
+    setKonkanFinalPresentationReady(true);
+  }, []);
+  const completeKonkanRevealEntrance = useCallback(() => {
+    setShowFinalTileCelebration(false);
+  }, []);
 
   const [
     leavingWaitingRoom,
@@ -341,11 +354,21 @@ const {
 } = onlineController;
 
   useEffect(() => {
+    if (
+      konkanFinalPresentationReady &&
+      !konkanRevealData.visible &&
+      konkanRevealData.runTiles.length === 10
+    ) {
+      setKonkanRevealData((previous) => ({ ...previous, visible: true }));
+    }
+  }, [konkanFinalPresentationReady, konkanRevealData.runTiles.length, konkanRevealData.visible]);
+
+  useEffect(() => {
     if (!onlineAdapter) return;
     const unsubscribe = onlineAdapter.subscribeActionEvents((event) => {
       if (event.type === "konkan" && event.payload?.kind === "declare") {
         setKonkanRevealData({
-          visible: true,
+          visible: false,
           runTiles: (event.payload.runTiles as OkeyTile[]) ?? [],
           completionMeldTiles: (event.payload.completionMeldTiles as OkeyTile[]) ?? [],
         });
@@ -412,7 +435,8 @@ const turnView = useMemo(
   () => selectOkeyTurnView(onlineProjection),
   [onlineProjection],
 );
-  const [previewMelds, setPreviewMelds] = useState<OkeyMeld[]>([]);
+  const [droppedMelds, setDroppedMelds] = useState<OkeyMeld[]>([]);
+  const [localDragCommittedMeldSignatures, setLocalDragCommittedMeldSignatures] = useState<string[]>([]);
   const [tableMeldOffsets, setTableMeldOffsets] = useState<Record<string, MeldOffset>>({});
   const [showScoreDetails, setShowScoreDetails] = useState(false);
   const [showDiscardHistory, setShowDiscardHistory] = useState(false);
@@ -452,6 +476,8 @@ const turnView = useMemo(
     [presentedTablePlayers],
   );
   const [discardDropPlacement, setDiscardDropPlacement] = useState<{ tileId: string; point: { x: number; y: number }; nonce: number } | null>(null);
+  const [optimisticDiscardRackTile, setOptimisticDiscardRackTile] =
+    useState<OkeyTile | null>(null);
   const [isDiscardDragActive, setIsDiscardDragActive] = useState(false);
   const [hoveredMeldTarget, setHoveredMeldTarget] = useState<{ playerId: string; meldId: string } | null>(null);
   const [discardDragPoint, setDiscardDragPoint] = useState<{ x: number; y: number } | null>(null);
@@ -462,6 +488,10 @@ const turnView = useMemo(
   const opponentSeatRectsRef = useRef<Record<string, ScreenRect>>({});
   const rackRectRef = useRef<ScreenRect | null>(null);
   const rackTileRectsRef = useRef<Record<string, ScreenRect>>({});
+  const pendingDeckDropRef = useRef<{
+    point: { x: number; y: number };
+    previousHandTileIds: Set<string>;
+  } | null>(null);
   const drawLandingRectRef = useRef<ScreenRect | null>(null);
   const timeoutWarningTurnRef = useRef<string | null>(null);
   const lastPresentationRoundRef = useRef(currentRound);
@@ -470,7 +500,27 @@ const turnView = useMemo(
   const hoveredMeldTargetRef = useRef<MeldDropRect | null>(null);
   const humanMeldDropZone = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const humanPlayer = state.players[0];
+  const presentedHumanRackTiles = useMemo(() => {
+    if (
+      !optimisticDiscardRackTile ||
+      humanPlayer.hand.some((tile) => tile.id === optimisticDiscardRackTile.id)
+    ) {
+      return humanPlayer.hand;
+    }
+
+    return [...humanPlayer.hand, optimisticDiscardRackTile];
+  }, [humanPlayer.hand, optimisticDiscardRackTile]);
+  useLayoutEffect(() => {
+    if (
+      optimisticDiscardRackTile &&
+      humanPlayer.hand.some((tile) => tile.id === optimisticDiscardRackTile.id)
+    ) {
+      setOptimisticDiscardRackTile(null);
+    }
+  }, [humanPlayer.hand, optimisticDiscardRackTile]);
   const currentPlayer = state.players[state.currentPlayerIndex];
+  const winnerPlayer = state.players.find((player) => player.id === state.winnerId);
+  const isKonkanFinish = state.phase === "finished" && !!winnerPlayer?.konkan;
   const selectedTile = humanPlayer.hand.find((tile) => tile.id === selectedTileId);
   const topDiscard = state.discardPile[state.discardPile.length - 1] ?? null;
   const topDiscardOwner = state.discardOwners[state.discardOwners.length - 1] ?? null;
@@ -489,6 +539,7 @@ const turnView = useMemo(
     isAppActive,
     lifecycleResumeToken,
     emitFeedback,
+    suppressLocalMeldFeedbackSignatures: localDragCommittedMeldSignatures,
   });
 
 
@@ -652,10 +703,17 @@ const shouldShowScorePopup =
     const timer = setTimeout(() => setForceKonkanAnnouncementVisible(false), remainingMs);
     return () => clearTimeout(timer);
   }, [forcedKonkanAnnouncementEndsAt]);
-  const previewTileIds = useMemo(() => previewMelds.flatMap((meld) => meld.tiles.map((tile) => tile.id)), [previewMelds]);
+  const droppedTileIds = useMemo(
+    () => droppedMelds.flatMap((meld) => meld.tiles.map((tile) => tile.id)),
+    [droppedMelds],
+  );
   useEffect(() => {
-    if (humanPlayer.opened && previewMelds.length > 0) setPreviewMelds([]);
-  }, [humanPlayer.opened, previewMelds.length]);
+    if (!humanPlayer.opened || droppedMelds.length === 0) return;
+
+    // The authoritative open/open-and-discard has already been accepted.
+    // Only clear the local staged presentation; never submit these melds again.
+    setDroppedMelds([]);
+  }, [droppedMelds.length, humanPlayer.opened]);
   const toLocalRect = useCallback(
     (rect: ScreenRect) => toLocalScreenRect(rect, screenRectRef.current),
     [],
@@ -725,22 +783,14 @@ const shouldShowScorePopup =
   const canDrawDiscard = canDraw && !topDiscardIsBlocked;
   const canDiscard = isHumanTurn && state.hasDrawnThisTurn && !!selectedTile;
   const canDiscardTile = isHumanTurn && state.hasDrawnThisTurn;
-  const previewScore = previewMelds.reduce((total, meld) => total + meld.score, 0);
-  // Manual staging and rack-layout detection are separate sources of intent.
-  // Merge them once here; every authoritative opening command must consume
-  // this canonical intent so the score, animation and committed tiles agree.
-  const openIntent = useMemo(() => ({
-    melds: [...previewMelds, ...openableRackMelds.melds],
-    score: previewScore + openableRackMelds.score,
-  }), [openableRackMelds.melds, openableRackMelds.score, previewMelds, previewScore]);
   const openAction = useMemo(
     () => getOkeyOpenAction(
       state,
       0,
-      openIntent.melds,
+      openableRackMelds.melds,
       getOrderedKonkanRunCandidates(openableRackMelds.contiguousGroups),
     ),
-    [openIntent.melds, openableRackMelds.contiguousGroups, state],
+    [openableRackMelds.contiguousGroups, openableRackMelds.melds, state],
   );
   const remainingMeldSlots = openAction.remainingSlots;
 
@@ -762,12 +812,16 @@ const shouldShowScorePopup =
     const targetRect = drawLandingRectRef.current;
     if (!drawnTile || !sourceRect || !targetRect) return;
 
-    setTileFlight({
-      id: `draw-${drawnTile.id}-${Date.now()}`,
-      tile: source === "deck" ? null : drawnTile,
-      face: source === "deck" ? "back" : "front",
-      from: toLocalRect(sourceRect),
-      to: toLocalRect(targetRect),
+    launchTileFlight({
+      flight: {
+        id: `draw-${drawnTile.id}-${Date.now()}`,
+        tile: drawnTile,
+        face: "front",
+        from: toLocalRect(sourceRect),
+        to: toLocalRect(targetRect),
+      },
+      hideDeckTopTile: source === "deck",
+      hideDiscardTopTile: source === "discard",
     });
   };
   const isPointInsideRack = (point: { x: number; y: number }) => {
@@ -786,10 +840,27 @@ const shouldShowScorePopup =
     if (!isPointInsideRack(point)) return false;
 
     const tileId = topDiscard.id;
-    draw("discard");
-    if (tileFlight) return true;
-   setHideDiscardTopTile(false);
+    const revealedDiscard =
+      state.discardPile[state.discardPile.length - 2] ?? null;
+
+    setOptimisticDiscardRackTile(topDiscard);
+    setPresentedTopDiscard(revealedDiscard);
+    setDiscardPresentationFallback(null);
+    setHideDiscardTopTile(false);
     setDiscardDropPlacement({ tileId, point, nonce: Date.now() });
+
+    void draw("discard").then((accepted) => {
+      if (accepted) return;
+      setOptimisticDiscardRackTile((current) =>
+        current?.id === tileId ? null : current,
+      );
+      setDiscardDropPlacement((current) =>
+        current?.tileId === tileId ? null : current,
+      );
+      setPresentedTopDiscard(topDiscard);
+      setDiscardPresentationFallback(null);
+      setHideDiscardTopTile(false);
+    });
     return true;
   };
 
@@ -808,27 +879,91 @@ const shouldShowScorePopup =
   const commitDiscardFromRack = (tileId: string) => {
     if (!canDiscardTile) return false;
 
-    const discardAction = getOkeyRackDiscardAction(
-      state,
-      0,
-      openIntent.melds,
-      tileId,
-    );
+    const rollbackDiscardPresentation = () => {
+      if (awaitingDiscardRemovalTileIdRef.current === tileId) {
+        awaitingDiscardRemovalTileIdRef.current = null;
+      }
+      setHiddenRackTileIds((current) =>
+        current.filter((entry) => entry !== tileId),
+      );
+      setTileFlight((current) =>
+        current?.tile?.id === tileId ? null : current,
+      );
+      setPresentedTopDiscard(topDiscard);
+      setDiscardPresentationFallback(null);
+      setHideDiscardTopTile(false);
+    };
+
+    // Before the first authoritative Open, Drag & Drop melds stay staged
+    // locally on the table. The player's discard is the commit point:
+    // validate the complete staged opening and submit it atomically together
+    // with the discard. This keeps the staged melds visible until the server
+    // confirms them and prevents any temporary return to the Rack.
+    if (!humanPlayer.opened && droppedMelds.length > 0) {
+      const stagedOpenAction = getOkeyOpenAction(
+        state,
+        0,
+        droppedMelds,
+        [],
+      );
+
+      if (
+        !stagedOpenAction.allowed ||
+        stagedOpenAction.mode !== "open-melds"
+      ) {
+        emitFeedback(
+          "invalid",
+          `staged-open-discard:${tileId}:${Date.now()}`,
+        );
+        return false;
+      }
+
+      awaitingDiscardRemovalTileIdRef.current = tileId;
+      setSelectedTileId(null);
+      setHiddenRackTileIds([tileId]);
+      setHideDiscardTopTile(false);
+
+      setLocalDragCommittedMeldSignatures((current) => [
+        ...new Set([
+          ...current,
+          ...stagedOpenAction.melds.map((meld) =>
+            meld.tiles.map((tile) => tile.id).sort().join("|"),
+          ),
+        ]),
+      ]);
+
+      void commitOpenIntent(
+        stagedOpenAction.melds,
+        stagedOpenAction.score,
+        tileId,
+      ).then((accepted) => {
+        if (!accepted) rollbackDiscardPresentation();
+      });
+      return true;
+    }
+
     awaitingDiscardRemovalTileIdRef.current = tileId;
     setSelectedTileId(null);
     setHiddenRackTileIds([tileId]);
     setHideDiscardTopTile(false);
-    if (discardAction.type === "open-and-discard") {
-      commitOpenIntent(discardAction.melds, discardAction.score, discardAction.tileId);
-    } else {
-      discard(discardAction.tileId);
-    }
+    void discard(tileId).then((accepted) => {
+      if (!accepted) rollbackDiscardPresentation();
+    });
     return true;
   };
 
   const dropTileFromRack = (tileId: string, point: { x: number; y: number }) => {
     if (isPointInsideDiscardPile(point)) {
-      return commitDiscardFromRack(tileId);
+      const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
+      if (!tile || !commitDiscardFromRack(tileId)) return false;
+
+      // A drag release has no separate landing flight. Present the tile on the
+      // discard pile immediately and retain it until the authoritative update
+      // confirms the same tile, avoiding a blank/old discard during latency.
+      setPresentedTopDiscard(tile);
+      holdDiscardUntilAuthoritative(tile);
+      setHideDiscardTopTile(true);
+      return true;
     }
 
     return dropTileOnTableMeld(tileId, point);
@@ -1037,29 +1172,34 @@ const shouldShowScorePopup =
     if (action.type === "lock-konkan") {
       awaitingDiscardRemovalTileIdRef.current = tileId;
       setHiddenRackTileIds([tileId]);
-      lockKonkanSetOnTable(action.tileId, action.targetPlayerId, action.targetMeldId);
+      void lockKonkanSetOnTable(
+        action.tileId,
+        action.targetPlayerId,
+        action.targetMeldId,
+      ).then((accepted) => {
+        if (accepted) return;
+        awaitingDiscardRemovalTileIdRef.current = null;
+        setHiddenRackTileIds((current) =>
+          current.filter((entry) => entry !== tileId),
+        );
+      });
       setSelectedTileId(null);
       return true;
     }
 
     awaitingDiscardRemovalTileIdRef.current = tileId;
     setHiddenRackTileIds([tileId]);
-    spendTileOnTableMeld(action.tileId, action.targetPlayerId, action.targetMeldId);
-    setSelectedTileId(null);
-    return true;
-  };
-  const addPreviewMeld = (meld: OkeyMeld, point: { x: number; y: number }) => {
-    if (!isHumanTurn) return false;
-    if (!isInsideHumanMeldDropZone(point)) return false;
-    if (previewMelds.length >= remainingMeldSlots) return false;
-    const existingIds = new Set(previewMelds.flatMap((entry) => entry.tiles.map((tile) => tile.id)));
-    if (meld.tiles.some((tile) => existingIds.has(tile.id))) return false;
-
-    const nextMelds = [
-      ...previewMelds,
-      { ...meld, id: `human-preview-${Date.now()}-${previewMelds.length}` },
-    ];
-    setPreviewMelds(nextMelds);
+    void spendTileOnTableMeld(
+      action.tileId,
+      action.targetPlayerId,
+      action.targetMeldId,
+    ).then((accepted) => {
+      if (accepted) return;
+      awaitingDiscardRemovalTileIdRef.current = null;
+      setHiddenRackTileIds((current) =>
+        current.filter((entry) => entry !== tileId),
+      );
+    });
     setSelectedTileId(null);
     return true;
   };
@@ -1070,6 +1210,7 @@ const shouldShowScorePopup =
       state.players,
       state.discardPile[state.discardPile.length - 1] ?? null,
     );
+    pendingDeckDropRef.current = null;
     setDiscardDropPlacement(null);
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
@@ -1177,6 +1318,45 @@ const shouldShowScorePopup =
   const handleDrawDiscard = useStableEvent(() => startDrawFlight("discard"));
   const handleViewDiscards = useStableEvent(() => setShowDiscardHistory(true));
   const handleDiscardDroppedOnRackStable = useStableEvent(handleDiscardDroppedOnRack);
+  const handleDiscardDragPointChange = useStableEvent((point: { x: number; y: number } | null) => {
+    setDiscardDragPoint(point && isPointInsideRack(point) ? point : null);
+  });
+  const handleDeckDragPointChange = useStableEvent((point: { x: number; y: number } | null) => {
+    setDiscardDragPoint(point && isPointInsideRack(point) ? point : null);
+  });
+  const handleDeckDroppedOnRack = useStableEvent((point: { x: number; y: number }) => {
+    if (!canDraw || state.deck.length === 0 || !isPointInsideRack(point)) return;
+
+    const pendingDrop = {
+      point,
+      previousHandTileIds: new Set(humanPlayer.hand.map((tile) => tile.id)),
+    };
+    pendingDeckDropRef.current = pendingDrop;
+    setHideDeckTopTile(false);
+
+    void draw("deck").then((accepted) => {
+      if (accepted || pendingDeckDropRef.current !== pendingDrop) return;
+      pendingDeckDropRef.current = null;
+      setDiscardDragPoint(null);
+      setHideDeckTopTile(false);
+    });
+  });
+  useLayoutEffect(() => {
+    const pendingDrop = pendingDeckDropRef.current;
+    if (!pendingDrop) return;
+
+    const drawnTile = humanPlayer.hand.find(
+      (tile) => !pendingDrop.previousHandTileIds.has(tile.id),
+    );
+    if (!drawnTile) return;
+
+    pendingDeckDropRef.current = null;
+    setDiscardDropPlacement({
+      tileId: drawnTile.id,
+      point: pendingDrop.point,
+      nonce: Date.now(),
+    });
+  }, [humanPlayer.hand]);
   const handleDeckMeasured = useStableEvent((rect: ScreenRect) => {
     deckTopRectRef.current = rect;
     retryQueuedOpponentFlight();
@@ -1198,30 +1378,51 @@ const shouldShowScorePopup =
     emitFeedback("rack-select", `rack-select:${tileId}:${Date.now()}`);
   });
   const handleDropMeldGroup = useStableEvent((meld: OkeyMeld, point: { x: number; y: number }) => {
+    const accepted =
+      isHumanTurn &&
+      isInsideHumanMeldDropZone(point) &&
+      remainingMeldSlots > 0;
+
+    if (!accepted) {
+      emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`);
+      return false;
+    }
+
+    // After the player has already opened, Drag & Drop is an independent
+    // authoritative path: commit only this newly dropped meld.
     if (humanPlayer.opened) {
-      const accepted =
-        isHumanTurn &&
-        isInsideHumanMeldDropZone(point) &&
-        remainingMeldSlots > 0;
-
-      if (!accepted) {
-        emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`);
-        return false;
-      }
-
-      // Once the player has already opened, a dragged meld is a continuation
-      // of their table play, not a second opening flow. Commit it directly
-      // through the authoritative server path while keeping the Open button
-      // available for the normal/manual workflow.
+      const signature = meld.tiles.map((tile) => tile.id).sort().join("|");
+      setLocalDragCommittedMeldSignatures((current) =>
+        current.includes(signature) ? current : [...current, signature],
+      );
       commitOpenIntent([meld], meld.score);
       setSelectedTileId(null);
       emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
       return true;
     }
 
-    const accepted = addPreviewMeld(meld, point);
-    emitFeedback(accepted ? "rack-move" : "invalid", `meld-drop:${meld.id}:${Date.now()}`);
-    return accepted;
+    // Before the first Open, Drag & Drop only stages melds locally. Reaching
+    // the opening score must NOT auto-submit them. They remain visible on the
+    // table and hidden from the Rack until the player discards; that discard
+    // commits the entire staged opening atomically in commitDiscardFromRack().
+    if (droppedMelds.length >= remainingMeldSlots) {
+      emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`);
+      return false;
+    }
+
+    const existingTileIds = new Set(
+      droppedMelds.flatMap((entry) => entry.tiles.map((tile) => tile.id)),
+    );
+    if (meld.tiles.some((tile) => existingTileIds.has(tile.id))) return false;
+
+    setDroppedMelds([
+      ...droppedMelds,
+      { ...meld, id: `human-drop-${Date.now()}-${droppedMelds.length}` },
+    ]);
+
+    setSelectedTileId(null);
+    emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
+    return true;
   });
   const handleDropTile = useStableEvent((tileId: string, point: { x: number; y: number }) => {
     const accepted = dropTileFromRack(tileId, point);
@@ -1231,6 +1432,7 @@ const shouldShowScorePopup =
   const handleTileDragPointChange = useStableEvent(updateTileDragMeldTarget);
   const handleExternalDropPlaced = useStableEvent((tileId: string, _targetIndex: number) => {
     setSelectedTileId(tileId);
+    pendingDeckDropRef.current = null;
     setDiscardDropPlacement(null);
     setDiscardDragPoint(null);
   });
@@ -1267,11 +1469,14 @@ const shouldShowScorePopup =
       state.discardPile[state.discardPile.length - 1] ?? null,
     );
 
-    setPreviewMelds([]);
     setTableMeldOffsets({});
     setSelectedTileId(null);
     setRackSetScore(0);
+    setDroppedMelds([]);
+    setLocalDragCommittedMeldSignatures([]);
     setOpenableRackMelds({ melds: [], score: 0, contiguousGroups: [] });
+    setOptimisticDiscardRackTile(null);
+    pendingDeckDropRef.current = null;
     setDiscardDropPlacement(null);
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
@@ -1281,6 +1486,8 @@ const shouldShowScorePopup =
     setShowDiscardHistory(false);
     setShowFinalTileCelebration(false);
     setTurnWarningToastVisible(false);
+    setKonkanFinalPresentationReady(false);
+    setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
     setProfilePlayer(null);
 
   }, [
@@ -1386,6 +1593,7 @@ const shouldShowScorePopup =
       meldOffsets={tableMeldOffsets}
       onMeldOffsetChange={handleMeldOffsetChange}
       highlightedMeldId={hoveredMeldTarget?.meldId ?? null}
+      suppressLocalEntryAnimationMeldSignatures={localDragCommittedMeldSignatures}
             />
             <View
               ref={humanMeldDropZoneRef}
@@ -1394,12 +1602,12 @@ const shouldShowScorePopup =
               style={[styles.meldArea, responsiveLayout.meldAreas.bottom, styles.humanMeldDropZone]}
             >
               <View pointerEvents="auto" style={styles.previewMeldContent}>
-                {chunkOkeyMeldRows(previewMelds).map((row, rowIndex) => (
+                {chunkOkeyMeldRows(droppedMelds).map((row, rowIndex) => (
                   <View key={rowIndex} style={styles.meldRow}>
                     {row.map((meld) => (
                       <Pressable
                         key={meld.id}
-                        onPress={() => setPreviewMelds((current) => current.filter((entry) => entry.id !== meld.id))}
+                        onPress={() => setDroppedMelds((current) => current.filter((entry) => entry.id !== meld.id))}
                       >
                         <OkeyMeldView
                           meld={meld}
@@ -1426,8 +1634,10 @@ const shouldShowScorePopup =
                 onDrawDiscard={handleDrawDiscard}
                 onViewDiscards={handleViewDiscards}
                 onDiscardDroppedOnRack={handleDiscardDroppedOnRackStable}
+                onDeckDroppedOnRack={handleDeckDroppedOnRack}
+                onDeckDragPointChange={handleDeckDragPointChange}
                 onDiscardDragActiveChange={setIsDiscardDragActive}
-                onDiscardDragPointChange={setDiscardDragPoint}
+                onDiscardDragPointChange={handleDiscardDragPointChange}
                 onDeckMeasured={handleDeckMeasured}
                 onDiscardMeasured={handleDiscardMeasured}
                 hideTopDeckTile={hideDeckTopTile}
@@ -1488,10 +1698,13 @@ const shouldShowScorePopup =
             tile={topDiscard ?? state.indicatorTile}
             okeyTile={state.okeyTile}
             sourceRect={discardTopRectRef.current ? toLocalRect(discardTopRectRef.current) : null}
+            holdAfterAnimationMs={isKonkanFinish ? 3000 : undefined}
+            playFinishSound
+            onComplete={isKonkanFinish ? completeKonkanFinalTile : undefined}
           />
         ) : null}
-        <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
-          {openAction.allowed ? (
+                  <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
+{openAction.allowed ? (
             <Pressable
               style={styles.openSetsButton}
               onPress={() => {
@@ -1520,7 +1733,7 @@ const shouldShowScorePopup =
                 </Text>
                 <Text style={styles.playerSetScoreSlash}>{" / "}</Text>
                 <Text style={styles.playerSetScoreCurrent}>
-                  {previewMelds.length > 0 ? openIntent.score : rackSetScore}
+                  {rackSetScore}
                 </Text>
               </View>
             )}
@@ -1528,16 +1741,16 @@ const shouldShowScorePopup =
         </View>
         <MemoizedOkeyPlayerRack
           key={`${dealLifecycleKey}-rack`}
-          tiles={onlineGameplayReady ? humanPlayer.hand : EMPTY_OKEY_TILES}
+          tiles={onlineGameplayReady ? presentedHumanRackTiles : EMPTY_OKEY_TILES}
           selectedTileId={selectedTileId}
           okeyTile={state.okeyTile}
           onSelectTile={handleRackTileSelect}
 
           onRackScoreChange={setRackSetScore}
           onOpenableMeldsChange={setOpenableRackMelds}
-          stagedTileIds={previewTileIds}
           onDropMeldGroup={handleDropMeldGroup}
           onDropTile={handleDropTile}
+          stagedTileIds={droppedTileIds}
           onTileDragPointChange={handleTileDragPointChange}
           hiddenTileIds={hiddenRackTileIds}
           skipEnterAnimationTileIds={skipEnterAnimationTileIds}
@@ -1571,7 +1784,8 @@ const shouldShowScorePopup =
           runTiles={konkanRevealData.runTiles}
           completionMeldTiles={konkanRevealData.completionMeldTiles}
           okeyTile={state.okeyTile}
-          onClose={() => setKonkanRevealData((prev) => ({ ...prev, visible: false }))}
+          onClose={closeKonkanReveal}
+          onEntered={completeKonkanRevealEntrance}
         />
         <Animated.View
           pointerEvents="none"
@@ -1667,6 +1881,7 @@ const finishRevealStyles = StyleSheet.create({
 
 });
 
+
 const forceKonkanStyles = StyleSheet.create({
   panel: {
     position: "absolute",
@@ -1728,5 +1943,3 @@ const forceKonkanStyles = StyleSheet.create({
     backgroundColor: "#f8d774",
   },
 });
-
-

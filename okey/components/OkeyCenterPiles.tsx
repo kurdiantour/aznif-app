@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, Pressable, Text, View } from "react-native";
+import { PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getOkeyTileAccessibilityLabel, OKEY_ACCESSIBILITY } from "@/okey/accessibility/okey-accessibility";
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
@@ -21,6 +21,8 @@ type OkeyCenterPilesProps = {
   onDrawDiscard: () => void;
   onViewDiscards?: () => void;
   onDiscardDroppedOnRack?: (point: { x: number; y: number }) => void;
+  onDeckDroppedOnRack?: (point: { x: number; y: number }) => void;
+  onDeckDragPointChange?: (point: { x: number; y: number } | null) => void;
   onDiscardDragActiveChange?: (active: boolean) => void;
   onDiscardDragPointChange?: (point: { x: number; y: number } | null) => void;
   onDeckMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
@@ -42,6 +44,8 @@ export function OkeyCenterPiles({
   onDrawDiscard,
   onViewDiscards,
   onDiscardDroppedOnRack,
+  onDeckDroppedOnRack,
+  onDeckDragPointChange,
   onDiscardDragActiveChange,
   onDiscardDragPointChange,
   onDeckMeasured,
@@ -53,10 +57,13 @@ export function OkeyCenterPiles({
   const layout = useOkeyResponsiveLayout();
   const rootRef = useRef<View | null>(null);
   const rootOriginRef = useRef({ x: 0, y: 0 });
+  const deckRootRef = useRef<View | null>(null);
+  const deckOriginRef = useRef({ x: 0, y: 0 });
   const deckTopRef = useRef<View | null>(null);
   const discardTopRef = useRef<View | null>(null);
   const discardDragStartedRef = useRef(false);
   const [discardDragPosition, setDiscardDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const [deckDragPosition, setDeckDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [discardTileSize, setDiscardTileSize] = useState({ width: 38, height: 54 });
   const displayedTopDiscard = hideTopDiscardTile
     ? discardPresentationFallback ?? null
@@ -89,6 +96,38 @@ export function OkeyCenterPiles({
     setDiscardDragPosition(null);
     onDiscardDragPointChange?.(null);
   }, [onDiscardDragPointChange]);
+  const clearDeckDrag = useCallback(() => {
+    setDeckDragPosition(null);
+    onDeckDragPointChange?.(null);
+  }, [onDeckDragPointChange]);
+  const deckDragHandlers = useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: () => canDraw && deckCount > 0,
+      onMoveShouldSetPanResponderCapture: (_, gesture) =>
+        canDraw && deckCount > 0 && Math.hypot(gesture.dx, gesture.dy) > 3,
+      onPanResponderGrant: () => {
+        deckRootRef.current?.measureInWindow((x, y) => {
+          deckOriginRef.current = { x, y };
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        onDeckDragPointChange?.({ x: gesture.moveX, y: gesture.moveY });
+        setDeckDragPosition({
+          x: gesture.moveX - deckOriginRef.current.x - 21,
+          y: gesture.moveY - deckOriginRef.current.y - 29,
+        });
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (Math.hypot(gesture.dx, gesture.dy) >= 8) {
+          onDeckDroppedOnRack?.({ x: gesture.moveX, y: gesture.moveY });
+        }
+        clearDeckDrag();
+      },
+      onPanResponderTerminate: clearDeckDrag,
+    }),
+    [canDraw, clearDeckDrag, deckCount, onDeckDragPointChange, onDeckDroppedOnRack],
+  );
   const discardDragHandlers = useMemo(
     () => PanResponder.create({
       onStartShouldSetPanResponder: () => !!displayedTopDiscard,
@@ -132,7 +171,7 @@ export function OkeyCenterPiles({
     [canDrawDiscard, clearDiscardDrag, measureDiscardTop, measureRoot, onDiscardDragPointChange, onDiscardDroppedOnRack, onViewDiscards, setDiscardDragPositionFromGesture, displayedTopDiscard],
   );
   return (
-    <View style={[styles.centerPiles, layout.centerPiles, discardDragPosition && styles.activeDiscardDragLayer]}>
+    <View style={[styles.centerPiles, layout.centerPiles, (discardDragPosition || deckDragPosition) && styles.activeDiscardDragLayer]}>
       <View testID="okey-discard-pile" ref={rootRef} onLayout={measureRoot} style={[styles.discardPileNatural, !displayedTopDiscard && styles.disabled]}>
         <View style={[styles.discardUnderTile, styles.discardUnderLeft]}>
           <OkeyTileBack />
@@ -201,16 +240,21 @@ export function OkeyCenterPiles({
         ) : null}
       </View>
 
-      <Pressable
-        testID="okey-draw-deck"
-        disabled={!canDraw}
-        onPress={onDrawDeck}
-        accessibilityRole="button"
-        accessibilityLabel={OKEY_ACCESSIBILITY.drawDeckLabel(deckCount)}
-        accessibilityHint={OKEY_ACCESSIBILITY.drawDeckHint}
-        accessibilityState={{ disabled: !canDraw }}
+      <View
+        ref={deckRootRef}
         style={styles.drawStackNatural}
+        {...deckDragHandlers.panHandlers}
       >
+        <Pressable
+          testID="okey-draw-deck"
+          disabled={!canDraw}
+          onPress={onDrawDeck}
+          accessibilityRole="button"
+          accessibilityLabel={OKEY_ACCESSIBILITY.drawDeckLabel(deckCount)}
+          accessibilityHint={OKEY_ACCESSIBILITY.drawDeckHint}
+          accessibilityState={{ disabled: !canDraw }}
+          style={StyleSheet.absoluteFillObject}
+        >
         <View
           pointerEvents="none"
           accessible
@@ -226,13 +270,32 @@ export function OkeyCenterPiles({
             ref={index === 8 ? deckTopRef : undefined}
             collapsable={false}
             onLayout={index === 8 ? measureDeckTop : undefined}
-            style={[styles.drawStackLayer, { top: index * 3 }, index === 8 && hideTopDeckTile ? styles.hiddenRackTile : undefined]}
+            style={[styles.drawStackLayer, { top: index * 3 }, index === 8 && (hideTopDeckTile || deckDragPosition) ? styles.hiddenRackTile : undefined]}
           >
             <OkeyTileBack unstyled width={42} height={58} />
           </View>
         ))}
+        {deckDragPosition ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.draggedTileOverlay,
+              {
+                width: 42,
+                height: 58,
+                transform: [
+                  { translateX: deckDragPosition.x },
+                  { translateY: deckDragPosition.y },
+                ],
+              },
+            ]}
+          >
+            <OkeyTileBack unstyled width={42} height={58} />
+          </View>
+        ) : null}
         {deckCount > 0 ? <Text style={styles.deckCount}>{deckCount}</Text> : null}
-      </Pressable>
+        </Pressable>
+      </View>
       {/* Render Joker (نوز) centered in the center piles when indicator is joker */}
       {indicatorTile && indicatorTile.isFakeJoker ? (
         <View

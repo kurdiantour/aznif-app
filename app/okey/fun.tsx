@@ -26,7 +26,7 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
-import { getBalance } from "@/lib/wallet";
+import { useWallet } from "@/lib/wallet-context";
 import { releaseTakenOverOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
 import {
   matchmakeOkeyRoom,
@@ -86,7 +86,7 @@ function formatAmount(value: number) {
 
 type TableCardProps = {
   table: OkeyTable;
-  balance: number;
+  balance: number | null;
   points: number;
   joining: boolean;
   disabledByOtherJoin: boolean;
@@ -101,11 +101,10 @@ function TableCard({
   disabledByOtherJoin,
   onJoin,
 }: TableCardProps) {
-  const affordable = balance >= table.entry;
+  const affordable = balance === null || balance >= table.entry;
   const meetsPointRequirement = points >= table.minPoints;
 
   const disabled =
-    !affordable ||
     !meetsPointRequirement ||
     joining ||
     disabledByOtherJoin;
@@ -192,31 +191,13 @@ export default function OkeyFunScreen() {
   const isTablet =
     Math.min(width, height) >= 600;
 
-  const [coinBalance, setCoinBalance] =
-    useState(0);
+  const { coinBalance } = useWallet();
 
   const [joiningTableId, setJoiningTableId] =
     useState<string | null>(null);
 
   const [joinError, setJoinError] =
     useState<string | null>(null);
-
-  const loadWalletBalance =
-    useCallback(async () => {
-      try {
-        const wallet = await getBalance();
-
-        setCoinBalance(
-          Number(wallet.balances.coin || 0),
-        );
-      } catch {
-        setCoinBalance(0);
-      }
-    }, []);
-
-  useEffect(() => {
-    void loadWalletBalance();
-  }, [loadWalletBalance]);
 
   useEffect(() => {
     if (!joinError) {
@@ -255,7 +236,6 @@ export default function OkeyFunScreen() {
       }
 
       if (
-        coinBalance < table.entry ||
         (profile?.points ?? 0) < table.minPoints
       ) {
         return;
@@ -284,7 +264,6 @@ export default function OkeyFunScreen() {
       }
     },
     [
-      coinBalance,
       joiningTableId,
       openOnlineGame,
       profile,

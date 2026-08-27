@@ -11,6 +11,7 @@ import {
   useProfile,
 } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
+import { useWallet } from "@/lib/wallet-context";
 
 type LeaderboardPlayer = {
   id: string;
@@ -29,6 +30,7 @@ const MEDAL_COLORS: Record<number, string> = {
 
 export default function LeaderboardScreen() {
   const { profile } = useProfile();
+  const { gemBalance } = useWallet();
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
   const [currentRank, setCurrentRank] = useState<number | null>(null);
 
@@ -238,7 +240,7 @@ export default function LeaderboardScreen() {
 
           <View style={styles.goldColumn}>
             <Text style={[styles.goldText, styles.currentUserText]}>
-              {profile.gems.toLocaleString()}
+              {gemBalance?.toLocaleString() ?? "..."}
             </Text>
           </View>
         </View>

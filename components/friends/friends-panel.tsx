@@ -279,9 +279,7 @@ export function FriendsPanel({
         () => void refreshPresence(ids),
       )
       .subscribe();
-    const fallback = setInterval(() => void refreshPresence(ids), 15_000);
     return () => {
-      clearInterval(fallback);
       void supabase.removeChannel(channel);
     };
   }, [friends, refreshPresence]);

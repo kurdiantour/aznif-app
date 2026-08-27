@@ -13,8 +13,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getMyShopState, purchaseOrEquipShopItem } from "@/lib/shop";
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
-import { getBalance } from "@/lib/wallet";
-import { notifyWalletRefresh, subscribeWalletRefresh } from "@/lib/walletEvents";
+import { useWallet } from "@/lib/wallet-context";
 import { ShopPopupContext } from "@/components/shop/InsufficientGemsPopup";
 
 function ItemPreview({ item }: { item: MockShopItem }) {
@@ -93,8 +92,7 @@ function ItemPreview({ item }: { item: MockShopItem }) {
 }
 
 function ShopContent() {
-  const [, setCoinBalance] = useState(0);
-  const [, setGemBalance] = useState(0);
+  const { refreshWallet } = useWallet();
   const [category, setCategory] = useState<ShopCategory>("tables");
   const [ownedItemIds, setOwnedItemIds] = useState<Set<string>>(
     () => new Set(),
@@ -122,21 +120,6 @@ function ShopContent() {
     );
   }, [refreshShopState]);
 
-  const refreshBalances = useCallback(async () => {
-    try {
-      const wallet = await getBalance();
-      setCoinBalance(Number(wallet.balances.coin || 0));
-      setGemBalance(Number(wallet.balances.gem || 0));
-    } catch (error) {
-      console.warn("Unable to load Shop balances", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshBalances();
-    return subscribeWalletRefresh(() => void refreshBalances());
-  }, [refreshBalances]);
-
   async function purchaseOrEquipItem(item: MockShopItem) {
     if (busyItemId) return;
 
@@ -149,7 +132,7 @@ function ShopContent() {
       }
 
       await refreshShopState();
-      notifyWalletRefresh();
+      void refreshWallet();
     } catch (error) {
       console.warn("Unable to purchase or equip Shop item", error);
     } finally {
@@ -165,24 +148,10 @@ function ShopContent() {
       return;
     }
 
-    setBusyItemId(item.id);
-    try {
-      const wallet = await getBalance();
-
-      if (wallet.balances.gem < item.price) {
-        showInsufficientGems();
-        return;
-      }
-
-      showPurchaseConfirmation({
-        price: item.price,
-        onConfirm: () => purchaseOrEquipItem(item),
-      });
-    } catch (error) {
-      console.warn("Unable to load gem balance before Shop purchase", error);
-    } finally {
-      setBusyItemId(null);
-    }
+    showPurchaseConfirmation({
+      price: item.price,
+      onConfirm: () => purchaseOrEquipItem(item),
+    });
   }
 
   return (

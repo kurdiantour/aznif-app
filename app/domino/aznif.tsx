@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,8 +19,7 @@ import {
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { getBalance } from "@/lib/wallet";
-import type { Wallet } from "@/types/wallet";
+import { useWallet } from "@/lib/wallet-context";
 
 type AznifCardConfig = {
   id: string;
@@ -91,7 +90,7 @@ const AZNIF_CARDS: AznifCardConfig[] = [
 type AznifCardProps = {
   config: AznifCardConfig;
   isTablet: boolean;
-  walletBalance: number;
+  walletBalance: number | null;
   submitting: boolean;
   activeCardId: string | null;
   onPress: () => void;
@@ -107,7 +106,7 @@ function AznifCard({
 }: AznifCardProps) {
   const isComingSoon = !config.enabled;
   const hasEnoughBalance =
-    isComingSoon || walletBalance >= config.amount;
+    isComingSoon || walletBalance === null || walletBalance >= config.amount;
 
   const isActive = activeCardId === config.id;
 
@@ -236,56 +235,10 @@ export default function DominoAznifScreen() {
 
   const isTablet = Math.min(width, height) >= 600;
 
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [walletLoading, setWalletLoading] = useState(true);
+  const { aznifBalance: walletBalance } = useWallet();
   const [activeCardId, setActiveCardId] =
     useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const walletBalance = useMemo(
-    () => Number(wallet?.balances.mc ?? 0),
-    [wallet],
-  );
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadWallet() {
-      if (profileLoading || !profile) {
-        return;
-      }
-
-      setWalletLoading(true);
-      setError(null);
-
-      try {
-        const result = await getBalance();
-
-        if (mounted) {
-          setWallet(result);
-        }
-      } catch (reason) {
-        console.warn(
-          "Unable to load Aznif balance:",
-          reason,
-        );
-
-        if (mounted) {
-          setError("نەتوانرا باڵانسی ئەزنیف بار بکرێت.");
-        }
-      } finally {
-        if (mounted) {
-          setWalletLoading(false);
-        }
-      }
-    }
-
-    void loadWallet();
-
-    return () => {
-      mounted = false;
-    };
-  }, [profile, profileLoading]);
 
   const getMatchError = (reason: unknown) => {
     const message =
@@ -334,11 +287,6 @@ export default function DominoAznifScreen() {
 
     if (!profile) {
       router.push("/login");
-      return;
-    }
-
-    if (walletBalance < config.amount) {
-      setError("ئەزنیفی پێویستت بۆ ئەم یارییە نییە.");
       return;
     }
 
@@ -396,7 +344,7 @@ export default function DominoAznifScreen() {
     return <Redirect href="/login" />;
   }
 
-  if (profileLoading || walletLoading) {
+  if (profileLoading) {
     return (
       <View style={styles.shell}>
         <LobbyHeader />

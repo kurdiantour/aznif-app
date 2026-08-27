@@ -307,6 +307,9 @@ function normalizeOpenMelds(melds: OkeyMeld[], okeyTile: OkeyTile): { melds: Oke
   const normalized: OkeyMeld[] = [];
   for (const source of melds) {
     if (source.kind !== "run" && source.kind !== "set") return null;
+    // Short runs (≤5 tiles): keep player-submitted order — validated via scoreOrderedRun
+    // which rejects mis-ordered sequences (e.g. 5-3-4 is invalid, 3-4-5 is valid).
+    // Long runs (>5 tiles): auto-sort first, then split into legal 3-5 tile sub-melds below.
     const sourceTiles = source.kind === "run" && source.tiles.length > 5 ? orderRunTiles(source.tiles, okeyTile) : source.tiles;
     if (!sourceTiles) return null;
     const candidates = [];

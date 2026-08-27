@@ -268,8 +268,6 @@ export function OkeyPlayerRack({
     top: null,
     bottom: null,
   });
-  const tileRefs = useRef<Record<string, View | null>>({});
-  const tileRectsRef = useRef<Record<string, TileRect>>({});
 
   const enterAnimationTimeoutsRef =
     useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -303,9 +301,6 @@ export function OkeyPlayerRack({
     rackTileWidth * RACK_TILE_ASPECT_RATIO;
   const rackTileStride = rackTileWidth + RACK_TILE_GAP;
 
-  const clearEnteringTilesForDrag = useCallback(() => {
-    setEnteringTileIds(new Set());
-  }, []);
 
   const handleJokerFlipAnimationActiveChange = useCallback(
     (tileId: string, active: boolean) => {
@@ -352,7 +347,6 @@ export function OkeyPlayerRack({
     rackTileStride,
     viewportOriginRef,
     rowLayoutsRef,
-    tileRectsRef,
     onSelectTile,
     onDropMeldGroup,
     onDropTile,
@@ -360,7 +354,6 @@ export function OkeyPlayerRack({
     externalDropPlacement,
     onExternalDropPlaced,
     externalHoverPoint,
-    clearEnteringTilesForDrag,
     clearReturningJokerForTile,
   });
 
@@ -436,33 +429,43 @@ export function OkeyPlayerRack({
     });
   };
 
-  const measureRackTile = useCallback(
-    (tileId: string) => {
-      tileRefs.current[tileId]?.measureInWindow(
-        (x, y, width, height) => {
-          const rect = { x, y, width, height };
-          tileRectsRef.current[tileId] = rect;
-          onTileMeasured?.(tileId, rect);
-        },
-      );
-    },
-    [onTileMeasured],
-  );
-
   useEffect(() => {
-    if (dragStartedRef.current) return;
+    const viewport = viewportOriginRef.current;
+    if (viewport.width <= 0 || viewport.height <= 0) return;
 
+    const nextRects: Record<string, TileRect> = {};
     for (const row of ROW_ORDER) {
-      for (const tileId of rackSlots[row]) {
-        if (tileId) measureRackTile(tileId);
-      }
+      const rowLayout = rowLayouts[row];
+      if (!rowLayout) continue;
+
+      const bottomInset = row === "bottom" ? rackTileHeight * 0.44 : 0;
+      rackSlots[row].forEach((tileId, slotIndex) => {
+        if (!tileId) return;
+
+        const rect = {
+          x: viewport.x + slotIndex * rackTileStride,
+          y:
+            viewport.y +
+            rowLayout.y +
+            rowLayout.height -
+            rackTileHeight -
+            bottomInset,
+          width: rackTileWidth,
+          height: rackTileHeight,
+        };
+        nextRects[tileId] = rect;
+        onTileMeasured?.(tileId, rect);
+      });
     }
+
   }, [
-    dragStartedRef,
-    measureRackTile,
+    onTileMeasured,
     rackSlots,
     rackTileHeight,
+    rackTileStride,
     rackTileWidth,
+    rackViewportWidth,
+    rowLayouts,
   ]);
 
   useEffect(() => {
@@ -698,10 +701,6 @@ export function OkeyPlayerRack({
         }}
       >
         <View
-          ref={(node) => {
-            tileRefs.current[tile.id] = node;
-          }}
-          collapsable={false}
           style={
             shouldHideTile
               ? styles.hiddenRackTile

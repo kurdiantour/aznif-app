@@ -25,7 +25,6 @@ import {
 } from "@/lib/leaderboardVisibility";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { getBalance } from "@/lib/wallet";
 
 type GameMode = "1v1" | "2v2";
 type MatchType = "duo" | "squad";
@@ -183,24 +182,6 @@ export default function DominoFunScreen() {
 
   const [error, setError] =
     useState<string | null>(null);
-  const [coinBalance, setCoinBalance] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!profile) return;
-    let mounted = true;
-    void getBalance()
-      .then((wallet) => {
-        if (mounted) setCoinBalance(Number(wallet.balances.coin ?? 0));
-      })
-      .catch((reason) => {
-        console.warn("Unable to load Fun Coin balance:", reason);
-        if (mounted) setError("نەتوانرا باڵانسی Coin بار بکرێت.");
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [profile]);
-
   useEffect(() => {
     let mounted = true;
 
@@ -407,7 +388,7 @@ export default function DominoFunScreen() {
                 "@/assets/images/mode-select/1vs1.webp"
               )}
               isTablet={isTablet}
-              disabled={isSearching || coinBalance === null || coinBalance < 500}
+              disabled={isSearching}
               loading={searchingMode === "1v1"}
               onPress={() => {
                 void startPublicMatch(
@@ -425,7 +406,7 @@ export default function DominoFunScreen() {
                 "@/assets/images/mode-select/2vs2.webp"
               )}
               isTablet={isTablet}
-              disabled={isSearching || coinBalance === null || coinBalance < 3500}
+              disabled={isSearching}
               loading={searchingMode === "2v2"}
               onPress={() => {
                 void startPublicMatch(

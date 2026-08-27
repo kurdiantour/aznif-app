@@ -27,12 +27,6 @@ export const SLOT_TARGET_HYSTERESIS_RATIO = 0.35;
 export const RACK_TILE_ENTER_MS = 620;
 export const RACK_DEAL_BATCH_STAGGER_MS = 420;
 export const INITIAL_BOTTOM_TILE_COUNT = RACK_ROW_CAPACITY;
-export const RACK_REFLOW_ANIMATION_MS = 0;
-
-export function configureRackReflowAnimation() {
-  // Intentionally empty: rack reflow is immediate.
-}
-
 export function getRowTilesFromSlots(rowSlots: RackSlot[], tileById: Map<string, OkeyTile>, stagedTileIds: Set<string>) {
   return rowSlots.map((tileId) => {
     if (!tileId || stagedTileIds.has(tileId)) return null;
@@ -415,23 +409,26 @@ export function getExternalDropTargetForPoint(args: {
 
   const localX = point.x - viewport.x;
   const localY = point.y - viewport.y;
-  const targetRow = getDropRowForY(
+  const snappedRow = getDropRowForY(
     localY,
     rowLayouts,
     rackTileHeight,
     rowSnapPaddingRatio,
   );
+  const measuredRows = ROW_ORDER.filter(
+    (row) => rowLayouts[row] !== null,
+  );
+  const targetRow =
+    snappedRow ??
+    measuredRows.sort((left, right) => {
+      const leftLayout = rowLayouts[left]!;
+      const rightLayout = rowLayouts[right]!;
+      return (
+        Math.abs(localY - (leftLayout.y + leftLayout.height / 2)) -
+        Math.abs(localY - (rightLayout.y + rightLayout.height / 2))
+      );
+    })[0];
   if (!targetRow) return null;
-
-  const rowEndX =
-    (RACK_ROW_CAPACITY - 1) * rackTileStride + rackTileWidth;
-
-  if (
-    localX < -rackTileWidth / 2 ||
-    localX > rowEndX + rackTileWidth / 2
-  ) {
-    return null;
-  }
 
   const desiredSlotIndex = Math.max(
     0,
@@ -573,29 +570,7 @@ export function moveTilesIntoSlot(slots: RackSlots, tileIds: string[], targetRow
   return { slots: nextSlots, row: targetRow, slotIndex };
 }
 
-export function getPreviewSlotsForDrag(targetSlots: RackSlots, originalSlots: RackSlots | null, draggedTileIds: string[]) {
-  if (!originalSlots || draggedTileIds.length === 0) return targetSlots;
 
-  const draggedTileIdSet = new Set(draggedTileIds);
-  const previewSlots = cloneSlots(targetSlots);
-
-  for (const row of ROW_ORDER) {
-    for (let index = 0; index < RACK_ROW_CAPACITY; index += 1) {
-      if (previewSlots[row][index] && draggedTileIdSet.has(previewSlots[row][index]!)) {
-        previewSlots[row][index] = null;
-      }
-    }
-  }
-
-  for (const row of ROW_ORDER) {
-    for (let index = 0; index < RACK_ROW_CAPACITY; index += 1) {
-      const tileId = originalSlots[row][index];
-      if (tileId && draggedTileIdSet.has(tileId)) previewSlots[row][index] = tileId;
-    }
-  }
-
-  return previewSlots;
-}
 export function getSlotEnterDelay(row: RackRow, slotIndex: number, isDealer: boolean) {
   const visualIndex = row === "bottom" ? slotIndex : INITIAL_BOTTOM_TILE_COUNT + slotIndex;
   const batchIndex = isDealer
@@ -605,4 +580,3 @@ export function getSlotEnterDelay(row: RackRow, slotIndex: number, isDealer: boo
       : 1 + Math.floor((visualIndex - 2) / 3);
   return batchIndex * RACK_DEAL_BATCH_STAGGER_MS;
 }
-

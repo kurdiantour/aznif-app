@@ -23,6 +23,8 @@ export function OkeyTileFlightOverlay({
   const arcHeight = Math.min(150, Math.max(52, Math.hypot(deltaX, deltaY) * 0.14));
   const midArcY = deltaY / 2 - arcHeight;
 
+
+
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
@@ -59,6 +61,7 @@ export function OkeyTileFlightOverlay({
       ]}
     >
       {flight.face === "back" || !flight.tile ? (
+
         <OkeyTileBack />
       ) : (
         <OkeyTileFace

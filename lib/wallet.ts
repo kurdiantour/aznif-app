@@ -3,8 +3,9 @@ import { supabase } from "./supabase";
 import { getCurrentUser } from "./supabaseAuth";
 
 function toNumber(value: unknown) {
-  if (value === null || value === undefined) return 0;
-  return typeof value === "number" ? value : parseFloat(String(value));
+  const number = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(number)) throw new Error("Wallet contains an invalid balance");
+  return number;
 }
 
 async function getUid(userId?: string) {
@@ -104,8 +105,6 @@ export async function transferMc(recipientUserId: string, amount: number) {
 // Alias for compatibility
 export const transferFunds = transferMc;
 
-export const CURRENT_USER_ID =
-  "DEPRECATED: use getCurrentUserId() async function";
 
 export default {
   getBalance,

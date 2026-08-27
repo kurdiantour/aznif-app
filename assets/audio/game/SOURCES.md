@@ -14,3 +14,6 @@ Attribution is not required, but provenance is retained here for auditing.
 
 The bundled files are sub-three-second clips cut from Freesound's official
 high-quality MP3 previews. The longer source recordings are not bundled.
+
+- `bang.mp3`
+  - User-provided finish cue for the Okey Final Tile Preview.

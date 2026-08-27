@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -20,8 +20,6 @@ import {
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
-import { getBalance } from "@/lib/wallet";
-import type { Wallet } from "@/types/wallet";
 
 const PRIVATE_ROOM_BET_AMOUNT = 10;
 
@@ -37,8 +35,6 @@ export default function CreateRoomScreen() {
 
   const isTablet = Math.min(width, height) >= 600;
 
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const [privateSubmitting, setPrivateSubmitting] =
     useState(false);
@@ -52,46 +48,6 @@ export default function CreateRoomScreen() {
 
   const [error, setError] =
     useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadWallet() {
-      if (profileLoading || !profile) {
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const result = await getBalance();
-
-        if (mounted) {
-          setWallet(result);
-        }
-      } catch (reason) {
-        console.warn(
-          "Unable to load private-room balance:",
-          reason,
-        );
-
-        if (mounted) {
-          setError("نەتوانرا باڵانسی ئەزنیف بار بکرێت.");
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadWallet();
-
-    return () => {
-      mounted = false;
-    };
-  }, [profile, profileLoading]);
 
   const getRoomError = (
     reason: unknown,
@@ -152,16 +108,6 @@ export default function CreateRoomScreen() {
 
     if (!profile) {
       router.push("/login");
-      return;
-    }
-
-    if (
-      !wallet ||
-      wallet.balances.mc < PRIVATE_ROOM_BET_AMOUNT
-    ) {
-      setError(
-        `بۆ دروستکردنی ژوور پێویستت بە ${PRIVATE_ROOM_BET_AMOUNT} ئەزنیف هەیە.`,
-      );
       return;
     }
 
@@ -305,7 +251,7 @@ export default function CreateRoomScreen() {
     return <Redirect href="/login" />;
   }
 
-  if (loading || profileLoading) {
+  if (profileLoading) {
     return (
       <View style={styles.screen}>
         <LobbyHeader />
@@ -324,11 +270,6 @@ export default function CreateRoomScreen() {
 
   const submitting =
     privateSubmitting || joinSubmitting;
-
-  const privateRoomDisabled =
-    !wallet ||
-    wallet.balances.mc <
-      PRIVATE_ROOM_BET_AMOUNT;
 
   return (
     <View style={styles.screen}>
@@ -406,20 +347,14 @@ export default function CreateRoomScreen() {
 
               <Pressable
                 onPress={createPrivateRoom}
-                disabled={
-                  privateRoomDisabled ||
-                  submitting
-                }
+                disabled={submitting}
                 style={({ pressed }) => [
                   styles.button,
                   styles.createButton,
                   isTablet &&
                     styles.buttonTablet,
-                  (privateRoomDisabled ||
-                    submitting) &&
-                    styles.dim,
+                  submitting && styles.dim,
                   pressed &&
-                    !privateRoomDisabled &&
                     !submitting &&
                     styles.pressed,
                 ]}

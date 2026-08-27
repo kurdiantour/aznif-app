@@ -15,6 +15,10 @@ type MeldRect = { x: number; y: number; width: number; height: number };
 type MeldOffset = { x: number; y: number };
 type MeldEntryOrigin = { x: number; y: number; arc: number };
 
+function getMeldTileSignature(meld: OkeyMeld) {
+  return meld.tiles.map((tile) => tile.id).sort().join("|");
+}
+
 function AnimatedSpentTile({
   tile,
   okeyTile,
@@ -351,6 +355,7 @@ export function OkeyPlayerMeldArea({
   meldOffsets = {},
   onMeldOffsetChange,
   highlightedMeldId,
+  suppressEntryAnimationMeldSignatures = [],
 }: {
   player: OkeyPlayer;
   allPlayers: OkeyPlayer[];
@@ -361,6 +366,7 @@ export function OkeyPlayerMeldArea({
   meldOffsets?: Record<string, MeldOffset>;
   onMeldOffsetChange?: (playerId: string, meldId: string, offset: MeldOffset) => void;
   highlightedMeldId?: string | null;
+  suppressEntryAnimationMeldSignatures?: string[];
 }) {
   const layout = useOkeyResponsiveLayout();
   const meldRows = chunkOkeyMeldRows(player.melds, MAX_PLAYER_MELDS);
@@ -380,6 +386,7 @@ export function OkeyPlayerMeldArea({
     .filter((meld) => !previousMeldIdsRef.current.has(meld.id))
     .map((meld) => meld.id);
   const newlyAddedMeldIdSet = new Set(newlyAddedMeldIds);
+  const suppressedEntrySignatureSet = new Set(suppressEntryAnimationMeldSignatures);
   const handleMeasured = useCallback(
     (meldId: string, rect: MeldRect) => onMeldMeasured?.(player.id, meldId, rect),
     [onMeldMeasured, player.id],
@@ -439,7 +446,8 @@ export function OkeyPlayerMeldArea({
                   offset={meldOffsets[meld.id]}
                   onOffsetChange={handleOffsetChange}
                   entryDelayMs={
-                    newlyAddedMeldIdSet.has(meld.id)
+                    newlyAddedMeldIdSet.has(meld.id) &&
+                    !suppressedEntrySignatureSet.has(getMeldTileSignature(meld))
                       ? newlyAddedMeldIds.indexOf(meld.id) * MELD_ENTRY_STAGGER_MS
                       : null
                   }
@@ -489,6 +497,7 @@ export function OkeyTableMeldAreas({
   meldOffsets,
   onMeldOffsetChange,
   highlightedMeldId,
+  suppressLocalEntryAnimationMeldSignatures = [],
 }: {
   players: OkeyPlayer[];
   okeyTile: OkeyTile;
@@ -505,6 +514,7 @@ export function OkeyTableMeldAreas({
     offset: MeldOffset,
   ) => void;
   highlightedMeldId?: string | null;
+  suppressLocalEntryAnimationMeldSignatures?: string[];
 }) {
   return (
     <View style={styles.tableMeldLayer} pointerEvents="box-none">
@@ -554,9 +564,11 @@ export function OkeyTableMeldAreas({
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
         highlightedMeldId={highlightedMeldId}
+        suppressEntryAnimationMeldSignatures={suppressLocalEntryAnimationMeldSignatures}
       />
     </View>
   );
 }
 
 export const MemoizedOkeyTableMeldAreas = memo(OkeyTableMeldAreas);
+

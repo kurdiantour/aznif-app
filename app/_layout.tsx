@@ -17,6 +17,8 @@ import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { WalletProvider } from '@/lib/wallet-context';
+
 async function applyImmersiveFullscreen() {
   if (Platform.OS !== "android") return;
 
@@ -62,6 +64,7 @@ export default function Layout() {
   return (
     <SafeAreaProvider>
       <ProfileProvider>
+        <WalletProvider>
         <PresenceProvider>
           <GameInvitesProvider>
             <StatusBar
@@ -116,6 +119,7 @@ export default function Layout() {
             </Stack>
           </GameInvitesProvider>
         </PresenceProvider>
+        </WalletProvider>
       </ProfileProvider>
     </SafeAreaProvider>
   );

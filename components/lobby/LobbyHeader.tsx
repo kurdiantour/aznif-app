@@ -6,10 +6,9 @@ import {
 import { getFriendRequests } from "@/lib/friends";
 import { useProfile } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
-import { getBalance } from "@/lib/wallet";
+import { useWallet } from "@/lib/wallet-context";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
-import { subscribeWalletRefresh } from "@/lib/walletEvents";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -24,42 +23,15 @@ export function LobbyHeader() {
   const { profile, loading } = useProfile();
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
-  const [mcBalance, setMcBalance] = useState<string>("...");
-  const [coinBalance, setCoinBalance] = useState<string>("...");
-  const [gemBalance, setGemBalance] = useState<string>("...");
+  const {
+    aznifBalance: rawMcBalance,
+    coinBalance: rawCoinBalance,
+    gemBalance: rawGemBalance,
+  } = useWallet();
+  const mcBalance = rawMcBalance?.toLocaleString() ?? "...";
+  const coinBalance = rawCoinBalance?.toLocaleString() ?? "...";
+  const gemBalance = rawGemBalance?.toLocaleString() ?? "...";
   const [friendRequestCount, setFriendRequestCount] = useState(0);
-
-  const loadBalance = useCallback(async () => {
-    if (loading) return;
-
-    if (!profile?.id) {
-      return;
-    }
-
-    try {
-      const wallet = await getBalance();
-      setMcBalance(Number(wallet.balances.mc || 0).toLocaleString());
-      setCoinBalance(Number(wallet.balances.coin || 0).toLocaleString());
-      setGemBalance(Number(wallet.balances.gem || 0).toLocaleString());
-    } catch (error) {
-      console.log("[LobbyHeader] Failed to load wallet balance:", error);
-      setMcBalance("0");
-      setCoinBalance("0");
-      setGemBalance("0");
-    }
-  }, [loading, profile?.id]);
-
-  useEffect(() => {
-    void loadBalance();
-  }, [loadBalance]);
-
-  useEffect(() => {
-    const unsubscribe = subscribeWalletRefresh(() => {
-      void loadBalance();
-    });
-
-    return () => unsubscribe();
-  }, [loadBalance]);
 
   const refreshFriendRequestCount = useCallback(async () => {
     if (loading || !profile?.id) {

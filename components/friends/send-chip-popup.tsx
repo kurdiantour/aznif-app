@@ -1,6 +1,6 @@
 import type { Friend } from "@/lib/friends";
-import { getBalance, transferFunds } from "@/lib/wallet";
-import { notifyWalletRefresh } from "@/lib/walletEvents";
+import { transferFunds } from "@/lib/wallet";
+import { useWallet } from "@/lib/wallet-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { createContext, useEffect, useState } from "react";
 import {
@@ -39,9 +39,8 @@ export function SendChipPopup({
   onTransferSuccess,
 }: SendChipPopupProps) {
   const [amount, setAmount] = useState("");
-  const [mcBalance, setMcBalance] = useState(0);
+  const { refreshWallet } = useWallet();
   const [submitting, setSubmitting] = useState(false);
-  const [loadingBalance, setLoadingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -72,38 +71,6 @@ useEffect(() => {
     };
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadBalance() {
-      if (!visible) return;
-
-      setLoadingBalance(true);
-
-      try {
-        const wallet = await getBalance();
-
-        if (mounted) {
-          setMcBalance(wallet.balances.mc);
-        }
-      } catch {
-        if (mounted) {
-          setMcBalance(0);
-        }
-      } finally {
-        if (mounted) {
-          setLoadingBalance(false);
-        }
-      }
-    }
-
-    loadBalance();
-
-    return () => {
-      mounted = false;
-    };
-  }, [visible]);
-
   if (!visible || !friend) return null;
 
   const parsedAmount = Number(
@@ -112,7 +79,6 @@ useEffect(() => {
 
   const isSendDisabled =
     submitting ||
-    loadingBalance ||
     !parsedAmount ||
     parsedAmount <= 0;
 
@@ -131,20 +97,12 @@ useEffect(() => {
     Keyboard.dismiss();
     setError(null);
 
-    if (parsedAmount > mcBalance) {
-      setError("ئەزنیفی پێویستت نییە.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
       await transferFunds(friend.id, parsedAmount);
 
-      const wallet = await getBalance();
-      setMcBalance(wallet.balances.mc);
-
-      notifyWalletRefresh();
+      void refreshWallet();
 
       setAmount("");
       onTransferSuccess?.();

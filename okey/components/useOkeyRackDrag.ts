@@ -22,7 +22,6 @@ import {
   ROW_SNAP_PADDING_RATIO,
   SLOT_TARGET_HYSTERESIS_RATIO,
   cloneSlots,
-  configureRackReflowAnimation,
   getBestMeldIncludingSlot,
   getExternalDropTargetForPoint,
   getGroupInsertionTargetForPoint,
@@ -41,7 +40,6 @@ import {
 } from "@/okey/rack/rack-layout";
 import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 
-type TileRect = { x: number; y: number; width: number; height: number };
 type ViewportRect = { x: number; y: number; width: number; height: number };
 
 type UseOkeyRackDragParams = {
@@ -55,7 +53,6 @@ type UseOkeyRackDragParams = {
 
   viewportOriginRef: MutableRefObject<ViewportRect>;
   rowLayoutsRef: MutableRefObject<Record<RackRow, RackRowLayout | null>>;
-  tileRectsRef: MutableRefObject<Record<string, TileRect>>;
 
   onSelectTile: (tileId: string) => void;
   onDropMeldGroup?: (meld: OkeyMeld, point: { x: number; y: number }) => boolean;
@@ -69,7 +66,6 @@ type UseOkeyRackDragParams = {
   onExternalDropPlaced?: (tileId: string, targetIndex: number) => void;
   externalHoverPoint?: { x: number; y: number } | null;
 
-  clearEnteringTilesForDrag: () => void;
   clearReturningJokerForTile: (tileId: string) => void;
 };
 
@@ -88,7 +84,6 @@ export function useOkeyRackDrag({
   rackTileStride,
   viewportOriginRef,
   rowLayoutsRef,
-  tileRectsRef,
   onSelectTile,
   onDropMeldGroup,
   onDropTile,
@@ -96,7 +91,6 @@ export function useOkeyRackDrag({
   externalDropPlacement,
   onExternalDropPlaced,
   externalHoverPoint,
-  clearEnteringTilesForDrag,
   clearReturningJokerForTile,
 }: UseOkeyRackDragParams) {
   const [committedRackSlots, setCommittedRackSlots] = useState<RackSlots>(() =>
@@ -158,6 +152,19 @@ export function useOkeyRackDrag({
 
   useEffect(() => {
     tileByIdRef.current = new Map(tiles.map((tile) => [tile.id, tile]));
+
+    const activeTileIds = new Set(tiles.map((tile) => tile.id));
+    for (const tileId of Object.keys(tilePanHandlersRef.current)) {
+      if (!activeTileIds.has(tileId)) {
+        delete tilePanHandlersRef.current[tileId];
+      }
+    }
+    for (const tileId of Object.keys(tileShiftValuesRef.current)) {
+      if (!activeTileIds.has(tileId)) {
+        tileShiftValuesRef.current[tileId].stopAnimation();
+        delete tileShiftValuesRef.current[tileId];
+      }
+    }
   }, [tiles]);
 
   useEffect(() => {
@@ -455,14 +462,14 @@ export function useOkeyRackDrag({
     [rowLayoutsRef, viewportOriginRef],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (
       !externalDropPlacement ||
       consumedExternalDropNonceRef.current === externalDropPlacement.nonce
     ) {
       return;
     }
-    if (!tileByIdRef.current.has(externalDropPlacement.tileId)) return;
+    if (!tiles.some((tile) => tile.id === externalDropPlacement.tileId)) return;
 
     const target = getExternalDropTarget(
       externalDropPlacement.tileId,
@@ -476,7 +483,7 @@ export function useOkeyRackDrag({
       externalDropPlacement.tileId,
       target.flatIndex,
     );
-  }, [externalDropPlacement, getExternalDropTarget]);
+  }, [externalDropPlacement, getExternalDropTarget, tiles]);
 
   useEffect(() => {
     if (!externalHoverPoint || externalDropPlacement) {
@@ -615,26 +622,6 @@ export function useOkeyRackDrag({
             y: rackTileHeightRef.current / 2,
           };
 
-          const cachedRect = tileRectsRef.current[tileId];
-          if (cachedRect) {
-            dragTouchOffsetRef.current = {
-              x: Math.max(
-                0,
-                Math.min(
-                  cachedRect.width,
-                  startPoint.x - cachedRect.x,
-                ),
-              ),
-              y: Math.max(
-                0,
-                Math.min(
-                  cachedRect.height,
-                  startPoint.y - cachedRect.y,
-                ),
-              ),
-            };
-          }
-
           setDragPositionFromTouch(startPoint.x, startPoint.y);
           startMeldLongPressTimer(tileId);
         },
@@ -658,7 +645,6 @@ export function useOkeyRackDrag({
 
           if (!dragStartedRef.current) {
             dragStartedRef.current = true;
-            clearEnteringTilesForDrag();
             clearReturningJokerForTile(tileId);
 
             if (!draggingMeldRef.current) {
@@ -744,7 +730,6 @@ export function useOkeyRackDrag({
                 currentDraggingMeld.tileIds,
                 originalSlots,
                 () => {
-                  configureRackReflowAnimation();
                   clearDragState();
                 },
               );
@@ -773,7 +758,6 @@ export function useOkeyRackDrag({
 
             if (!dropped && originalSlots) {
               snapDragBack([tileId], originalSlots, () => {
-                configureRackReflowAnimation();
                 clearDragState();
               });
               return;
@@ -805,8 +789,7 @@ export function useOkeyRackDrag({
     },
     [
       clearDragState,
-      clearEnteringTilesForDrag,
-      clearLongPressTimer,
+          clearLongPressTimer,
       clearReturningJokerForTile,
       getGroupInsertionTarget,
       getInsertionTarget,
@@ -816,7 +799,6 @@ export function useOkeyRackDrag({
       setDragPositionFromTouch,
       snapDragBack,
       startMeldLongPressTimer,
-      tileRectsRef,
       updateNeighborShifts,
     ],
   );
@@ -835,3 +817,4 @@ export function useOkeyRackDrag({
     dragStartedRef,
   };
 }
+

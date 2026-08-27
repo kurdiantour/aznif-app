@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useAudioPlayer } from "expo-audio";
 
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import type { OkeyTile } from "@/okey/types/okey";
@@ -11,6 +12,10 @@ type Props = {
   tile: OkeyTile | null;
   okeyTile: OkeyTile;
   sourceRect: ScreenRect | null;
+  announcement?: string;
+  onComplete?: () => void;
+  holdAfterAnimationMs?: number;
+  playFinishSound?: boolean;
 };
 
 const SPARKS = Array.from({ length: 12 }, (_, index) => ({
@@ -18,10 +23,15 @@ const SPARKS = Array.from({ length: 12 }, (_, index) => ({
   color: index % 3 === 0 ? "#fff5bd" : index % 2 === 0 ? "#f8d774" : "#f4a340",
   distance: 92 + (index % 3) * 18,
 }));
+const FINISH_SOUND = require("@/assets/audio/game/bang.mp3");
 
-export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect }: Props) {
+export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcement, onComplete, holdAfterAnimationMs, playFinishSound }: Props) {
   const entrance = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
+  const onCompleteRef = useRef(onComplete);
+  const holdAfterAnimationMsRef = useRef(holdAfterAnimationMs);
+  const finishSoundPlayer = useAudioPlayer(playFinishSound ? FINISH_SOUND : null);
+  const soundPlayedRef = useRef(false);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const tileWidth = Math.max(58, (sourceRect?.width ?? 38) * 1.6);
   const tileHeight = Math.max(82, (sourceRect?.height ?? 54) * 1.6);
@@ -29,6 +39,34 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect }: Props) 
   const centerY = sourceRect ? sourceRect.y + sourceRect.height / 2 - tileHeight / 2 : screenHeight / 2 - tileHeight / 2 - 28;
   const copyWidth = Math.min(230, screenWidth - 24);
   const copyLeft = Math.max(12, Math.min(screenWidth - copyWidth - 12, centerX + tileWidth / 2 - copyWidth / 2));
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    holdAfterAnimationMsRef.current = holdAfterAnimationMs;
+  }, [holdAfterAnimationMs, onComplete]);
+
+  useEffect(() => {
+    if (!playFinishSound || soundPlayedRef.current) return;
+    soundPlayedRef.current = true;
+    let active = true;
+
+    finishSoundPlayer.volume = 0.18;
+    void finishSoundPlayer
+      .seekTo(0, 0, 0)
+      .then(() => {
+        if (active) finishSoundPlayer.play();
+      })
+      .catch((error) => {
+        console.warn("Unable to play Okey finish preview sound", error);
+      });
+
+    return () => {
+      active = false;
+      try {
+        finishSoundPlayer.pause();
+      } catch {}
+      void finishSoundPlayer.seekTo(0, 0, 0).catch(() => undefined);
+    };
+  }, [finishSoundPlayer, playFinishSound]);
 
   useEffect(() => {
     entrance.setValue(0);
@@ -45,12 +83,22 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect }: Props) 
         Animated.timing(pulse, { toValue: 0, duration: 520, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ]),
     );
+    let holdTimer: ReturnType<typeof setTimeout> | null = null;
     reveal.start(({ finished }) => {
-      if (finished) breathing.start();
+      if (!finished) return;
+      breathing.start();
+      if (holdAfterAnimationMsRef.current === undefined) {
+        onCompleteRef.current?.();
+        return;
+      }
+      holdTimer = setTimeout(() => {
+        onCompleteRef.current?.();
+      }, holdAfterAnimationMsRef.current);
     });
     return () => {
       reveal.stop();
       breathing.stop();
+      if (holdTimer) clearTimeout(holdTimer);
     };
   }, [entrance, pulse]);
 
@@ -159,8 +207,14 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect }: Props) 
           },
         ]}
       >
-        <View style={styles.winnerPill}><Text style={styles.winnerPillText}>بەردی کۆتایی</Text></View>
-        <Text style={styles.title}>یارییەکە تەواو بوو!</Text>
+        {announcement ? (
+          <Text style={styles.title}>{announcement}</Text>
+        ) : (
+          <>
+            <View style={styles.winnerPill}><Text style={styles.winnerPillText}>بەردی کۆتایی</Text></View>
+            <Text style={styles.title}>یارییەکە تەواو بوو!</Text>
+          </>
+        )}
       </Animated.View>
     </View>
   );

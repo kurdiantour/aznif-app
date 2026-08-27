@@ -12,6 +12,7 @@ type Props = {
   completionMeldTiles: OkeyTile[];
   okeyTile: OkeyTile;
   onClose: () => void;
+  onEntered?: () => void;
 };
 
 type AnimatedTileWrapperProps = {
@@ -75,6 +76,7 @@ export function OkeyKonkanReveal({
   completionMeldTiles,
   okeyTile,
   onClose,
+  onEntered,
 }: Props) {
   const layout = useOkeyResponsiveLayout();
   
@@ -82,10 +84,25 @@ export function OkeyKonkanReveal({
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const titleScale = useRef(new Animated.Value(0.7)).current;
+  const onEnteredRef = useRef(onEntered);
+
+  useEffect(() => {
+    onEnteredRef.current = onEntered;
+  }, [onEntered]);
 
   const isTablet = layout.layoutClass === "tablet";
-  const tileWidth = isTablet ? 58 : 40;
-  const tileHeight = isTablet ? 80 : 56;
+  const rowGap = 6;
+  const rowHorizontalPadding = 32;
+  const availableRowWidth = Math.max(0, layout.usableWidth - rowHorizontalPadding);
+  const preferredTileWidth = isTablet ? 58 : 40;
+  const tileWidth = Math.max(
+    22,
+    Math.min(
+      preferredTileWidth,
+      Math.floor((availableRowWidth - rowGap * 9) / 10),
+    ),
+  );
+  const tileHeight = Math.round(tileWidth * (isTablet ? 80 / 58 : 56 / 40));
 
   useEffect(() => {
     if (visible) {
@@ -95,31 +112,32 @@ export function OkeyKonkanReveal({
       titleScale.setValue(0.7);
 
       // Start outer entrance animations
-      Animated.parallel([
-        Animated.timing(overlayOpacity, {
-          toValue: 1,
-          duration: 400,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        // Delayed Title animation: starts after all tiles drop (1680ms delay)
-        Animated.sequence([
-          Animated.delay(1680),
-          Animated.parallel([
-            Animated.timing(titleOpacity, {
-              toValue: 1,
-              duration: 400,
-              useNativeDriver: true,
-            }),
-            Animated.spring(titleScale, {
-              toValue: 1,
-              friction: 6.5,
-              tension: 40,
-              useNativeDriver: true,
-            }),
-          ]),
+      const overlayEntrance = Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 400,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      });
+      const titleEntrance = Animated.sequence([
+        Animated.delay(1680),
+        Animated.parallel([
+          Animated.timing(titleOpacity, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.spring(titleScale, {
+            toValue: 1,
+            friction: 6.5,
+            tension: 40,
+            useNativeDriver: true,
+          }),
         ]),
-      ]).start();
+      ]);
+      overlayEntrance.start(({ finished }) => {
+        if (finished) onEnteredRef.current?.();
+      });
+      titleEntrance.start();
 
       // Fade out the entire panel after 4.8 seconds
       const timer = setTimeout(() => {
@@ -258,7 +276,6 @@ const styles = StyleSheet.create({
   },
   tilesRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
