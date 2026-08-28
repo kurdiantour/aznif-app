@@ -49,7 +49,7 @@ export default function OkeyPreviewScreen() {
     return () => { active = false; };
   }, [attempt, createOrResumeTestMatch]);
 
-  if (!__DEV__) return <Redirect href="/okey" />;
+  if (!__DEV__) return <Redirect href="/(tabs)/play" />;
 
   return (
     <View style={styles.container}>

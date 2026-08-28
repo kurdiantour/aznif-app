@@ -713,12 +713,14 @@ export function useOkeyGame(
         tileId: string,
         targetPlayerId: string,
         targetMeldId: string,
+        runEnd?: "start" | "end",
       ) => {
         return dispatchOnline({
           type: "spend-meld",
           tileId,
           targetPlayerId,
           targetMeldId,
+          ...(runEnd ? { runEnd } : {}),
         });
       },
       [dispatchOnline],
@@ -730,12 +732,14 @@ export function useOkeyGame(
         tileId: string,
         targetPlayerId: string,
         targetMeldId: string,
+        runEnd?: "start" | "end",
       ) => {
         return dispatchOnline({
           type: "lock-konkan",
           tileId,
           targetPlayerId,
           targetMeldId,
+          ...(runEnd ? { runEnd } : {}),
         });
       },
       [dispatchOnline],

@@ -118,6 +118,8 @@ function OkeyGameTableSceneContent() {
       ? "aznif"
       : "fun";
 
+  const exitRoute = okeyMatchMode === "aznif" ? "/(tabs)/aznif" : "/(tabs)/play";
+
   const [onlineRoom, setOnlineRoom] =
     useState<OkeyRoomSnapshot | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -160,7 +162,7 @@ useEffect(() => {
 // matchmaking service, so a direct link must not fall back to a local game.
 useEffect(() => {
   if (!onlineMatchId) {
-    router.replace("/okey");
+    router.replace(exitRoute);
   }
 }, [onlineMatchId, router]);
 
@@ -212,7 +214,7 @@ useEffect(() => {
   }
 
   setOnlineRoom(null);
-  router.replace("/okey");
+  router.replace(exitRoute);
 }, [currentUserId, onlineMatchId, party, router]);
 const handleCancelWaiting = useCallback(async () => {
   if (
@@ -229,7 +231,7 @@ const handleCancelWaiting = useCallback(async () => {
 
     setOnlineRoom(null);
 
-    router.replace("/okey");
+    router.replace(exitRoute);
   } catch (error) {
     console.warn(
       "Unable to leave Okey waiting room",
@@ -392,7 +394,7 @@ const handleConfirmLeaveMatch = useCallback(async () => {
   try {
     await leaveOnlineMatch();
     setShowLeaveConfirm(false);
-    router.replace("/okey");
+    router.replace(exitRoute);
   } catch (error) {
     console.warn("Unable to leave Okey match", error);
     setIsLeavingMatch(false);
@@ -1072,7 +1074,7 @@ const shouldShowScorePopup =
       const eventId = timeoutEvent.id;
       if (activePresentationRef.current.completedTimeoutEventId === eventId) {
         takeoverExitStartedRef.current = true;
-        router.replace("/okey");
+        router.replace(exitRoute);
         return;
       }
       if (activePresentationRef.current.onlineTimeout?.eventId === eventId) {
@@ -1082,7 +1084,7 @@ const shouldShowScorePopup =
       // No valid event presentation was started (for example, missing geometry).
       // Preserve the existing immediate exit instead of trapping the viewer.
       takeoverExitStartedRef.current = true;
-      router.replace("/okey");
+      router.replace(exitRoute);
       return;
     }
 
@@ -1091,20 +1093,20 @@ const shouldShowScorePopup =
       if (activePresentationRef.current.completedTimeoutEventId === pendingEventId) {
         pendingTakeoverTimeoutEventIdRef.current = null;
         takeoverExitStartedRef.current = true;
-        router.replace("/okey");
+        router.replace(exitRoute);
       } else if (activePresentationRef.current.onlineTimeout?.eventId !== pendingEventId) {
         // Presentation became unavailable before completion; never leave the
         // already-taken-over viewer stuck on the table.
         pendingTakeoverTimeoutEventIdRef.current = null;
         takeoverExitStartedRef.current = true;
-        router.replace("/okey");
+        router.replace(exitRoute);
       }
       return;
     }
 
     // An already-taken-over initial snapshot has no local transition to present.
     takeoverExitStartedRef.current = true;
-    router.replace("/okey");
+    router.replace(exitRoute);
   }, [onlineMatchId, onlineProjection, router, tileFlight]);
 
 
@@ -1727,7 +1729,7 @@ const shouldShowScorePopup =
   rewards={matchSettlementRewards}
   rewardsLoading={matchSettlementLoading}
   onNewMatch={() => {
-    router.replace("/okey");
+    router.replace(exitRoute);
   }}
 />
         {showFinalTileCelebration ? (

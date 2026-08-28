@@ -278,6 +278,18 @@ serve(async (req) => {
     },
   );
 
+  if (["matchmake", "status", "heartbeat", "reconnect"].includes(action)) {
+    const { error: cleanupError } = await service.rpc(
+      "expire_stale_waiting_room_members",
+      { p_stale_seconds: 150 },
+    );
+    if (cleanupError) {
+      return json({
+        error: "waiting_room_cleanup_failed",
+        details: cleanupError.message,
+      }, 500);
+    }
+  }
   const { data: currentProfile, error: currentProfileError } = await service
     .from("profiles")
     .select("username")

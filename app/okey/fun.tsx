@@ -101,11 +101,15 @@ function TableCard({
   disabledByOtherJoin,
   onJoin,
 }: TableCardProps) {
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
+
   const affordable = balance === null || balance >= table.entry;
   const meetsPointRequirement = points >= table.minPoints;
 
   const disabled =
     !meetsPointRequirement ||
+    !affordable ||
     joining ||
     disabledByOtherJoin;
 
@@ -115,6 +119,7 @@ function TableCard({
       onPress={onJoin}
       style={({ pressed }) => [
         styles.tableCard,
+        isTablet && styles.tableCardTablet,
         (!affordable || !meetsPointRequirement) && styles.tableCardLocked,
         joining && styles.tableCardJoining,
         pressed && !disabled && styles.pressed,
@@ -285,14 +290,15 @@ export default function OkeyFunScreen() {
         ]}
       >
         <View style={styles.screen}>
-          <View style={styles.content}>
-            <View style={styles.tableSection}>
+          <View style={[styles.content, isTablet && styles.contentTablet]}>
+            <View style={[styles.tableSection, isTablet && styles.tableSectionTablet]}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={
-                  styles.tableRow
-                }
+                contentContainerStyle={[
+                  styles.tableRow,
+                  isTablet && styles.tableRowTablet,
+                ]}
               >
                 {FUN_TABLES.map((table) => (
                   <TableCard
@@ -351,7 +357,6 @@ const styles = StyleSheet.create({
 
   shellContent: {
     flex: 1,
-    paddingBottom: 74,
   },
 
   screen: {
@@ -361,11 +366,22 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: "center",
+    paddingTop: 16,
+    paddingBottom: 80,
+  },
+
+  contentTablet: {
+    paddingTop: 24,
+    paddingBottom: 100,
   },
 
   tableSection: {
     height: OKEY_LOBBY_CARD_HEIGHT,
     justifyContent: "center",
+  },
+
+  tableSectionTablet: {
+    height: 300,
   },
 
   tableRow: {
@@ -374,6 +390,11 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingRight: 0,
     alignItems: "flex-start",
+  },
+
+  tableRowTablet: {
+    height: 300,
+    gap: 18,
   },
 
   tableCard: {
@@ -387,6 +408,12 @@ const styles = StyleSheet.create({
     paddingTop: 9,
     paddingBottom: 8,
     alignItems: "center",
+  },
+
+  tableCardTablet: {
+    width: 240,
+    height: 300,
+    borderRadius: 12,
   },
 
   tableCardLocked: {

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, PanResponder, Text, View } from "react-native";
+import { Animated, Easing, PanResponder, Pressable, Text, View } from "react-native";
 
 import { isOkeyWildcard, MAX_PLAYER_MELDS } from "@/okey/engine/okey-engine";
 import type { OkeyMeld, OkeyPlayer, OkeyTile } from "@/okey/types/okey";
@@ -14,6 +14,11 @@ const MELD_META_ENTRY_DELAY_MS = MELD_ENTRY_DURATION_MS + 100;
 type MeldRect = { x: number; y: number; width: number; height: number };
 type MeldOffset = { x: number; y: number };
 type MeldEntryOrigin = { x: number; y: number; arc: number };
+export type JokerEndpointChoice = {
+  playerId: string;
+  meldId: string;
+  options: { runEnd: "start" | "end"; value: number }[];
+};
 
 function getMeldTileSignature(meld: OkeyMeld) {
   return meld.tiles.map((tile) => tile.id).sort().join("|");
@@ -129,6 +134,8 @@ function MeldPreview({
   spendOriginsByPlayerId,
   localPlayerId,
   highlighted = false,
+  jokerEndpointChoice,
+  onJokerEndpointSelected,
 }: {
   meld: OkeyMeld;
   okeyTile: OkeyTile;
@@ -140,6 +147,8 @@ function MeldPreview({
   spendOriginsByPlayerId: Record<string, MeldEntryOrigin>;
   localPlayerId: string;
   highlighted?: boolean;
+  jokerEndpointChoice?: JokerEndpointChoice | null;
+  onJokerEndpointSelected?: (runEnd: "start" | "end") => void;
 }) {
   const meldRef = useRef<View | null>(null);
   const dragStartOffsetRef = useRef(offset);
@@ -256,9 +265,24 @@ useEffect(() => {
           ...(offset.x !== 0 || offset.y !== 0 ? { zIndex: 120, elevation: 120 } : null),
         },
       ]}
-      {...panResponder.panHandlers}
+      {...(jokerEndpointChoice ? {} : panResponder.panHandlers)}
     >
       {highlighted ? <View pointerEvents="none" style={styles.meldDropHighlight} /> : null}
+      {jokerEndpointChoice?.options.map((option) => (
+        <Pressable
+          key={option.runEnd}
+          testID={`okey-joker-endpoint-${option.runEnd}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Joker = ${option.value}`}
+          onPress={() => onJokerEndpointSelected?.(option.runEnd)}
+          style={[
+            styles.jokerEndpointChoice,
+            option.runEnd === "start" ? styles.jokerEndpointChoiceStart : styles.jokerEndpointChoiceEnd,
+          ]}
+        >
+          <Text style={styles.jokerEndpointChoiceText}>{option.value}</Text>
+        </Pressable>
+      ))}
       <OkeyMeldView
         meld={meld}
         okeyTile={okeyTile}
@@ -355,6 +379,8 @@ export function OkeyPlayerMeldArea({
   meldOffsets = {},
   onMeldOffsetChange,
   highlightedMeldId,
+  jokerEndpointChoice,
+  onJokerEndpointSelected,
   suppressEntryAnimationMeldSignatures = [],
 }: {
   player: OkeyPlayer;
@@ -366,6 +392,8 @@ export function OkeyPlayerMeldArea({
   meldOffsets?: Record<string, MeldOffset>;
   onMeldOffsetChange?: (playerId: string, meldId: string, offset: MeldOffset) => void;
   highlightedMeldId?: string | null;
+  jokerEndpointChoice?: JokerEndpointChoice | null;
+  onJokerEndpointSelected?: (runEnd: "start" | "end") => void;
   suppressEntryAnimationMeldSignatures?: string[];
 }) {
   const layout = useOkeyResponsiveLayout();
@@ -455,6 +483,8 @@ export function OkeyPlayerMeldArea({
                   spendOriginsByPlayerId={spendOriginsByPlayerId}
                   localPlayerId={allPlayers[0].id}
                   highlighted={highlightedMeldId === meld.id}
+                  jokerEndpointChoice={jokerEndpointChoice?.meldId === meld.id ? jokerEndpointChoice : null}
+                  onJokerEndpointSelected={onJokerEndpointSelected}
                 />
               ))}
             </View>
@@ -497,6 +527,8 @@ export function OkeyTableMeldAreas({
   meldOffsets,
   onMeldOffsetChange,
   highlightedMeldId,
+  jokerEndpointChoice,
+  onJokerEndpointSelected,
   suppressLocalEntryAnimationMeldSignatures = [],
 }: {
   players: OkeyPlayer[];
@@ -514,6 +546,8 @@ export function OkeyTableMeldAreas({
     offset: MeldOffset,
   ) => void;
   highlightedMeldId?: string | null;
+  jokerEndpointChoice?: JokerEndpointChoice | null;
+  onJokerEndpointSelected?: (runEnd: "start" | "end") => void;
   suppressLocalEntryAnimationMeldSignatures?: string[];
 }) {
   return (
@@ -528,6 +562,8 @@ export function OkeyTableMeldAreas({
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
         highlightedMeldId={highlightedMeldId}
+        jokerEndpointChoice={jokerEndpointChoice?.playerId === players[1].id ? jokerEndpointChoice : null}
+        onJokerEndpointSelected={onJokerEndpointSelected}
       />
 
       <OkeyPlayerMeldArea
@@ -540,6 +576,8 @@ export function OkeyTableMeldAreas({
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
         highlightedMeldId={highlightedMeldId}
+        jokerEndpointChoice={jokerEndpointChoice?.playerId === players[2].id ? jokerEndpointChoice : null}
+        onJokerEndpointSelected={onJokerEndpointSelected}
       />
 
       <OkeyPlayerMeldArea
@@ -552,6 +590,8 @@ export function OkeyTableMeldAreas({
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
         highlightedMeldId={highlightedMeldId}
+        jokerEndpointChoice={jokerEndpointChoice?.playerId === players[3].id ? jokerEndpointChoice : null}
+        onJokerEndpointSelected={onJokerEndpointSelected}
       />
 
       <OkeyPlayerMeldArea
@@ -564,6 +604,8 @@ export function OkeyTableMeldAreas({
         meldOffsets={meldOffsets}
         onMeldOffsetChange={onMeldOffsetChange}
         highlightedMeldId={highlightedMeldId}
+        jokerEndpointChoice={jokerEndpointChoice?.playerId === players[0].id ? jokerEndpointChoice : null}
+        onJokerEndpointSelected={onJokerEndpointSelected}
         suppressEntryAnimationMeldSignatures={suppressLocalEntryAnimationMeldSignatures}
       />
     </View>

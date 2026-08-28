@@ -7,7 +7,7 @@ import type {
   OkeyTeamId,
   OkeyTile,
 } from "../types/okey.ts";
-import { getMeldScore, getOkeyScoreValue, getOrderedMeldScore, hasForbiddenThreeTileDoubleJoker, selectBestMeldPlan } from "./okey-melds.ts";
+import { getMeldScore, getOkeyScoreValue, getOrderedMeldScore, getOrderedRunWildcardValue, hasForbiddenThreeTileDoubleJoker, selectBestMeldPlan } from "./okey-melds.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
 
 const COLORS: OkeyColor[] = [...OKEY_RULESET_V1.tiles.colors];
@@ -35,6 +35,15 @@ type KonkanSetLockTarget = {
   meldIndex: number;
   tiles: OkeyTile[];
   score: number;
+};
+
+export type OkeyRunEnd = "start" | "end";
+
+type MeldAddCandidate = {
+  tiles: OkeyTile[];
+  score: number;
+  insertionIndex: number;
+  runEnd: OkeyRunEnd | null;
 };
 
 function shuffle<T>(items: T[], random: () => number = Math.random): T[] {
@@ -539,18 +548,18 @@ function getMeldWithJokerReplaced(meld: OkeyMeld, tile: OkeyTile, okeyTile: Okey
 
   return best;
 }
-function getMeldWithTileAdded(
+function getMeldAddCandidates(
   meld: OkeyMeld,
   tile: OkeyTile,
   okeyTile: OkeyTile,
-) {
-  if (meld.kind !== "run" && meld.kind !== "set") return null;
-  if (meld.locked && (meld.kind !== "run" || !meld.lockedTileId)) return null;
+): MeldAddCandidate[] {
+  if (meld.kind !== "run" && meld.kind !== "set") return [];
+  if (meld.locked && (meld.kind !== "run" || !meld.lockedTileId)) return [];
 
   const lockedTileIndex = meld.lockedTileId
     ? meld.tiles.findIndex((entry) => entry.id === meld.lockedTileId)
     : -1;
-  if (meld.locked && lockedTileIndex !== 0 && lockedTileIndex !== meld.tiles.length - 1) return null;
+  if (meld.locked && lockedTileIndex !== 0 && lockedTileIndex !== meld.tiles.length - 1) return [];
 
   const candidates =
     meld.kind === "run"
@@ -560,11 +569,7 @@ function getMeldWithTileAdded(
         ]
       : [[...meld.tiles, tile]];
 
-  let best: {
-    tiles: OkeyTile[];
-    score: number;
-    insertionIndex: number;
-  } | null = null;
+  const valid: MeldAddCandidate[] = [];
 
   for (
     let insertionIndex = 0;
@@ -585,13 +590,43 @@ function getMeldWithTileAdded(
 
     if (score === null) continue;
 
+    valid.push({
+      tiles,
+      score,
+      insertionIndex,
+      runEnd: meld.kind === "run" ? (insertionIndex === 0 ? "start" : "end") : null,
+    });
+  }
+
+  return valid;
+}
+
+function getMeldWithTileAdded(
+  meld: OkeyMeld,
+  tile: OkeyTile,
+  okeyTile: OkeyTile,
+  runEnd?: OkeyRunEnd,
+) {
+  const valid = getMeldAddCandidates(meld, tile, okeyTile);
+  const selected = runEnd
+    ? valid.find((candidate) => candidate.runEnd === runEnd) ?? null
+    : null;
+  if (selected) return selected;
+  if (runEnd) return null;
+
+  // Only an ambiguous wildcard-Joker run requires an explicit player choice.
+  // Ordinary spends retain their existing automatic resolution.
+  if (meld.kind === "run" && isOkeyWildcard(tile, okeyTile) && valid.length > 1) {
+    return null;
+  }
+
+  let best: MeldAddCandidate | null = null;
+  for (const candidate of valid) {
     if (
       !best ||
-      score > best.score ||
-      (score === best.score && insertionIndex > best.insertionIndex)
-    ) {
-      best = { tiles, score, insertionIndex };
-    }
+      candidate.score > best.score ||
+      (candidate.score === best.score && candidate.insertionIndex > best.insertionIndex)
+    ) best = candidate;
   }
 
   return best;
@@ -603,7 +638,7 @@ function hasKonkanLock(state: OkeyGameState, playerId: string): boolean {
   );
 }
 
-function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: OkeyTile): SpendTarget | null {
+function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: OkeyTile, runEnd?: OkeyRunEnd): SpendTarget | null {
   const player = state.players[playerIndex];
   if (!player) return null;
   const requiresKonkanLock = player.konkan;
@@ -624,7 +659,7 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
 
       if (requiresKonkanLock && (alreadyLocked || meld.locked)) continue;
 
-      const added = getMeldWithTileAdded(meld, tile, state.okeyTile);
+      const added = getMeldWithTileAdded(meld, tile, state.okeyTile, meld.kind === "run" ? runEnd : undefined);
       if (!added) continue;
 
       const delta = added.score - meld.score;
@@ -654,6 +689,7 @@ function findSpecificSpendTarget(
   tile: OkeyTile,
   targetPlayerId: string,
   targetMeldId: string,
+  runEnd?: OkeyRunEnd,
 ): SpendTarget | null {
   const player = state.players[playerIndex];
   if (!player) return null;
@@ -683,7 +719,7 @@ function findSpecificSpendTarget(
 
   if (player.konkan && (hasKonkanLock(state, player.id) || meld.locked)) return null;
 
-  const added = getMeldWithTileAdded(meld, tile, state.okeyTile);
+  const added = getMeldWithTileAdded(meld, tile, state.okeyTile, runEnd);
   if (!added) return null;
 
   return {
@@ -707,7 +743,10 @@ export function canSpendTileOnMeld(
   const player = state.players[playerIndex];
   if (!player || player.eliminated) return false;
   const tile = player.hand.find((entry) => entry.id === tileId);
-  return tile ? findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null : false;
+  if (!tile) return false;
+  return findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null ||
+    findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, "start") !== null ||
+    findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, "end") !== null;
 }
 
 function getLockedKonkanSetsForPlayer(state: OkeyGameState, playerId: string): OkeyMeld[] {
@@ -724,6 +763,7 @@ function findKonkanSetLockTarget(
   tile: OkeyTile,
   targetPlayerId: string,
   targetMeldId: string,
+  runEnd?: OkeyRunEnd,
 ): KonkanSetLockTarget | null {
   const player = state.players[playerIndex];
   if (!player?.konkan) return null;
@@ -740,7 +780,7 @@ function findKonkanSetLockTarget(
 
   const meld = targetPlayer.melds[meldIndex];
   if (meld.locked || (meld.kind !== "run" && meld.kind !== "set")) return null;
-  const added = getMeldWithTileAdded(meld, tile, state.okeyTile);
+  const added = getMeldWithTileAdded(meld, tile, state.okeyTile, runEnd);
   if (!added) return null;
 
   return { targetPlayerIndex, meldIndex, tiles: added.tiles, score: added.score };
@@ -756,7 +796,10 @@ export function canLockKonkanSet(
   if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return false;
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
-  return !player?.eliminated && !!tile && findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null;
+  if (player?.eliminated || !tile) return false;
+  if (findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null) return true;
+  return findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, "start") !== null ||
+    findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, "end") !== null;
 }
 
 export type OkeyTableMeldAction = {
@@ -764,6 +807,7 @@ export type OkeyTableMeldAction = {
   tileId: string;
   targetPlayerId: string;
   targetMeldId: string;
+  runEndOptions: { runEnd: OkeyRunEnd; value: number }[];
 };
 
 export function resolveTableMeldAction(
@@ -777,7 +821,24 @@ export function resolveTableMeldAction(
     tileId,
     targetPlayerId,
     targetMeldId,
+    runEndOptions: [] as { runEnd: OkeyRunEnd; value: number }[],
   };
+  const player = state.players[playerIndex];
+  const tile = player?.hand.find((entry) => entry.id === tileId);
+  const targetPlayer = state.players.find((entry) => entry.id === targetPlayerId);
+  const meld = targetPlayer?.melds.find((entry) => entry.id === targetMeldId);
+  if (tile && meld?.kind === "run" && isOkeyWildcard(tile, state.okeyTile)) {
+    action.runEndOptions = getMeldAddCandidates(meld, tile, state.okeyTile)
+      .filter((candidate): candidate is MeldAddCandidate & { runEnd: OkeyRunEnd } => candidate.runEnd !== null)
+      .map((candidate) => ({
+        runEnd: candidate.runEnd,
+        value: getOrderedRunWildcardValue(
+          candidate.tiles,
+          candidate.runEnd === "start" ? 0 : candidate.tiles.length - 1,
+          state.okeyTile,
+        ) ?? tile.value,
+      }));
+  }
   if (canLockKonkanSet(state, playerIndex, tileId, targetPlayerId, targetMeldId)) {
     return { type: "lock-konkan", ...action };
   }
@@ -792,13 +853,14 @@ export function lockKonkanSet(
   tileId: string,
   targetPlayerId: string,
   targetMeldId: string,
+  runEnd?: OkeyRunEnd,
 ): OkeyGameState {
   if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return state;
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
   if (!player || player.eliminated || !tile) return state;
 
-  const target = findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId);
+  const target = findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, runEnd);
   if (!target) return state;
 
   const nextHand = withoutTile(player.hand, tileId);
@@ -908,6 +970,7 @@ export function spendTileOnMeld(
   tileId: string,
   targetPlayerId: string,
   targetMeldId: string,
+  runEnd?: OkeyRunEnd,
 ): OkeyGameState {
   if (state.phase !== "playing") return state;
   if (state.currentPlayerIndex !== playerIndex) return state;
@@ -915,13 +978,14 @@ export function spendTileOnMeld(
   if (!player || player.eliminated) return state;
   const tile = player.hand.find((entry) => entry.id === tileId);
   if (!tile) return state;
-  const target = findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId);
+  const target = findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, runEnd);
   return target ? spendTileOnTarget(state, playerIndex, tileId, target) : state;
 }
 export function spendTileOnBestMeld(
   state: OkeyGameState,
   playerIndex: number,
   tileId: string,
+  runEnd?: OkeyRunEnd,
 ): OkeyGameState {
   if (state.phase !== "playing") return state;
   if (state.currentPlayerIndex !== playerIndex) return state;
@@ -932,7 +996,7 @@ export function spendTileOnBestMeld(
   const tile = player.hand.find((entry) => entry.id === tileId);
   if (!tile) return state;
 
-  const target = findBestSpendTarget(state, playerIndex, tile);
+  const target = findBestSpendTarget(state, playerIndex, tile, runEnd);
   return target ? spendTileOnTarget(state, playerIndex, tileId, target) : state;
 }
 function finishTileCycleLimit(state: OkeyGameState): OkeyGameState {

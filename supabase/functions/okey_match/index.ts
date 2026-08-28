@@ -129,12 +129,14 @@ function parseCommand(
     case "lock-konkan":
       return typeof command.tileId === "string" &&
           typeof command.targetPlayerId === "string" &&
-          typeof command.targetMeldId === "string"
+          typeof command.targetMeldId === "string" &&
+          (command.runEnd === undefined || command.runEnd === "start" || command.runEnd === "end")
         ? {
             type: command.type,
             tileId: command.tileId,
             targetPlayerId: command.targetPlayerId,
             targetMeldId: command.targetMeldId,
+            ...(command.runEnd ? { runEnd: command.runEnd } : {}),
           }
         : null;
 

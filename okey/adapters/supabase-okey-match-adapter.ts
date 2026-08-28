@@ -1,5 +1,4 @@
 import { supabase } from "@/lib/supabase";
-import { gameRoomConnection } from "@/lib/multiplayer/connection";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
@@ -407,7 +406,6 @@ export class SupabaseOkeyMatchAdapter
   }
 
   async reconnect(): Promise<void> {
-    await gameRoomConnection.joinRoom("okey", this.matchId);
     await reconnectOkeyRoom(
       this.matchId,
     );
@@ -429,8 +427,6 @@ export class SupabaseOkeyMatchAdapter
     await leaveOkeyRoom(
       this.matchId,
     );
-
-    await gameRoomConnection.leaveRoom("okey", this.matchId).catch(() => null);
 
     this.closeRealtimeChannel();
     this.snapshot = null;

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { gameRoomConnection } from "@/lib/multiplayer/connection";
+import { AppState } from "react-native";
 const COUNTDOWN_START_CLOCK_SAFETY_MS = 75;
 const COUNTDOWN_START_RETRY_MS = 500;
 
@@ -280,10 +280,30 @@ export function subscribeOkeyRoom(
       }
     });
 
-  void gameRoomConnection.joinRoom("okey", matchId).catch(reportError);
+  let heartbeatInFlight = false;
+  const heartbeat = async () => {
+    if (!active || heartbeatInFlight || AppState.currentState !== "active") return;
+    heartbeatInFlight = true;
+    try {
+      const room = await heartbeatOkeyRoom(matchId);
+      if (active) deliver(room);
+    } catch (error) {
+      reportError(error);
+    } finally {
+      heartbeatInFlight = false;
+    }
+  };
+
+  void heartbeat();
+  const heartbeatTimer = setInterval(() => void heartbeat(), 60_000);
+  const appStateSubscription = AppState.addEventListener("change", (state) => {
+    if (state === "active") void heartbeat();
+  });
 
   return () => {
     active = false;
+    clearInterval(heartbeatTimer);
+    appStateSubscription.remove();
     clearCountdownStartTimer();
     void supabase.removeChannel(channel);
   };

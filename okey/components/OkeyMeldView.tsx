@@ -39,10 +39,33 @@ export function getOkeyMeldWidth(
   if (meld.kind === "set" && meld.tiles.length === 4) {
     return tileWidth + stackReveal * (meld.tiles.length - 1);
   }
+  const lockedTileIndex = meld.tiles.findIndex((tile) => tile.id === meld.lockedTileId);
+  if (lockedTileIndex === 0 || lockedTileIndex === meld.tiles.length - 1) {
+    return tileWidth * (meld.tiles.length - 1) + stackReveal;
+  }
 
   return tileWidth * meld.tiles.length;
 }
 
+export function getOkeyMeldTileLayout(
+  meld: OkeyMeld,
+  tileIndex: number,
+  tileWidth: number,
+  stackReveal = FOUR_TILE_SET_REVEAL,
+): TileLayout {
+  const fourTileSet = meld.kind === "set" && meld.tiles.length === 4;
+  if (fourTileSet) {
+    return { stacked: true, left: tileIndex * stackReveal, zIndex: meld.tiles.length - tileIndex };
+  }
+
+  const lockedTileIndex = meld.tiles.findIndex((tile) => tile.id === meld.lockedTileId);
+  const overlapsLockedTile = lockedTileIndex === 0 || lockedTileIndex === meld.tiles.length - 1;
+  return {
+    stacked: overlapsLockedTile && (tileIndex === lockedTileIndex || Math.abs(tileIndex - lockedTileIndex) === 1),
+    left: tileIndex * tileWidth - (overlapsLockedTile && tileIndex > 0 ? tileWidth - stackReveal : 0),
+    zIndex: overlapsLockedTile ? meld.tiles.length - tileIndex : 1,
+  };
+}
 export function chunkOkeyMeldRows(
   melds: OkeyMeld[],
   maxMelds = melds.length,
@@ -91,13 +114,7 @@ export function OkeyMeldView({
     >
       {meld.tiles.map((tile, tileIndex) => {
         const isWildcard = isOkeyWildcard(tile, okeyTile);
-        const stacked = meld.kind === "set" && meld.tiles.length === 4;
-
-        const layout: TileLayout = {
-          stacked,
-          left: tileIndex * (stacked ? stackReveal : tileWidth),
-          zIndex: stacked ? meld.tiles.length - tileIndex : 1,
-        };
+        const layout = getOkeyMeldTileLayout(meld, tileIndex, tileWidth, stackReveal);
 
         return (
           <View

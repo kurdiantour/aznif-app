@@ -62,6 +62,7 @@ export function OkeyCenterPiles({
   const deckTopRef = useRef<View | null>(null);
   const discardTopRef = useRef<View | null>(null);
   const discardDragStartedRef = useRef(false);
+  const deckDragStartedRef = useRef(false);
   const [discardDragPosition, setDiscardDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [deckDragPosition, setDeckDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [discardTileSize, setDiscardTileSize] = useState({ width: 38, height: 54 });
@@ -107,11 +108,13 @@ export function OkeyCenterPiles({
       onMoveShouldSetPanResponderCapture: (_, gesture) =>
         canDraw && deckCount > 0 && Math.hypot(gesture.dx, gesture.dy) > 3,
       onPanResponderGrant: () => {
+        deckDragStartedRef.current = false;
         deckRootRef.current?.measureInWindow((x, y) => {
           deckOriginRef.current = { x, y };
         });
       },
       onPanResponderMove: (_, gesture) => {
+        if (Math.hypot(gesture.dx, gesture.dy) >= 8) deckDragStartedRef.current = true;
         onDeckDragPointChange?.({ x: gesture.moveX, y: gesture.moveY });
         setDeckDragPosition({
           x: gesture.moveX - deckOriginRef.current.x - 21,
@@ -119,12 +122,18 @@ export function OkeyCenterPiles({
         });
       },
       onPanResponderRelease: (_, gesture) => {
-        if (Math.hypot(gesture.dx, gesture.dy) >= 8) {
+        if (deckDragStartedRef.current) {
           onDeckDroppedOnRack?.({ x: gesture.moveX, y: gesture.moveY });
         }
         clearDeckDrag();
+        setTimeout(() => {
+          deckDragStartedRef.current = false;
+        }, 0);
       },
-      onPanResponderTerminate: clearDeckDrag,
+      onPanResponderTerminate: () => {
+        deckDragStartedRef.current = false;
+        clearDeckDrag();
+      },
     }),
     [canDraw, clearDeckDrag, deckCount, onDeckDragPointChange, onDeckDroppedOnRack],
   );
@@ -248,7 +257,13 @@ export function OkeyCenterPiles({
         <Pressable
           testID="okey-draw-deck"
           disabled={!canDraw}
-          onPress={onDrawDeck}
+          onPress={() => {
+            if (deckDragStartedRef.current) {
+              deckDragStartedRef.current = false;
+              return;
+            }
+            onDrawDeck();
+          }}
           accessibilityRole="button"
           accessibilityLabel={OKEY_ACCESSIBILITY.drawDeckLabel(deckCount)}
           accessibilityHint={OKEY_ACCESSIBILITY.drawDeckHint}

@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, router } from "expo-router";
@@ -14,6 +15,7 @@ import {
 
 import { BottomNav } from "@/components/lobby/BottomNav";
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
+import { useWallet } from "@/lib/wallet-context";
 import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
@@ -33,7 +35,9 @@ type FunCardProps = {
   title: string;
   subtitle: string;
   entry: number;
-  image: ImageSourcePropType;
+  image?: ImageSourcePropType;
+  gradientColors?: readonly [string, string];
+  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
   isTablet: boolean;
   disabled: boolean;
   loading: boolean;
@@ -45,6 +49,8 @@ function FunCard({
   subtitle,
   entry,
   image,
+  gradientColors,
+  icon,
   isTablet,
   disabled,
   loading,
@@ -61,13 +67,30 @@ function FunCard({
         pressed && !disabled && styles.cardPressed,
       ]}
     >
-      <Image
-        source={image}
-        style={styles.cardImage}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        transition={0}
-      />
+      {image ? (
+        <Image
+          source={image}
+          style={styles.cardImage}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={0}
+        />
+      ) : (
+        <LinearGradient
+          colors={gradientColors || ["#1d1145", "#3b1676"]}
+          style={StyleSheet.absoluteFillObject}
+        />
+      )}
+
+      {icon && (
+        <View style={[styles.iconShell, isTablet && styles.iconShellTablet]}>
+          <MaterialCommunityIcons
+            name={icon}
+            size={isTablet ? 38 : 30}
+            color="#fff7d6"
+          />
+        </View>
+      )}
 
       <LinearGradient
         colors={[
@@ -122,37 +145,57 @@ function FunCard({
         </Text>
       </View>
 
-      <View
-        style={[
-          styles.entryBox,
-          isTablet && styles.entryBoxTablet,
-        ]}
-      >
-        <Text
-          style={[
-            styles.entryCurrency,
-            isTablet && styles.entryCurrencyTablet,
-          ]}
-        >
-          تێچوو
-        </Text>
-
-        <Text
-          style={[
-            styles.entryAmount,
-            isTablet && styles.entryAmountTablet,
-          ]}
-        >
-          {entry.toLocaleString("en-US")}
-        </Text>
-
+      {entry > 0 ? (
         <View
           style={[
-            styles.coinDot,
-            isTablet && styles.coinDotTablet,
+            styles.entryBox,
+            isTablet && styles.entryBoxTablet,
           ]}
-        />
-      </View>
+        >
+          <Text
+            style={[
+              styles.entryCurrency,
+              isTablet && styles.entryCurrencyTablet,
+            ]}
+          >
+            تێچوو
+          </Text>
+
+          <Text
+            style={[
+              styles.entryAmount,
+              isTablet && styles.entryAmountTablet,
+            ]}
+          >
+            {entry.toLocaleString("en-US")}
+          </Text>
+
+          <View
+            style={[
+              styles.coinDot,
+              isTablet && styles.coinDotTablet,
+            ]}
+          />
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.entryBox,
+            isTablet && styles.entryBoxTablet,
+            { backgroundColor: "rgba(99,102,241,0.24)", borderColor: "rgba(99,102,241,0.45)" }
+          ]}
+        >
+          <Text
+            style={[
+              styles.entryCurrency,
+              isTablet && styles.entryCurrencyTablet,
+              { color: "#a5b4fc", fontFamily: "SpedaBold" }
+            ]}
+          >
+            ڕاهێنان
+          </Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -162,6 +205,8 @@ export default function DominoFunScreen() {
     profile,
     loading: profileLoading,
   } = useProfile();
+
+  const { coinBalance } = useWallet();
 
   const { width, height } = useWindowDimensions();
 
@@ -352,7 +397,7 @@ export default function DominoFunScreen() {
           />
         </View>
 
-        <BottomNav active={null} />
+        <BottomNav />
       </View>
     );
   }
@@ -373,13 +418,30 @@ export default function DominoFunScreen() {
           },
         ]}
       >
-        <View style={styles.content}>
+        <View style={[styles.content, isTablet && styles.contentTablet]}>
           <View
             style={[
               styles.cardsRow,
               isTablet && styles.cardsRowTablet,
             ]}
           >
+            <FunCard
+              title="یاری لەگەڵ ڕۆبۆت"
+              subtitle="بەرامبەر ڕۆبۆت یاری بکە و تواناکانت تاقی بکەرەوە"
+              entry={0}
+              gradientColors={[
+                "rgba(99,102,241,0.94)",
+                "rgba(49,46,129,0.88)",
+              ]}
+              icon="robot-outline"
+              isTablet={isTablet}
+              disabled={isSearching}
+              loading={false}
+              onPress={() => {
+                router.push("/domino/play-ai");
+              }}
+            />
+
             <FunCard
               title="پێکدادان"
               subtitle="یاریی دوو کەسی، توانای خۆت بسەلمێنە"
@@ -388,7 +450,7 @@ export default function DominoFunScreen() {
                 "@/assets/images/mode-select/1vs1.webp"
               )}
               isTablet={isTablet}
-              disabled={isSearching}
+              disabled={isSearching || (coinBalance !== null && coinBalance < 500)}
               loading={searchingMode === "1v1"}
               onPress={() => {
                 void startPublicMatch(
@@ -406,7 +468,7 @@ export default function DominoFunScreen() {
                 "@/assets/images/mode-select/2vs2.webp"
               )}
               isTablet={isTablet}
-              disabled={isSearching}
+              disabled={isSearching || (coinBalance !== null && coinBalance < 3500)}
               loading={searchingMode === "2v2"}
               onPress={() => {
                 void startPublicMatch(
@@ -430,7 +492,7 @@ export default function DominoFunScreen() {
         </View>
       </View>
 
-      <BottomNav active={null} />
+      <BottomNav />
 
       {showLeaderboardConsent ? (
         <View
@@ -527,12 +589,18 @@ const styles = StyleSheet.create({
 
   shellContent: {
     flex: 1,
-    paddingBottom: 74,
   },
 
   content: {
     flex: 1,
     justifyContent: "center",
+    paddingTop: 16,
+    paddingBottom: 80,
+  },
+
+  contentTablet: {
+    paddingTop: 24,
+    paddingBottom: 100,
   },
 
   screenLoading: {
@@ -549,12 +617,7 @@ const styles = StyleSheet.create({
   },
 
   cardsRowTablet: {
-    width: "55%",
-    height: "72%",
-    minHeight: 390,
-    maxHeight: 520,
     gap: 18,
-    marginTop: 12,
   },
 
   card: {
@@ -568,8 +631,31 @@ const styles = StyleSheet.create({
   },
 
   cardTablet: {
+    width: 240,
+    height: 300,
     borderRadius: 18,
     borderWidth: 1.4,
+  },
+
+  iconShell: {
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    position: "absolute",
+    top: 24,
+  },
+
+  iconShellTablet: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    top: 36,
   },
 
   cardDisabled: {

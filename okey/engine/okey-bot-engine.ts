@@ -166,7 +166,10 @@ function tryLockUsefulKonkanSet(state: OkeyGameState) {
     for (const targetPlayer of state.players) {
       for (const meld of targetPlayer.melds) {
         if (!canLockKonkanSet(state, playerIndex, tile.id, targetPlayer.id, meld.id)) continue;
-        return lockKonkanSet(state, playerIndex, tile.id, targetPlayer.id, meld.id);
+        for (const runEnd of [undefined, "start", "end"] as const) {
+          const locked = lockKonkanSet(state, playerIndex, tile.id, targetPlayer.id, meld.id, runEnd);
+          if (locked !== state) return locked;
+        }
       }
     }
   }
@@ -199,26 +202,26 @@ function spendOneUsefulTile(state: OkeyGameState) {
   );
 
   for (const tile of player.hand) {
-    const candidate = spendTileOnBestMeld(
-      state,
-      playerIndex,
-      tile.id,
-    );
+    for (const runEnd of [undefined, "start", "end"] as const) {
+      const candidate = spendTileOnBestMeld(
+        state,
+        playerIndex,
+        tile.id,
+        runEnd,
+      );
 
-    if (candidate === state) continue;
+      if (candidate === state) continue;
 
     const nextPlayer = candidate.players[playerIndex];
 
-    if (!nextPlayer || nextPlayer.hand.length < 1) {
-      continue;
-    }
+      if (!nextPlayer || nextPlayer.hand.length < 1) continue;
 
     const releasedJoker = nextPlayer.hand.some((entry) =>
       entry.jokerOrigin === "stolen" && !player.hand.some((before) => before.id === entry.id),
     );
     // Bot policy: unlike the authoritative Human rule, a closed Bot may not
     // replace a table joker. Once opened, it may steal and reuse it normally.
-    if (!player.opened && releasedJoker) continue;
+      if (!player.opened && releasedJoker) continue;
 
     const handGain =
       evaluationValue(
@@ -231,19 +234,20 @@ function spendOneUsefulTile(state: OkeyGameState) {
 
     const value = handGain + tilePenalty(tile, state.okeyTile) + (releasedJoker ? 80 : 0);
 
-    if (
-      !best ||
-      value > best.value ||
-      (
-        value === best.value &&
-        tile.id < best.tileId
-      )
-    ) {
-      best = {
-        state: candidate,
-        tileId: tile.id,
-        value,
-      };
+      if (
+        !best ||
+        value > best.value ||
+        (
+          value === best.value &&
+          tile.id < best.tileId
+        )
+      ) {
+        best = {
+          state: candidate,
+          tileId: tile.id,
+          value,
+        };
+      }
     }
   }
 

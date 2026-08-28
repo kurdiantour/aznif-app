@@ -1,6 +1,5 @@
 import DominoWaitingPlayersPopup from "@/components/game/DominoWaitingPlayersPopup";
 import { useGameParty } from "@/lib/gameInvitesProvider";
-import { gameRoomConnection } from "@/lib/multiplayer/connection";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentProfile } from "@/lib/profile";
 import { calculateLevelFromPoints } from "@/lib/progression";
@@ -9,7 +8,7 @@ import { prepareMultiplayerGameLaunch } from "@/lib/game/gameLaunchPreload";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BackHandler, ImageBackground, StyleSheet, View } from "react-native";
+import { AppState, BackHandler, ImageBackground, StyleSheet, View } from "react-native";
 
 type MatchType = "bot" | "duo" | "squad" | "private";
 
@@ -130,14 +129,40 @@ export default function MatchmakingScreen() {
   }, [initialMatchmakingStatus, initialRoomId]);
 
   useEffect(() => {
-    if (!currentRoomId || !localPlayer?.userId) return;
+    if (!authChecked || !localPlayer?.userId || currentMatchType === "bot") return;
+    if (gameMode === "2v2" && !currentRoomId) return;
 
-    const gameType = isOneVsOne ? "domino_1v1" : "domino_2v2";
-    void gameRoomConnection.joinRoom(gameType, currentRoomId).catch((error) => {
-      console.warn("Domino waiting room connection join failed", error);
+    let active = true;
+    let heartbeatInFlight = false;
+
+    const heartbeat = async () => {
+      if (!active || heartbeatInFlight || AppState.currentState !== "active") return;
+      heartbeatInFlight = true;
+      try {
+        const { error: heartbeatError } = await supabase.rpc(
+          "domino_waiting_room_heartbeat",
+          { p_mode: gameMode, p_room_id: currentRoomId || null },
+        );
+        if (heartbeatError) throw heartbeatError;
+      } catch (heartbeatError) {
+        if (active) console.warn("Domino waiting heartbeat failed", heartbeatError);
+      } finally {
+        heartbeatInFlight = false;
+      }
+    };
+
+    void heartbeat();
+    const timer = setInterval(() => void heartbeat(), 60_000);
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void heartbeat();
     });
-  }, [currentRoomId, isOneVsOne, localPlayer?.userId]);
 
+    return () => {
+      active = false;
+      clearInterval(timer);
+      appStateSubscription.remove();
+    };
+  }, [authChecked, currentMatchType, currentRoomId, gameMode, localPlayer?.userId]);
   useEffect(() => {
     if (currentMatchType === "private") return;
     if (matchmakingStatus !== "searching") return;
@@ -334,10 +359,6 @@ export default function MatchmakingScreen() {
         });
     if (error) throw error;
 
-    if (currentRoomId) {
-      const gameType = isOneVsOne ? "domino_1v1" : "domino_2v2";
-      await gameRoomConnection.leaveRoom(gameType, currentRoomId).catch(() => null);
-    }
   }, [currentRoomId, isOneVsOne]);
 
   const handleCancel = useCallback(async () => {

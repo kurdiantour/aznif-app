@@ -29,6 +29,7 @@ async function applyImmersiveFullscreen() {
   try {
     await NavigationBar.setButtonStyleAsync("light");
     await NavigationBar.setStyle("dark");
+    await NavigationBar.setBehaviorAsync("overlay-swipe");
     await NavigationBar.setVisibilityAsync("hidden");
   } catch (error) {
     console.warn("Unable to enable immersive fullscreen mode", error);
@@ -109,7 +110,6 @@ export default function Layout() {
               <Stack.Screen name="privacy" />
               <Stack.Screen name="support" />
               <Stack.Screen name="domino/game" />
-              <Stack.Screen name="okey/index" />
               <Stack.Screen name="okey/game" />
               <Stack.Screen name="create-room" />
               <Stack.Screen name="domino/matchmaking" />

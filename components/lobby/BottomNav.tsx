@@ -21,6 +21,7 @@ import { useProfile } from "@/lib/profile";
 
 export type BottomNavKey =
   "home"
+  | "aznif"
   | "leaderboard"
   | "shop";
 
@@ -33,9 +34,16 @@ type BottomNavProps = {
 const allItems = [
   {
     key: "home",
-    label: "سەرەکی",
+    label: "ڕێزبەندی",
     icon: "game-controller",
     href: "/play",
+  },
+
+  {
+    key: "aznif",
+    label: "ئەزنیف",
+    icon: "cash",
+    href: "/aznif",
   },
 
   {
@@ -81,7 +89,9 @@ export function BottomNav({
       : ENABLE_SHOP_FEATURES &&
           pathname.includes("shop")
         ? "shop"
-        : "home";
+        : pathname.includes("aznif")
+          ? "aznif"
+          : "home";
 
   const active =
     controlledActive === undefined

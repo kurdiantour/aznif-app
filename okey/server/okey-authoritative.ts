@@ -675,12 +675,14 @@ export type OkeyAuthoritativeCommand =
       tileId: string;
       targetPlayerId: string;
       targetMeldId: string;
+      runEnd?: "start" | "end";
     }
   | {
       type: "lock-konkan";
       tileId: string;
       targetPlayerId: string;
       targetMeldId: string;
+      runEnd?: "start" | "end";
     };
 
 export type OkeyProjectedPlayer =
@@ -848,6 +850,7 @@ export function applyAuthoritativeOkeyCommand(
         command.tileId,
         command.targetPlayerId,
         command.targetMeldId,
+        command.runEnd,
       );
       break;
 
@@ -858,6 +861,7 @@ export function applyAuthoritativeOkeyCommand(
         command.tileId,
         command.targetPlayerId,
         command.targetMeldId,
+        command.runEnd,
       );
       break;
 

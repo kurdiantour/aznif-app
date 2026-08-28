@@ -1,4 +1,4 @@
-const { canSpendTileOnMeld, spendTileOnMeld } = require("../okey-engine.ts");
+const { canSpendTileOnMeld, resolveTableMeldAction, spendTileOnMeld } = require("../okey-engine.ts");
 
 function tile(color, value, copy = 1) {
   return { id: `${color}-${value}-${copy}`, color, value, copy };
@@ -47,6 +47,30 @@ function baseState(players, currentPlayerIndex = 0) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+{
+  const joker = { ...okeyTile, id: "ambiguous-joker" };
+  const meld = {
+    id: "ambiguous-run",
+    ownerId: "opponent",
+    kind: "run",
+    tiles: [tile("blue", 9), tile("blue", 10), tile("blue", 11)],
+    score: 30,
+  };
+  const state = baseState([
+    player("human", "teamA", [joker], [], true),
+    player("mate", "teamA", [], [], false),
+    player("opponent", "teamB", [], [meld], true),
+    player("opponent2", "teamB", [], [], false),
+  ]);
+  const action = resolveTableMeldAction(state, 0, joker.id, "opponent", meld.id);
+  assert(action?.runEndOptions.map((option) => `${option.runEnd}:${option.value}`).join(",") === "start:8,end:12", "Client prediction should expose both Joker endpoint values immediately.");
+  assert(spendTileOnMeld(state, 0, joker.id, "opponent", meld.id) === state, "Ambiguous Joker spend must not be resolved without an explicit endpoint.");
+  const start = spendTileOnMeld(state, 0, joker.id, "opponent", meld.id, "start");
+  const end = spendTileOnMeld(state, 0, joker.id, "opponent", meld.id, "end");
+  assert(start.players[2].melds[0].tiles[0].id === joker.id, "start must assign the Joker to 8.");
+  assert(end.players[2].melds[0].tiles.at(-1)?.id === joker.id, "end must assign the Joker to 12.");
 }
 
 {
@@ -140,4 +164,3 @@ function assert(condition, message) {
   assert(konkanState.players[0].konkanEntryReason === "forced-table-add", "Forced Konkan should record the table-add reason.");
   assert(!canSpendTileOnMeld(wrongTurnState, 0, spendTile.id, "opponent", meld.id), "Player can spend only on their own turn.");
 }
-

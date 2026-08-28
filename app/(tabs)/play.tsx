@@ -17,6 +17,7 @@ type GameCardProps = {
   subtitle?: string;
   icon: keyof typeof Ionicons.glyphMap;
   image?: number;
+  centerImage?: number;
   disabled?: boolean;
   isTablet?: boolean;
   showComingSoonClock?: boolean;
@@ -28,6 +29,7 @@ function GameCard({
   subtitle,
   icon,
   image,
+  centerImage,
   disabled = false,
   isTablet = false,
   showComingSoonClock = false,
@@ -50,6 +52,9 @@ function GameCard({
             source={image}
             style={styles.cardImageInner}
             contentFit="cover"
+            cachePolicy="memory-disk"
+            priority="high"
+            transition={0}
           />
         </View>
       ) : (
@@ -57,6 +62,19 @@ function GameCard({
           colors={["#1d1145", "#3b1676", "#090b1d"]}
           style={styles.cardImage}
         />
+      )}
+
+      {centerImage && (
+        <View style={styles.centerImageWrapper} pointerEvents="none">
+          <Image
+            source={centerImage}
+            style={[styles.centerImage, isTablet && styles.centerImageTablet]}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            priority="high"
+            transition={0}
+          />
+        </View>
       )}
 
       {showComingSoonClock ? (
@@ -140,7 +158,7 @@ export default function PlayScreen() {
             subtitle="توانای خۆت بسەلمێنە"
             icon="grid-outline"
             image={require("@/assets/images/lobby/aznif-card-v3.png")}
-            onPress={() => router.push("/domino")}
+            onPress={() => router.push("/domino/fun")}
           />
 
           <GameCard
@@ -149,7 +167,7 @@ export default function PlayScreen() {
             subtitle="توانای خۆت بسەلمێنە"
             icon="ellipse-outline"
             image={require("@/assets/images/okey/lobby/okey-card.png")}
-            onPress={() => router.push("/okey")}
+            onPress={() => router.push("/okey/fun")}
           />
 
           <GameCard
@@ -157,7 +175,7 @@ export default function PlayScreen() {
             title="تاولە"
             subtitle="بەم زووانە"
             icon="cube-outline"
-            image={require("@/assets/images/lobby/backgammon-card.png")}
+            centerImage={require("@/assets/images/lobby/tawla.png")}
             disabled={true}
             showComingSoonClock={true}
           />
@@ -167,7 +185,7 @@ export default function PlayScreen() {
             title="دامە"
             subtitle="بەم زووانە"
             icon="grid-outline"
-            image={require("@/assets/images/lobby/dame-card.png")}
+            centerImage={require("@/assets/images/lobby/dama.png")}
             disabled={true}
             showComingSoonClock={true}
           />
@@ -238,27 +256,22 @@ const styles = StyleSheet.create({
   },
 
   content: {
+    flex: 1,
     alignSelf: "center",
     width: "100%",
-    height: "80%",
-    maxHeight: 240,
-    minHeight: 205,
     justifyContent: "center",
-    marginTop: 0,
+    paddingTop: 16,
+    paddingBottom: 80,
   },
 
   contentTablet: {
     width: "100%",
-    height: "72%",
-    maxHeight: 520,
-    minHeight: 390,
-    marginTop: 12,
+    paddingTop: 24,
+    paddingBottom: 100,
   },
 
   cardRow: {
-    width: "100%",
-    height: "100%",
-    alignSelf: "center",
+    alignSelf: "flex-start",
     flexDirection: "row",
     gap: 8,
   },
@@ -278,6 +291,8 @@ const styles = StyleSheet.create({
   },
 
   cardTablet: {
+    width: 240,
+    height: 300,
     borderRadius: 12,
     borderWidth: 1.4,
   },
@@ -369,5 +384,27 @@ const styles = StyleSheet.create({
   cardSubtitleTablet: {
     marginTop: 8,
     fontSize: 16,
+  },
+
+  centerImageWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  centerImage: {
+    width: 115,
+    height: 115,
+    marginTop: -15,
+  },
+
+  centerImageTablet: {
+    width: 172,
+    height: 172,
+    marginTop: -22,
   },
 });

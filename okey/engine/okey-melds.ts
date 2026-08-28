@@ -186,6 +186,35 @@ function scoreOrderedRun(tiles: OkeyTile[], okeyTile: OkeyTile): number | null {
   return null;
 }
 
+export function getOrderedRunWildcardValue(
+  tiles: OkeyTile[],
+  wildcardIndex: number,
+  okeyTile: OkeyTile,
+): number | null {
+  if (!isOkeyWildcard(tiles[wildcardIndex], okeyTile)) return null;
+  const regularTiles = tiles
+    .filter((tile) => !isOkeyWildcard(tile, okeyTile))
+    .map((tile) => effectiveTile(tile, okeyTile));
+  if (!regularTiles.length || !regularTiles.every((tile) => tile.color === regularTiles[0].color)) return null;
+
+  for (const sequence of runSequences(tiles.length)) {
+    const usedRegularValues = new Set<number>();
+    const matches = tiles.every((tile, index) => {
+      if (isOkeyWildcard(tile, okeyTile)) return true;
+      const effective = effectiveTile(tile, okeyTile);
+      if (usedRegularValues.has(effective.value) || !tileMatchesSequenceValue(effective.value, sequence[index])) return false;
+      usedRegularValues.add(effective.value);
+      return true;
+    });
+    if (matches) {
+      return sequence[wildcardIndex] === OKEY_RULESET_V1.tiles.maximumValue + 1
+        ? OKEY_RULESET_V1.tiles.minimumValue
+        : sequence[wildcardIndex];
+    }
+  }
+  return null;
+}
+
 export function getOrderedMeldScore(tiles: OkeyTile[], okeyTile: OkeyTile): number | null {
   return scoreSet(tiles, okeyTile) ?? scoreOrderedRun(tiles, okeyTile);
 }

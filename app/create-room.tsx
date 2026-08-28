@@ -263,7 +263,7 @@ export default function CreateRoomScreen() {
           />
         </View>
 
-        <BottomNav active={null} />
+        <BottomNav />
       </View>
     );
   }
@@ -494,7 +494,7 @@ export default function CreateRoomScreen() {
         ) : null}
       </View>
 
-      <BottomNav active={null} />
+      <BottomNav />
     </View>
   );
 }

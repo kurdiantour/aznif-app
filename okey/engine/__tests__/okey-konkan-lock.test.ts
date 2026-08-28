@@ -158,3 +158,20 @@ test("a locked run blocks only the locked endpoint", () => {
   assert.deepEqual(spent.players[1].melds[0].tiles.map((entry) => entry.value), [11, 10, 9, 8, 7, 6]);
   assert.equal(spent.players[1].melds[0].lockedTileId, lockTile.id);
 });
+
+test("ambiguous Joker Lock requires and honors an explicit endpoint", () => {
+  const state = lockState({ kind: "run" });
+  const joker = { ...okeyTile, id: "ambiguous-lock-joker" };
+  const run = [tile("red-9", "red", 9), tile("red-10", "red", 10), tile("red-11", "red", 11)];
+  state.players[0] = { ...state.players[0], hand: [joker] };
+  state.players[1] = {
+    ...state.players[1],
+    melds: [{ id: "ambiguous-lock-run", ownerId: state.players[1].id, kind: "run", tiles: run, score: getMeldScore(run, okeyTile) ?? 0 }],
+  };
+
+  assert.equal(lockKonkanSet(state, 0, joker.id, state.players[1].id, "ambiguous-lock-run"), state);
+  const start = lockKonkanSet(state, 0, joker.id, state.players[1].id, "ambiguous-lock-run", "start");
+  const end = lockKonkanSet(state, 0, joker.id, state.players[1].id, "ambiguous-lock-run", "end");
+  assert.equal(start.players[1].melds[0].tiles[0].id, joker.id);
+  assert.equal(end.players[1].melds[0].tiles.at(-1)?.id, joker.id);
+});

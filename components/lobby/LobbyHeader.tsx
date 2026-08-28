@@ -24,11 +24,9 @@ export function LobbyHeader() {
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
   const {
-    aznifBalance: rawMcBalance,
     coinBalance: rawCoinBalance,
     gemBalance: rawGemBalance,
   } = useWallet();
-  const mcBalance = rawMcBalance?.toLocaleString() ?? "...";
   const coinBalance = rawCoinBalance?.toLocaleString() ?? "...";
   const gemBalance = rawGemBalance?.toLocaleString() ?? "...";
   const [friendRequestCount, setFriendRequestCount] = useState(0);
@@ -139,20 +137,7 @@ export function LobbyHeader() {
   {coinBalance} <Text style={styles.balanceTextKurdish}>سکە</Text>
 </Text>
               </LinearGradient>
-              <LinearGradient
-                colors={["rgba(255,183,59,0.22)", "rgba(255,255,255,0.07)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.balancePill, isCompact && styles.balancePillCompact]}
-              >
-                <View style={styles.balanceIconCircle}>
-                  <Text style={styles.currencyEmoji}>{"\u2728"}</Text>
-                </View>
 
-                <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
-  {mcBalance} <Text style={styles.balanceTextKurdish}>ئەزنیف</Text>
-</Text>
-              </LinearGradient>
 
               {ENABLE_SHOP_FEATURES && ENABLE_GOLD_PURCHASES ? (
                 <Pressable onPress={() => router.push("/buy-gold")}>

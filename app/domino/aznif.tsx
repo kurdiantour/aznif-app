@@ -356,7 +356,7 @@ export default function DominoAznifScreen() {
           />
         </View>
 
-        <BottomNav active={null} />
+        <BottomNav />
       </View>
     );
   }
@@ -375,7 +375,7 @@ export default function DominoAznifScreen() {
           },
         ]}
       >
-        <View style={styles.content}>
+        <View style={[styles.content, isTablet && styles.contentTablet]}>
           <View
             style={[
               styles.cardsRow,
@@ -410,7 +410,7 @@ export default function DominoAznifScreen() {
         </View>
       </View>
 
-      <BottomNav active={null} />
+      <BottomNav />
     </View>
   );
 }
@@ -425,12 +425,18 @@ const styles = StyleSheet.create({
 
   shellContent: {
     flex: 1,
-    paddingBottom: 74,
   },
 
   content: {
     flex: 1,
     justifyContent: "center",
+    paddingTop: 16,
+    paddingBottom: 80,
+  },
+
+  contentTablet: {
+    paddingTop: 24,
+    paddingBottom: 100,
   },
 
   loading: {
@@ -439,34 +445,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-cardsRow: {
-  width: "100%",
-  flexDirection: "row",
-  alignItems: "flex-start",
-  gap: 8,
-},
-
-  cardsRowTablet: {
-    height: "72%",
-    minHeight: 390,
-    maxHeight: 520,
-    gap: 18,
-    marginTop: 12,
+  cardsRow: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
   },
 
-card: {
-  width: 200,
-  height: 250,
-  borderRadius: 14,
-  overflow: "hidden",
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.16)",
-  padding: 14,
-  alignItems: "center",
-  justifyContent: "space-between",
-},
+  cardsRowTablet: {
+    gap: 18,
+  },
+
+  card: {
+    width: 200,
+    height: 250,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    padding: 14,
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
 
   cardTablet: {
+    width: 240,
+    height: 300,
     borderRadius: 18,
     borderWidth: 1.4,
     padding: 22,
