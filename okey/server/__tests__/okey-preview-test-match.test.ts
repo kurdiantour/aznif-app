@@ -7,6 +7,7 @@ const migration = read("supabase/migrations/20260824141125_okey_preview_test_mat
 const gateway = read("supabase/functions/okey_test_match/index.ts");
 const matchGateway = read("supabase/functions/okey_match/index.ts");
 const worker = read("supabase/functions/process_bot_turns/index.ts");
+const executor = read("okey/server/okey-bot-executor.ts");
 const preview = read("app/okey/preview.tsx");
 
 test("Okey Preview creates an admin-only real authoritative match", () => {
@@ -24,13 +25,14 @@ test("test Bot seats use the production Bot and command path", () => {
   assert.match(gateway, /botDifficulty: "normal"/);
   assert.match(preview, /pathname: "\/okey\/game"/);
   assert.doesNotMatch(preview, /useLocalOkeyPreviewGame/);
-  assert.match(worker, /isTestMatch/);
+  assert.match(worker, /executeOkeyBotTurn/);
+  assert.match(executor, /isTestMatch/);
 });
 
 test("test matches cannot change production economy or rewards", () => {
   assert.match(migration, /if new\.is_test/);
   assert.match(matchGateway, /const dailyQuestEvents = isTestMatch\s*\? \[\]/);
   assert.match(matchGateway, /economyApplied: false/);
-  assert.match(worker, /economyApplied: false/);
+  assert.match(executor, /economyApplied: false/);
   assert.match(migration, /entry_fee[\s\S]*0, 'fun', 0, 0, 0, 0, 0, true/);
 });

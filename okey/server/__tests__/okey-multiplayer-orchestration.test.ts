@@ -17,21 +17,25 @@ test("Domino 2v2 keeps authoritative commit and bounded bot processing", () => {
 });
 
 test("Okey bot handoff remains exact-match, one-turn and idempotent", () => {
-  const controller = read("okey/controllers/okey-multiplayer-bot-controller.ts");
+  const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
+  const hook = read("okey/hooks/useOkeyGame.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
+  const executor = read("okey/server/okey-bot-executor.ts");
 
-  assert.match(controller, /inFlightTurnKeysRef\.current/);
-  assert.match(controller, /player\?\.controlledByBot/);
-  assert.match(worker, /processOkeyBotTurn\([\s\S]*claimedVersion: number,[\s\S]*claimedActorId: string/);
-  assert.doesNotMatch(worker, /while \(true\)/);
-  assert.match(worker, /system-bot-\$\{botStep\}:\$\{expectedVersion\}/);
-  assert.match(worker, /hasDrawnThisTurn[\s\S]*\? "discard"[\s\S]*: "draw"/);
-  assert.match(worker, /botStep === "draw"[\s\S]*drawTile[\s\S]*playBotTurn/);
-  assert.match(worker, /reason: "already_processed"/);
-  assert.match(worker, /reason: "stale_bot_controller"/);
-  assert.match(worker, /currentPlayer\.controlledByBot/);
-  assert.doesNotMatch(worker, /handOffOkeyBotTurn/);
-  assert.doesNotMatch(worker, /successor Bot handoff/);
+  assert.doesNotMatch(adapter, /processBotTurn|process_bot_turns/);
+  assert.doesNotMatch(hook, /useOkeyMultiplayerBotController/);
+  assert.match(worker, /executeOkeyBotTurn\(\{/);
+  assert.doesNotMatch(worker, /chooseBotDrawSource|prepareBotTurn|settleAuthoritativeOkeyRound/);
+  assert.match(executor, /createBotTurnClaim/);
+  assert.match(executor, /classifyBotTurnClaim/);
+  assert.match(executor, /system-bot-\$\{botStep\}:\$\{currentVersion\}/);
+  assert.match(executor, /hasDrawnThisTurn \? "discard" : "draw"/);
+  assert.match(executor, /botStep === "draw"[\s\S]*drawTile/);
+  assert.match(executor, /prepareBotTurn/);
+  assert.match(executor, /reason: "already_processed"/);
+  assert.match(executor, /reason: "stale_bot_controller"/);
+  assert.match(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
+  assert.match(executor, /!nextState\.matchFinished && dependencies\.handOffBotTurn/);
 });
 
 test("Okey timeout claims remain current-player-only and exact-version", () => {

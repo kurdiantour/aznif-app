@@ -2,8 +2,6 @@ import { supabase } from "@/lib/supabase";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
-  OkeyBotTurnClaim,
-  OkeyBotTurnResult,
   OkeyEliminatedTurnClaim,
   OkeyNextRoundClaim,
   OnlineOkeyMatchAdapter,
@@ -313,28 +311,6 @@ export class SupabaseOkeyMatchAdapter
           this.isAuthoritativeSyncResult(body),
       },
     );
-  }
-
-  async processBotTurn(
-    claim: OkeyBotTurnClaim,
-  ): Promise<OkeyBotTurnResult> {
-    const { data, error } = await supabase.functions.invoke(
-      "process_bot_turns",
-      {
-        body: {
-          mode: "okey",
-          match_id: this.matchId,
-          expected_version: claim.expectedVersion,
-          expected_actor_id: claim.expectedActorId,
-        },
-      },
-    );
-
-    if (error) {
-      throw error;
-    }
-
-    return data as OkeyBotTurnResult;
   }
 
   async playEliminatedTurn(

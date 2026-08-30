@@ -28,15 +28,14 @@ test("authoritative Bot handoff claims exactly the committed version and current
   assert.equal(getOkeyBotTurnClaim(match, 17), null);
 });
 
-test("external commit paths hand off Bot turns, while the Bot worker stops after one turn", () => {
+test("external commits, Bot commits and maintenance all use one-step exact claims", () => {
   const matchGateway = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
   const worker = readFileSync("supabase/functions/process_bot_turns/index.ts", "utf8");
   const maintenance = readFileSync("supabase/functions/okey_maintenance/index.ts", "utf8");
   const handoff = readFileSync("supabase/functions/_shared/okey-bot-handoff.ts", "utf8");
 
   assert.match(matchGateway, /state: committedState,[\s\S]*version: Number\(commit\.version\)/);
-  assert.doesNotMatch(worker, /handOffOkeyBotTurn/);
-  assert.doesNotMatch(worker, /successor Bot handoff/);
+  assert.match(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
   assert.match(worker, /\.is\("membership_released_at", null\)/);
   assert.match(maintenance, /\.eq\("status", "playing"\)[\s\S]*handOffOkeyBotTurn/);
   assert.match(handoff, /expected_version: claim\.expectedVersion/);

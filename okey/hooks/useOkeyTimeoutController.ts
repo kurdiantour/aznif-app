@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useState, useRef } from "react";
+import {
+  classifyTimeoutResult,
+  createTimeoutClaim,
+  getServerClockOffsetMs,
+  getTimeoutClaimKey,
+} from "@/lib/multiplayer/core/timeout-orchestration";
 import type { SupabaseOkeyMatchAdapter, OkeyTurnTimeoutClaim } from "../adapters/supabase-okey-match-adapter";
 import type { OkeyMatchServerProjection } from "../server/okey-authoritative";
 
@@ -23,10 +29,9 @@ export function useOkeyTimeoutController(input: {
   clearTimeoutRetry: () => void;
 }) {
   const syncServerClock = useCallback((serverNow: unknown) => {
-    if (typeof serverNow !== "string") return false;
-    const serverNowMs = Date.parse(serverNow);
-    if (!Number.isFinite(serverNowMs)) return false;
-    input.serverClockOffsetMsRef.current = serverNowMs - Date.now();
+    const offset = getServerClockOffsetMs(serverNow);
+    if (offset === null) return false;
+    input.serverClockOffsetMsRef.current = offset;
     return true;
   }, [input.serverClockOffsetMsRef]);
 
@@ -90,12 +95,13 @@ export function useOkeyTimeoutController(input: {
     } catch (caught: any) {
       const response = caught?.details || caught;
       syncServerClock(response?.serverNow);
-      if (response?.code === "turn_timer_not_expired") {
+      const disposition = classifyTimeoutResult(response ?? {});
+      if (disposition === "retry_at_deadline") {
         await input.refreshSnapshot().catch(() => undefined);
         scheduleTimeoutRetry(claim, turnKey, claimMatchId, response?.expiresAt);
         return;
       }
-      if (response?.code === "stale_timeout" || response?.code === "already_processed" || response?.error === "already_processed") {
+      if (disposition === "stale" || disposition === "already_processed") {
         input.clearTimeoutRetry();
       }
       if (input.matchIdRef.current === claimMatchId) {
@@ -138,19 +144,13 @@ export function useOkeyTimeoutController(input: {
 
     const expectedVersion = Number(input.projection?.version);
     const expectedTurnDeadlineAt = input.projection?.turnDeadlineAt;
-    if (
-      !Number.isInteger(expectedVersion) ||
-      expectedVersion < 0 ||
-      typeof expectedTurnDeadlineAt !== "string" ||
-      !input.currentPlayerId
-    ) return;
-
-    const claim: OkeyTurnTimeoutClaim = {
+    const claim = createTimeoutClaim({
       expectedVersion,
-      expectedTurnDeadlineAt,
+      expectedTurnDeadlineAt: expectedTurnDeadlineAt ?? "",
       expectedTurnPlayerId: input.currentPlayerId,
-    };
-    const turnKey = `${expectedVersion}:${expectedTurnDeadlineAt}:${input.currentPlayerId}`;
+    }) as OkeyTurnTimeoutClaim | null;
+    if (!claim) return;
+    const turnKey = getTimeoutClaimKey(claim);
     if (input.activeTurnKeyRef.current !== turnKey) return;
     void submitTimeoutClaim(claim, turnKey, input.matchId);
   }, [

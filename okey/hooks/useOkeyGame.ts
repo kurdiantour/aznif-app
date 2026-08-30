@@ -8,7 +8,6 @@ import {
 import { AppState } from "react-native";
 
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
-import { useOkeyMultiplayerBotController } from "@/okey/controllers/okey-multiplayer-bot-controller";
 import { getOkeyAuthoritativeRoundPresentation } from "@/okey/presentation/okey-game-presentation";
 import { useOkeyTimeoutController, useOkeyTurnClock } from "./useOkeyTimeoutController";
 import { createInitialOkeyGame, getRoundResultScoreDetails } from "@/okey/engine/okey-engine";
@@ -382,12 +381,6 @@ export function useOkeyGame(
     activeTurnKeyRef.current =
       `${expectedVersion}:${expectedTurnDeadlineAt}:${currentPlayerId}`;
   }, [onlineMatchId, onlineProjection, currentPlayerId]);
-
-  useOkeyMultiplayerBotController({
-    matchId: onlineMatchId,
-    projection: onlineProjection,
-    adapter: onlineAdapter,
-  });
 
   useEffect(() => {
     if (!onlineMatchId) {

@@ -1,4 +1,6 @@
 import type { OkeyAuthoritativeMatchState } from "../../../okey/server/okey-authoritative.ts";
+import { createBotTurnClaim } from "../../../lib/multiplayer/core/bot-turn-orchestration.ts";
+import { projectSeatOwnership } from "../../../lib/multiplayer/core/seat-ownership.ts";
 
 export type OkeyBotTurnClaim = {
   expectedVersion: number;
@@ -17,9 +19,16 @@ export function getOkeyBotTurnClaim(
   ) return null;
 
   const currentPlayer = state.roundState.players[state.roundState.currentPlayerIndex];
-  if (!currentPlayer?.controlledByBot) return null;
-
-  return { expectedVersion: version, expectedActorId: currentPlayer.id };
+  if (!currentPlayer) return null;
+  return createBotTurnClaim({
+    version,
+    actorId: currentPlayer.id,
+    ownership: projectSeatOwnership({
+      seatId: String(state.roundState.currentPlayerIndex),
+      ownerPlayerId: currentPlayer.id,
+      controlledByBot: currentPlayer.controlledByBot === true,
+    }),
+  });
 }
 
 export async function handOffOkeyBotTurn(input: {

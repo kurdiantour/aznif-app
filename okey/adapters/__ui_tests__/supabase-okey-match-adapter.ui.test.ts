@@ -1,5 +1,4 @@
 import { beforeEach, expect, jest, test } from "@jest/globals";
-import { act, renderHook, waitFor } from "@testing-library/react-native";
 
 const mockInvoke = jest.fn<(...args: any[]) => Promise<any>>();
 
@@ -14,7 +13,6 @@ jest.mock("@/lib/supabase", () => ({
 }));
 
 import { SupabaseOkeyMatchAdapter } from "../supabase-okey-match-adapter";
-import { useOkeyMultiplayerBotController } from "../../controllers/okey-multiplayer-bot-controller";
 
 function projection(version: number) {
   return {
@@ -256,88 +254,3 @@ test("Realtime invalidations preserve the highest pending version during refresh
   ).toEqual(["snapshot", "snapshot"]);
   expect(adapter.getSnapshot()?.version).toBe(3);
 });
-
-
-test("Bot worker claims include the observed version and actor", async () => {
-  const adapter = new SupabaseOkeyMatchAdapter("match-bot-1");
-
-  mockInvoke.mockResolvedValueOnce({
-    data: { ok: true, processed: false, reason: "stale_bot_turn" },
-    error: null,
-  });
-
-  await expect(
-    adapter.processBotTurn({
-      expectedVersion: 12,
-      expectedActorId: "bot-2",
-    }),
-  ).resolves.toEqual({
-    ok: true,
-    processed: false,
-    reason: "stale_bot_turn",
-  });
-
-  expect(mockInvoke).toHaveBeenCalledWith(
-    "process_bot_turns",
-    {
-      body: {
-        mode: "okey",
-        match_id: "match-bot-1",
-        expected_version: 12,
-        expected_actor_id: "bot-2",
-      },
-    },
-  );
-});
-
-test("a new Bot turn starts while the previous turn request is still completing", async () => {
-  const firstTurn = deferred<any>();
-  const processBotTurn = jest
-    .fn<(...args: any[]) => Promise<any>>()
-    .mockImplementationOnce(() => firstTurn.promise)
-    .mockResolvedValueOnce({ ok: true, processed: true });
-  const adapter = { processBotTurn } as any;
-  const makeBotProjection = (version: number, id: string) => ({
-    version,
-    phase: "playing",
-    matchFinished: false,
-    currentPlayerIndex: 0,
-    players: [{ id, controlledByBot: true }],
-  });
-
-  const { rerender, unmount } = renderHook<
-    void,
-    { currentProjection: ReturnType<typeof makeBotProjection> }
-  >(
-    ({ currentProjection }) =>
-      useOkeyMultiplayerBotController({
-        matchId: "match-bot-2",
-        projection: currentProjection as any,
-        adapter,
-      }),
-    {
-      initialProps: {
-        currentProjection: makeBotProjection(20, "bot-20"),
-      },
-    },
-  );
-
-  await waitFor(() => expect(processBotTurn).toHaveBeenCalledTimes(1));
-
-  rerender({
-    currentProjection: makeBotProjection(21, "bot-21"),
-  });
-
-  await waitFor(() => expect(processBotTurn).toHaveBeenCalledTimes(2));
-  expect(processBotTurn.mock.calls).toEqual([
-    [{ expectedVersion: 20, expectedActorId: "bot-20" }],
-    [{ expectedVersion: 21, expectedActorId: "bot-21" }],
-  ]);
-
-  await act(async () => {
-    firstTurn.resolve({ ok: true, processed: true });
-    await firstTurn.promise;
-  });
-  unmount();
-});
-

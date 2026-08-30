@@ -21,22 +21,8 @@ import {
   pipTotal,
   roundToNearestFive,
 } from "../_shared/game-utils.ts";
-import {
-  getNextOkeyMatchTurnDeadline,
-  projectOkeyMatchPublicState,
-  settleAuthoritativeOkeyRound,
-  type OkeyAuthoritativeMatchState,
-} from "../../../okey/server/okey-authoritative.ts";
-import {
-  chooseBotDrawSource,
-  prepareBotTurn,
-} from "../../../okey/engine/okey-bot-engine.ts";
-import { discardTile, drawTile } from "../../../okey/engine/okey-engine.ts";
-import {
-  createBotPostDrawActionEvents,
-  type OkeyActionEvent,
-  type OkeyActionEventDraft,
-} from "../../../okey/server/okey-action-events.ts";
+import { executeOkeyBotTurn } from "../../../okey/server/okey-bot-executor.ts";
+import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 
@@ -121,225 +107,6 @@ function pickBotMove(hand: any[], state: any) {
 }
 
 
-type OkeyAuthoritativeBundle = {
-  version: number | string;
-  status: "playing" | "finished";
-  turn_deadline_at: string | null;
-  player_index: number;
-  state: OkeyAuthoritativeMatchState;
-  command_applied: boolean;
-};
-
-async function processOkeyBotTurn(
-  matchId: string,
-  requesterUserId: string,
-  claimedVersion: number,
-  claimedActorId: string,
-) {
-  try {
-    const { data: bundleRaw, error: bundleError } = await svc
-      .rpc("okey_get_authoritative_bundle", {
-        p_match_id: matchId,
-        p_user_id: requesterUserId,
-        p_command_id: null,
-      })
-      .single();
-
-    const bundle = bundleRaw as OkeyAuthoritativeBundle | null;
-    if (bundleError || !bundle) {
-      return { ok: true, processed: false, reason: "match_not_found_or_forbidden" };
-    }
-    if (bundle.status !== "playing") {
-      return { ok: true, processed: false, reason: "match_not_playing" };
-    }
-    const { data: runtimeMatch, error: runtimeMatchError } = await svc
-      .schema("okey")
-      .from("matches")
-      .select("is_test")
-      .eq("id", matchId)
-      .maybeSingle();
-    if (runtimeMatchError || !runtimeMatch) {
-      throw new Error("okey_match_runtime_lookup_failed");
-    }
-    const isTestMatch = runtimeMatch.is_test === true;
-
-    const originalState = bundle.state;
-    const roundStartsAtMs = Date.parse(originalState.roundStartsAt ?? "");
-    const roundStartWaitMs = Number.isFinite(roundStartsAtMs)
-      ? Math.max(0, roundStartsAtMs - Date.now())
-      : 0;
-    if (roundStartWaitMs > 0) {
-      await new Promise((resolve) => globalThis.setTimeout(resolve, roundStartWaitMs));
-    }
-    if (originalState.matchFinished) {
-      return { ok: true, processed: false, reason: "match_finished" };
-    }
-
-    const expectedVersion = Number(bundle.version);
-    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
-      return { ok: true, processed: false, reason: "invalid_version" };
-    }
-    if (expectedVersion !== claimedVersion) {
-      return { ok: true, processed: false, reason: "stale_bot_turn" };
-    }
-
-    const currentPlayerIndex = originalState.roundState.currentPlayerIndex;
-    const currentPlayer = originalState.roundState.players[currentPlayerIndex];
-    if (currentPlayer?.id !== claimedActorId) {
-      return { ok: true, processed: false, reason: "stale_bot_turn" };
-    }
-    if (!currentPlayer.controlledByBot) {
-      return { ok: true, processed: false, reason: "current_player_is_human" };
-    }
-
-    const actorUserId = currentPlayer.id;
-    const botStep = originalState.roundState.hasDrawnThisTurn
-      ? "discard"
-      : "draw";
-    const botOptions = {
-      difficulty: currentPlayer.botDifficulty ?? "normal",
-    } as const;
-    let actionEventDrafts: OkeyActionEventDraft[];
-    let nextRoundState;
-    if (botStep === "draw") {
-      const source = chooseBotDrawSource(originalState.roundState, botOptions);
-      nextRoundState = drawTile(originalState.roundState, source);
-      actionEventDrafts = [{
-        type: "draw",
-        actorPlayerId: currentPlayer.id,
-        payload: {
-          source,
-          ...(source === "discard"
-            ? { tile: originalState.roundState.discardPile[originalState.roundState.discardPile.length - 1] ?? null }
-            : {}),
-        },
-      }];
-    } else {
-      const prepared = prepareBotTurn(originalState.roundState, botOptions);
-      nextRoundState = prepared.discardTileId
-        ? discardTile(prepared.state, prepared.discardTileId)
-        : prepared.state;
-      const discardedTile = prepared.discardTileId
-        ? prepared.state.players[currentPlayerIndex]?.hand.find(
-            (tile) => tile.id === prepared.discardTileId,
-          ) ?? null
-        : null;
-      const konkanRunIds = new Set(prepared.decision.konkanRunTileIds);
-      const konkanActorHand = prepared.state.players[currentPlayerIndex]?.hand ?? [];
-      actionEventDrafts = createBotPostDrawActionEvents({
-        actorPlayerId: currentPlayer.id,
-        openedMelds: prepared.decision.opened
-          ? prepared.state.players[currentPlayerIndex]?.melds
-          : undefined,
-        openedScore: prepared.state.players[currentPlayerIndex]?.scoreOpened,
-        spentTileIds: prepared.decision.spentTileIds,
-        declaredKonkan: prepared.decision.declaredKonkan,
-        discardedTile,
-        konkanRunTiles: prepared.decision.konkanRunTileIds
-          .map((tileId) => konkanActorHand.find((tile) => tile.id === tileId))
-          .filter((tile): tile is NonNullable<typeof tile> => !!tile),
-        konkanCompletionMeldTiles: prepared.decision.declaredKonkan
-          ? konkanActorHand.filter((tile) => !konkanRunIds.has(tile.id))
-          : [],
-      });
-    }
-
-    if (nextRoundState === originalState.roundState) {
-      return { ok: true, processed: false, reason: `bot_${botStep}_rejected` };
-    }
-
-    const nextState = settleAuthoritativeOkeyRound({
-      ...originalState,
-      roundState: nextRoundState,
-    });
-
-    const nextVersion = expectedVersion + 1;
-    const deadline = getNextOkeyMatchTurnDeadline(nextState);
-
-    const { data: commit, error: commitError } = await svc
-      .rpc("okey_commit_authoritative_action", {
-        p_match_id: matchId,
-        p_user_id: actorUserId,
-        p_command_id: await deterministicCommandId(
-          `okey:${matchId}:system-bot-${botStep}:${expectedVersion}`,
-        ),
-        p_expected_version: expectedVersion,
-        p_command_type: `system-bot-${botStep}`,
-        p_state: nextState,
-        p_projection: projectOkeyMatchPublicState(
-          nextState,
-          nextVersion,
-          deadline,
-        ),
-        p_status: nextState.matchFinished ? "finished" : "playing",
-        p_turn_deadline_at: deadline,
-        p_action_events: actionEventDrafts,
-      })
-      .single();
-
-    if (commitError || !commit) {
-      if (commitError?.message?.includes("version_conflict")) {
-        return { ok: true, processed: false, reason: "stale_bot_controller" };
-      }
-      throw new Error(commitError?.message ?? "okey_bot_commit_failed");
-    }
-    if ((commit as { applied?: boolean }).applied === false) {
-      return { ok: true, processed: false, reason: "already_processed" };
-    }
-
-    const committedVersion = Number((commit as { version: number }).version);
-    const actionEvents = ((commit as { action_events?: OkeyActionEvent[] }).action_events ?? []);
-
-    try {
-      const channel = svc.channel(`okey-match:${matchId}`);
-      await channel.send({
-        type: "broadcast",
-        event: "state_update",
-        payload: {
-          matchId,
-          version: committedVersion,
-          actionEvents,
-        },
-      });
-      await svc.removeChannel(channel);
-    } catch (broadcastError) {
-      console.error(`Okey bot broadcast failed for ${matchId}`, broadcastError);
-    }
-
-    if (nextState.matchFinished) {
-      const winnerTeamId = nextState.matchWinnerTeamId;
-      if (!winnerTeamId && nextState.leaveTerminationReason !== "no-humans") {
-        throw new Error("finished_match_missing_winner_team");
-      }
-
-      const { error: settlementError } = isTestMatch
-        ? await svc.schema("okey").from("matches").update({
-            settlement_at: new Date().toISOString(),
-            settlement: {
-              type: "test",
-              economyApplied: false,
-              winnerTeamId,
-            },
-          }).eq("id", matchId).eq("is_test", true).is("settlement_at", null)
-        : await svc.rpc("okey_settle_match", {
-            p_match_id: matchId,
-            p_winner_team_id: winnerTeamId,
-          });
-      if (settlementError) {
-        throw new Error(`okey_bot_settlement_failed: ${settlementError.message}`);
-      }
-
-    }
-
-    return { ok: true, processed: true, step: botStep };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`process_bot_turns Okey failed for ${matchId}`, error);
-    return { ok: false, processed: false, error: message };
-  }
-}
-
-
 serve(async (req) => {
   try {
     if (req.method !== "POST")
@@ -410,12 +177,27 @@ serve(async (req) => {
         return json({ ok: true, processed: false, reason: "match_has_no_seats" });
       }
 
-      return json(await processOkeyBotTurn(
-        match_id,
+      return json(await executeOkeyBotTurn({
+        matchId: match_id,
         requesterUserId,
-        expected_version,
-        expected_actor_id,
-      ));
+        expectedVersion: expected_version,
+        expectedActorId: expected_actor_id,
+      }, {
+        client: svc,
+        deterministicCommandId,
+        handOffBotTurn: async ({ matchId, state, version }) => {
+          if (!SUPABASE_URL || !OKEY_WORKER_SECRET) {
+            throw new Error("okey_worker_handoff_not_configured");
+          }
+          return handOffOkeyBotTurn({
+            supabaseUrl: SUPABASE_URL,
+            workerSecret: OKEY_WORKER_SECRET,
+            matchId,
+            state,
+            version,
+          });
+        },
+      }));
     }
 
     if (!room_id) return json({ error: "Missing room_id" }, 400);

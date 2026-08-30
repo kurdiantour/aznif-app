@@ -5,17 +5,6 @@ import type {
 } from "@/okey/server/okey-authoritative";
 
 
-export type OkeyBotTurnClaim = {
-  expectedVersion: number;
-  expectedActorId: string;
-};
-
-export type OkeyBotTurnResult = {
-  ok: boolean;
-  processed: boolean;
-  reason?: string;
-};
-
 export type OkeyNextRoundClaim = {
   expectedVersion: number;
   expectedRound: number;
@@ -48,8 +37,6 @@ export interface OnlineOkeyMatchAdapter {
     command:
       OkeyAuthoritativeCommand,
   ): Promise<void>;
-
-  processBotTurn(claim: OkeyBotTurnClaim): Promise<OkeyBotTurnResult>;
 
   playEliminatedTurn(claim: OkeyEliminatedTurnClaim): Promise<void>;
 

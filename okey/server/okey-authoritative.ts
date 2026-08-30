@@ -23,6 +23,15 @@ import {
   isOkeyBotControlled,
 } from "../engine/okey-bot-policy.ts";
 
+import {
+  createBotTakeoverTransition,
+  projectSeatOwnership,
+} from "../../lib/multiplayer/core/seat-ownership.ts";
+import {
+  advanceConsecutiveTimeout,
+  resetConsecutiveTimeout,
+} from "../../lib/multiplayer/core/timeout-orchestration.ts";
+
 import type {
   OkeyGameState,
   OkeyMeld,
@@ -33,6 +42,7 @@ export const OKEY_DRAW_PHASE_SECONDS = 15;
 export const OKEY_THROW_PHASE_SECONDS = 30;
 export const OKEY_NEXT_ROUND_DELAY_MS = 10_350;
 export const OKEY_MAX_ROUNDS = 7;
+const OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD = 2;
 
 export type OkeyTeamId =
   | "teamA"
@@ -928,12 +938,17 @@ function reconcileAuthoritativeBotOwnership(
 
   const player =
     current.roundState.players[playerIndex];
+  const ownership = player ? projectSeatOwnership({
+    seatId: String(playerIndex),
+    ownerPlayerId: player.id,
+    controlledByBot: isOkeyBotControlled(player),
+  }) : null;
+  const takeover = player && ownership &&
+      (current.timeoutCountsByPlayerId?.[player.id] ?? 0) >= OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD
+    ? createBotTakeoverTransition(ownership, "timeout")
+    : null;
 
-  if (
-    player &&
-    !isOkeyBotControlled(player) &&
-    (current.timeoutCountsByPlayerId?.[player.id] ?? 0) >= 2
-  ) {
+  if (player && takeover) {
     current = reconcileAuthoritativeHumanControl({
       ...current,
       roundState: handSeatToBot(
@@ -969,17 +984,23 @@ export function applyAuthoritativeManualLeave(
   const manualLeftPlayerIds = (match.manualLeftPlayerIds ?? []).includes(player.id)
     ? match.manualLeftPlayerIds
     : [...(match.manualLeftPlayerIds ?? []), player.id];
+  const ownership = projectSeatOwnership({
+    seatId: String(actorPlayerIndex),
+    ownerPlayerId: player.id,
+    controlledByBot: isOkeyBotControlled(player),
+  });
+  const takeover = createBotTakeoverTransition(ownership, "manual_leave");
 
   const takeoverMatch = reconcileAuthoritativeHumanControl({
     ...match,
     manualLeftPlayerIds,
-    roundState: isOkeyBotControlled(player)
-      ? match.roundState
-      : handSeatToBot(
+    roundState: takeover
+      ? handSeatToBot(
           match.roundState,
           actorPlayerIndex,
           "normal",
-        ),
+        )
+      : match.roundState,
   });
 
   return takeoverMatch;
@@ -1017,7 +1038,7 @@ export function applyAuthoritativeOkeyMatchCommand(
     command.type === "draw" && actor && !isOkeyBotControlled(actor)
       ? {
           ...(match.timeoutCountsByPlayerId ?? {}),
-          [actor.id]: 0,
+          [actor.id]: resetConsecutiveTimeout(),
         }
       : match.timeoutCountsByPlayerId;
 
@@ -1202,10 +1223,13 @@ export function resolveAuthoritativeMatchDeadline(
   const timeoutCounts =
     match.timeoutCountsByPlayerId ?? {};
 
-  const timeoutCount =
-    isDrawTimeout
-      ? (timeoutCounts[player.id] ?? 0) + 1
-      : (timeoutCounts[player.id] ?? 0);
+  const timeoutProgress = isDrawTimeout
+    ? advanceConsecutiveTimeout(
+        timeoutCounts[player.id] ?? 0,
+        OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD,
+      )
+    : { streak: timeoutCounts[player.id] ?? 0, shouldTakeOver: false };
+  const timeoutCount = timeoutProgress.streak;
 
 const nextTimeoutCounts = {
   ...timeoutCounts,
@@ -1237,7 +1261,7 @@ const nextRoundState =
     now,
   );
 const takeoverRoundState =
-  isDrawTimeout && timeoutCount >= 2
+  timeoutProgress.shouldTakeOver
     ? handSeatToBot(
         nextRoundState,
         playerIndex,
