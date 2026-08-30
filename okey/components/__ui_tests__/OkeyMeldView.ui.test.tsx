@@ -7,9 +7,13 @@ import {
   FOUR_TILE_SET_REVEAL,
   OkeyMeldView,
   chunkOkeyMeldRows,
+  getOkeyMeldTileLayout,
   getOkeyMeldWidth,
 } from "../OkeyMeldView";
-import { OkeyPlayerMeldArea } from "../OkeyTableMeldAreas";
+import {
+  OkeyPlayerMeldArea,
+  hasInternalOkeyMeldLock,
+} from "../OkeyTableMeldAreas";
 import { createInitialOkeyGame } from "../../engine/okey-engine";
 import type { OkeyMeld, OkeyTile } from "../../types/okey";
 
@@ -50,6 +54,65 @@ test("a four-tile set is rendered as a compact physical stack", () => {
   expect(getOkeyMeldWidth(meld, 18, FOUR_TILE_SET_REVEAL)).toBe(54);
 });
 
+test("a Konkan spend lock keeps its face and half-overlaps the run endpoint", () => {
+  const startLocked: OkeyMeld = {
+    id: "start-locked",
+    ownerId: "player",
+    kind: "run",
+    score: 22,
+    locked: true,
+    lockedTileId: "spent-4",
+    tiles: [
+      tile("spent-4", "yellow", 4),
+      tile("run-5", "yellow", 5),
+      tile("run-6", "yellow", 6),
+      tile("run-7", "yellow", 7),
+    ],
+  };
+  const endLocked: OkeyMeld = {
+    ...startLocked,
+    id: "end-locked",
+    lockedTileId: "spent-8",
+    tiles: [
+      tile("run-5", "yellow", 5),
+      tile("run-6", "yellow", 6),
+      tile("run-7", "yellow", 7),
+      tile("spent-8", "yellow", 8),
+    ],
+  };
+
+  const startLockedSet: OkeyMeld = { ...startLocked, id: "start-locked-set", kind: "set" };
+  const neighbor: OkeyMeld = {
+    ...startLocked,
+    id: "neighbor",
+    locked: false,
+    lockedTileId: undefined,
+  };
+
+  expect(hasInternalOkeyMeldLock([endLocked, neighbor])).toBe(true);
+  expect(hasInternalOkeyMeldLock([neighbor, startLocked])).toBe(true);
+  expect(hasInternalOkeyMeldLock([startLocked, neighbor])).toBe(false);
+  expect(hasInternalOkeyMeldLock([neighbor, endLocked])).toBe(false);
+
+  expect(getOkeyMeldWidth(startLocked, 18, FOUR_TILE_SET_REVEAL, 24)).toBe(66);
+  expect(getOkeyMeldWidth(startLockedSet, 18, FOUR_TILE_SET_REVEAL, 24)).toBe(66);
+  expect(startLocked.tiles.map((_, index) =>
+    getOkeyMeldTileLayout(startLocked, index, 18, FOUR_TILE_SET_REVEAL, 24).left
+  )).toEqual([3, 12, 30, 48]);
+  expect(endLocked.tiles.map((_, index) =>
+    getOkeyMeldTileLayout(endLocked, index, 18, FOUR_TILE_SET_REVEAL, 24).left
+  )).toEqual([0, 18, 36, 45]);
+  expect(getOkeyMeldWidth(startLocked, 18, FOUR_TILE_SET_REVEAL, 24, true)).toBe(69);
+  expect(startLocked.tiles.map((_, index) =>
+    getOkeyMeldTileLayout(startLocked, index, 18, FOUR_TILE_SET_REVEAL, 24, true).left
+  )).toEqual([3, 15, 33, 51]);
+  expect(endLocked.tiles.map((_, index) =>
+    getOkeyMeldTileLayout(endLocked, index, 18, FOUR_TILE_SET_REVEAL, 24, true).left
+  )).toEqual([0, 18, 36, 48]);
+
+  const view = render(<OkeyMeldView meld={startLocked} okeyTile={okeyTile} />);
+  expect(view.getByLabelText("بەردی 4ی زەرد")).toBeTruthy();
+});
 test("runs stay fully separated and table meld rows remain stable", () => {
   const run = (id: string): OkeyMeld => ({
     id,

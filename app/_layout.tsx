@@ -109,8 +109,14 @@ export default function Layout() {
               />
               <Stack.Screen name="privacy" />
               <Stack.Screen name="support" />
-              <Stack.Screen name="domino/game" />
-              <Stack.Screen name="okey/game" />
+              <Stack.Screen
+                name="domino/game"
+                options={{ autoHideHomeIndicator: true }}
+              />
+              <Stack.Screen
+                name="okey/game"
+                options={{ autoHideHomeIndicator: true }}
+              />
               <Stack.Screen name="create-room" />
               <Stack.Screen name="domino/matchmaking" />
               <Stack.Screen name="domino/play-ai" />

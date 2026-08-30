@@ -196,6 +196,32 @@ test("closed bot never steals a joker before opening", () => {
   assert.equal(prepared.state.players[0].melds[0].tiles.some((entry) => entry.id === "table-joker"), true);
 });
 
+test("closed bot does not spend on a table meld or enter Konkan", () => {
+  const state = botState([
+    tile("closed-spend-r10", "red", 10),
+    tile("closed-loose", "yellow", 1),
+  ]);
+  state.hasDrawnThisTurn = true;
+  state.players[1] = { ...state.players[1], opened: false, konkan: false };
+  state.players[0] = {
+    ...state.players[0],
+    opened: true,
+    melds: [{
+      id: "closed-target-run",
+      ownerId: state.players[0].id,
+      kind: "run",
+      tiles: [tile("closed-table-r7", "red", 7), tile("closed-table-r8", "red", 8), tile("closed-table-r9", "red", 9)],
+      score: 24,
+    }],
+  };
+
+  const prepared = prepareBotTurn(state);
+
+  assert.equal(prepared.decision.spentTileIds.length, 0);
+  assert.equal(prepared.state.players[1].konkan, false);
+  assert.equal(prepared.state.players[1].hand.some((entry) => entry.id === "closed-spend-r10"), true);
+  assert.equal(prepared.state.players[0].melds[0].tiles.length, 3);
+});
 test("opened bot can replace and steal a joker", () => {
   const state = botState([
     tile("replacement-r4-opened", "red", 4),

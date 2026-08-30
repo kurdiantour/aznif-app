@@ -6,11 +6,10 @@ import type { OkeyMeld, OkeyPlayer, OkeyTile } from "@/okey/types/okey";
 import { useOkeyResponsiveLayout } from "../layout/OkeyResponsiveLayoutProvider";
 import { chunkOkeyMeldRows, OkeyMeldView, TABLE_MELD_TILE_HEIGHT, TABLE_MELD_TILE_WIDTH } from "./OkeyMeldView";
 import { styles } from "./okeyStyles";
-import { OkeyTileBack, OkeyTileFace } from "./OkeyTileFace";
+import { OkeyTileFace } from "./OkeyTileFace";
 
 const MELD_ENTRY_STAGGER_MS = 300;
 const MELD_ENTRY_DURATION_MS = 950;
-const MELD_META_ENTRY_DELAY_MS = MELD_ENTRY_DURATION_MS + 100;
 type MeldRect = { x: number; y: number; width: number; height: number };
 type MeldOffset = { x: number; y: number };
 type MeldEntryOrigin = { x: number; y: number; arc: number };
@@ -24,6 +23,29 @@ function getMeldTileSignature(meld: OkeyMeld) {
   return meld.tiles.map((tile) => tile.id).sort().join("|");
 }
 
+export function isInternalOkeyMeldLock(
+  row: OkeyMeld[],
+  meldIndex: number,
+) {
+  if (row.length < 2) return false;
+
+  const meld = row[meldIndex];
+  if (!meld) return false;
+  const lockedTileIndex = meld.tiles.findIndex(
+    (tile) => tile.id === meld.lockedTileId,
+  );
+
+  return (
+    (meldIndex === 0 && lockedTileIndex === meld.tiles.length - 1) ||
+    (meldIndex === row.length - 1 && lockedTileIndex === 0)
+  );
+}
+
+export function hasInternalOkeyMeldLock(row: OkeyMeld[]) {
+  return row.some((_, meldIndex) =>
+    isInternalOkeyMeldLock(row, meldIndex),
+  );
+}
 function AnimatedSpentTile({
   tile,
   okeyTile,
@@ -97,28 +119,20 @@ const animation = Animated.timing(progress, {
               outputRange: [
                 "0deg",
                 sourceOrigin.x >= 0 ? "4deg" : "-4deg",
-                "0deg",
+                locked ? "90deg" : "0deg",
               ],
             }),
           },
         ],
       }}
     >
-      {locked ? (
-        <OkeyTileBack
-          unstyled
-          width={TABLE_MELD_TILE_WIDTH}
-          height={TABLE_MELD_TILE_HEIGHT}
-        />
-      ) : (
-        <OkeyTileFace
-          tile={tile}
-          compact
-          width={TABLE_MELD_TILE_WIDTH}
-          height={TABLE_MELD_TILE_HEIGHT}
-          isWildcard={isOkeyWildcard(tile, okeyTile)}
-        />
-      )}
+      <OkeyTileFace
+        tile={tile}
+        compact
+        width={TABLE_MELD_TILE_WIDTH}
+        height={TABLE_MELD_TILE_HEIGHT}
+        isWildcard={isOkeyWildcard(tile, okeyTile)}
+      />
     </Animated.View>
   );
 }
@@ -136,6 +150,7 @@ function MeldPreview({
   highlighted = false,
   jokerEndpointChoice,
   onJokerEndpointSelected,
+  internalLock = false,
 }: {
   meld: OkeyMeld;
   okeyTile: OkeyTile;
@@ -149,6 +164,7 @@ function MeldPreview({
   highlighted?: boolean;
   jokerEndpointChoice?: JokerEndpointChoice | null;
   onJokerEndpointSelected?: (runEnd: "start" | "end") => void;
+  internalLock?: boolean;
 }) {
   const meldRef = useRef<View | null>(null);
   const dragStartOffsetRef = useRef(offset);
@@ -286,6 +302,7 @@ useEffect(() => {
       <OkeyMeldView
         meld={meld}
         okeyTile={okeyTile}
+        internalLock={internalLock}
         renderTile={(tile) => (
           <AnimatedSpentTile
             tile={tile}
@@ -409,7 +426,6 @@ export function OkeyPlayerMeldArea({
     [allPlayers, layout, position],
   );
   const previousMeldIdsRef = useRef(new Set(player.melds.map((meld) => meld.id)));
-  const metaProgress = useRef(new Animated.Value(player.opened && player.scoreOpened !== 0 ? 1 : 0)).current;
   const newlyAddedMeldIds = player.melds
     .filter((meld) => !previousMeldIdsRef.current.has(meld.id))
     .map((meld) => meld.id);
@@ -428,26 +444,6 @@ export function OkeyPlayerMeldArea({
     previousMeldIdsRef.current = new Set(player.melds.map((meld) => meld.id));
   }, [player.melds]);
 
-  useEffect(() => {
-    if (!player.opened || player.scoreOpened === 0) {
-      metaProgress.setValue(0);
-      return;
-    }
-    const longestEntryDelay = Math.max(0, newlyAddedMeldIds.length - 1) * MELD_ENTRY_STAGGER_MS;
-    metaProgress.setValue(newlyAddedMeldIds.length > 0 ? 0 : 1);
-    const animation = Animated.sequence([
-      Animated.delay(newlyAddedMeldIds.length > 0 ? longestEntryDelay + MELD_META_ENTRY_DELAY_MS : 0),
-      Animated.spring(metaProgress, {
-        toValue: 1,
-        speed: 18,
-        bounciness: 7,
-        useNativeDriver: true,
-      }),
-    ]);
-    animation.start();
-    return () => animation.stop();
-  }, [metaProgress, newlyAddedMeldIds.length, player.opened, player.scoreOpened]);
-
   return (
     <View
       style={[
@@ -464,12 +460,18 @@ export function OkeyPlayerMeldArea({
           pointerEvents="box-none"
         >
           {meldRows.map((row, rowIndex) => (
-            <View key={rowIndex} style={styles.meldRow} pointerEvents="box-none">
-              {row.map((meld) => (
+            <View
+              key={rowIndex}
+              style={styles.meldRow}
+
+              pointerEvents="box-none"
+            >
+              {row.map((meld, meldIndex) => (
                 <MeldPreview
                   key={meld.id}
                   meld={meld}
                   okeyTile={okeyTile}
+                  internalLock={isInternalOkeyMeldLock(row, meldIndex)}
                   onMeasured={handleMeasured}
                   offset={meldOffsets[meld.id]}
                   onOffsetChange={handleOffsetChange}
@@ -499,22 +501,6 @@ export function OkeyPlayerMeldArea({
         </View>
       ) : null}
 
-      {player.opened && player.scoreOpened !== 0 ? (
-        <Animated.View
-          style={[
-            styles.meldMetaPill,
-            {
-              opacity: metaProgress,
-              transform: [{
-                scale: metaProgress.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }),
-              }],
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <Text style={styles.meldMetaText}>{player.scoreOpened}</Text>
-        </Animated.View>
-      ) : null}
     </View>
   );
 }

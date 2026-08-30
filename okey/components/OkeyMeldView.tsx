@@ -23,6 +23,7 @@ type Props = {
   tileWidth?: number;
   tileHeight?: number;
   stackReveal?: number;
+  internalLock?: boolean;
 
   renderTile?: (
     tile: OkeyTile,
@@ -35,13 +36,18 @@ export function getOkeyMeldWidth(
   meld: OkeyMeld,
   tileWidth: number,
   stackReveal = FOUR_TILE_SET_REVEAL,
+  tileHeight = tileWidth * (TABLE_MELD_TILE_HEIGHT / TABLE_MELD_TILE_WIDTH),
+  internalLock = false,
 ) {
-  if (meld.kind === "set" && meld.tiles.length === 4) {
-    return tileWidth + stackReveal * (meld.tiles.length - 1);
-  }
   const lockedTileIndex = meld.tiles.findIndex((tile) => tile.id === meld.lockedTileId);
   if (lockedTileIndex === 0 || lockedTileIndex === meld.tiles.length - 1) {
-    return tileWidth * (meld.tiles.length - 1) + stackReveal;
+    const exposedHorizontalWidth = internalLock
+      ? tileHeight - tileWidth / 2
+      : tileHeight / 2;
+    return tileWidth * (meld.tiles.length - 1) + exposedHorizontalWidth;
+  }
+  if (meld.kind === "set" && meld.tiles.length === 4) {
+    return tileWidth + stackReveal * (meld.tiles.length - 1);
   }
 
   return tileWidth * meld.tiles.length;
@@ -52,18 +58,39 @@ export function getOkeyMeldTileLayout(
   tileIndex: number,
   tileWidth: number,
   stackReveal = FOUR_TILE_SET_REVEAL,
+  tileHeight = tileWidth * (TABLE_MELD_TILE_HEIGHT / TABLE_MELD_TILE_WIDTH),
+  internalLock = false,
 ): TileLayout {
-  const fourTileSet = meld.kind === "set" && meld.tiles.length === 4;
-  if (fourTileSet) {
-    return { stacked: true, left: tileIndex * stackReveal, zIndex: meld.tiles.length - tileIndex };
-  }
-
   const lockedTileIndex = meld.tiles.findIndex((tile) => tile.id === meld.lockedTileId);
   const overlapsLockedTile = lockedTileIndex === 0 || lockedTileIndex === meld.tiles.length - 1;
+  const fourTileSet = meld.kind === "set" && meld.tiles.length === 4;
+  if (fourTileSet && !overlapsLockedTile) {
+    return { stacked: true, left: tileIndex * stackReveal, zIndex: meld.tiles.length - tileIndex };
+  }
+  if (overlapsLockedTile) {
+    const lockedOverlap = internalLock ? tileWidth / 2 : tileHeight / 2;
+    const leadingOffset = tileHeight - lockedOverlap;
+    const rotationInset = (tileHeight - tileWidth) / 2;
+    const lockedAtStart = lockedTileIndex === 0;
+    const locked = tileIndex === lockedTileIndex;
+
+    return {
+      stacked: locked || Math.abs(tileIndex - lockedTileIndex) === 1,
+      left: locked
+        ? lockedAtStart
+          ? rotationInset
+          : tileIndex * tileWidth - lockedOverlap + rotationInset
+        : lockedAtStart
+          ? leadingOffset + (tileIndex - 1) * tileWidth
+          : tileIndex * tileWidth,
+      zIndex: locked ? meld.tiles.length + 1 : 1,
+    };
+  }
+
   return {
-    stacked: overlapsLockedTile && (tileIndex === lockedTileIndex || Math.abs(tileIndex - lockedTileIndex) === 1),
-    left: tileIndex * tileWidth - (overlapsLockedTile && tileIndex > 0 ? tileWidth - stackReveal : 0),
-    zIndex: overlapsLockedTile ? meld.tiles.length - tileIndex : 1,
+    stacked: false,
+    left: tileIndex * tileWidth,
+    zIndex: 1,
   };
 }
 export function chunkOkeyMeldRows(
@@ -91,11 +118,14 @@ export function OkeyMeldView({
   tileHeight = TABLE_MELD_TILE_HEIGHT,
   stackReveal = FOUR_TILE_SET_REVEAL,
   renderTile,
+  internalLock = false,
 }: Props) {
   const meldWidth = getOkeyMeldWidth(
     meld,
     tileWidth,
     stackReveal,
+    tileHeight,
+    internalLock,
   );
 
   return (
@@ -114,7 +144,7 @@ export function OkeyMeldView({
     >
       {meld.tiles.map((tile, tileIndex) => {
         const isWildcard = isOkeyWildcard(tile, okeyTile);
-        const layout = getOkeyMeldTileLayout(meld, tileIndex, tileWidth, stackReveal);
+        const layout = getOkeyMeldTileLayout(meld, tileIndex, tileWidth, stackReveal, tileHeight, internalLock);
 
         return (
           <View
@@ -138,11 +168,15 @@ export function OkeyMeldView({
             ) : renderTile ? (
               renderTile(tile, tileIndex, layout)
             ) : tile.id === meld.lockedTileId ? (
-              <OkeyTileBack
-                width={tileWidth}
-                height={tileHeight}
-                unstyled
-              />
+              <View style={{ transform: [{ rotate: "90deg" }] }}>
+                <OkeyTileFace
+                  tile={tile}
+                  compact
+                  width={tileWidth}
+                  height={tileHeight}
+                  isWildcard={isWildcard}
+                />
+              </View>
             ) : (
               <OkeyTileFace
                 tile={tile}

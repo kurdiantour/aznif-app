@@ -130,8 +130,6 @@ meldPreview: {
   jokerEndpointChoiceStart: { left: -34 },
   jokerEndpointChoiceEnd: { right: -34 },
   jokerEndpointChoiceText: { color: "#2b2106", fontSize: 12, fontFamily: "RobotoBold" },
-  meldMetaPill: { marginTop: 1, minWidth: 28, height: 13, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.28)" },
-  meldMetaText: { color: "rgba(255,247,218,0.82)", fontSize: 8, fontFamily: "SpedaRegular" },
   humanMeldDropZone: { zIndex: 90, elevation: 90, justifyContent: "flex-start" },
   previewMeldContent: { zIndex: 91, elevation: 91, width: "100%", minHeight: 50, flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start", rowGap: 2 },
   stagingArea: { position: "absolute", left: "38%", right: "38%", bottom: 116, height: 40, alignItems: "center", justifyContent: "flex-end" },
@@ -182,7 +180,17 @@ playerSetScoreCurrent: {
 
   drawStackNatural: { width: 50, height: 72, alignItems: "center", justifyContent: "flex-start" },
   drawStackLayer: { position: "absolute", left: 4, transform: [{ rotate: "0deg" }] },
-  deckCount: { position: "absolute", bottom: -10, color: "rgba(255,247,218,0.78)", fontSize: 10, fontFamily: "SpedaRegular" },
+  
+deckCount: {
+  position: "absolute",
+  bottom: -10,
+  left: 4,
+  width: 42,
+  textAlign: "center",
+  color: "rgba(255,247,218,0.78)",
+  fontSize: 10,
+  fontFamily: "SpedaRegular",
+},
   discardCount: { position: "absolute", bottom: -8, minWidth: 18, height: 14, borderRadius: 7, textAlign: "center", color: "#1b1426", backgroundColor: "rgba(248,215,116,0.92)", overflow: "hidden", fontSize: 9, lineHeight: 14, fontFamily: "SpedaRegular" },
   discardPileNatural: { width: 92, height: 82, alignItems: "center", justifyContent: "center" },
   discardUnderTile: { position: "absolute", opacity: 0.96 },

@@ -269,6 +269,9 @@ function spendUsefulTiles(state: OkeyGameState, profile: OkeyBotProfile) {
   for (let action = 0; action < profile.maximumSpendActions; action += 1) {
     const player = current.players[current.currentPlayerIndex];
     if (!player || current.phase !== "playing" || player.hand.length <= 1) break;
+    // A closed bot must not enter Konkan by adding a tile to a table meld.
+    // Existing Konkan bots may still use the table according to Konkan rules.
+    if (!player.opened && !player.konkan) break;
     const signature = player.hand.map((tile) => tile.id).sort().join("|");
     if (seenHands.has(signature)) break;
     seenHands.add(signature);
