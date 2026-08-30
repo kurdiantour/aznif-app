@@ -796,8 +796,12 @@ const shouldShowScorePopup =
 
   const canDraw = isHumanTurn && !humanPlayer.eliminated && !state.hasDrawnThisTurn;
   const canDrawDiscard = canDraw && !topDiscardIsBlocked;
-  const canDiscard = isHumanTurn && state.hasDrawnThisTurn && !!selectedTile;
-  const canDiscardTile = isHumanTurn && state.hasDrawnThisTurn;
+  const canPlayAfterDraw =
+    isHumanTurn &&
+    !humanPlayer.eliminated &&
+    state.hasDrawnThisTurn;
+  const canDiscard = canPlayAfterDraw && !!selectedTile;
+  const canDiscardTile = canPlayAfterDraw;
   const openAction = useMemo(
     () => getOkeyOpenAction(
       state,
@@ -1412,7 +1416,7 @@ const shouldShowScorePopup =
   });
   const handleDropMeldGroup = useStableEvent((meld: OkeyMeld, point: { x: number; y: number }) => {
     const accepted =
-      isHumanTurn &&
+      canPlayAfterDraw &&
       isInsideHumanMeldDropZone(point) &&
       remainingMeldSlots > 0;
 
@@ -1743,7 +1747,7 @@ const shouldShowScorePopup =
           />
         ) : null}
                   <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
-{openAction.allowed ? (
+{canPlayAfterDraw && openAction.allowed ? (
             <Pressable
               style={styles.openSetsButton}
               onPress={() => {

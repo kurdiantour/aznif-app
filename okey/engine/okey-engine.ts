@@ -371,7 +371,11 @@ function validateOpenPlayerMelds(
   playerIndex: number,
   melds: OkeyMeld[],
 ): { melds: OkeyMeld[]; score: number; openedTileIds: Set<string> } | null {
-  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return null;
+  if (
+    state.phase !== "playing" ||
+    state.currentPlayerIndex !== playerIndex ||
+    !state.hasDrawnThisTurn
+  ) return null;
   const player = state.players[playerIndex];
   if (!player || player.eliminated || player.konkan || melds.length === 0) return null;
 
@@ -697,6 +701,7 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
 export function canSpendTileOnBestMeld(state: OkeyGameState, playerIndex: number, tileId: string): boolean {
   if (state.phase !== "playing") return false;
   if (state.currentPlayerIndex !== playerIndex) return false;
+  if (!state.hasDrawnThisTurn) return false;
   const player = state.players[playerIndex];
   if (!player || player.eliminated) return false;
   const tile = player.hand.find((entry) => entry.id === tileId);
@@ -760,6 +765,7 @@ export function canSpendTileOnMeld(
 ): boolean {
   if (state.phase !== "playing") return false;
   if (state.currentPlayerIndex !== playerIndex) return false;
+  if (!state.hasDrawnThisTurn) return false;
   const player = state.players[playerIndex];
   if (!player || player.eliminated) return false;
   const tile = player.hand.find((entry) => entry.id === tileId);
@@ -813,7 +819,11 @@ export function canLockKonkanSet(
   targetPlayerId: string,
   targetMeldId: string,
 ): boolean {
-  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return false;
+  if (
+    state.phase !== "playing" ||
+    state.currentPlayerIndex !== playerIndex ||
+    !state.hasDrawnThisTurn
+  ) return false;
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
   if (player?.eliminated || !tile) return false;
@@ -875,7 +885,11 @@ export function lockKonkanSet(
   targetMeldId: string,
   runEnd?: OkeyRunEnd,
 ): OkeyGameState {
-  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return state;
+  if (
+    state.phase !== "playing" ||
+    state.currentPlayerIndex !== playerIndex ||
+    !state.hasDrawnThisTurn
+  ) return state;
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
   if (!player || player.eliminated || !tile) return state;
@@ -994,6 +1008,7 @@ export function spendTileOnMeld(
 ): OkeyGameState {
   if (state.phase !== "playing") return state;
   if (state.currentPlayerIndex !== playerIndex) return state;
+  if (!state.hasDrawnThisTurn) return state;
   const player = state.players[playerIndex];
   if (!player || player.eliminated) return state;
   const tile = player.hand.find((entry) => entry.id === tileId);
@@ -1009,6 +1024,7 @@ export function spendTileOnBestMeld(
 ): OkeyGameState {
   if (state.phase !== "playing") return state;
   if (state.currentPlayerIndex !== playerIndex) return state;
+  if (!state.hasDrawnThisTurn) return state;
 
   const player = state.players[playerIndex];
   if (!player || player.eliminated) return state;
@@ -1377,7 +1393,11 @@ export function findKonkanDeclarationForPlayer(state: OkeyGameState, playerIndex
 }
 
 export function canDeclareKonkanOpen(state: OkeyGameState, playerIndex: number, orderedRunTileIds: string[] = []): boolean {
-  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return false;
+  if (
+    state.phase !== "playing" ||
+    state.currentPlayerIndex !== playerIndex ||
+    !state.hasDrawnThisTurn
+  ) return false;
   const player = state.players[playerIndex];
   if (!player?.konkan || player.eliminated) return false;
   if (orderedRunTileIds.length !== OKEY_RULESET_V1.konkan.officialRunSize || new Set(orderedRunTileIds).size !== orderedRunTileIds.length) return false;
@@ -1670,3 +1690,4 @@ export function findBestMeldPlan(tiles: OkeyTile[], okeyTile: OkeyTile, minRemai
   const plan = selectBestMeldPlan(candidates, tiles.length, minRemainingTiles);
   return { score: plan.score, melds: plan.melds, usedTileCount: plan.usedTileCount };
 }
+

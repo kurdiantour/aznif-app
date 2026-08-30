@@ -11,6 +11,7 @@ import {
   lockKonkanSet,
   openPlayerMelds,
   playEliminatedTurn,
+  resolveTableMeldAction,
   spendTileOnBestMeld,
 } from "./okey-engine.ts";
 import { getOkeyScoreValue } from "./okey-melds.ts";
@@ -282,6 +283,58 @@ function spendUsefulTiles(state: OkeyGameState, profile: OkeyBotProfile) {
   }
   return { state: current, spentTileIds };
 }
+/**
+ * Closed bots cannot use table melds yet, but they must preserve any tile that
+ * will become a legal table action after opening:
+ * - a tile that can replace/steal a table Joker
+ * - a tile that can be spent on an existing table meld
+ *
+ * We deliberately ask the authoritative table-action resolver instead of
+ * duplicating meld/Joker rules in the bot policy.  A temporary opened=true
+ * projection is used only for evaluation; the real game state is untouched.
+ */
+function getBotTableFutureProtectedTileIds(state: OkeyGameState): Set<string> {
+  const playerIndex = state.currentPlayerIndex;
+  const player = state.players[playerIndex];
+  if (!player || player.eliminated || player.opened || player.konkan) return new Set();
+
+  const evaluationState: OkeyGameState = {
+    ...state,
+    players: state.players.map((entry, index) =>
+      index === playerIndex ? { ...entry, opened: true } : entry,
+    ),
+  };
+
+  const protectedTileIds = new Set<string>();
+  for (const tile of player.hand) {
+    let usefulOnTable = false;
+
+    for (const targetPlayer of evaluationState.players) {
+      if (usefulOnTable) break;
+      if (!targetPlayer.opened || targetPlayer.eliminated) continue;
+
+      for (const meld of targetPlayer.melds) {
+        const action = resolveTableMeldAction(
+          evaluationState,
+          playerIndex,
+          tile.id,
+          targetPlayer.id,
+          meld.id,
+        );
+
+        if (action?.type === "spend") {
+          usefulOnTable = true;
+          break;
+        }
+      }
+    }
+
+    if (usefulOnTable) protectedTileIds.add(tile.id);
+  }
+
+  return protectedTileIds;
+}
+
 function discardDanger(state: OkeyGameState, tile: OkeyTile) {
   const order: readonly number[] = OKEY_RULESET_V1.table.counterClockwiseTurnOrder;
   const nextPlayerIndex = order[(order.indexOf(state.currentPlayerIndex) + 1) % order.length];
@@ -298,8 +351,17 @@ export function chooseBotDiscardTile(state: OkeyGameState, options: OkeyBotOptio
   const player = state.players[state.currentPlayerIndex];
   if (!player?.hand.length) return null;
   const profile = getOkeyBotProfile(options.difficulty ?? getOkeyBotDifficulty(player));
+
+  const protectedTileIds = getBotTableFutureProtectedTileIds(state);
+  const unprotectedTiles = player.hand.filter((tile) => !protectedTileIds.has(tile.id));
+
+  // Hard protection: if at least one ordinary discard exists, never throw a
+  // future table Spend/Joker-replacement tile. If every tile is protected,
+  // fall back to the whole hand so the bot can still finish its turn.
+  const discardPool = unprotectedTiles.length > 0 ? unprotectedTiles : player.hand;
+
   const candidates: { tile: OkeyTile; value: number }[] = [];
-  for (const tile of player.hand) {
+  for (const tile of discardPool) {
     const remaining = player.hand.filter((entry) => entry.id !== tile.id);
     const value = evaluationValue(evaluateHand(remaining, state.okeyTile)) +
       tilePenalty(tile, state.okeyTile) * 0.8 - discardDanger(state, tile) * profile.discardRiskWeight;

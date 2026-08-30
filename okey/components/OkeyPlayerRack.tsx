@@ -1,3 +1,4 @@
+
 import { Image } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
@@ -278,6 +279,7 @@ export function OkeyPlayerRack({
   const [enteringTileIds, setEnteringTileIds] = useState<Set<string>>(
     () => new Set(tiles.map((tile) => tile.id)),
   );
+  const rackInteractionLocked = enteringTileIds.size > 0;
   const [returningJokerTileIds, setReturningJokerTileIds] =
     useState<Set<string>>(() => new Set());
   const [flippingJokerTileIds, setFlippingJokerTileIds] =
@@ -342,24 +344,25 @@ export function OkeyPlayerRack({
     getTileShiftValue,
     getTilePanHandlers,
     dragStartedRef,
-  } = useOkeyRackDrag({
-    tiles,
-    okeyTile,
-    stagedTileIdSet,
-      rackTileWidth,
-    rackTileHeight,
-    rackTileStride,
-    viewportOriginRef,
-    rowLayoutsRef,
-    onSelectTile,
-    onDropMeldGroup,
-    onDropTile,
-    onTileDragPointChange,
-    externalDropPlacement,
-    onExternalDropPlaced,
-    externalHoverPoint,
-    clearReturningJokerForTile,
-  });
+} = useOkeyRackDrag({
+  tiles,
+  okeyTile,
+  stagedTileIdSet,
+  rackInteractionLocked,
+  rackTileWidth,
+  rackTileHeight,
+  rackTileStride,
+  viewportOriginRef,
+  rowLayoutsRef,
+  onSelectTile,
+  onDropMeldGroup,
+  onDropTile,
+  onTileDragPointChange,
+  externalDropPlacement,
+  onExternalDropPlaced,
+  externalHoverPoint,
+  clearReturningJokerForTile,
+});
 
   useEffect(() => {
     const topSlotIndex = committedRackSlots.top.findIndex((tileId) => tileId === null);
@@ -489,7 +492,7 @@ export function OkeyPlayerRack({
         dealTileIds.forEach((tileId) => next.delete(tileId));
         return next;
       });
-    }, RACK_TILE_ENTER_MS + RACK_DEAL_BATCH_STAGGER_MS * 6 + 120);
+    }, RACK_TILE_ENTER_MS + RACK_DEAL_BATCH_STAGGER_MS * 4 + 50);
 
     enterAnimationTimeoutsRef.current.push(timeout);
 
@@ -636,7 +639,7 @@ export function OkeyPlayerRack({
     );
 
     const moveForAccessibility = (targetIndex: number) => {
-      if (eliminated || isStaged) return;
+      if (rackInteractionLocked || eliminated || isStaged) return;
       onMoveTile(tile.id, targetIndex);
       onSelectTile(tile.id);
     };

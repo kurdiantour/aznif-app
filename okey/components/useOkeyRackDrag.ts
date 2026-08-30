@@ -46,6 +46,7 @@ type UseOkeyRackDragParams = {
   tiles: OkeyTile[];
   okeyTile: OkeyTile;
   stagedTileIdSet: Set<string>;
+  rackInteractionLocked: boolean;
 
   rackTileWidth: number;
   rackTileHeight: number;
@@ -79,6 +80,7 @@ export function useOkeyRackDrag({
   tiles,
   okeyTile,
   stagedTileIdSet,
+  rackInteractionLocked,
   rackTileWidth,
   rackTileHeight,
   rackTileStride,
@@ -124,6 +126,8 @@ export function useOkeyRackDrag({
   const pendingNeighborResetAfterCommitRef = useRef(false);
   const tileShiftValuesRef = useRef<Record<string, Animated.ValueXY>>({});
   const tilePanHandlersRef = useRef<Record<string, any>>({});
+  const rackInteractionLockedRef = useRef(rackInteractionLocked);
+  
 
   const committedRackSlotsRef = useRef(committedRackSlots);
   const tileByIdRef = useRef(new Map(tiles.map((tile) => [tile.id, tile])));
@@ -149,6 +153,10 @@ export function useOkeyRackDrag({
   useEffect(() => {
     committedRackSlotsRef.current = committedRackSlots;
   }, [committedRackSlots]);
+
+  useEffect(() => {
+    rackInteractionLockedRef.current = rackInteractionLocked;
+  }, [rackInteractionLocked]);
 
   useEffect(() => {
     tileByIdRef.current = new Map(tiles.map((tile) => [tile.id, tile]));
@@ -592,9 +600,11 @@ export function useOkeyRackDrag({
       }
 
       const panHandlers = PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () =>
+          !rackInteractionLockedRef.current,
         onStartShouldSetPanResponderCapture: () => false,
         onMoveShouldSetPanResponder: (_, gesture) =>
+          !rackInteractionLockedRef.current &&
           Math.hypot(gesture.dx, gesture.dy) >=
           DRAG_ACTIVATION_DISTANCE,
         onMoveShouldSetPanResponderCapture: () => false,
@@ -603,6 +613,7 @@ export function useOkeyRackDrag({
         onShouldBlockNativeResponder: () => true,
 
         onPanResponderGrant: (event, gesture) => {
+          if (rackInteractionLockedRef.current) return;
           dragStartedRef.current = false;
           wildcardLongPressHandledRef.current = false;
           draggingMeldRef.current = null;
@@ -789,7 +800,7 @@ export function useOkeyRackDrag({
     },
     [
       clearDragState,
-          clearLongPressTimer,
+      clearLongPressTimer,
       clearReturningJokerForTile,
       getGroupInsertionTarget,
       getInsertionTarget,
@@ -817,4 +828,3 @@ export function useOkeyRackDrag({
     dragStartedRef,
   };
 }
-
