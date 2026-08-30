@@ -171,25 +171,45 @@ const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
   pendingKonkanFromDiscard: false,
 }));
 
-  for (let playerIndex = 0; playerIndex < PLAYER_COUNT; playerIndex += 1) {
-    const handSize = playerIndex === safeDealerIndex ? INITIAL_DEALER_HAND_SIZE : INITIAL_HAND_SIZE;
-    players[playerIndex].hand = shuffledTiles.splice(0, handSize);
+  const dealerTurnOrderIndex = COUNTER_CLOCKWISE_TURN_ORDER.findIndex(
+    (playerIndex) => playerIndex === safeDealerIndex,
+  );
+  const dealOrder = Array.from({ length: PLAYER_COUNT }, (_, offset) =>
+    COUNTER_CLOCKWISE_TURN_ORDER[
+      (dealerTurnOrderIndex + offset) % PLAYER_COUNT
+    ],
+  );
+
+  let dealRound = 0;
+  while (players.some((player, index) =>
+    player.hand.length < (index === safeDealerIndex ? INITIAL_DEALER_HAND_SIZE : INITIAL_HAND_SIZE)
+  )) {
+    for (const playerIndex of dealOrder) {
+      const targetHandSize = playerIndex === safeDealerIndex
+        ? INITIAL_DEALER_HAND_SIZE
+        : INITIAL_HAND_SIZE;
+      const remaining = targetHandSize - players[playerIndex].hand.length;
+      if (remaining <= 0) continue;
+
+      const requestedBatchSize = dealRound === 0 && playerIndex !== safeDealerIndex ? 2 : 3;
+      players[playerIndex].hand.push(
+        ...shuffledTiles.splice(0, Math.min(requestedBatchSize, remaining)),
+      );
+    }
+    dealRound += 1;
   }
 
   const indicatorTileIndex = shuffledTiles.findIndex((tile) => !tile.isFakeJoker);
   const indicatorTile = shuffledTiles.splice(indicatorTileIndex, 1)[0];
   const okeyTile = getJokerTileFromIndicator(indicatorTile);
   const deck = shuffledTiles.map((tile) => withJokerOrigin(tile, okeyTile, "natural"));
-  const playersWithSortedHands = players.map((player) => ({
+  const playersWithInitialHands = players.map((player) => ({
     ...player,
-    hand: sortTiles(
-      player.hand.map((tile) => withJokerOrigin(tile, okeyTile, "natural")),
-      okeyTile,
-    ),
+    hand: player.hand.map((tile) => withJokerOrigin(tile, okeyTile, "natural")),
   }));
 
   return {
-    players: playersWithSortedHands,
+    players: playersWithInitialHands,
     stagingMelds: [],
     teamFirstOpenScores: { teamA: null, teamB: null },
     currentPlayerIndex: safeDealerIndex,
@@ -205,7 +225,7 @@ const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
     phase: "playing",
     winnerId: null,
     endReason: null,
-    turnMessage: getTurnMessage(playersWithSortedHands[safeDealerIndex].name, true),
+    turnMessage: getTurnMessage(playersWithInitialHands[safeDealerIndex].name, true),
     hasDrawnThisTurn: true,
   };
 }

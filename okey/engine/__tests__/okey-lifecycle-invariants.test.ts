@@ -9,8 +9,35 @@ import {
 } from "../okey-engine.ts";
 import { prepareTimeoutTurn, resolveTimeoutTurn } from "../okey-timeout.ts";
 import type { OkeyGameState, OkeyTile } from "../../types/okey.ts";
+import { OKEY_RULESET_V1 } from "../../rules/okey-ruleset-v1.ts";
 
 let sequence = 0;
+function seededRandom(seed: number) {
+  let value = seed >>> 0;
+  return () => {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    return value / 0x1_0000_0000;
+  };
+}
+function shuffledPhysicalTileIds(random: () => number) {
+  const ids: string[] = [];
+  for (const color of OKEY_RULESET_V1.tiles.colors) {
+    for (let value = OKEY_RULESET_V1.tiles.minimumValue; value <= OKEY_RULESET_V1.tiles.maximumValue; value += 1) {
+      for (let copy = 1; copy <= OKEY_RULESET_V1.tiles.copiesPerTile; copy += 1) {
+        ids.push(`${color}-${value}-${copy}`);
+      }
+    }
+  }
+  for (let copy = 1; copy <= OKEY_RULESET_V1.tiles.fakeJokerCount; copy += 1) {
+    ids.push(`fake-joker-${copy}`);
+  }
+  for (let index = ids.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [ids[index], ids[swapIndex]] = [ids[swapIndex], ids[index]];
+  }
+  return ids;
+}
+
 function tile(value: number, options: Partial<OkeyTile> = {}): OkeyTile {
   sequence += 1;
   return { id: `test-${value}-${sequence}`, color: "red", value, copy: 1, ...options };
@@ -37,6 +64,38 @@ test("initial deals preserve all 106 unique physical tiles for every dealer seat
       assert.equal(state.players[dealer].hand.length, 15);
       assert.equal(state.currentPlayerIndex, dealer);
     }
+  }
+});
+
+test("initial deal consumes one shuffle in dealer-relative 3-2-2-2 then 3-per-player batches", () => {
+  for (let dealer = 0; dealer < OKEY_RULESET_V1.table.playerCount; dealer += 1) {
+    const seed = 700 + dealer;
+    const state = createInitialOkeyGame(dealer, seededRandom(seed));
+    const remainingIds = shuffledPhysicalTileIds(seededRandom(seed));
+    const expectedHands = Array.from({ length: OKEY_RULESET_V1.table.playerCount }, () => [] as string[]);
+    const dealOrder = Array.from(
+      { length: OKEY_RULESET_V1.table.playerCount },
+      (_, offset) => (dealer + offset) % OKEY_RULESET_V1.table.playerCount,
+    );
+
+    for (let dealRound = 0; dealRound < 5; dealRound += 1) {
+      for (const playerIndex of dealOrder) {
+        const batchSize = dealRound === 0 && playerIndex !== dealer ? 2 : 3;
+        expectedHands[playerIndex].push(...remainingIds.splice(0, batchSize));
+      }
+    }
+
+    const indicatorIndex = remainingIds.findIndex((id) => !id.startsWith("fake-joker-"));
+    const [expectedIndicatorId] = remainingIds.splice(indicatorIndex, 1);
+
+    for (let playerIndex = 0; playerIndex < state.players.length; playerIndex += 1) {
+      assert.deepEqual(
+        state.players[playerIndex].hand.map((entry) => entry.id),
+        expectedHands[playerIndex],
+      );
+    }
+    assert.equal(state.indicatorTile.id, expectedIndicatorId);
+    assert.deepEqual(state.deck.map((entry) => entry.id), remainingIds);
   }
 });
 

@@ -1756,6 +1756,7 @@ const shouldShowScorePopup =
               }}
             >
               <Text style={styles.openSetsButtonText}>
+                {openAction.mode === "declare-konkan" ? "کۆنکان" : "ڕاخستن"}
               </Text>
             </Pressable>
           ) : null}
