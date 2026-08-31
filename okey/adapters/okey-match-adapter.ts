@@ -15,6 +15,11 @@ export type OkeyEliminatedTurnClaim = {
   expectedActorId: string;
 };
 
+export type OkeyBotTurnClaim = {
+  expectedVersion: number;
+  expectedActorId: string;
+};
+
 export interface OnlineOkeyMatchAdapter {
   readonly kind: "online";
 
@@ -43,6 +48,8 @@ export interface OnlineOkeyMatchAdapter {
   playEliminatedTurn(claim: OkeyEliminatedTurnClaim): Promise<void>;
 
   startNextRound(claim: OkeyNextRoundClaim): Promise<void>;
+
+  processBotTurn(claim: OkeyBotTurnClaim): Promise<void>;
 
   reconnect(): Promise<void>;
 

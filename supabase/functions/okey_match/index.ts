@@ -14,6 +14,7 @@ import {
   startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeCommand,
   type OkeyAuthoritativeMatchState,
+  type OkeyMatchServerProjection,
 } from "../../../okey/server/okey-authoritative.ts";
 
 import type {
@@ -25,7 +26,6 @@ import {
   type OkeyActionEvent,
   type OkeyActionEventDraft,
 } from "../../../okey/server/okey-action-events.ts";
-import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 
 type OkeyAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -286,7 +286,9 @@ serve(async (req) => {
   );
 
   const broadcastStateUpdate = async (
+    commandId: string,
     version: number,
+    publicProjection: OkeyMatchServerProjection,
     actionEvents: OkeyActionEvent[] = [],
   ) => {
     const channel = service.channel(
@@ -298,7 +300,9 @@ serve(async (req) => {
       event: "state_update",
       payload: {
         matchId,
+        commandId,
         version,
+        publicProjection,
         actionEvents,
       },
     });
@@ -983,7 +987,9 @@ const commit =
    */
   try {
     await broadcastStateUpdate(
+      body.commandId as string,
       commit.version,
+      publicProjection,
       committedActionEvents,
     );
   } catch (broadcastError) {
@@ -991,23 +997,6 @@ const commit =
       "Okey match broadcast failed",
       broadcastError,
     );
-  }
-
-  if (!committedState.matchFinished) {
-    try {
-      if (!workerSecret) {
-        throw new Error("okey_worker_secret_not_configured");
-      }
-      await handOffOkeyBotTurn({
-        supabaseUrl,
-        workerSecret,
-        matchId,
-        state: committedState,
-        version: Number(commit.version),
-      });
-    } catch (handoffError) {
-      console.error(`Okey Bot handoff failed for ${matchId}`, handoffError);
-    }
   }
 
   if (committedState.matchFinished) {

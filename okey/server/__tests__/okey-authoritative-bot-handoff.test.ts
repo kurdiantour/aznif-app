@@ -34,8 +34,8 @@ test("external commits, Bot commits and maintenance all use one-step exact claim
   const maintenance = readFileSync("supabase/functions/okey_maintenance/index.ts", "utf8");
   const handoff = readFileSync("supabase/functions/_shared/okey-bot-handoff.ts", "utf8");
 
-  assert.match(matchGateway, /state: committedState,[\s\S]*version: Number\(commit\.version\)/);
-  assert.match(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
+  assert.doesNotMatch(matchGateway, /handOffOkeyBotTurn/);
+  assert.doesNotMatch(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
   assert.match(worker, /\.is\("membership_released_at", null\)/);
   assert.match(maintenance, /\.eq\("status", "playing"\)[\s\S]*handOffOkeyBotTurn/);
   assert.match(handoff, /expected_version: claim\.expectedVersion/);

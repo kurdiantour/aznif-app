@@ -7,11 +7,9 @@ test("opponent Draw always resumes the queued Discard owned by the same player",
     "utf8",
   );
 
-  expect(coordinator).toContain("presentationQueueRef.current.push({ event, projectionState: null })");
-  expect(coordinator).toContain("ownerPlayerId: event.actorPlayerId");
-  expect(coordinator).toMatch(
-    /if \(!startDiscardFlight\(\{[\s\S]*?ownerPlayerId: event\.actorPlayerId,[\s\S]*?\}\)\) return false;\s*presentationQueueRef\.current\.shift\(\)/,
-  );
+  expect(coordinator).toContain("presentationQueueRef.current.push({ event })");
+  expect(coordinator).toContain("event.actorPlayerId");
+  expect(coordinator).toMatch(/if \(!sourceSeatRect \|\| !discardRect\) return false/);
 });
 
 test("opponent presentation consumes ordered action events without snapshot diff guards", () => {
@@ -22,7 +20,7 @@ test("opponent presentation consumes ordered action events without snapshot diff
 
   expect(coordinator).toContain("adapter.subscribeActionEvents");
   expect(coordinator).toMatch(
-    /left\.version - right\.version \|\| left\.sequence - right\.sequence/,
+    /left\.event\.version - right\.event\.version \|\|\s*left\.event\.sequence - right\.event\.sequence/,
   );
   expect(coordinator).not.toContain("previousDiscardCountRef");
   expect(coordinator).not.toContain("previousDiscardPileRef");

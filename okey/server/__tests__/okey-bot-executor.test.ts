@@ -200,7 +200,13 @@ test("successful commit broadcasts the committed action events", async () => {
   const events = [{ matchId: "match-1", version: 6, sequence: 1, type: "draw", actorPlayerId: "player-1", payload: {} }];
   const { result, broadcasts } = await execute(state, { state, committedEvents: events });
   assert.equal(result.processed, true);
-  assert.deepEqual(broadcasts, [{ matchId: "match-1", version: 6, actionEvents: events }]);
+  assert.equal(broadcasts.length, 1);
+  assert.equal(broadcasts[0].matchId, "match-1");
+  assert.equal(broadcasts[0].commandId, "id:okey:match-1:system-bot-draw:5");
+  assert.equal(broadcasts[0].version, 6);
+  assert.equal(broadcasts[0].publicProjection.version, 6);
+  assert.equal(broadcasts[0].publicProjection.players.some((player: any) => Array.isArray(player.hand)), false);
+  assert.deepEqual(broadcasts[0].actionEvents, events);
 });
 
 test("a Bot terminal discard preserves canonical match settlement", async () => {

@@ -145,7 +145,13 @@ serve(async (request) => {
   await channel.send({
     type: "broadcast",
     event: "state_update",
-    payload: { matchId, version: 0 },
+    payload: {
+      matchId,
+      commandId: crypto.randomUUID(),
+      version: 0,
+      publicProjection: projection,
+      actionEvents: [],
+    },
   });
   await service.removeChannel(channel);
   return json({ matchId, resumed: false }, 201);

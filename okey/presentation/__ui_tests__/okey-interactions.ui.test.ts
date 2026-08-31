@@ -81,3 +81,11 @@ test("rapid double tap discards the same rack tile without waiting for a selecti
     /previousTap\?\.tileId === tileId[\s\S]*?tappedAt - previousTap\.tappedAt <= 350[\s\S]*?startDiscardFlight\(tileId\)/,
   );
 });
+
+test("a finished online room keeps its authoritative match until route exit", () => {
+  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
+
+  expect(scene).toContain(
+    'onlineRoom?.status === "playing" || onlineRoom?.status === "finished"',
+  );
+});

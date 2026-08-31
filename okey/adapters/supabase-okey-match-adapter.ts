@@ -4,6 +4,7 @@ import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 import type {
   OkeyEliminatedTurnClaim,
   OkeyNextRoundClaim,
+  OkeyBotTurnClaim,
   OnlineOkeyMatchAdapter,
 } from "@/okey/adapters/okey-match-adapter";
 
@@ -74,6 +75,11 @@ export class SupabaseOkeyMatchAdapter
     new Set<(event: OkeyActionEvent) => void>();
 
   private readonly resetListeners = new Set<() => void>();
+
+  private readonly invalidationListeners =
+    new Set<(snapshot: OkeyMatchServerProjection) => void>();
+
+  private readonly statusListeners = new Set<(status: string, error?: unknown) => void>();
 
   private actionEventVersion: number | null = null;
   private readonly deliveredActionEventKeys = new Set<string>();
@@ -147,7 +153,9 @@ export class SupabaseOkeyMatchAdapter
 
       if (
         this.listeners.size === 0 &&
-        this.actionEventListeners.size === 0
+        this.actionEventListeners.size === 0 &&
+        this.invalidationListeners.size === 0 &&
+        this.statusListeners.size === 0
       ) {
         this.closeRealtimeChannel();
       }
@@ -159,9 +167,38 @@ export class SupabaseOkeyMatchAdapter
     if (!this.channel) this.openRealtimeChannel();
     return () => {
       this.actionEventListeners.delete(listener);
-      if (this.listeners.size === 0 && this.actionEventListeners.size === 0) {
+      if (
+        this.listeners.size === 0 && this.actionEventListeners.size === 0 &&
+        this.invalidationListeners.size === 0 && this.statusListeners.size === 0
+      ) {
         this.closeRealtimeChannel();
       }
+    };
+  }
+
+  subscribeInvalidation(
+    listener: (snapshot: OkeyMatchServerProjection) => void,
+  ): () => void {
+    this.invalidationListeners.add(listener);
+    if (!this.channel) this.openRealtimeChannel();
+    return () => {
+      this.invalidationListeners.delete(listener);
+      if (
+        this.listeners.size === 0 && this.actionEventListeners.size === 0 &&
+        this.invalidationListeners.size === 0 && this.statusListeners.size === 0
+      ) this.closeRealtimeChannel();
+    };
+  }
+
+  subscribeStatus(listener: (status: string, error?: unknown) => void): () => void {
+    this.statusListeners.add(listener);
+    if (!this.channel) this.openRealtimeChannel();
+    return () => {
+      this.statusListeners.delete(listener);
+      if (
+        this.listeners.size === 0 && this.actionEventListeners.size === 0 &&
+        this.invalidationListeners.size === 0 && this.statusListeners.size === 0
+      ) this.closeRealtimeChannel();
     };
   }
 
@@ -195,7 +232,7 @@ export class SupabaseOkeyMatchAdapter
           if ((this.snapshot?.version ?? -1) >= pendingVersion) {
             this.pendingRealtimeVersion = null;
           } else {
-            void this.refreshAfterRealtimeInvalidation(pendingVersion).catch(() => {});
+            this.refreshRealtimeGap(pendingVersion);
           }
         }
       });
@@ -341,11 +378,29 @@ export class SupabaseOkeyMatchAdapter
   async startNextRound(
     claim: OkeyNextRoundClaim,
   ): Promise<void> {
-    return this.runAuthoritativeMutation(() => ({
-      action: "start-next-round",
-      expectedVersion: claim.expectedVersion,
-      expectedRound: claim.expectedRound,
-    }));
+    return this.runAuthoritativeMutation(
+      () => ({
+        action: "start-next-round",
+        expectedVersion: claim.expectedVersion,
+        expectedRound: claim.expectedRound,
+      }),
+      { refreshOnError: false },
+    );
+  }
+
+  async processBotTurn(
+    claim: OkeyBotTurnClaim,
+  ): Promise<void> {
+    const { data, error } = await supabase.functions.invoke("process_bot_turns", {
+      body: {
+        mode: "okey",
+        match_id: this.matchId,
+        expected_version: claim.expectedVersion,
+        expected_actor_id: claim.expectedActorId,
+      },
+    });
+    if (error) throw error;
+    return data;
   }
 
   async resolveTimeout(
@@ -611,6 +666,45 @@ export class SupabaseOkeyMatchAdapter
     }
   }
 
+  private mergePublicProjection(
+    publicProjection: OkeyMatchServerProjection,
+  ): OkeyMatchServerProjection | null {
+    if (!this.snapshot) return null;
+
+    const privateHands = new Map(
+      this.snapshot.players.flatMap((player) =>
+        Array.isArray(player.hand)
+          ? [[player.id, player.hand] as const]
+          : [],
+      ),
+    );
+
+    return {
+      ...publicProjection,
+      players: publicProjection.players.map((player) => {
+        const hand = privateHands.get(player.id);
+        return hand ? { ...player, hand } : player;
+      }),
+      settlement: 'settlement' in publicProjection
+        ? publicProjection.settlement ?? null
+        : this.snapshot.settlement ?? null,
+    };
+  }
+
+  private notifyRealtimeSnapshot(snapshot: OkeyMatchServerProjection): void {
+    for (const listener of this.invalidationListeners) listener(snapshot);
+  }
+
+  private refreshRealtimeGap(version: number): void {
+    void this.refreshAfterRealtimeInvalidation(version)
+      .then(() => {
+        if (this.snapshot && this.snapshot.version >= version) {
+          this.notifyRealtimeSnapshot(this.snapshot);
+        }
+      })
+      .catch(() => {});
+  }
+
   private openRealtimeChannel(): void {
     this.closed = false;
 
@@ -637,7 +731,9 @@ export class SupabaseOkeyMatchAdapter
 
           const message = payload as {
             matchId?: string;
+            commandId?: string;
             version?: number;
+            publicProjection?: OkeyMatchServerProjection;
             actionEvents?: OkeyActionEvent[];
           };
 
@@ -648,48 +744,51 @@ export class SupabaseOkeyMatchAdapter
             return;
           }
 
-          const isSettlementInvalidation =
-            this.snapshot !== null &&
-            message.version === this.snapshot.version &&
-            this.snapshot.matchFinished &&
-            !this.snapshot.settlement;
-
-          if (
-            this.snapshot &&
-            message.version <= this.snapshot.version &&
-            !isSettlementInvalidation
-          ) {
-            return;
-          }
-
-          if (isSettlementInvalidation) {
-            void this.refresh().catch(() => {});
+          const currentVersion = this.snapshot?.version;
+          if (currentVersion !== undefined && message.version <= currentVersion) {
             return;
           }
 
           const isVersionGap =
-            (this.snapshot !== null && message.version > this.snapshot.version + 1) ||
-            (this.actionEventVersion !== null && message.version > this.actionEventVersion + 1);
+            currentVersion === undefined || message.version > currentVersion + 1;
+          const projection = message.publicProjection;
+          const hasUsableProjection =
+            projection !== null &&
+            typeof projection === 'object' &&
+            projection.version === message.version &&
+            Array.isArray(projection.players);
+
           if (isVersionGap) {
             this.triggerReset();
-          }
-
-          if (this.authoritativeCommandsPending > 0) {
-            this.pendingRealtimeVersion = Math.max(
-              this.pendingRealtimeVersion ?? -1,
-              message.version,
-            );
+            if (this.authoritativeCommandsPending > 0) {
+              this.pendingRealtimeVersion = Math.max(
+                this.pendingRealtimeVersion ?? -1,
+                message.version,
+              );
+              return;
+            }
+            this.refreshRealtimeGap(message.version);
             return;
           }
-          void this.refreshAfterRealtimeInvalidation(
-            message.version,
-          ).catch(() => {});
+
+          if (!hasUsableProjection) return;
+
+          const merged = this.mergePublicProjection(projection);
+          if (!merged) {
+            this.refreshRealtimeGap(message.version);
+            return;
+          }
+
+          this.publishActionEvents(
+            Array.isArray(message.actionEvents) ? message.actionEvents : [],
+          );
+          this.publish(merged);
+          this.notifyRealtimeSnapshot(merged);
         },
       )
-      .subscribe((status) => {
-        if (
-          status === "SUBSCRIBED"
-        ) {
+      .subscribe((status, error) => {
+        for (const listener of this.statusListeners) listener(status, error);
+        if (status === "SUBSCRIBED" && this.invalidationListeners.size === 0) {
           void this.refresh().catch(() => {});
         }
       });
@@ -710,5 +809,3 @@ export class SupabaseOkeyMatchAdapter
     this.channel = null;
   }
 }
-
-

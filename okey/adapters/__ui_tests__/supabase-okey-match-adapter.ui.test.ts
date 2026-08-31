@@ -1,13 +1,20 @@
 import { beforeEach, expect, jest, test } from "@jest/globals";
 
 const mockInvoke = jest.fn<(...args: any[]) => Promise<any>>();
+let mockRealtimeHandler: ((message: any) => void) | null = null;
+const mockRealtimeChannel: any = {};
+mockRealtimeChannel.on = jest.fn((...args: any[]) => {
+  mockRealtimeHandler = args[2];
+  return mockRealtimeChannel;
+});
+mockRealtimeChannel.subscribe = jest.fn(() => mockRealtimeChannel);
 
 jest.mock("@/lib/supabase", () => ({
   supabase: {
     functions: {
       invoke: (...args: unknown[]) => mockInvoke(...args),
     },
-    channel: jest.fn(),
+    channel: jest.fn(() => mockRealtimeChannel),
     removeChannel: jest.fn(),
   },
 }));
@@ -42,6 +49,9 @@ function deferred<T>() {
 
 beforeEach(() => {
   mockInvoke.mockReset();
+  mockRealtimeHandler = null;
+  mockRealtimeChannel.on.mockClear();
+  mockRealtimeChannel.subscribe.mockClear();
 });
 
 test("authoritative commands are sent one at a time and the queued command uses the latest version", async () => {
@@ -253,4 +263,90 @@ test("Realtime invalidations preserve the highest pending version during refresh
     mockInvoke.mock.calls.map((call) => (call[1] as any).body.action),
   ).toEqual(["snapshot", "snapshot"]);
   expect(adapter.getSnapshot()?.version).toBe(3);
+});
+
+test('contiguous Realtime applies projection and events without fetching', () => {
+  const adapter = new SupabaseOkeyMatchAdapter('match-realtime');
+  const tile = { id: 'local-tile', color: 'red', value: 7, copy: 1 };
+  (adapter as any).snapshot = {
+    ...projection(10),
+    settlement: { type: 'winner' },
+    players: [
+      { id: 'local', handCount: 1, hand: [tile] },
+      { id: 'remote', handCount: 14 },
+    ],
+  };
+  const publicProjection = {
+    ...projection(11),
+    players: [
+      { id: 'local', handCount: 2 },
+      { id: 'remote', handCount: 13 },
+    ],
+  };
+  delete (publicProjection as any).settlement;
+  const event = {
+    matchId: 'match-realtime', version: 11, sequence: 1,
+    type: 'draw', actorPlayerId: 'remote', payload: { source: 'discard' },
+  } as any;
+  const snapshots: any[] = [];
+  const events: any[] = [];
+  adapter.subscribeActionEvents((next) => events.push(next));
+  adapter.subscribeInvalidation((next) => snapshots.push(next));
+
+  mockRealtimeHandler!({ payload: {
+    matchId: 'match-realtime', commandId: 'command-11', version: 11,
+    publicProjection, actionEvents: [event],
+  } });
+
+  expect(mockInvoke).not.toHaveBeenCalled();
+  expect(adapter.getSnapshot()).toMatchObject({
+    version: 11,
+    settlement: { type: 'winner' },
+    players: [
+      { id: 'local', handCount: 2, hand: [tile] },
+      { id: 'remote', handCount: 13 },
+    ],
+  });
+  expect(snapshots).toHaveLength(1);
+  expect(events).toEqual([event]);
+
+  mockRealtimeHandler!({ payload: {
+    matchId: 'match-realtime', commandId: 'duplicate', version: 11,
+    publicProjection, actionEvents: [{ ...event, sequence: 2 }],
+  } });
+  expect(snapshots).toHaveLength(1);
+  expect(events).toEqual([event]);
+
+  mockRealtimeHandler!({ payload: {
+    matchId: 'match-realtime', commandId: 'malformed-next', version: 12,
+    actionEvents: [{ ...event, version: 12, sequence: 3 }],
+  } });
+  expect(mockInvoke).not.toHaveBeenCalled();
+  expect(adapter.getSnapshot()?.version).toBe(11);
+});
+
+test('Realtime version gap fetches one recovery snapshot', async () => {
+  const adapter = new SupabaseOkeyMatchAdapter('match-gap');
+  setSnapshot(adapter, 3);
+  const recovered = {
+    ...projection(5),
+    players: [{ id: 'local', handCount: 1, hand: [{ id: 'fresh' }] }],
+  };
+  const snapshots: any[] = [];
+  adapter.subscribeInvalidation((next) => snapshots.push(next));
+  mockInvoke.mockResolvedValueOnce({
+    data: { projection: recovered, actionEvents: [] },
+    error: null,
+  });
+
+  mockRealtimeHandler!({ payload: {
+    matchId: 'match-gap', commandId: 'command-5', version: 5,
+    publicProjection: projection(5), actionEvents: [],
+  } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe('snapshot');
+  expect(snapshots).toEqual([recovered]);
+  expect(adapter.getSnapshot()?.version).toBe(5);
 });

@@ -222,6 +222,53 @@ test("closed bot does not spend on a table meld or enter Konkan", () => {
   assert.equal(prepared.state.players[1].hand.some((entry) => entry.id === "closed-spend-r10"), true);
   assert.equal(prepared.state.players[0].melds[0].tiles.length, 3);
 });
+test("opened bot prefers stealing a joker over an earlier ordinary table spend", () => {
+  const state = botState([
+    tile("replacement-red-4-priority", "red", 4),
+    tile("priority-loose", "yellow", 1),
+  ]);
+  state.hasDrawnThisTurn = true;
+  state.players[1] = {
+    ...state.players[1],
+    melds: [{
+      id: "earlier-own-set",
+      ownerId: state.players[1].id,
+      kind: "set",
+      tiles: [
+        tile("own-blue-4", "blue", 4),
+        tile("own-black-4", "black", 4),
+        tile("own-yellow-4", "yellow", 4),
+      ],
+      score: 12,
+    }],
+  };
+  state.players[0] = {
+    ...state.players[0],
+    opened: true,
+    melds: [{
+      id: "later-joker-run",
+      ownerId: state.players[0].id,
+      kind: "run",
+      tiles: [
+        tile("later-red-3", "red", 3),
+        { ...state.okeyTile, id: "later-table-joker" },
+        tile("later-red-5", "red", 5),
+      ],
+      score: 12,
+    }],
+  };
+
+  const prepared = prepareBotTurn(state, { difficulty: "hard" });
+
+  assert.equal(
+    prepared.state.players[0].melds[0].tiles.some((entry) => entry.id === "replacement-red-4-priority"),
+    true,
+  );
+  assert.equal(
+    prepared.state.players[0].melds[0].tiles.some((entry) => entry.id === "later-table-joker"),
+    false,
+  );
+});
 test("opened bot can replace and steal a joker", () => {
   const state = botState([
     tile("replacement-r4-opened", "red", 4),

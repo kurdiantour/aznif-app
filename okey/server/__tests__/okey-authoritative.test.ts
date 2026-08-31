@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createInitialOkeyGame } from "../../engine/okey-engine.ts";
-import { playBotTurn } from "../../engine/okey-bot-engine.ts";
 import {
   applyAuthoritativeOkeyCommand,
   applyAuthoritativeOkeyMatchCommand,

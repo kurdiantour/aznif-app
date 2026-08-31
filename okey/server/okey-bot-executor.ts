@@ -12,6 +12,7 @@ import {
   projectOkeyMatchPublicState,
   settleAuthoritativeOkeyRound,
   type OkeyAuthoritativeMatchState,
+  type OkeyMatchServerProjection,
 } from "./okey-authoritative.ts";
 
 type OkeyAuthoritativeBundle = {
@@ -45,7 +46,9 @@ export type OkeyBotExecutorDependencies = {
   wait?: (milliseconds: number) => Promise<void>;
   broadcastStateUpdate?: (input: {
     matchId: string;
+    commandId: string;
     version: number;
+    publicProjection: OkeyMatchServerProjection;
     actionEvents: OkeyActionEvent[];
   }) => Promise<void>;
   handOffBotTurn?: (input: {
@@ -57,7 +60,13 @@ export type OkeyBotExecutorDependencies = {
 
 async function defaultBroadcast(
   client: any,
-  input: { matchId: string; version: number; actionEvents: OkeyActionEvent[] },
+  input: {
+    matchId: string;
+    commandId: string;
+    version: number;
+    publicProjection: OkeyMatchServerProjection;
+    actionEvents: OkeyActionEvent[];
+  },
 ) {
   const channel = client.channel(`okey-match:${input.matchId}`);
   await channel.send({
@@ -65,7 +74,9 @@ async function defaultBroadcast(
     event: "state_update",
     payload: {
       matchId: input.matchId,
+      commandId: input.commandId,
       version: input.version,
+      publicProjection: input.publicProjection,
       actionEvents: input.actionEvents,
     },
   });
@@ -222,17 +233,23 @@ export async function executeOkeyBotTurn(
     });
     const nextVersion = currentVersion + 1;
     const deadline = getNextOkeyMatchTurnDeadline(nextState);
+    const commandId = await dependencies.deterministicCommandId(
+      `okey:${input.matchId}:system-bot-${botStep}:${currentVersion}`,
+    );
+    const publicProjection = projectOkeyMatchPublicState(
+      nextState,
+      nextVersion,
+      deadline,
+    );
     const { data: commit, error: commitError } = await client
       .rpc("okey_commit_authoritative_action", {
         p_match_id: input.matchId,
         p_user_id: currentPlayer.id,
-        p_command_id: await dependencies.deterministicCommandId(
-          `okey:${input.matchId}:system-bot-${botStep}:${currentVersion}`,
-        ),
+        p_command_id: commandId,
         p_expected_version: currentVersion,
         p_command_type: `system-bot-${botStep}`,
         p_state: nextState,
-        p_projection: projectOkeyMatchPublicState(nextState, nextVersion, deadline),
+        p_projection: publicProjection,
         p_status: nextState.matchFinished ? "finished" : "playing",
         p_turn_deadline_at: deadline,
         p_action_events: actionEventDrafts,
@@ -253,30 +270,22 @@ export async function executeOkeyBotTurn(
     const actionEvents = (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [];
     try {
       await (dependencies.broadcastStateUpdate
-        ? dependencies.broadcastStateUpdate({
+          ? dependencies.broadcastStateUpdate({
             matchId: input.matchId,
+            commandId,
             version: committedVersion,
+            publicProjection,
             actionEvents,
           })
-        : defaultBroadcast(client, {
+          : defaultBroadcast(client, {
             matchId: input.matchId,
+            commandId,
             version: committedVersion,
+            publicProjection,
             actionEvents,
           }));
     } catch (broadcastError) {
       console.error(`Okey bot broadcast failed for ${input.matchId}`, broadcastError);
-    }
-
-    if (!nextState.matchFinished && dependencies.handOffBotTurn) {
-      try {
-        await dependencies.handOffBotTurn({
-          matchId: input.matchId,
-          state: nextState,
-          version: committedVersion,
-        });
-      } catch (handoffError) {
-        console.error(`Okey bot successor handoff failed for ${input.matchId}`, handoffError);
-      }
     }
 
     if (nextState.matchFinished) {

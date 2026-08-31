@@ -27,7 +27,7 @@ import { styles } from "@/okey/components/okeyStyles";
 import { getOkeyOpenAction, getRoundResultScoreDetails, resolveTableMeldAction } from "@/okey/engine/okey-engine";
 import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
-import { useOkeyGame } from "@/okey/hooks/useOkeyGame";
+import { useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
 import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
 import { useOkeyOpponentTileFlightCoordinator, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
@@ -45,14 +45,12 @@ import {
   type MeldDropRect,
   type MeldOffset,
   type ScreenRect,
-  type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
 import {
   findClosestMeldDropTarget,
   isPointInsideRect,
   toLocalScreenRect,
 } from "@/okey/presentation/okey-table-interactions";
-import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 import type {
   OkeyMeld,
   OkeyTeamId,
@@ -107,11 +105,9 @@ function OkeyGameTableSceneContent() {
   const params = useLocalSearchParams<{
     matchId?: string | string[];
     mode?: string | string[];
-    tableId?: string | string[];
   }>();
 
   const onlineMatchId = getRouteParam(params.matchId);
-  const tableId = getRouteParam(params.tableId);
 
   const okeyMatchMode: OkeyMatchMode =
     getRouteParam(params.mode) === "aznif"
@@ -250,7 +246,7 @@ const handleCancelWaiting = useCallback(async () => {
 ]);
 
 const activeOnlineMatchId =
-  onlineRoom?.status === "playing"
+  onlineRoom?.status === "playing" || onlineRoom?.status === "finished"
     ? onlineMatchId
     : undefined;
 
@@ -286,10 +282,6 @@ const { emitFeedback } = useOkeyFeedback();
 const responsiveLayout = useOkeyResponsiveLayout();
 const [showGameChat, setShowGameChat] =
   useState(false);
-const [showLeaveConfirm, setShowLeaveConfirm] =
-  useState(false);
-const [isLeavingMatch, setIsLeavingMatch] =
-  useState(false);
 const okeyChatMembersRef = useRef(onlineRoom?.members ?? []);
 okeyChatMembersRef.current = onlineRoom?.members ?? [];
 
@@ -316,7 +308,7 @@ const okeyChatTransport = useMemo<GameChatTransport>(() => {
   };
 }, []);
 
-const onlineController = useOkeyGame(
+const onlineController = useOkeyMultiplayerGame(
   activeOnlineMatchId,
   currentUserId,
 );
@@ -336,6 +328,7 @@ const {
   roundResults,
   showRoundResultPopup,
   showFinishRevealPopup,
+  completeFinishRevealPresentation,
   currentRoundResult,
   matchFinished,
   matchWinnerTeamId,
@@ -353,6 +346,10 @@ const {
   onlineProjection,
   onlineAdapter,
   leaveOnlineMatch,
+  requestExit,
+  cancelExit,
+  exitConfirmationVisible,
+  leaving,
 } = onlineController;
 
   useEffect(() => {
@@ -401,23 +398,25 @@ const pendingTakeoverTimeoutEventIdRef = useRef<string | null>(null);
 const lastPresentationResumeTokenRef = useRef(lifecycleResumeToken);
 
 const handleConfirmLeaveMatch = useCallback(async () => {
-  if (isLeavingMatch) return;
-  setIsLeavingMatch(true);
+  if (leaving) return;
   try {
     await leaveOnlineMatch();
-    setShowLeaveConfirm(false);
     router.replace(exitRoute);
   } catch (error) {
     console.warn("Unable to leave Okey match", error);
-    setIsLeavingMatch(false);
   }
-}, [isLeavingMatch, leaveOnlineMatch, router]);
+}, [leaving, leaveOnlineMatch, router, exitRoute]);
 
 // Do not expose the hook's local initial value while the authoritative match loads.
 const onlineGameplayReady =
-  onlineRoom?.status === "playing" &&
   onlineProjection !== null &&
-  state.phase === "playing";
+  (onlineRoom?.status === "playing" || matchFinished) &&
+  (
+    state.phase === "playing" ||
+    showFinishRevealPopup ||
+    showRoundResultPopup ||
+    showMatchResultPopup
+  );
 
 const initialStartTransitionPending =
   initialStartTransitionMatchId === onlineMatchId &&
@@ -534,7 +533,6 @@ const turnView = useMemo(
       setOptimisticDiscardRackTile(null);
     }
   }, [humanPlayer.hand, optimisticDiscardRackTile]);
-  const currentPlayer = state.players[state.currentPlayerIndex];
   const winnerPlayer = state.players.find((player) => player.id === state.winnerId);
   const isKonkanFinish = state.phase === "finished" && !!winnerPlayer?.konkan;
   const selectedTile = humanPlayer.hand.find((tile) => tile.id === selectedTileId);
@@ -1060,6 +1058,10 @@ const shouldShowScorePopup =
   });
   useEffect(() => {
     if (!onlineMatchId || !onlineProjection || takeoverExitStartedRef.current) return;
+    // Once the authoritative match is finished, the terminal presentation
+    // owns the screen. Never route a taken-over viewer away before the
+    // final animation/result popup is shown.
+    if (onlineProjection.matchFinished) return;
 
     const viewer = onlineProjection.players.find((player) => Array.isArray(player.hand));
     if (!viewer) return;
@@ -1563,6 +1565,23 @@ const shouldShowScorePopup =
     return () => clearTimeout(timer);
   }, [showFinishRevealPopup, tileFlight]);
 
+  useEffect(() => {
+    if (!matchFinished || !showFinishRevealPopup) return;
+
+    // Safety net only: the normal path is OkeyFinalTileCelebration.onComplete.
+    // If geometry/animation completion is ever lost, do not leave the player
+    // trapped on the finished table forever.
+    const timer = setTimeout(() => {
+      completeFinishRevealPresentation();
+    }, 12_000);
+
+    return () => clearTimeout(timer);
+  }, [
+    completeFinishRevealPresentation,
+    matchFinished,
+    showFinishRevealPopup,
+  ]);
+
 
   
   return (
@@ -1575,7 +1594,6 @@ const shouldShowScorePopup =
 
 <WaitingPlayersPopup
   visible={shouldShowWaitingPlayers}
-  memberCount={onlineRoom?.memberCount ?? 0}
   entryFee={onlineRoom?.entryFee ?? 0}
   currency={onlineRoom?.currency ?? "fun"}
   members={onlineRoom?.members ?? []}
@@ -1755,7 +1773,13 @@ const shouldShowScorePopup =
             sourceRect={discardTopRectRef.current ? toLocalRect(discardTopRectRef.current) : null}
             holdAfterAnimationMs={isKonkanFinish ? 3000 : undefined}
             playFinishSound
-            onComplete={isKonkanFinish ? completeKonkanFinalTile : undefined}
+            onComplete={
+              matchFinished
+                ? completeFinishRevealPresentation
+                : isKonkanFinish
+                  ? completeKonkanFinalTile
+                  : undefined
+            }
           />
         ) : null}
                   <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
@@ -1901,14 +1925,14 @@ const shouldShowScorePopup =
   onClose={closeMatchMenu}
   onLeavePress={() => {
     closeMatchMenu();
-    setShowLeaveConfirm(true);
+    requestExit();
   }}
 />
 <OkeyLeaveMatchConfirmPopup
-  visible={showLeaveConfirm}
+  visible={exitConfirmationVisible}
   mode={okeyMatchMode}
-  loading={isLeavingMatch}
-  onCancel={() => setShowLeaveConfirm(false)}
+  loading={leaving}
+  onCancel={cancelExit}
   onConfirm={() => {
     void handleConfirmLeaveMatch();
   }}
@@ -2005,3 +2029,4 @@ const forceKonkanStyles = StyleSheet.create({
     backgroundColor: "#f8d774",
   },
 });
+

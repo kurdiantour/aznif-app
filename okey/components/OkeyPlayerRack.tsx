@@ -343,8 +343,7 @@ export function OkeyPlayerRack({
     externalHoverTarget,
     getTileShiftValue,
     getTilePanHandlers,
-    dragStartedRef,
-} = useOkeyRackDrag({
+  } = useOkeyRackDrag({
   tiles,
   okeyTile,
   stagedTileIdSet,

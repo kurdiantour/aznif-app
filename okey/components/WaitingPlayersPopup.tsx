@@ -14,7 +14,6 @@ import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
 
 type Props = {
   visible: boolean;
-  memberCount: number;
   entryFee: number;
   currency: "fun" | "aznif";
   members: {
@@ -29,7 +28,6 @@ type Props = {
 
 export default function WaitingPlayersPopup({
   visible,
-  memberCount,
   entryFee,
   currency,
   members,

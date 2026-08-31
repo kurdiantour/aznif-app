@@ -22,7 +22,7 @@ function getMeldKind(tiles: OkeyTile[], okeyTile: OkeyTile): OkeyMeld["kind"] {
 }
 
 function getRackMeldPlan(contiguousGroups: OkeyTile[][], okeyTile: OkeyTile): RackOpenLayout {
-  const groupOffsets = contiguousGroups.reduce<number[]>((offsets, group, groupIndex) => {
+  const groupOffsets = contiguousGroups.reduce<number[]>((offsets, _group, groupIndex) => {
     offsets[groupIndex] = groupIndex === 0 ? 0 : offsets[groupIndex - 1] + contiguousGroups[groupIndex - 1].length;
     return offsets;
   }, []);

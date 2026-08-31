@@ -30,6 +30,11 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({}),
 }));
 
+jest.mock("expo-audio", () => ({
+  setAudioModeAsync: jest.fn().mockResolvedValue(undefined),
+  useAudioPlayer: jest.fn(() => ({ play: jest.fn(), seekTo: jest.fn() })),
+}));
+
 beforeEach(() => {
   mockAsyncStorage.clear();
   jest.clearAllMocks();

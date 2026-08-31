@@ -2,10 +2,10 @@ import { expect, jest, test } from "@jest/globals";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Pressable, Text, View } from "react-native";
 
-import { useOkeyGame } from "../useOkeyGame";
+import { useOkeyMultiplayerGame } from "../useOkeyMultiplayerGame";
 
 function OnlineOnlyFallbackHarness() {
-  const game = useOkeyGame();
+  const game = useOkeyMultiplayerGame();
   const player = game.state.players[0];
   return (
     <View>

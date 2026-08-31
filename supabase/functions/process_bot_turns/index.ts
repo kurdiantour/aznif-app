@@ -22,7 +22,6 @@ import {
   roundToNearestFive,
 } from "../_shared/game-utils.ts";
 import { executeOkeyBotTurn } from "../../../okey/server/okey-bot-executor.ts";
-import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 
@@ -185,18 +184,6 @@ serve(async (req) => {
       }, {
         client: svc,
         deterministicCommandId,
-        handOffBotTurn: async ({ matchId, state, version }) => {
-          if (!SUPABASE_URL || !OKEY_WORKER_SECRET) {
-            throw new Error("okey_worker_handoff_not_configured");
-          }
-          return handOffOkeyBotTurn({
-            supabaseUrl: SUPABASE_URL,
-            workerSecret: OKEY_WORKER_SECRET,
-            matchId,
-            state,
-            version,
-          });
-        },
       }));
     }
 

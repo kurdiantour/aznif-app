@@ -4,6 +4,7 @@ import test from "node:test";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const migration = read("supabase/migrations/20260824141125_okey_preview_test_matches.sql");
+const legacyCleanup = read("supabase/migrations/20260831072553_remove_legacy_okey_preview_test_rpcs.sql");
 const gateway = read("supabase/functions/okey_test_match/index.ts");
 const matchGateway = read("supabase/functions/okey_match/index.ts");
 const worker = read("supabase/functions/process_bot_turns/index.ts");
@@ -35,4 +36,13 @@ test("test matches cannot change production economy or rewards", () => {
   assert.match(matchGateway, /economyApplied: false/);
   assert.match(executor, /economyApplied: false/);
   assert.match(migration, /entry_fee[\s\S]*0, 'fun', 0, 0, 0, 0, 0, true/);
+});
+
+test("legacy Preview RPCs are removed without deleting the current test-match RPC", () => {
+  assert.match(legacyCleanup, /okey_get_active_preview_test_match/);
+  assert.match(legacyCleanup, /okey_get_preview_test_bot_accounts/);
+  assert.match(legacyCleanup, /okey_register_preview_test_bot_account/);
+  assert.match(legacyCleanup, /pg_get_function_identity_arguments/);
+  assert.doesNotMatch(legacyCleanup, /'okey_create_preview_test_match'/);
+  assert.match(gateway, /okey_create_preview_test_match/);
 });

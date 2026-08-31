@@ -667,6 +667,7 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
   if (!player) return null;
   const requiresKonkanLock = player.konkan;
   const alreadyLocked = requiresKonkanLock && hasKonkanLock(state, player.id);
+  let firstOrdinaryTarget: SpendTarget | null = null;
 
   for (const targetPlayerIndex of getSpendCandidatePlayerIndexes(state, playerIndex)) {
     const targetPlayer = state.players[targetPlayerIndex];
@@ -692,10 +693,10 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
       }
     }
 
-    if (bestForPlayer) return bestForPlayer;
+    firstOrdinaryTarget ??= bestForPlayer;
   }
 
-  return null;
+  return firstOrdinaryTarget;
 }
 
 export function canSpendTileOnBestMeld(state: OkeyGameState, playerIndex: number, tileId: string): boolean {

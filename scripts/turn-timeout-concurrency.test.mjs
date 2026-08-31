@@ -29,8 +29,16 @@ const okeyAdapterSource = readFileSync(
   "okey/adapters/supabase-okey-match-adapter.ts",
   "utf8",
 );
-const okeyTimeoutControllerSource = readFileSync(
-  "okey/hooks/useOkeyTimeoutController.ts",
+const multiplayerMatchContractSource = readFileSync(
+  "lib/multiplayer/match/contracts.ts",
+  "utf8",
+);
+const multiplayerMatchLifecycleSource = readFileSync(
+  "lib/multiplayer/match/lifecycle.ts",
+  "utf8",
+);
+const multiplayerMatchHookSource = readFileSync(
+  "lib/multiplayer/match/use-multiplayer-match.ts",
   "utf8",
 );
 const apiSource = readFileSync(
@@ -176,7 +184,7 @@ test("Domino 2v2 exposes the atomic timeout protocol for four clients", async ()
   assert.equal(atomicRoom.processedCount(), 1);
 });
 
-test("Okey timeout uses server deadline and atomic expectedVersion", () => {
+test("Okey timeout uses the shared Core deadline and atomic turn identity", () => {
   for (const code of EXPECTED_CODES) {
     assert.match(okeyMatchSource, new RegExp(`"${code}"`));
   }
@@ -184,8 +192,17 @@ test("Okey timeout uses server deadline and atomic expectedVersion", () => {
   assert.match(okeyMatchSource, /serverNow: new Date\(\)\.toISOString\(\)/);
   assert.match(okeyMatchSource, /retryAfterMs: Math\.max/);
   assert.match(okeyAdapterSource, /serverClockOffsetMs/);
-  assert.match(okeyTimeoutControllerSource, /expiresAtMs - synchronizedNow/);
-  assert.match(okeyTimeoutControllerSource, /deadlineMs - synchronizedNow/);
+  assert.match(multiplayerMatchContractSource, /expectedVersion: number/);
+  assert.match(multiplayerMatchContractSource, /expectedTurnDeadlineAt: string/);
+  assert.match(multiplayerMatchContractSource, /expectedTurnPlayerId: string/);
+  assert.match(multiplayerMatchLifecycleSource, /getTurnIdentity/);
+  assert.match(multiplayerMatchLifecycleSource, /claim\.expectedVersion/);
+  assert.match(multiplayerMatchLifecycleSource, /claim\.expectedTurnDeadlineAt/);
+  assert.match(multiplayerMatchLifecycleSource, /claim\.expectedTurnPlayerId/);
+  assert.match(multiplayerMatchHookSource, /timeoutInFlightRef\.current/);
+  assert.match(multiplayerMatchHookSource, /timeoutKeyRef\.current !== key/);
+  assert.match(multiplayerMatchHookSource, /expiresAtMs - serverNowMs/);
+  assert.match(multiplayerMatchHookSource, /await refresh\(\)/);
 });
 
 

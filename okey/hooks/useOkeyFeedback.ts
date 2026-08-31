@@ -99,12 +99,14 @@ export type OkeyFeedbackDecision = {
 };
 
 export class OkeyFeedbackGate {
+  private readonly maxKeys: number;
   private active = true;
   private preferences: OkeyFeedbackPreferences;
   private readonly consumedKeys = new Set<string>();
   private readonly keyQueue: string[] = [];
 
-  constructor(preferences: OkeyFeedbackPreferences, private readonly maxKeys = 256) {
+  constructor(preferences: OkeyFeedbackPreferences, maxKeys = 256) {
+    this.maxKeys = maxKeys;
     this.preferences = preferences;
   }
 

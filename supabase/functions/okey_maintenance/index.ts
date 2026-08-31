@@ -6,6 +6,7 @@ import {
   projectOkeyMatchPublicState,
   startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeMatchState,
+  type OkeyMatchServerProjection,
 } from "../../../okey/server/okey-authoritative.ts";
 import type { OkeyActionEvent } from "../../../okey/server/okey-action-events.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
@@ -19,6 +20,7 @@ type MatchRow = {
   status: "finished";
   settlement_at: string | null;
   is_test: boolean;
+  public_projection: OkeyMatchServerProjection;
 };
 
 type RecoverableRoundRow = {
@@ -66,7 +68,9 @@ serve(async (request) => {
 
   const broadcast = async (
     matchId: string,
+    commandId: string,
     version: number,
+    publicProjection: OkeyMatchServerProjection,
     actionEvents: OkeyActionEvent[] = [],
   ) => {
     const channel = service.channel(`okey-match:${matchId}`);
@@ -76,7 +80,9 @@ serve(async (request) => {
       event: "state_update",
       payload: {
         matchId,
+        commandId,
         version,
+        publicProjection,
         actionEvents,
       },
     });
@@ -87,7 +93,7 @@ serve(async (request) => {
   const { data: settlementMatches, error: matchesError } = await service
     .schema("okey")
     .from("matches")
-    .select("id, version, status, settlement_at, is_test")
+    .select("id, version, status, settlement_at, is_test, public_projection")
     .eq("status", "finished")
     .is("settlement_at", null)
     .order("updated_at", { ascending: true })
@@ -133,7 +139,14 @@ serve(async (request) => {
         if (testSettlementError) throw new Error(testSettlementError.message);
         recoveredSettlements += 1;
         try {
-          await broadcast(match.id, Number(match.version));
+          await broadcast(
+            match.id,
+            await deterministicCommandId(
+              `okey:${match.id}:maintenance-test-settlement:${match.version}`,
+            ),
+            Number(match.version),
+            match.public_projection,
+          );
         } catch (broadcastError) {
           console.error(
             `Okey test recovery broadcast failed for ${match.id}`,
@@ -191,7 +204,11 @@ serve(async (request) => {
       try {
         await broadcast(
           match.id,
+          await deterministicCommandId(
+            `okey:${match.id}:maintenance-settlement:${match.version}`,
+          ),
           Number(match.version),
+          match.public_projection,
         );
       } catch (broadcastError) {
         console.error(
@@ -287,23 +304,25 @@ serve(async (request) => {
       const nextState = startAuthoritativeOkeyNextRound(state);
       const nextVersion = expectedVersion + 1;
       const deadline = getNextOkeyMatchTurnDeadline(nextState);
+      const commandId = await deterministicCommandId(
+        "okey:" + match.id +
+          ":maintenance-next-round:" + expectedVersion +
+          ":" + state.currentRound,
+      );
+      const publicProjection = projectOkeyMatchPublicState(
+        nextState,
+        nextVersion,
+        deadline,
+      );
       const { data: commit, error: commitError } = await service
         .rpc("okey_commit_authoritative_action", {
           p_match_id: match.id,
           p_user_id: claimantSeat.user_id,
-          p_command_id: await deterministicCommandId(
-            "okey:" + match.id +
-              ":maintenance-next-round:" + expectedVersion +
-              ":" + state.currentRound,
-          ),
+          p_command_id: commandId,
           p_expected_version: expectedVersion,
           p_command_type: "start-next-round",
           p_state: nextState,
-          p_projection: projectOkeyMatchPublicState(
-            nextState,
-            nextVersion,
-            deadline,
-          ),
+          p_projection: publicProjection,
           p_status: "playing",
           p_turn_deadline_at: deadline,
           p_action_events: [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }],
@@ -336,7 +355,9 @@ serve(async (request) => {
       try {
         await broadcast(
           match.id,
+          commandId,
           Number((commit as { version: number }).version),
+          publicProjection,
           (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [],
         );
       } catch (broadcastError) {
