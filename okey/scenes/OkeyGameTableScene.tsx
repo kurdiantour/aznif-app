@@ -376,7 +376,19 @@ const {
         });
       }
     });
-    return unsubscribe;
+    const unsubscribeReset = onlineAdapter.subscribeReset(() => {
+      setShowScoreDetails(false);
+      setShowDiscardHistory(false);
+      setShowFinalTileCelebration(false);
+      setTurnWarningToastVisible(false);
+      setKonkanFinalPresentationReady(false);
+      setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
+      setProfilePlayer(null);
+    });
+    return () => {
+      unsubscribe();
+      unsubscribeReset();
+    };
   }, [onlineAdapter]);
 
 const takeoverExitStartedRef = useRef(false);

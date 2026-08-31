@@ -73,6 +73,8 @@ export class SupabaseOkeyMatchAdapter
   private readonly actionEventListeners =
     new Set<(event: OkeyActionEvent) => void>();
 
+  private readonly resetListeners = new Set<() => void>();
+
   private actionEventVersion: number | null = null;
   private readonly deliveredActionEventKeys = new Set<string>();
 
@@ -161,6 +163,19 @@ export class SupabaseOkeyMatchAdapter
         this.closeRealtimeChannel();
       }
     };
+  }
+
+  subscribeReset(listener: () => void): () => void {
+    this.resetListeners.add(listener);
+    return () => {
+      this.resetListeners.delete(listener);
+    };
+  }
+
+  private triggerReset(): void {
+    for (const listener of this.resetListeners) {
+      listener();
+    }
   }
 
   private enqueueAuthoritativeCommand(
@@ -382,6 +397,8 @@ export class SupabaseOkeyMatchAdapter
   }
 
   async reconnect(): Promise<void> {
+    this.triggerReset();
+
     await reconnectOkeyRoom(
       this.matchId,
     );
@@ -563,6 +580,13 @@ export class SupabaseOkeyMatchAdapter
       return;
     }
 
+    if (
+      this.snapshot &&
+      snapshot.currentRound !== this.snapshot.currentRound
+    ) {
+      this.triggerReset();
+    }
+
     this.snapshot = snapshot;
 
     for (
@@ -643,12 +667,13 @@ export class SupabaseOkeyMatchAdapter
             return;
           }
 
-          const hasEventGap =
-            this.actionEventVersion !== null &&
-            message.version > this.actionEventVersion + 1;
-          if (!hasEventGap) {
-            this.publishActionEvents(message.actionEvents ?? []);
+          const isVersionGap =
+            (this.snapshot !== null && message.version > this.snapshot.version + 1) ||
+            (this.actionEventVersion !== null && message.version > this.actionEventVersion + 1);
+          if (isVersionGap) {
+            this.triggerReset();
           }
+
           if (this.authoritativeCommandsPending > 0) {
             this.pendingRealtimeVersion = Math.max(
               this.pendingRealtimeVersion ?? -1,

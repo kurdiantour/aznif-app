@@ -33,6 +33,8 @@ export interface OnlineOkeyMatchAdapter {
 
   subscribeActionEvents(listener: (event: OkeyActionEvent) => void): () => void;
 
+  subscribeReset(listener: () => void): () => void;
+
   dispatch(
     command:
       OkeyAuthoritativeCommand,

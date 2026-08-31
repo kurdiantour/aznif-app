@@ -29,7 +29,6 @@ async function applyImmersiveFullscreen() {
   try {
     await NavigationBar.setButtonStyleAsync("light");
     await NavigationBar.setStyle("dark");
-    await NavigationBar.setBehaviorAsync("overlay-swipe");
     await NavigationBar.setVisibilityAsync("hidden");
   } catch (error) {
     console.warn("Unable to enable immersive fullscreen mode", error);

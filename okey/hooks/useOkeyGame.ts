@@ -439,9 +439,17 @@ export function useOkeyGame(
         applyProjection,
       );
 
+    const unsubscribeReset =
+      adapter.subscribeReset(() => {
+        setTerminalPresentation(null);
+        nextRoundClaimRef.current = null;
+        eliminatedTurnClaimRef.current = null;
+      });
+
     return () => {
       mounted = false;
       unsubscribe();
+      unsubscribeReset();
 
       if (
         onlineAdapterRef.current ===
