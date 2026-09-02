@@ -10,6 +10,7 @@ import {
   getRequiredOpenScore,
   MAX_PLAYER_MELDS,
   openPlayerMelds,
+  resolveTableMeldAction,
   spendTileOnMeld,
 } from "../okey-engine.ts";
 import { getMeldScore, getOrderedMeldScore } from "../okey-melds.ts";
@@ -144,4 +145,52 @@ test("joker replacement can be followed by the winning discard without premature
   const finished = discardTile(replaced, replaced.players[0].hand[0].id);
   assert.equal(finished.phase, "finished");
   assert.equal(finished.winnerId, prepared.players[0].id);
+});
+
+test("an ambiguous Joker spend exposes both endpoints and applies the selected one", () => {
+  const state = createInitialOkeyGame(0);
+  const joker = wildcard("spend-joker");
+  const targetTiles = run([9, 10, 11]);
+  const prepared: OkeyGameState = {
+    ...state,
+    currentPlayerIndex: 0,
+    hasDrawnThisTurn: true,
+    okeyTile,
+    players: state.players.map((player, index) => index === 0
+      ? { ...player, opened: true, hand: [joker, tile(2, "yellow")] }
+      : index === 1
+        ? { ...player, opened: true, melds: [meld("ambiguous-spend", "run", targetTiles)] }
+        : player),
+  };
+
+  const targetPlayer = prepared.players[1];
+  const action = resolveTableMeldAction(
+    prepared,
+    0,
+    joker.id,
+    targetPlayer.id,
+    "ambiguous-spend",
+  );
+  assert.equal(action?.type, "spend");
+  assert.deepEqual(action?.runEndOptions, [
+    { runEnd: "start", value: 8 },
+    { runEnd: "end", value: 12 },
+  ]);
+  assert.equal(
+    spendTileOnMeld(prepared, 0, joker.id, targetPlayer.id, "ambiguous-spend"),
+    prepared,
+  );
+
+  const spent = spendTileOnMeld(
+    prepared,
+    0,
+    joker.id,
+    targetPlayer.id,
+    "ambiguous-spend",
+    "start",
+  );
+  assert.deepEqual(
+    spent.players[1].melds[0].tiles.map((entry) => entry.id),
+    [joker.id, ...targetTiles.map((entry) => entry.id)],
+  );
 });

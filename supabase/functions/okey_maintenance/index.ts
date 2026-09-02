@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
   getNextOkeyMatchTurnDeadline,
   projectOkeyMatchPublicState,
+  settleAuthoritativeOkeyRound,
   startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
@@ -301,7 +302,12 @@ serve(async (request) => {
       }
 
       const expectedVersion = Number(match.version);
-      const nextState = startAuthoritativeOkeyNextRound(state);
+      const finishingTeamForfeit =
+        Boolean(state.pendingForfeitTeamId) ||
+        state.leaveTerminationReason === "team-forfeit";
+      const nextState = finishingTeamForfeit
+        ? settleAuthoritativeOkeyRound(state)
+        : startAuthoritativeOkeyNextRound(state);
       const nextVersion = expectedVersion + 1;
       const deadline = getNextOkeyMatchTurnDeadline(nextState);
       const commandId = await deterministicCommandId(
@@ -320,12 +326,16 @@ serve(async (request) => {
           p_user_id: claimantSeat.user_id,
           p_command_id: commandId,
           p_expected_version: expectedVersion,
-          p_command_type: "start-next-round",
+          p_command_type: finishingTeamForfeit
+            ? "round-end-team-forfeit"
+            : "start-next-round",
           p_state: nextState,
           p_projection: publicProjection,
-          p_status: "playing",
+          p_status: nextState.matchFinished ? "finished" : "playing",
           p_turn_deadline_at: deadline,
-          p_action_events: [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }],
+          p_action_events: finishingTeamForfeit
+            ? []
+            : [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }],
         })
         .single();
 
@@ -338,19 +348,21 @@ serve(async (request) => {
       }
 
       recoveredRounds += 1;
-      try {
-        await handOffOkeyBotTurn({
-          supabaseUrl,
-          workerSecret,
-          matchId: match.id,
-          state: nextState,
-          version: Number((commit as { version: number }).version),
-        });
-      } catch (handoffError) {
-        console.error(
-          "Okey next-round Bot handoff failed for " + match.id,
-          handoffError,
-        );
+      if (!nextState.matchFinished) {
+        try {
+          await handOffOkeyBotTurn({
+            supabaseUrl,
+            workerSecret,
+            matchId: match.id,
+            state: nextState,
+            version: Number((commit as { version: number }).version),
+          });
+        } catch (handoffError) {
+          console.error(
+            "Okey next-round Bot handoff failed for " + match.id,
+            handoffError,
+          );
+        }
       }
       try {
         await broadcast(

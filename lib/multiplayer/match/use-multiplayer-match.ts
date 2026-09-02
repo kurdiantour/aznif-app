@@ -6,13 +6,10 @@ import type {
   MultiplayerMatchPhase,
   MultiplayerTimeoutClaim,
 } from "./contracts";
-import { createTurnTimeoutClaim, getTurnIdentity, projectDeadlineMs } from "./lifecycle";
+import { createTurnTimeoutClaim, deriveMatchPhase, getTurnIdentity, projectDeadlineMs } from "./lifecycle";
 import { MultiplayerSnapshotStore } from "./snapshot-store";
-import { BotTurnClaimRegistry, createBotTurnClaim } from "../core/bot-turn-orchestration";
-import { projectSeatOwnership } from "../core/seat-ownership";
+import { BotTurnClaimRegistry } from "../core/bot-turn-orchestration";
 
-const DEFAULT_ROUND_RESULT_MS = 3_000;
-const DEFAULT_COUNTDOWN_SECONDS = 3;
 const DEFAULT_ROUND_SYNC_MS = 1_500;
 const DEFAULT_STALE_MS = 12_000;
 const DEFAULT_WATCHDOG_MS = 3_000;
@@ -28,22 +25,18 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
   const canClaimTimeout = options.canClaimTimeout;
   const selectBotTurn = options.selectBotTurn;
   const canExecuteBotTurn = options.canExecuteBotTurn;
-  const botRetryDelayMs = options.botRetryDelayMs;
+
   const [snapshot, setSnapshot] = useState<TSnapshot | null>(null);
-  const [phase, setPhase] = useState<MultiplayerMatchPhase>("loading");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [roundResult, setRoundResult] = useState<TRoundResult | null>(null);
-  const [finalResult, setFinalResult] = useState<TFinalResult | null>(null);
-  const [nextRoundCountdown, setNextRoundCountdown] = useState(
-    options.nextRoundCountdownSeconds ?? DEFAULT_COUNTDOWN_SECONDS,
-  );
   const [turnMillisecondsLeft, setTurnMillisecondsLeft] = useState<number | null>(null);
   const [exitConfirmationVisible, setExitConfirmationVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [isAppActive, setIsAppActive] = useState(AppState.currentState === "active");
   const [resumeCount, setResumeCount] = useState(0);
-  const [botRetryToken, setBotRetryToken] = useState(0);
+  const [finalPresentationCompletedFor, setFinalPresentationCompletedFor] = useState<string | null>(null);
+  const [roundResultCompletedFor, setRoundResultCompletedFor] = useState<string | null>(null);
+  const [roundResultCountdownRemaining, setRoundResultCountdownRemaining] = useState<number | null>(null);
 
   const storeRef = useRef(new MultiplayerSnapshotStore(options.selectLifecycle));
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -54,30 +47,18 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
   const timeoutKeyRef = useRef<string | null>(null);
   const timeoutInFlightRef = useRef(false);
   const timeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const presentationKeyRef = useRef<string | null>(null);
-  const presentationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextRoundStartKeyRef = useRef<string | null>(null);
-  const observedNonTerminalRef = useRef(false);
   const botClaimRegistryRef = useRef(new BotTurnClaimRegistry());
-  const activeBotClaimKeyRef = useRef<string | null>(null);
-  const botRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
   const clearReconnect = useCallback(() => {
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
   }, []);
+
   const clearTimeoutRetry = useCallback(() => {
     if (timeoutRetryRef.current) clearTimeout(timeoutRetryRef.current);
     timeoutRetryRef.current = null;
-  }, []);
-  const clearPresentationTimer = useCallback(() => {
-    if (presentationTimerRef.current) clearTimeout(presentationTimerRef.current);
-    presentationTimerRef.current = null;
-  }, []);
-  const clearBotRetry = useCallback(() => {
-    if (botRetryRef.current) clearTimeout(botRetryRef.current);
-    botRetryRef.current = null;
   }, []);
 
   const applySnapshot = useCallback((next: TSnapshot) => {
@@ -113,18 +94,16 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     mountedRef.current = true;
     storeRef.current = new MultiplayerSnapshotStore(options.selectLifecycle);
     setSnapshot(null);
-    setPhase("loading");
     setLoading(true);
     setError(null);
-    presentationKeyRef.current = null;
     nextRoundStartKeyRef.current = null;
-    observedNonTerminalRef.current = false;
+    setFinalPresentationCompletedFor(null);
+    setRoundResultCompletedFor(null);
+    setRoundResultCountdownRemaining(null);
     timeoutKeyRef.current = null;
+    timeoutInFlightRef.current = false;
     clearReconnect();
     clearTimeoutRetry();
-    clearPresentationTimer();
-    clearBotRetry();
-    activeBotClaimKeyRef.current = null;
     reconnectPolicyRef.current.reset();
 
     if (!options.roomId || !options.adapter) {
@@ -187,10 +166,8 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
       unsubscribeRef.current = null;
       clearReconnect();
       clearTimeoutRetry();
-      clearPresentationTimer();
-      clearBotRetry();
     };
-  }, [options.roomId, options.adapter, options.selectLifecycle, refresh, clearReconnect, clearTimeoutRetry, clearPresentationTimer, clearBotRetry]);
+  }, [options.roomId, options.adapter, options.selectLifecycle, refresh, clearReconnect, clearTimeoutRetry]);
 
   useEffect(() => {
     if (!options.roomId || !options.adapter) return;
@@ -206,6 +183,26 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     return () => subscription.remove();
   }, [options.roomId, options.adapter, resume, refresh]);
 
+  const lifecycle = useMemo(
+    () => (snapshot ? selectLifecycle(snapshot) : null),
+    [snapshot, selectLifecycle],
+  );
+
+  const phase: MultiplayerMatchPhase = useMemo(() => {
+    if (loading || !lifecycle) return "loading";
+    return deriveMatchPhase(lifecycle);
+  }, [loading, lifecycle]);
+
+  const roundResult = useMemo(
+    () => (lifecycle?.roundFinished && snapshot ? buildRoundResult(snapshot) : null),
+    [lifecycle?.roundFinished, snapshot, buildRoundResult],
+  );
+
+  const finalResult = useMemo(
+    () => (lifecycle?.matchFinished && snapshot ? buildFinalResult(snapshot) : null),
+    [lifecycle?.matchFinished, snapshot, buildFinalResult],
+  );
+
   useEffect(() => {
     if (!options.roomId || loading || phase === "match_finished" || phase === "cancelled") return;
     const interval = setInterval(() => {
@@ -214,98 +211,6 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     }, options.watchdogIntervalMs ?? DEFAULT_WATCHDOG_MS);
     return () => clearInterval(interval);
   }, [options.roomId, loading, phase, options.staleAfterMs, options.watchdogIntervalMs, refresh]);
-
-  const lifecycle = useMemo(
-    () => snapshot ? selectLifecycle(snapshot) : null,
-    [snapshot, selectLifecycle],
-  );
-
-  useEffect(() => {
-    if (!snapshot || !lifecycle) return;
-    if (lifecycle.status === "cancelled") {
-      setPhase("cancelled");
-      return;
-    }
-    if (!lifecycle.roundFinished && !lifecycle.matchFinished) {
-      observedNonTerminalRef.current = true;
-      presentationKeyRef.current = null;
-      nextRoundStartKeyRef.current = null;
-      clearPresentationTimer();
-      setRoundResult(null);
-      setFinalResult(null);
-      setPhase(lifecycle.status === "playing" ? "playing" : "waiting");
-      return;
-    }
-    const key = lifecycle.completedRoundId ?? lifecycle.roundId ?? String(lifecycle.version);
-    if (presentationKeyRef.current === key) return;
-    clearPresentationTimer();
-    presentationKeyRef.current = key;
-    const terminalPresentation = options.terminalRoundPresentation ?? "always";
-    const shouldPresentTerminalRound = !lifecycle.matchFinished ||
-      terminalPresentation === "always" ||
-      (terminalPresentation === "transition-only" && observedNonTerminalRef.current);
-    const nextRoundResult = shouldPresentTerminalRound ? buildRoundResult(snapshot) : null;
-    const nextFinalResult = lifecycle.matchFinished ? buildFinalResult(snapshot) : null;
-    setRoundResult(nextRoundResult);
-    setFinalResult(nextFinalResult);
-    setPhase(nextRoundResult ? "round_result" : lifecycle.matchFinished ? "match_finished" : "next_round_countdown");
-
-    const terminalDuration = options.terminalRoundResultDurationMs;
-    if (lifecycle.matchFinished && nextRoundResult && terminalDuration === null) return;
-    const serverNowValue = getSnapshotServerNow?.(snapshot);
-    const serverNowMs = Date.parse(serverNowValue ?? "");
-    const eligibleAtMs = Date.parse(lifecycle.nextRoundEligibleAt ?? "");
-    const presentationClockOffsetMs = Number.isFinite(serverNowMs) ? serverNowMs - Date.now() : 0;
-    const countdownSeconds = options.nextRoundCountdownSeconds ?? DEFAULT_COUNTDOWN_SECONDS;
-    const authoritativeRevealMs = Number.isFinite(serverNowMs) && Number.isFinite(eligibleAtMs)
-      ? Math.max(0, eligibleAtMs - countdownSeconds * 1_000 - serverNowMs)
-      : null;
-    presentationTimerRef.current = setTimeout(() => {
-      presentationTimerRef.current = null;
-      if (!mountedRef.current || presentationKeyRef.current !== key) return;
-      if (lifecycle.matchFinished) {
-        setPhase("match_finished");
-        return;
-      }
-      const remaining = Number.isFinite(eligibleAtMs)
-        ? Math.min(countdownSeconds, Math.max(0, Math.ceil((eligibleAtMs - (Date.now() + presentationClockOffsetMs)) / 1_000)))
-        : countdownSeconds;
-      setNextRoundCountdown(remaining);
-      setPhase("next_round_countdown");
-    }, nextRoundResult ? (
-      lifecycle.matchFinished
-        ? terminalDuration ?? options.roundResultDurationMs ?? DEFAULT_ROUND_RESULT_MS
-        : authoritativeRevealMs ?? options.roundResultDurationMs ?? DEFAULT_ROUND_RESULT_MS
-    ) : 0);
-  }, [snapshot, lifecycle, buildRoundResult, buildFinalResult, getSnapshotServerNow, options.roundResultDurationMs, options.terminalRoundResultDurationMs, options.terminalRoundPresentation, options.nextRoundCountdownSeconds, clearPresentationTimer]);
-
-  useEffect(() => {
-    if (phase !== "next_round_countdown" || !lifecycle || lifecycle.matchFinished) return;
-    if (nextRoundCountdown <= 0) return;
-    const timer = setTimeout(() => setNextRoundCountdown((value) => Math.max(0, value - 1)), 1_000);
-    return () => clearTimeout(timer);
-  }, [phase, lifecycle, nextRoundCountdown]);
-
-  useEffect(() => {
-    if (phase !== "next_round_countdown" || nextRoundCountdown !== 0 || !lifecycle?.completedRoundId) return;
-    if (!options.adapter?.startNextRound) return;
-    const completedRoundId = lifecycle.completedRoundId;
-    if (nextRoundStartKeyRef.current === completedRoundId) return;
-    nextRoundStartKeyRef.current = completedRoundId;
-    void options.adapter.startNextRound(completedRoundId)
-      .then((next) => { if (next) applySnapshot(next); })
-      .catch((caught) => {
-        nextRoundStartKeyRef.current = null;
-        console.warn("Multiplayer next round failed", caught);
-        void refresh().catch(() => undefined);
-      });
-  }, [phase, nextRoundCountdown, lifecycle, options.adapter, applySnapshot, refresh]);
-
-  useEffect(() => {
-    if (!lifecycle?.roundFinished || lifecycle.matchFinished) return;
-    const interval = setInterval(() => void refresh().catch(() => undefined), options.roundSyncIntervalMs ?? DEFAULT_ROUND_SYNC_MS);
-    return () => clearInterval(interval);
-  }, [lifecycle?.roundFinished, lifecycle?.matchFinished, options.roundSyncIntervalMs, refresh]);
 
   const timeoutClaim = useMemo(
     () => {
@@ -316,68 +221,6 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     [lifecycle, snapshot, canClaimTimeout],
   );
 
-  const botTurn = useMemo(
-    () => snapshot && selectBotTurn ? selectBotTurn(snapshot) : null,
-    [snapshot, selectBotTurn],
-  );
-  useEffect(() => {
-    if (
-      !snapshot || !lifecycle || !botTurn || !botTurn.controlledByBot ||
-      lifecycle.status !== "playing" || lifecycle.roundFinished || lifecycle.matchFinished ||
-      !options.adapter?.executeBotTurn ||
-      (canExecuteBotTurn && !canExecuteBotTurn(snapshot))
-    ) {
-      activeBotClaimKeyRef.current = null;
-      clearBotRetry();
-      return;
-    }
-    const ownership = projectSeatOwnership({
-      seatId: botTurn.actorId,
-      ownerPlayerId: botTurn.actorId,
-      controlledByBot: true,
-    });
-    const claim = createBotTurnClaim({
-      version: lifecycle.version,
-      actorId: botTurn.actorId,
-      ownership,
-    });
-    if (!claim || !options.roomId) return;
-    const claimKey = `${options.roomId}:${claim.expectedVersion}:${claim.expectedActorId}`;
-    if (activeBotClaimKeyRef.current === claimKey || botRetryRef.current) return;
-    const serverNowValue = getSnapshotServerNow?.(snapshot);
-    const serverNowMs = Date.parse(serverNowValue ?? "");
-    const notBeforeMs = Date.parse(botTurn.notBefore ?? "");
-    const delay = Number.isFinite(notBeforeMs)
-      ? Math.max(0, notBeforeMs - (Number.isFinite(serverNowMs) ? serverNowMs : Date.now()))
-      : 0;
-    const run = () => {
-      const registryKey = botClaimRegistryRef.current.tryAcquire(options.roomId!, claim);
-      if (!registryKey) return;
-      activeBotClaimKeyRef.current = claimKey;
-      void options.adapter!.executeBotTurn!(claim)
-        .then((next) => { if (next) applySnapshot(next); return refresh(); })
-        .catch(async (caught) => {
-          console.warn("Multiplayer bot turn failed", caught);
-          await refresh().catch(() => undefined);
-          if (activeBotClaimKeyRef.current === claimKey) {
-            activeBotClaimKeyRef.current = null;
-            botRetryRef.current = setTimeout(() => {
-              botRetryRef.current = null;
-              setBotRetryToken((value) => value + 1);
-            }, botRetryDelayMs ?? 1_000);
-          }
-        })
-        .finally(() => botClaimRegistryRef.current.release(registryKey));
-    };
-    if (delay > 0) {
-      botRetryRef.current = setTimeout(() => {
-        botRetryRef.current = null;
-        run();
-      }, delay);
-      return clearBotRetry;
-    }
-    run();
-  }, [snapshot, lifecycle, botTurn, botRetryToken, options.adapter, options.roomId, canExecuteBotTurn, botRetryDelayMs, getSnapshotServerNow, applySnapshot, refresh, clearBotRetry]);
   useEffect(() => {
     clearTimeoutRetry();
     if (!timeoutClaim) {
@@ -396,36 +239,185 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     return () => clearInterval(interval);
   }, [timeoutClaim, snapshot, getSnapshotServerNow, clearTimeoutRetry]);
 
-  const submitTimeoutRef = useRef<(claim: MultiplayerTimeoutClaim, key: string) => void>(() => undefined);
-  const submitTimeout = useCallback(async (claim: MultiplayerTimeoutClaim, key: string) => {
-    if (!options.adapter?.claimTimeout || timeoutInFlightRef.current || timeoutKeyRef.current !== key) return;
-    timeoutInFlightRef.current = true;
-    try {
-      const next = await options.adapter.claimTimeout(claim);
-      if (next && timeoutKeyRef.current === key) applySnapshot(next);
-      await refresh();
-    } catch (caught) {
-      const details = getTimeoutError?.(caught) ?? {};
-      if (details.code === "turn_timer_not_expired" && details.expiresAt) {
-        const serverNowMs = details.serverNow ? Date.parse(details.serverNow) : Date.now();
-        const expiresAtMs = Date.parse(details.expiresAt);
-        if (Number.isFinite(serverNowMs) && Number.isFinite(expiresAtMs)) {
-          timeoutRetryRef.current = setTimeout(() => submitTimeoutRef.current(claim, key), Math.max(0, expiresAtMs - serverNowMs));
-        }
-      } else {
-        await refresh().catch(() => undefined);
-      }
-    } finally {
-      timeoutInFlightRef.current = false;
+  useEffect(() => {
+    if (
+      !options.roomId ||
+      !options.adapter?.claimTimeout ||
+      !timeoutClaim ||
+      turnMillisecondsLeft === null ||
+      turnMillisecondsLeft > 0 ||
+      timeoutInFlightRef.current ||
+      timeoutRetryRef.current
+    ) {
+      return;
     }
-  }, [options.adapter, getTimeoutError, applySnapshot, refresh]);
-  submitTimeoutRef.current = (claim, key) => { void submitTimeout(claim, key); };
+
+    const key = getTurnIdentity(timeoutClaim);
+    if (timeoutKeyRef.current !== key) return;
+
+    timeoutInFlightRef.current = true;
+    void options.adapter.claimTimeout(timeoutClaim)
+      .then((next) => {
+        if (next && mountedRef.current) applySnapshot(next);
+        clearTimeoutRetry();
+      })
+      .catch((caught) => {
+        const details = getTimeoutError?.(caught);
+        if (details?.code === "turn_timer_not_expired" && details.expiresAt) {
+          const expiresAtMs = Date.parse(details.expiresAt);
+          const serverNow = details.serverNow ? Date.parse(details.serverNow) : Number.NaN;
+          const offset = Number.isFinite(serverNow) ? serverNow - Date.now() : 0;
+          if (Number.isFinite(expiresAtMs)) {
+            const delay = Math.max(50, expiresAtMs - (Date.now() + offset));
+            clearTimeoutRetry();
+            timeoutRetryRef.current = setTimeout(() => {
+              timeoutRetryRef.current = null;
+              void refresh().catch(() => undefined);
+            }, delay);
+            return;
+          }
+        }
+        clearTimeoutRetry();
+        void refresh().catch(() => undefined);
+      })
+      .finally(() => {
+        timeoutInFlightRef.current = false;
+      });
+  }, [
+    options.roomId,
+    options.adapter,
+    timeoutClaim,
+    turnMillisecondsLeft,
+    getTimeoutError,
+    clearTimeoutRetry,
+    applySnapshot,
+    refresh,
+  ]);
 
   useEffect(() => {
-    if (!timeoutClaim || turnMillisecondsLeft === null || turnMillisecondsLeft > 0 || !options.adapter?.claimTimeout) return;
-    const key = getTurnIdentity(timeoutClaim);
-    if (timeoutKeyRef.current === key && !timeoutRetryRef.current) void submitTimeout(timeoutClaim, key);
-  }, [timeoutClaim, turnMillisecondsLeft, options.adapter, submitTimeout]);
+    if (
+      !options.roomId ||
+      !options.adapter?.executeBotTurn ||
+      !selectBotTurn ||
+      !snapshot ||
+      !lifecycle ||
+      lifecycle.status !== "playing" ||
+      lifecycle.roundFinished ||
+      lifecycle.matchFinished
+    ) {
+      return;
+    }
+
+    const botTurn = selectBotTurn(snapshot);
+    if (!botTurn || !botTurn.controlledByBot) return;
+    if (canExecuteBotTurn && !canExecuteBotTurn(snapshot)) return;
+
+    const claim = {
+      expectedVersion: lifecycle.version,
+      expectedActorId: botTurn.actorId,
+    };
+    const claimKey = botClaimRegistryRef.current.tryAcquire(options.roomId, claim);
+    if (!claimKey) return;
+
+    void options.adapter.executeBotTurn!(claim)
+      .then(() => {
+        return refresh();
+      })
+      .catch((caught) => {
+        console.warn("Multiplayer bot turn execution failed", caught);
+        botClaimRegistryRef.current.release(claimKey);
+        void refresh().catch(() => undefined);
+      });
+  }, [
+    options.roomId,
+    options.adapter,
+    selectBotTurn,
+    canExecuteBotTurn,
+    snapshot,
+    lifecycle,
+    refresh,
+  ]);
+
+  const completedPresentationKey = lifecycle?.completedRoundId ?? null;
+
+  const completeFinalPresentation = useCallback(() => {
+    if (!completedPresentationKey || !lifecycle?.roundFinished) return;
+    setFinalPresentationCompletedFor(completedPresentationKey);
+  }, [completedPresentationKey, lifecycle?.roundFinished]);
+
+  const completeRoundResultPresentation = useCallback(async () => {
+    if (
+      !completedPresentationKey ||
+      !lifecycle?.roundFinished ||
+      lifecycle.matchFinished ||
+      finalPresentationCompletedFor !== completedPresentationKey ||
+      nextRoundStartKeyRef.current === completedPresentationKey ||
+      !options.adapter?.startNextRound
+    ) {
+      return;
+    }
+
+    nextRoundStartKeyRef.current = completedPresentationKey;
+    setRoundResultCompletedFor(completedPresentationKey);
+    try {
+      const next = await options.adapter.startNextRound(completedPresentationKey);
+      if (next && mountedRef.current) applySnapshot(next);
+    } catch (caught) {
+      console.warn("Multiplayer start next round failed", caught);
+      nextRoundStartKeyRef.current = null;
+      setRoundResultCompletedFor(null);
+      await refresh().catch(() => undefined);
+      throw caught;
+    }
+  }, [
+    completedPresentationKey,
+    lifecycle?.roundFinished,
+    lifecycle?.matchFinished,
+    finalPresentationCompletedFor,
+    options.adapter,
+    applySnapshot,
+    refresh,
+  ]);
+  const showRoundResultPopup =
+    phase === "round_result" &&
+    roundResult !== null &&
+    finalPresentationCompletedFor === completedPresentationKey &&
+    roundResultCompletedFor !== completedPresentationKey;
+  const showFinalMatchPopup =
+    phase === "match_finished" &&
+    finalResult !== null &&
+    finalPresentationCompletedFor === completedPresentationKey;
+
+  useEffect(() => {
+    const durationMs = options.roundResultDurationMs;
+    if (!showRoundResultPopup || durationMs === undefined) {
+      setRoundResultCountdownRemaining(null);
+      return;
+    }
+
+    setRoundResultCountdownRemaining(Math.ceil(durationMs / 1_000));
+    const countdown = setInterval(() => {
+      setRoundResultCountdownRemaining((remaining) =>
+        remaining === null ? null : Math.max(0, remaining - 1),
+      );
+    }, 1_000);
+    const complete = setTimeout(() => {
+      setRoundResultCountdownRemaining(0);
+      void completeRoundResultPresentation().catch(() => undefined);
+    }, durationMs);
+    return () => {
+      clearInterval(countdown);
+      clearTimeout(complete);
+    };
+  }, [showRoundResultPopup, options.roundResultDurationMs, completeRoundResultPresentation]);
+  useEffect(() => {
+    if (!lifecycle?.roundFinished || lifecycle.matchFinished) return;
+    const interval = setInterval(
+      () => void refresh().catch(() => undefined),
+      options.roundSyncIntervalMs ?? DEFAULT_ROUND_SYNC_MS,
+    );
+    return () => clearInterval(interval);
+  }, [lifecycle?.roundFinished, lifecycle?.matchFinished, options.roundSyncIntervalMs, refresh]);
 
   const requestExit = useCallback(() => setExitConfirmationVisible(true), []);
   const cancelExit = useCallback(() => setExitConfirmationVisible(false), []);
@@ -435,17 +427,10 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     try {
       await options.adapter.leave();
       setExitConfirmationVisible(false);
-      setPhase("exited");
     } finally {
       setLeaving(false);
     }
   }, [options.adapter, leaving]);
-
-  const completeRoundResultPresentation = useCallback(() => {
-    if (!lifecycle?.matchFinished || phase !== "round_result") return;
-    clearPresentationTimer();
-    setPhase("match_finished");
-  }, [lifecycle?.matchFinished, phase, clearPresentationTimer]);
 
   return {
     snapshot,
@@ -458,10 +443,14 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     applySnapshot,
     roundResult,
     finalResult,
-    showRoundResultPopup: phase === "round_result" && roundResult !== null,
-    showFinalMatchPopup: phase === "match_finished" && finalResult !== null,
+    showRoundResultPopup,
+    showFinalMatchPopup,
+    finalPresentationComplete:
+      completedPresentationKey !== null &&
+      finalPresentationCompletedFor === completedPresentationKey,
+    completeFinalPresentation,
     completeRoundResultPresentation,
-    nextRoundCountdown,
+    roundResultCountdownRemaining,
     turnMillisecondsLeft,
     turnSecondsLeft: turnMillisecondsLeft === null ? null : Math.ceil(turnMillisecondsLeft / 1_000),
     exitConfirmationVisible,

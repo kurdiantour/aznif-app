@@ -2,6 +2,7 @@ import { expect, test } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import {
   findClosestMeldDropTarget,
+  getOkeyRunEndForDrop,
   isPointInsideRect,
   toLocalScreenRect,
 } from "../okey-table-interactions";
@@ -25,6 +26,14 @@ test("meld drop selects only a nearby legal target", () => {
   expect(isPointInsideRect({ x: 25, y: 25 }, rects[0])).toBe(true);
   expect(findClosestMeldDropTarget(rects, { x: 55, y: 25 }, (rect) => rect.meldId === "legal", 40)?.meldId).toBe("legal");
   expect(findClosestMeldDropTarget(rects, { x: 300, y: 300 }, () => true, 40)).toBeNull();
+});
+
+test("an ambiguous Joker drop uses the side where the tile was released", () => {
+  const rect = { x: 100, y: 50, width: 80, height: 30 };
+  const options = [{ runEnd: "start" as const }, { runEnd: "end" as const }];
+
+  expect(getOkeyRunEndForDrop(options, { x: 105, y: 60 }, rect)).toBe("start");
+  expect(getOkeyRunEndForDrop(options, { x: 175, y: 60 }, rect)).toBe("end");
 });
 
 test("rack drag moves a tile or a complete meld without duplication", () => {
@@ -80,6 +89,21 @@ test("rapid double tap discards the same rack tile without waiting for a selecti
   expect(scene).toMatch(
     /previousTap\?\.tileId === tileId[\s\S]*?tappedAt - previousTap\.tappedAt <= 350[\s\S]*?startDiscardFlight\(tileId\)/,
   );
+});
+
+test("an ambiguous Joker spend submits the endpoint selected by its drop position", () => {
+  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
+
+  expect(scene).toMatch(
+    /getOkeyRunEndForDrop\(action\.runEndOptions, point, target\)/,
+  );
+  expect(scene).toMatch(
+    /submitTableMeldAction\(action, runEnd\)/,
+  );
+  expect(scene).toMatch(
+    /spendTileOnTableMeld\([\s\S]*?action\.targetMeldId,[\s\S]*?runEnd/,
+  );
+  expect(scene).not.toContain("onJokerEndpointSelected={handleJokerEndpointSelected}");
 });
 
 test("a finished online room keeps its authoritative match until route exit", () => {

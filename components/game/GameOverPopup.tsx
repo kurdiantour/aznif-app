@@ -171,10 +171,6 @@ export default function GameOverPopup({
 
           {reward ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {"خەڵاتەکان"}
-              </Text>
-
               <View style={styles.rewardRow}>
                 {!isPracticeMode ? (
                   <View style={styles.rewardCard}>

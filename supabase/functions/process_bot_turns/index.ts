@@ -176,7 +176,7 @@ serve(async (req) => {
         return json({ ok: true, processed: false, reason: "match_has_no_seats" });
       }
 
-      return json(await executeOkeyBotTurn({
+      const result = await executeOkeyBotTurn({
         matchId: match_id,
         requesterUserId,
         expectedVersion: expected_version,
@@ -184,7 +184,8 @@ serve(async (req) => {
       }, {
         client: svc,
         deterministicCommandId,
-      }));
+      });
+      return json(result, result.ok ? 200 : 500);
     }
 
     if (!room_id) return json({ error: "Missing room_id" }, 400);

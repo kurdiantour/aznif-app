@@ -577,7 +577,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     return json({
       applied: false,
       settlement,
-      actionEvents,
+      actionEvents: [],
       projection: projectForViewer(
         state,
         bundle.version,
@@ -633,6 +633,13 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
       if (state.matchFinished) {
         return json({ error: "match_finished" }, 409);
+      }
+
+      if (
+        state.pendingForfeitTeamId ||
+        state.leaveTerminationReason === "team-forfeit"
+      ) {
+        return json({ error: "team_forfeit_pending" }, 409);
       }
 
       if (

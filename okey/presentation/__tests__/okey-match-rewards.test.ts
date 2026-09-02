@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mapOkeySettlementToPopupRewards } from "../../components/OkeyMatchResultPopup.tsx";
+import {
+  mapOkeySettlementToPopupRewards,
+  shouldShowOkeyMatchResultPopup,
+} from "../../components/OkeyMatchResultPopup.tsx";
 
 const funSettlement = {
   type: "winner" as const,
@@ -48,4 +51,10 @@ test("Aznif loser sees the lost entry fee", () => {
 
 test("missing settlement stays pending instead of fabricating empty rewards", () => {
   assert.equal(mapOkeySettlementToPopupRewards(null, "teamA", "teamA"), null);
+});
+
+test("final popup stays hidden until the viewer settlement is present", () => {
+  assert.equal(shouldShowOkeyMatchResultPopup(true, true, null), false);
+  assert.equal(shouldShowOkeyMatchResultPopup(true, true, funSettlement), true);
+  assert.equal(shouldShowOkeyMatchResultPopup(false, true, funSettlement), false);
 });

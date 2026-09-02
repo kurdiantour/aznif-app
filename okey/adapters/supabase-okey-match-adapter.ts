@@ -98,6 +98,10 @@ export class SupabaseOkeyMatchAdapter
     | Promise<void>
     | null = null;
 
+  private terminalSettlementRefreshPromise:
+    | Promise<void>
+    | null = null;
+
   private pendingRealtimeVersion:
     | number
     | null = null;
@@ -246,8 +250,12 @@ export class SupabaseOkeyMatchAdapter
   private async readFunctionErrorBody(
     error: unknown,
   ): Promise<{
+    ok?: boolean;
+    processed?: boolean;
+    reason?: string;
     code?: string;
     error?: string;
+    message?: string;
     serverNow?: string;
     expiresAt?: string;
   } | null> {
@@ -306,6 +314,7 @@ export class SupabaseOkeyMatchAdapter
     createBody: () => Promise<Record<string, unknown>> | Record<string, unknown>,
     options: {
       refreshOnError?: boolean;
+      throwParsedError?: boolean;
       syncOnError?: (body: { code?: string; error?: string } | null) => boolean;
       notAppliedOnError?: (body: { code?: string; error?: string } | null) => boolean;
     } = {},
@@ -338,7 +347,7 @@ export class SupabaseOkeyMatchAdapter
         if (options.refreshOnError !== false) {
           await this.refresh();
         }
-        throw error;
+        throw options.throwParsedError ? errorBody ?? error : error;
       }
 
       this.publishResponse(data);
@@ -384,7 +393,7 @@ export class SupabaseOkeyMatchAdapter
         expectedVersion: claim.expectedVersion,
         expectedRound: claim.expectedRound,
       }),
-      { refreshOnError: false },
+      { refreshOnError: false, throwParsedError: true },
     );
   }
 
@@ -399,7 +408,30 @@ export class SupabaseOkeyMatchAdapter
         expected_actor_id: claim.expectedActorId,
       },
     });
-    if (error) throw error;
+    if (error) {
+      const errorBody = await this.readFunctionErrorBody(error);
+      console.warn("Okey bot turn request failed", {
+        matchId: this.matchId,
+        claim,
+        error: errorBody ?? error,
+      });
+      throw errorBody ?? error;
+    }
+    if (data?.ok === false || typeof data?.error === "string") {
+      console.warn("Okey bot turn execution failed", {
+        matchId: this.matchId,
+        claim,
+        response: data,
+      });
+      throw data;
+    }
+    if (data?.processed === false) {
+      console.warn("Okey bot turn was not processed", {
+        matchId: this.matchId,
+        claim,
+        reason: data.reason ?? "unknown",
+      });
+    }
     return data;
   }
 
@@ -650,6 +682,42 @@ export class SupabaseOkeyMatchAdapter
     ) {
       listener(snapshot);
     }
+
+    this.ensureTerminalSettlementRefresh();
+  }
+
+  private ensureTerminalSettlementRefresh(): void {
+    if (
+      this.closed ||
+      !this.snapshot?.matchFinished ||
+      this.snapshot.settlement ||
+      this.terminalSettlementRefreshPromise
+    ) {
+      return;
+    }
+
+    this.terminalSettlementRefreshPromise = (async () => {
+      let retryDelayMs = 50;
+
+      while (
+        !this.closed &&
+        this.snapshot?.matchFinished &&
+        !this.snapshot.settlement
+      ) {
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, retryDelayMs),
+        );
+
+        try {
+          await this.refresh();
+        } catch {}
+
+        retryDelayMs = Math.min(retryDelayMs * 2, 2_000);
+      }
+    })().finally(() => {
+      this.terminalSettlementRefreshPromise = null;
+      this.ensureTerminalSettlementRefresh();
+    });
   }
 
   private publishActionEvents(events: OkeyActionEvent[]): void {

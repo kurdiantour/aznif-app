@@ -235,6 +235,44 @@ test("Realtime invalidation fetches a full authoritative snapshot", async () => 
   expect(adapter.getSnapshot()?.version).toBe(2);
 });
 
+test("terminal projection refreshes until the viewer settlement is available", async () => {
+  jest.useFakeTimers();
+  const adapter = new SupabaseOkeyMatchAdapter("match-terminal-settlement");
+  const terminalProjection = {
+    ...projection(12),
+    phase: "finished",
+    matchFinished: true,
+  };
+  const settlement = {
+    type: "winner",
+    currency: "fun",
+    playerReward: {
+      pointDelta: 40,
+      gemDelta: 2,
+    },
+  };
+
+  mockInvoke.mockResolvedValueOnce({
+    data: {
+      projection: terminalProjection,
+      settlement,
+    },
+    error: null,
+  });
+
+  (adapter as any).publish(terminalProjection);
+
+  expect(adapter.getSnapshot()?.settlement).toBeNull();
+  expect(mockInvoke).not.toHaveBeenCalled();
+
+  await jest.advanceTimersByTimeAsync(50);
+
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe("snapshot");
+  expect(adapter.getSnapshot()?.settlement).toEqual(settlement);
+  jest.useRealTimers();
+});
+
 test("Realtime invalidations preserve the highest pending version during refresh", async () => {
   const adapter = new SupabaseOkeyMatchAdapter("match-5");
   setSnapshot(adapter, 1);

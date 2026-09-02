@@ -31,18 +31,15 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     canCurrentOkeyUserClaimTimeout(snapshot, claim, currentUserId), [currentUserId]);
   const getServerNow = useCallback(() => commands
     ? new Date(Date.now() + commands.getServerClockOffsetMs()).toISOString() : null, [commands]);
-  const canExecuteBotTurn = useCallback((snapshot: OkeyMatchServerProjection) =>
-    canOkeyParticipantDriveBots(snapshot, currentUserId), [currentUserId]);
   const core = useMultiplayerMatch({
     roomId: matchId, adapter, selectLifecycle: selectOkeyMultiplayerLifecycle,
     buildRoundResult: buildOkeyCoreRoundResult, buildFinalResult: buildOkeyCoreFinalResult,
-    getSnapshotServerNow: getServerNow, getTimeoutError: getOkeyTimeoutError, canClaimTimeout,
-    roundResultDurationMs: 5_350, terminalRoundResultDurationMs: null,
-    terminalRoundPresentation: "transition-only", nextRoundCountdownSeconds: 5,
-    roundSyncIntervalMs: 1_000,
+    getSnapshotServerNow: getServerNow, getTimeoutError: getOkeyTimeoutError,
+    canClaimTimeout,
     selectBotTurn: selectOkeyBotTurn,
-    canExecuteBotTurn,
-    botRetryDelayMs: 1_000,
+    canExecuteBotTurn: (snapshot) => canOkeyParticipantDriveBots(snapshot, currentUserId),
+    roundResultDurationMs: 5_000,
+    roundSyncIntervalMs: 1_000,
   });
   const projection = core.snapshot;
   const refresh = core.refresh;
@@ -89,9 +86,9 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   const roundResults = useMemo(() => projection ? projectResults(projection) : [], [projection]);
   const currentRound = projection?.currentRound ?? 1;
   const matchFinished = projection?.matchFinished ?? false;
-  const showFinishRevealPopup = core.phase === "round_result";
-  const showRoundResultPopup = core.phase === "next_round_countdown";
-  const currentRoundResult = showFinishRevealPopup || showRoundResultPopup || matchFinished
+  const showRoundResultPopup = core.showRoundResultPopup;
+  const showMatchResultPopup = core.showFinalMatchPopup;
+  const currentRoundResult = showRoundResultPopup || matchFinished
     ? roundResults.at(-1) ?? null : roundResults.find((result) => result.round === currentRound) ?? null;
 
   return {
@@ -101,12 +98,15 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     isAppActive: core.isAppActive, lifecycleResumeToken: core.resumeCount,
     currentRound, maxRounds: projection?.maxRounds ?? OKEY_RULESET_V1.match.roundCount,
     roundResults, matchScores: projection?.matchScores ?? { teamA: 0, teamB: 0 },
-    showRoundResultPopup, showFinishRevealPopup,
-    completeFinishRevealPresentation: core.completeRoundResultPresentation,
+    showRoundResultPopup,
     currentRoundResult, matchFinished, matchWinnerTeamId: projection?.matchWinnerTeamId ?? null,
-    showMatchResultPopup: core.showFinalMatchPopup,
-    roundResultCountdownRemaining: showRoundResultPopup ? core.nextRoundCountdown : null,
+    showMatchResultPopup,
+    finalPresentationComplete: core.finalPresentationComplete,
+    completeFinalPresentation: core.completeFinalPresentation,
+    completeRoundResultPresentation: core.completeRoundResultPresentation,
+    roundResultCountdownRemaining: core.roundResultCountdownRemaining,
     draw, discard, commitOpenIntent, declareKonkan, spendTileOnTableMeld, lockKonkanSetOnTable,
     turnTimeLeft: core.turnSecondsLeft ?? 0,
   };
 }
+

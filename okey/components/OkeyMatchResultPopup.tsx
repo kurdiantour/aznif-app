@@ -16,6 +16,14 @@ export type OkeyMatchPopupRewards = {
   point: number;
 };
 
+export function shouldShowOkeyMatchResultPopup(
+  requested: boolean,
+  matchFinished: boolean,
+  settlement: OkeyMatchSettlement | null | undefined,
+): boolean {
+  return requested && (!matchFinished || settlement != null);
+}
+
 export function mapOkeySettlementToPopupRewards(
   settlement: OkeyMatchSettlement | null | undefined,
   matchWinnerTeamId: OkeyTeamId | null,
@@ -42,7 +50,6 @@ type Props = {
   winnerTeamId: OkeyTeamId | null;
   matchScores: Record<OkeyTeamId, number>;
   rewards?: OkeyMatchPopupRewards | null;
-  rewardsLoading?: boolean;
   onNewMatch: () => void;
 };
 
@@ -51,7 +58,6 @@ export function OkeyMatchResultPopup({
   winnerTeamId,
   matchScores,
   rewards,
-  rewardsLoading = false,
   onNewMatch,
 }: Props) {
   if (!visible) {
@@ -160,19 +166,8 @@ export function OkeyMatchResultPopup({
             </View>
           </View>
 
-          {rewardsLoading ? (
+          {rewards ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>خەڵاتەکان</Text>
-              <View style={styles.rewardLoadingCard}>
-                <Text style={styles.rewardLoadingText}>خەڵاتەکانت ئامادە دەکرێن…</Text>
-              </View>
-            </View>
-          ) : rewards ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                خەڵاتەکان
-              </Text>
-
               <View style={styles.rewardRow}>
                 <View style={styles.rewardCard}>
                   <Text style={styles.rewardIcon}>
@@ -432,21 +427,6 @@ const styles = StyleSheet.create({
     color: "#ff8585",
     fontSize: 24,
     fontFamily: "RobotoMedium",
-  },
-
-  rewardLoadingCard: {
-    minHeight: 58,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-
-  rewardLoadingText: {
-    color: "rgba(248, 243, 223, 0.82)",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
   },
 
   rewardRow: {

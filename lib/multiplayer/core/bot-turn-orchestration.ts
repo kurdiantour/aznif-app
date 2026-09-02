@@ -1,4 +1,4 @@
-import type { SeatOwnership } from "./seat-ownership";
+import type { SeatOwnership } from "./seat-ownership.ts";
 
 export type BotTurnClaim = { expectedVersion: number; expectedActorId: string };
 

@@ -40,7 +40,6 @@ import type {
 
 export const OKEY_DRAW_PHASE_SECONDS = 15;
 export const OKEY_THROW_PHASE_SECONDS = 30;
-export const OKEY_NEXT_ROUND_DELAY_MS = 10_350;
 export const OKEY_MAX_ROUNDS = 7;
 const OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD = 2;
 
@@ -378,9 +377,7 @@ export function settleAuthoritativeOkeyRound(
   }
 
   const pendingForfeitTeamId = match.pendingForfeitTeamId;
-  const nextRoundEligibleAt = new Date(
-    now + OKEY_NEXT_ROUND_DELAY_MS,
-  ).toISOString();
+  const nextRoundEligibleAt = new Date(now).toISOString();
   const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
     ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"
     : null;
@@ -394,7 +391,7 @@ export function settleAuthoritativeOkeyRound(
     }
 
     const remainingMembers = finishedRound.players.filter(
-      (player) => !(match.manualLeftPlayerIds ?? []).includes(player.id),
+      (player) => !isOkeyTerminalTakeover(match, player),
     );
 
     if (
@@ -445,6 +442,10 @@ export function settleAuthoritativeOkeyRound(
     );
 
   if (alreadySettled) {
+    if (pendingForfeitTeamId) {
+      return finishPendingForfeit(match.roundResults, match.matchScores);
+    }
+
     return match.nextRoundEligibleAt
       ? match
       : { ...match, nextRoundEligibleAt };
@@ -592,7 +593,12 @@ export function startAuthoritativeOkeyNextRound(
   match: OkeyAuthoritativeMatchState,
   now = Date.now(),
 ): OkeyAuthoritativeMatchState {
-  if (match.matchFinished || match.roundState.phase !== "finished") {
+  if (
+    match.matchFinished ||
+    match.pendingForfeitTeamId ||
+    match.leaveTerminationReason === "team-forfeit" ||
+    match.roundState.phase !== "finished"
+  ) {
     throw new OkeyCommandError("command_rejected");
   }
 
@@ -890,13 +896,27 @@ export function applyAuthoritativeOkeyCommand(
   return next;
 }
 
+function isOkeyTerminalTakeover(
+  match: OkeyAuthoritativeMatchState,
+  player: OkeyAuthoritativeMatchState["roundState"]["players"][number],
+): boolean {
+  return (
+    (match.manualLeftPlayerIds ?? []).includes(player.id) ||
+    (
+      isOkeyBotControlled(player) &&
+      (match.timeoutCountsByPlayerId?.[player.id] ?? 0) >=
+        OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD
+    )
+  );
+}
+
 function reconcileAuthoritativeHumanControl(
   match: OkeyAuthoritativeMatchState,
 ): OkeyAuthoritativeMatchState {
   if (match.matchFinished) return match;
 
   const remainingMembers = match.roundState.players.filter(
-    (player) => !(match.manualLeftPlayerIds ?? []).includes(player.id),
+    (player) => !isOkeyTerminalTakeover(match, player),
   );
 
   if (remainingMembers.length === 0) {
@@ -917,11 +937,15 @@ function reconcileAuthoritativeHumanControl(
       ? remainingMembers[0].teamId === "teamA" ? "teamB" : "teamA"
       : null;
 
-  return {
+  const reconciled: OkeyAuthoritativeMatchState = {
     ...match,
     pendingForfeitTeamId,
     leaveTerminationReason: pendingForfeitTeamId ? "team-forfeit" : null,
   };
+
+  return pendingForfeitTeamId && reconciled.roundState.phase === "finished"
+    ? settleAuthoritativeOkeyRound(reconciled)
+    : reconciled;
 }
 
 function reconcileAuthoritativeBotOwnership(

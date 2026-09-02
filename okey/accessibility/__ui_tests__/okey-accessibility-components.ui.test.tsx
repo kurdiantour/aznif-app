@@ -4,7 +4,10 @@ import { fireEvent, render } from "@testing-library/react-native";
 import { OkeyMeldView } from "../../components/OkeyMeldView";
 import { OkeyTileFace } from "../../components/OkeyTileFace";
 import { OkeyTurnTimerBar } from "../../components/OkeyTurnTimerBar";
-import { OkeyMatchResultPopup } from "../../components/OkeyMatchResultPopup";
+import {
+  OkeyMatchResultPopup,
+  shouldShowOkeyMatchResultPopup,
+} from "../../components/OkeyMatchResultPopup";
 import { OkeyCenterPiles } from "../../components/OkeyCenterPiles";
 import type { OkeyMeld, OkeyTile } from "../../types/okey";
 
@@ -63,6 +66,17 @@ test("active timer and match result are announced with semantic roles", () => {
   expect(result.getByRole("alert").props.accessibilityLiveRegion).toBe("assertive");
   expect(result.UNSAFE_getByProps({ accessibilityViewIsModal: true })).toBeTruthy();
   expect(result.getByRole("button").props.accessibilityLabel).toBe("دەرچوون");
+});
+
+test("final match result remains hidden until settlement rewards are ready", () => {
+  expect(shouldShowOkeyMatchResultPopup(true, true, null)).toBe(false);
+  expect(
+    shouldShowOkeyMatchResultPopup(true, true, {
+      type: "winner",
+      currency: "fun",
+      playerReward: { pointDelta: 40, gemDelta: 2 },
+    } as any),
+  ).toBe(true);
 });
 test("discard exposes separate accessible actions for taking a tile and viewing history", () => {
   const take = jest.fn();

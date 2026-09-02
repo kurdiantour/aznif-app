@@ -14,7 +14,6 @@ type Props = {
   sourceRect: ScreenRect | null;
   announcement?: string;
   onComplete?: () => void;
-  holdAfterAnimationMs?: number;
   playFinishSound?: boolean;
 };
 
@@ -24,12 +23,15 @@ const SPARKS = Array.from({ length: 12 }, (_, index) => ({
   distance: 92 + (index % 3) * 18,
 }));
 const FINISH_SOUND = require("@/assets/audio/game/bang.mp3");
+export const OKEY_FINAL_TILE_ANIMATION_MS = 2_000;
+export const OKEY_FINAL_TILE_HOLD_MS = 3_000;
+export const OKEY_FINAL_TILE_PRESENTATION_MS =
+  OKEY_FINAL_TILE_ANIMATION_MS + OKEY_FINAL_TILE_HOLD_MS;
 
-export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcement, onComplete, holdAfterAnimationMs, playFinishSound }: Props) {
+export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcement, onComplete, playFinishSound }: Props) {
   const entrance = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const onCompleteRef = useRef(onComplete);
-  const holdAfterAnimationMsRef = useRef(holdAfterAnimationMs);
   const finishSoundPlayer = useAudioPlayer(playFinishSound ? FINISH_SOUND : null);
   const soundPlayedRef = useRef(false);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -41,8 +43,7 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
   const copyLeft = Math.max(12, Math.min(screenWidth - copyWidth - 12, centerX + tileWidth / 2 - copyWidth / 2));
   useEffect(() => {
     onCompleteRef.current = onComplete;
-    holdAfterAnimationMsRef.current = holdAfterAnimationMs;
-  }, [holdAfterAnimationMs, onComplete]);
+  }, [onComplete]);
 
   useEffect(() => {
     if (!playFinishSound || soundPlayedRef.current) return;
@@ -73,7 +74,7 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
     pulse.setValue(0);
     const reveal = Animated.timing(entrance, {
       toValue: 1,
-      duration: 2200,
+      duration: OKEY_FINAL_TILE_ANIMATION_MS,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     });
@@ -83,22 +84,17 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
         Animated.timing(pulse, { toValue: 0, duration: 520, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ]),
     );
-    let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    const presentationTimer = setTimeout(() => {
+      onCompleteRef.current?.();
+    }, OKEY_FINAL_TILE_PRESENTATION_MS);
     reveal.start(({ finished }) => {
       if (!finished) return;
       breathing.start();
-      if (holdAfterAnimationMsRef.current === undefined) {
-        onCompleteRef.current?.();
-        return;
-      }
-      holdTimer = setTimeout(() => {
-        onCompleteRef.current?.();
-      }, holdAfterAnimationMsRef.current);
     });
     return () => {
       reveal.stop();
       breathing.stop();
-      if (holdTimer) clearTimeout(holdTimer);
+      clearTimeout(presentationTimer);
     };
   }, [entrance, pulse]);
 

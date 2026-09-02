@@ -16,7 +16,11 @@ import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
 import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
-import { mapOkeySettlementToPopupRewards, OkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
+import {
+  mapOkeySettlementToPopupRewards,
+  OkeyMatchResultPopup,
+  shouldShowOkeyMatchResultPopup,
+} from "@/okey/components/OkeyMatchResultPopup";
 import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
 import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
@@ -24,7 +28,12 @@ import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import { styles } from "@/okey/components/okeyStyles";
-import { getOkeyOpenAction, getRoundResultScoreDetails, resolveTableMeldAction } from "@/okey/engine/okey-engine";
+import {
+  getOkeyOpenAction,
+  getRoundResultScoreDetails,
+  resolveTableMeldAction,
+  type OkeyTableMeldAction,
+} from "@/okey/engine/okey-engine";
 import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
@@ -41,6 +50,7 @@ import {
   type OkeyRoomSnapshot,
 } from "@/okey/multiplayer/okey-room-api";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
+import { shouldShowOkeyFinalTilePresentation } from "@/okey/presentation/okey-round-presentation";
 import {
   type MeldDropRect,
   type MeldOffset,
@@ -48,6 +58,7 @@ import {
 } from "@/okey/presentation/okey-game-presentation";
 import {
   findClosestMeldDropTarget,
+  getOkeyRunEndForDrop,
   isPointInsideRect,
   toLocalScreenRect,
 } from "@/okey/presentation/okey-table-interactions";
@@ -327,12 +338,13 @@ const {
   matchScores,
   roundResults,
   showRoundResultPopup,
-  showFinishRevealPopup,
-  completeFinishRevealPresentation,
   currentRoundResult,
   matchFinished,
   matchWinnerTeamId,
   showMatchResultPopup,
+  finalPresentationComplete,
+  completeFinalPresentation,
+  completeRoundResultPresentation,
   roundResultCountdownRemaining,
   draw,
   discard,
@@ -413,7 +425,7 @@ const onlineGameplayReady =
   (onlineRoom?.status === "playing" || matchFinished) &&
   (
     state.phase === "playing" ||
-    showFinishRevealPopup ||
+    state.phase === "finished" ||
     showRoundResultPopup ||
     showMatchResultPopup
   );
@@ -662,10 +674,13 @@ const matchSettlementRewards = useMemo(
   ),
   [matchWinnerTeamId, onlineProjection?.settlement, viewerTeamId],
 );
-const matchSettlementLoading =
-  matchFinished && !onlineProjection?.settlement;
+const shouldRenderMatchResultPopup = shouldShowOkeyMatchResultPopup(
+  showMatchResultPopup,
+  matchFinished,
+  onlineProjection?.settlement,
+);
 const shouldShowScorePopup =
-  showScoreDetails ||
+  (showScoreDetails && state.phase !== "finished") ||
   showRoundResultPopup;
   const forcedKonkanAnnouncementEndsAt = onlineProjection?.forcedKonkanTeamId
     ? Date.parse(onlineProjection.roundStartsAt ?? "")
@@ -740,6 +755,7 @@ const shouldShowScorePopup =
   const {
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
+    hasQueuedPresentation,
   } = useOkeyOpponentTileFlightCoordinator({
     state,
     adapter: onlineAdapter,
@@ -1191,19 +1207,11 @@ const shouldShowScorePopup =
         : target ? { playerId: target.playerId, meldId: target.meldId } : null,
     );
   };
-  const dropTileOnTableMeld = (tileId: string, _point: { x: number; y: number }) => {
-    const target = hoveredMeldTargetRef.current;
-    if (!target) return false;
-
-    const action = resolveTableMeldAction(
-      state,
-      0,
-      tileId,
-      target.playerId,
-      target.meldId,
-    );
-    if (!action) return false;
-
+  const submitTableMeldAction = (
+    action: OkeyTableMeldAction,
+    runEnd?: "start" | "end",
+  ) => {
+    const tileId = action.tileId;
     if (action.type === "lock-konkan") {
       awaitingDiscardRemovalTileIdRef.current = tileId;
       setHiddenRackTileIds([tileId]);
@@ -1211,6 +1219,7 @@ const shouldShowScorePopup =
         action.tileId,
         action.targetPlayerId,
         action.targetMeldId,
+        runEnd,
       ).then((accepted) => {
         if (accepted) return;
         awaitingDiscardRemovalTileIdRef.current = null;
@@ -1228,6 +1237,7 @@ const shouldShowScorePopup =
       action.tileId,
       action.targetPlayerId,
       action.targetMeldId,
+      runEnd,
     ).then((accepted) => {
       if (accepted) return;
       awaitingDiscardRemovalTileIdRef.current = null;
@@ -1237,6 +1247,22 @@ const shouldShowScorePopup =
     });
     setSelectedTileId(null);
     return true;
+  };
+  const dropTileOnTableMeld = (tileId: string, point: { x: number; y: number }) => {
+    const target = hoveredMeldTargetRef.current;
+    if (!target) return false;
+
+    const action = resolveTableMeldAction(
+      state,
+      0,
+      tileId,
+      target.playerId,
+      target.meldId,
+    );
+    if (!action) return false;
+
+    const runEnd = getOkeyRunEndForDrop(action.runEndOptions, point, target);
+    return submitTableMeldAction(action, runEnd);
   };
   useEffect(() => {
     if (lastPresentationResumeTokenRef.current === lifecycleResumeToken) return;
@@ -1257,7 +1283,7 @@ const shouldShowScorePopup =
     state.players,
   ]);
 
-  const turnTimerVisible = onlineGameplayReady && (state.phase === "playing" || showFinishRevealPopup);
+  const turnTimerVisible = onlineGameplayReady && state.phase === "playing" && !showRoundResultPopup && !showMatchResultPopup;
 
   const localPlayerIndex = useMemo(
     () => onlineRoom?.members.find((member) => member.userId === currentUserId)?.playerIndex ?? null,
@@ -1555,32 +1581,32 @@ const shouldShowScorePopup =
   ]);
 
   useEffect(() => {
-    if (!showFinishRevealPopup) {
+    const shouldShow = shouldShowOkeyFinalTilePresentation({
+      phase: state.phase,
+      finalPresentationComplete,
+      hasQueuedPresentation,
+      tileFlightActive: tileFlight !== null,
+      roundResultVisible: showRoundResultPopup,
+      matchResultVisible: showMatchResultPopup,
+      konkanRevealVisible: konkanRevealData.visible,
+    });
+
+    if (shouldShow) {
+      setShowFinalTileCelebration(true);
+    } else if (state.phase !== "finished" || finalPresentationComplete) {
       setShowFinalTileCelebration(false);
-      return;
     }
-    if (tileFlight) return;
-
-    const timer = setTimeout(() => setShowFinalTileCelebration(true), 350);
-    return () => clearTimeout(timer);
-  }, [showFinishRevealPopup, tileFlight]);
-
-  useEffect(() => {
-    if (!matchFinished || !showFinishRevealPopup) return;
-
-    // Safety net only: the normal path is OkeyFinalTileCelebration.onComplete.
-    // If geometry/animation completion is ever lost, do not leave the player
-    // trapped on the finished table forever.
-    const timer = setTimeout(() => {
-      completeFinishRevealPresentation();
-    }, 12_000);
-
-    return () => clearTimeout(timer);
   }, [
-    completeFinishRevealPresentation,
-    matchFinished,
-    showFinishRevealPopup,
+    finalPresentationComplete,
+    hasQueuedPresentation,
+    konkanRevealData.visible,
+    showMatchResultPopup,
+    showRoundResultPopup,
+    state.phase,
+    tileFlight,
   ]);
+
+
 
 
   
@@ -1749,7 +1775,7 @@ const shouldShowScorePopup =
   maxRounds={maxRounds}
   roundResults={displayRoundResults}
   matchScores={teamScores}
-  countdownRemaining={roundResultCountdownRemaining}
+  countdownRemaining={showRoundResultPopup ? roundResultCountdownRemaining : null}
   isTileCycleLimit={
     showRoundResultPopup &&
     currentRoundResult?.endReason === "tile-cycle-limit"
@@ -1757,11 +1783,10 @@ const shouldShowScorePopup =
 />
 
 <OkeyMatchResultPopup
-  visible={showMatchResultPopup}
+  visible={shouldRenderMatchResultPopup}
   winnerTeamId={displayMatchWinnerTeamId}
   matchScores={teamScores}
   rewards={matchSettlementRewards}
-  rewardsLoading={matchSettlementLoading}
   onNewMatch={() => {
     router.replace(exitRoute);
   }}
@@ -1771,15 +1796,11 @@ const shouldShowScorePopup =
             tile={topDiscard ?? state.indicatorTile}
             okeyTile={state.okeyTile}
             sourceRect={discardTopRectRef.current ? toLocalRect(discardTopRectRef.current) : null}
-            holdAfterAnimationMs={isKonkanFinish ? 3000 : undefined}
             playFinishSound
-            onComplete={
-              matchFinished
-                ? completeFinishRevealPresentation
-                : isKonkanFinish
-                  ? completeKonkanFinalTile
-                  : undefined
-            }
+            onComplete={() => {
+              setShowFinalTileCelebration(false);
+              completeFinalPresentation();
+            }}
           />
         ) : null}
                   <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
@@ -1870,7 +1891,10 @@ const shouldShowScorePopup =
           runTiles={konkanRevealData.runTiles}
           completionMeldTiles={konkanRevealData.completionMeldTiles}
           okeyTile={state.okeyTile}
-          onClose={closeKonkanReveal}
+          onClose={() => {
+            closeKonkanReveal();
+            completeFinalPresentation();
+          }}
           onEntered={completeKonkanRevealEntrance}
         />
         <Animated.View

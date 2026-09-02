@@ -454,9 +454,14 @@ export function useOkeyOpponentTileFlightCoordinator({
 
   activePresentationRef.current.resetOpponent = resetOpponentPresentation;
 
+  const hasQueuedPresentation = presentationQueueRef.current.some(
+    (queued) => queued.event.version <= (projectionVersion ?? -1),
+  );
+
   return {
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
+    hasQueuedPresentation,
   };
 }
 

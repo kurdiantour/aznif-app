@@ -31,3 +31,16 @@ export function findClosestMeldDropTarget(
     .sort((left, right) => left.distance - right.distance)
     .find(({ rect }) => isValid(rect))?.rect ?? null;
 }
+
+export function getOkeyRunEndForDrop(
+  options: { runEnd: "start" | "end" }[],
+  point: ScreenPoint,
+  meldRect: ScreenRect,
+) {
+  if (options.length === 0) return undefined;
+  const preferredEnd = point.x <= meldRect.x + meldRect.width / 2
+    ? "start"
+    : "end";
+  return options.find((option) => option.runEnd === preferredEnd)?.runEnd
+    ?? options[0].runEnd;
+}
