@@ -70,6 +70,7 @@ export type MultiplayerMatchOptions<TSnapshot, TRoundResult, TFinalResult> = {
   roundResultDurationMs?: number;
   terminalRoundResultDurationMs?: number | null;
   terminalRoundPresentation?: "always" | "transition-only" | "never";
+  terminalPresentationTimeoutMs?: number;
   nextRoundCountdownSeconds?: number;
   roundSyncIntervalMs?: number;
   staleAfterMs?: number;

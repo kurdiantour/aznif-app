@@ -117,6 +117,7 @@ test("finished match waits for final-tile completion and never starts another ro
   expect(startNextRound).not.toHaveBeenCalled();
   jest.useRealTimers();
 });
+
 test("completed final presentation remains latched while next-round snapshot is pending", async () => {
   jest.useFakeTimers();
   const startNextRound = jest.fn(() => new Promise<Snapshot>(() => undefined));
@@ -141,5 +142,90 @@ test("completed final presentation remains latched while next-round snapshot is 
   expect(match().lifecycle?.roundFinished).toBe(true);
   expect(match().showRoundResultPopup).toBe(false);
   expect(match().finalPresentationComplete).toBe(true);
+  jest.useRealTimers();
+});
+
+test("snapshot version bumps in finished match do not invalidate completed final popup", async () => {
+  jest.useFakeTimers();
+  let listener: ((snapshot: Snapshot) => void) | null = null;
+  const initialSnapshot = finishedRound(true);
+  const adapter: MultiplayerMatchAdapter<Snapshot> = {
+    load: async () => initialSnapshot,
+subscribe: (observer) => {
+  listener = (snapshot) => observer.onInvalidated(snapshot);
+  return () => { listener = null; };
+},
+    startNextRound: jest.fn(async () => undefined),
+    leave: async () => undefined,
+  };
+  const match = renderMatch(adapter);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  expect(match().phase).toBe("match_finished");
+  expect(match().showFinalMatchPopup).toBe(false);
+
+  act(() => match().completeFinalPresentation());
+  expect(match().showFinalMatchPopup).toBe(true);
+
+  // Settlement arrives or snapshot version increments from 7 to 8
+  const updatedSnapshot: Snapshot = {
+    lifecycle: {
+      ...initialSnapshot.lifecycle,
+      version: 8,
+      completedRoundId: "8:1",
+    },
+    result: "round-1-with-settlement",
+  };
+
+  act(() => {
+    listener?.(updatedSnapshot);
+  });
+
+  // Popup MUST remain visible and latched
+  expect(match().showFinalMatchPopup).toBe(true);
+  expect(match().finalPresentationComplete).toBe(true);
+  jest.useRealTimers();
+});
+
+test("terminal match safety timeout automatically completes final presentation if animation hangs", async () => {
+  jest.useFakeTimers();
+  let current: ReturnType<typeof useMultiplayerMatch<Snapshot, string, string>> | null = null;
+  const initialSnapshot = finishedRound(true);
+  const adapter: MultiplayerMatchAdapter<Snapshot> = {
+    load: async () => initialSnapshot,
+    subscribe: () => () => undefined,
+    startNextRound: jest.fn(async () => undefined),
+    leave: async () => undefined,
+  };
+  const options = {
+    roomId: "match-1",
+    adapter,
+    selectLifecycle: (snapshot: Snapshot) => snapshot.lifecycle,
+    buildRoundResult: (snapshot: Snapshot) => snapshot.result,
+    buildFinalResult: (snapshot: Snapshot) => snapshot.result,
+    terminalPresentationTimeoutMs: 2_000,
+  };
+  function Harness() {
+    current = useMultiplayerMatch(options);
+    return null;
+  }
+  render(<Harness />);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  expect(current!.showFinalMatchPopup).toBe(false);
+
+  // Advance past safety timeout
+  act(() => {
+    jest.advanceTimersByTime(2_000);
+  });
+
+  expect(current!.showFinalMatchPopup).toBe(true);
+  expect(current!.finalPresentationComplete).toBe(true);
   jest.useRealTimers();
 });

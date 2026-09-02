@@ -66,8 +66,8 @@ import type {
   OkeyMeld,
   OkeyTeamId,
   OkeyTile,
-} from "@/okey/types/okey";import type { Player } from "@/domino/types/domino-game";
-
+} from "@/okey/types/okey";
+import type { Player } from "@/domino/types/domino-game";
 
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
 const PLAYER_PREVIEW_MELD_TILE_WIDTH = 18;
@@ -109,7 +109,6 @@ function getRouteParam(
     : value;
 }
 
-
 function OkeyGameTableSceneContent() {
   const router = useRouter();
   const { party } = useGameParty();
@@ -130,7 +129,6 @@ function OkeyGameTableSceneContent() {
   const [onlineRoom, setOnlineRoom] =
     useState<OkeyRoomSnapshot | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [konkanFinalPresentationReady, setKonkanFinalPresentationReady] = useState(false);
   const [konkanRevealData, setKonkanRevealData] = useState<{
     visible: boolean;
     runTiles: OkeyTile[];
@@ -142,11 +140,6 @@ function OkeyGameTableSceneContent() {
   });
   const closeKonkanReveal = useCallback(() => {
     setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
-    setKonkanFinalPresentationReady(false);
-  }, []);
-
-  const completeKonkanFinalTile = useCallback(() => {
-    setKonkanFinalPresentationReady(true);
   }, []);
   const completeKonkanRevealEntrance = useCallback(() => {
     setShowFinalTileCelebration(false);
@@ -157,229 +150,220 @@ function OkeyGameTableSceneContent() {
     setLeavingWaitingRoom,
   ] = useState(false);
 
-useEffect(() => {
-  let active = true;
-  void supabase.auth.getUser().then(({ data }) => {
-    if (active) setCurrentUserId(data.user?.id ?? null);
-  });
-  return () => { active = false; };
-}, []);
-
-// Okey is an authoritative online game. A matchId is issued only by the
-// matchmaking service, so a direct link must not fall back to a local game.
-useEffect(() => {
-  if (!onlineMatchId) {
-    router.replace(exitRoute);
-  }
-}, [onlineMatchId, router]);
-
-useEffect(() => {
-  if (!onlineMatchId) {
-    setOnlineRoom(null);
-    return;
-  }
-
-  let active = true;
-
-  void getOkeyRoomStatus(onlineMatchId)
-    .then((room) => {
-      if (active) {
-        setOnlineRoom(room);
-      }
-    })
-    .catch((error) => {
-      console.warn(
-        "Unable to load Okey room status",
-        error,
-      );
+  useEffect(() => {
+    let active = true;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (active) setCurrentUserId(data.user?.id ?? null);
     });
+    return () => { active = false; };
+  }, []);
 
-  const unsubscribe = subscribeOkeyRoom(
-    onlineMatchId,
-    (room) => {
-      if (active) {
-        setOnlineRoom(room);
-      }
-    },
-  );
+  // Okey is an authoritative online game. A matchId is issued only by the
+  // matchmaking service, so a direct link must not fall back to a local game.
+  useEffect(() => {
+    if (!onlineMatchId) {
+      router.replace(exitRoute);
+    }
+  }, [onlineMatchId, router]);
 
-  return () => {
-    active = false;
-    unsubscribe();
-  };
-}, [onlineMatchId]);
+  useEffect(() => {
+    if (!onlineMatchId) {
+      setOnlineRoom(null);
+      return;
+    }
 
-useEffect(() => {
-  if (
-    !onlineMatchId ||
-    !currentUserId ||
-    !party ||
-    party.leaderId === currentUserId ||
-    party.flowStatus !== "idle"
-  ) {
-    return;
-  }
+    let active = true;
 
-  setOnlineRoom(null);
-  router.replace(exitRoute);
-}, [currentUserId, onlineMatchId, party, router]);
-const handleCancelWaiting = useCallback(async () => {
-  if (
-    !onlineMatchId || leavingWaitingRoom || onlineRoom?.countdownEndsAt ||
-    (party && party.leaderId !== currentUserId)
-  ) {
-    return;
-  }
+    void getOkeyRoomStatus(onlineMatchId)
+      .then((room) => {
+        if (active) {
+          setOnlineRoom(room);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "Unable to load Okey room status",
+          error,
+        );
+      });
 
-  setLeavingWaitingRoom(true);
-
-  try {
-    await leaveOkeyRoom(onlineMatchId);
-
-    setOnlineRoom(null);
-
-    router.replace(exitRoute);
-  } catch (error) {
-    console.warn(
-      "Unable to leave Okey waiting room",
-      error,
+    const unsubscribe = subscribeOkeyRoom(
+      onlineMatchId,
+      (room) => {
+        if (active) {
+          setOnlineRoom(room);
+        }
+      },
     );
-  } finally {
-    setLeavingWaitingRoom(false);
-  }
-}, [
-  leavingWaitingRoom,
-  onlineMatchId,
-  onlineRoom?.countdownEndsAt,
-  party,
-  currentUserId,
-  router,
-]);
 
-const activeOnlineMatchId =
-  onlineRoom?.status === "playing" || onlineRoom?.status === "finished"
-    ? onlineMatchId
-    : undefined;
-
-const waitingForOnlinePlayers =
-  Boolean(onlineMatchId) &&
-  (onlineRoom === null || onlineRoom.status === "waiting");
-
-
-const countdownInProgress =
-  onlineRoom?.status === "waiting" &&
-  onlineRoom.countdownEndsAt !== null;
-
-const [initialStartTransitionMatchId, setInitialStartTransitionMatchId] =
-  useState<string | null>(null);
-
-useEffect(() => {
-  if (
-    onlineMatchId &&
-    onlineRoom?.matchId === onlineMatchId &&
-    onlineRoom.status === "waiting" &&
-    onlineRoom.countdownEndsAt !== null
-  ) {
-    setInitialStartTransitionMatchId(onlineMatchId);
-  }
-}, [
-  onlineMatchId,
-  onlineRoom?.countdownEndsAt,
-  onlineRoom?.matchId,
-  onlineRoom?.status,
-]);
-
-const { emitFeedback } = useOkeyFeedback();
-const responsiveLayout = useOkeyResponsiveLayout();
-const [showGameChat, setShowGameChat] =
-  useState(false);
-const okeyChatMembersRef = useRef(onlineRoom?.members ?? []);
-okeyChatMembersRef.current = onlineRoom?.members ?? [];
-
-const okeyChatTransport = useMemo<GameChatTransport>(() => {
-  const normalize = (message: Awaited<ReturnType<typeof sendOkeyChatMessage>>): GameChatMessage => {
-    const member = okeyChatMembersRef.current.find((entry) => entry.userId === message.user_id);
-    return {
-      id: message.id,
-      mode: "2v2",
-      room_id: message.match_id,
-      sender_user_id: message.user_id,
-      sender_name: member?.displayName ?? "Player",
-      sender_avatar_id: null,
-      sender_avatar_url: member?.avatarUrl ?? null,
-      body: message.body,
-      created_at: message.created_at,
+    return () => {
+      active = false;
+      unsubscribe();
     };
-  };
-
-  return {
-    getMessages: async (matchId) => (await getOkeyChatMessages(matchId)).map(normalize),
-    sendMessage: async (matchId, body) => normalize(await sendOkeyChatMessage(matchId, body)),
-    subscribe: subscribeOkeyChat,
-  };
-}, []);
-
-const onlineController = useOkeyMultiplayerGame(
-  activeOnlineMatchId,
-  currentUserId,
-);
-
-const {
-  showMatchMenu,
-  matchMenuTranslateX,
-  openMatchMenu,
-  closeMatchMenu,
-} = useMatchMenu();
-
-const {
-  state,
-  currentRound,
-  maxRounds,
-  matchScores,
-  roundResults,
-  showRoundResultPopup,
-  currentRoundResult,
-  matchFinished,
-  matchWinnerTeamId,
-  showMatchResultPopup,
-  finalPresentationComplete,
-  completeFinalPresentation,
-  completeRoundResultPresentation,
-  roundResultCountdownRemaining,
-  draw,
-  discard,
-  commitOpenIntent,
-  declareKonkan,
-  spendTileOnTableMeld,
-  lockKonkanSetOnTable,
-  turnTimeLeft,
-  isAppActive,
-  lifecycleResumeToken,
-  onlineProjection,
-  onlineAdapter,
-  leaveOnlineMatch,
-  requestExit,
-  cancelExit,
-  exitConfirmationVisible,
-  leaving,
-} = onlineController;
+  }, [onlineMatchId]);
 
   useEffect(() => {
     if (
-      konkanFinalPresentationReady &&
-      !konkanRevealData.visible &&
-      konkanRevealData.runTiles.length === 10
+      !onlineMatchId ||
+      !currentUserId ||
+      !party ||
+      party.leaderId === currentUserId ||
+      party.flowStatus !== "idle"
     ) {
-      setKonkanRevealData((previous) => ({ ...previous, visible: true }));
+      return;
     }
-  }, [konkanFinalPresentationReady, konkanRevealData.runTiles.length, konkanRevealData.visible]);
+
+    setOnlineRoom(null);
+    router.replace(exitRoute);
+  }, [currentUserId, onlineMatchId, party, router]);
+
+  const handleCancelWaiting = useCallback(async () => {
+    if (
+      !onlineMatchId || leavingWaitingRoom || onlineRoom?.countdownEndsAt ||
+      (party && party.leaderId !== currentUserId)
+    ) {
+      return;
+    }
+
+    setLeavingWaitingRoom(true);
+
+    try {
+      await leaveOkeyRoom(onlineMatchId);
+
+      setOnlineRoom(null);
+
+      router.replace(exitRoute);
+    } catch (error) {
+      console.warn(
+        "Unable to leave Okey waiting room",
+        error,
+      );
+    } finally {
+      setLeavingWaitingRoom(false);
+    }
+  }, [
+    leavingWaitingRoom,
+    onlineMatchId,
+    onlineRoom?.countdownEndsAt,
+    party,
+    currentUserId,
+    router,
+    exitRoute,
+  ]);
+
+  const activeOnlineMatchId =
+    onlineRoom?.status === "playing" || onlineRoom?.status === "finished"
+      ? onlineMatchId
+      : undefined;
+
+  const waitingForOnlinePlayers =
+    Boolean(onlineMatchId) &&
+    (onlineRoom === null || onlineRoom.status === "waiting");
+
+  const countdownInProgress =
+    onlineRoom?.status === "waiting" &&
+    onlineRoom.countdownEndsAt !== null;
+
+  const [initialStartTransitionMatchId, setInitialStartTransitionMatchId] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      onlineMatchId &&
+      onlineRoom?.matchId === onlineMatchId &&
+      onlineRoom.status === "waiting" &&
+      onlineRoom.countdownEndsAt !== null
+    ) {
+      setInitialStartTransitionMatchId(onlineMatchId);
+    }
+  }, [
+    onlineMatchId,
+    onlineRoom?.countdownEndsAt,
+    onlineRoom?.matchId,
+    onlineRoom?.status,
+  ]);
+
+  const { emitFeedback } = useOkeyFeedback();
+  const responsiveLayout = useOkeyResponsiveLayout();
+  const [showGameChat, setShowGameChat] =
+    useState(false);
+  const okeyChatMembersRef = useRef(onlineRoom?.members ?? []);
+  okeyChatMembersRef.current = onlineRoom?.members ?? [];
+
+  const okeyChatTransport = useMemo<GameChatTransport>(() => {
+    const normalize = (message: Awaited<ReturnType<typeof sendOkeyChatMessage>>): GameChatMessage => {
+      const member = okeyChatMembersRef.current.find((entry) => entry.userId === message.user_id);
+      return {
+        id: message.id,
+        mode: "2v2",
+        room_id: message.match_id,
+        sender_user_id: message.user_id,
+        sender_name: member?.displayName ?? "Player",
+        sender_avatar_id: null,
+        sender_avatar_url: member?.avatarUrl ?? null,
+        body: message.body,
+        created_at: message.created_at,
+      };
+    };
+
+    return {
+      getMessages: async (matchId) => (await getOkeyChatMessages(matchId)).map(normalize),
+      sendMessage: async (matchId, body) => normalize(await sendOkeyChatMessage(matchId, body)),
+      subscribe: subscribeOkeyChat,
+    };
+  }, []);
+
+  const onlineController = useOkeyMultiplayerGame(
+    activeOnlineMatchId,
+    currentUserId,
+  );
+
+  const {
+    showMatchMenu,
+    matchMenuTranslateX,
+    openMatchMenu,
+    closeMatchMenu,
+  } = useMatchMenu();
+
+  const {
+    state,
+    currentRound,
+    maxRounds,
+    matchScores,
+    roundResults,
+    showRoundResultPopup,
+    currentRoundResult,
+    matchFinished,
+    matchWinnerTeamId,
+    showMatchResultPopup,
+    finalPresentationComplete,
+    completeFinalPresentation,
+    completeRoundResultPresentation,
+    roundResultCountdownRemaining,
+    draw,
+    discard,
+    commitOpenIntent,
+    declareKonkan,
+    spendTileOnTableMeld,
+    lockKonkanSetOnTable,
+    turnTimeLeft,
+    isAppActive,
+    lifecycleResumeToken,
+    onlineProjection,
+    onlineAdapter,
+    leaveOnlineMatch,
+    requestExit,
+    cancelExit,
+    exitConfirmationVisible,
+    leaving,
+  } = onlineController;
 
   useEffect(() => {
     if (!onlineAdapter) return;
     const unsubscribe = onlineAdapter.subscribeActionEvents((event) => {
       if (event.type === "konkan" && event.payload?.kind === "declare") {
         setKonkanRevealData({
-          visible: false,
+          visible: true,
           runTiles: (event.payload.runTiles as OkeyTile[]) ?? [],
           completionMeldTiles: (event.payload.completionMeldTiles as OkeyTile[]) ?? [],
         });
@@ -390,7 +374,6 @@ const {
       setShowDiscardHistory(false);
       setShowFinalTileCelebration(false);
       setTurnWarningToastVisible(false);
-      setKonkanFinalPresentationReady(false);
       setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
       setProfilePlayer(null);
     });
@@ -400,66 +383,66 @@ const {
     };
   }, [onlineAdapter]);
 
-const takeoverExitStartedRef = useRef(false);
-const previousViewerControlRef = useRef<{
-  matchId: string;
-  playerId: string;
-  controlled: boolean;
-} | null>(null);
-const pendingTakeoverTimeoutEventIdRef = useRef<string | null>(null);
-const lastPresentationResumeTokenRef = useRef(lifecycleResumeToken);
+  const takeoverExitStartedRef = useRef(false);
+  const previousViewerControlRef = useRef<{
+    matchId: string;
+    playerId: string;
+    controlled: boolean;
+  } | null>(null);
+  const pendingTakeoverTimeoutEventIdRef = useRef<string | null>(null);
+  const lastPresentationResumeTokenRef = useRef(lifecycleResumeToken);
 
-const handleConfirmLeaveMatch = useCallback(async () => {
-  if (leaving) return;
-  try {
-    await leaveOnlineMatch();
-    router.replace(exitRoute);
-  } catch (error) {
-    console.warn("Unable to leave Okey match", error);
-  }
-}, [leaving, leaveOnlineMatch, router, exitRoute]);
+  const handleConfirmLeaveMatch = useCallback(async () => {
+    if (leaving) return;
+    try {
+      await leaveOnlineMatch();
+      router.replace(exitRoute);
+    } catch (error) {
+      console.warn("Unable to leave Okey match", error);
+    }
+  }, [leaving, leaveOnlineMatch, router, exitRoute]);
 
-// Do not expose the hook's local initial value while the authoritative match loads.
-const onlineGameplayReady =
-  onlineProjection !== null &&
-  (onlineRoom?.status === "playing" || matchFinished) &&
-  (
-    state.phase === "playing" ||
-    state.phase === "finished" ||
-    showRoundResultPopup ||
-    showMatchResultPopup
+  // Do not expose the hook's local initial value while the authoritative match loads.
+  const onlineGameplayReady =
+    onlineProjection !== null &&
+    (onlineRoom?.status === "playing" || matchFinished) &&
+    (
+      state.phase === "playing" ||
+      state.phase === "finished" ||
+      showRoundResultPopup ||
+      showMatchResultPopup
+    );
+
+  const initialStartTransitionPending =
+    initialStartTransitionMatchId === onlineMatchId &&
+    !onlineGameplayReady;
+
+  const shouldShowWaitingPlayers =
+    waitingForOnlinePlayers || initialStartTransitionPending;
+
+  useEffect(() => {
+    if (
+      initialStartTransitionMatchId !== null &&
+      (initialStartTransitionMatchId !== onlineMatchId || onlineGameplayReady)
+    ) {
+      setInitialStartTransitionMatchId(null);
+    }
+  }, [initialStartTransitionMatchId, onlineGameplayReady, onlineMatchId]);
+
+  const dealLifecycleKey = onlineGameplayReady
+    ? `playing-${onlineMatchId}-${currentRound}`
+    : "waiting";
+  const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
+  const [rackSetScore, setRackSetScore] = useState(0);
+  const [openableRackMelds, setOpenableRackMelds] = useState<{
+    melds: OkeyMeld[];
+    score: number;
+    contiguousGroups: OkeyTile[][];
+  }>({ melds: [], score: 0, contiguousGroups: [] });
+  const turnView = useMemo(
+    () => selectOkeyTurnView(onlineProjection),
+    [onlineProjection],
   );
-
-const initialStartTransitionPending =
-  initialStartTransitionMatchId === onlineMatchId &&
-  !onlineGameplayReady;
-
-const shouldShowWaitingPlayers =
-  waitingForOnlinePlayers || initialStartTransitionPending;
-
-useEffect(() => {
-  if (
-    initialStartTransitionMatchId !== null &&
-    (initialStartTransitionMatchId !== onlineMatchId || onlineGameplayReady)
-  ) {
-    setInitialStartTransitionMatchId(null);
-  }
-}, [initialStartTransitionMatchId, onlineGameplayReady, onlineMatchId]);
-
-const dealLifecycleKey = onlineGameplayReady
-  ? `playing-${onlineMatchId}-${currentRound}`
-  : "waiting";
-const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
-const [rackSetScore, setRackSetScore] = useState(0);
-const [openableRackMelds, setOpenableRackMelds] = useState<{
-  melds: OkeyMeld[];
-  score: number;
-  contiguousGroups: OkeyTile[][];
-}>({ melds: [], score: 0, contiguousGroups: [] });
-const turnView = useMemo(
-  () => selectOkeyTurnView(onlineProjection),
-  [onlineProjection],
-);
   const [droppedMelds, setDroppedMelds] = useState<OkeyMeld[]>([]);
   const [localDragCommittedMeldSignatures, setLocalDragCommittedMeldSignatures] = useState<string[]>([]);
   const [tableMeldOffsets, setTableMeldOffsets] = useState<Record<string, MeldOffset>>({});
@@ -1285,48 +1268,79 @@ const shouldShowScorePopup =
 
   const turnTimerVisible = onlineGameplayReady && state.phase === "playing" && !showRoundResultPopup && !showMatchResultPopup;
 
-  const localPlayerIndex = useMemo(
-    () => onlineRoom?.members.find((member) => member.userId === currentUserId)?.playerIndex ?? null,
-    [currentUserId, onlineRoom?.members],
-  );
+  const localPlayerIndex = useMemo(() => {
+    if (!onlineProjection) return null;
+
+    const index = onlineProjection.players.findIndex(
+      (player) => player.id === humanPlayer.id,
+    );
+
+    return index >= 0 ? index : null;
+  }, [humanPlayer.id, onlineProjection]);
+
   const relativeSeatMap = useMemo(
     () => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex),
     [localPlayerIndex],
   );
-  const playerByServerIndex = useMemo(() => {
-    const byIndex = new Map<number, typeof state.players[number]>();
-    for (const member of onlineRoom?.members ?? []) {
-      const player = state.players.find((entry) => entry.id === member.userId);
-      if (player) byIndex.set(member.playerIndex, player);
-    }
-    return byIndex;
-  }, [onlineRoom?.members, state.players]);
-  const playerForSeat = useCallback((seat: RelativeSeat) => {
-    if (!relativeSeatMap) return null;
-    return playerByServerIndex.get(relativeSeatMap[seat]) ?? null;
-  }, [playerByServerIndex, relativeSeatMap]);
+
+  const playerForSeat = useCallback(
+    (seat: RelativeSeat) => {
+      if (!relativeSeatMap || !onlineProjection) return null;
+
+      const serverIndex = relativeSeatMap[seat];
+      const projectedPlayer = onlineProjection.players[serverIndex];
+      if (!projectedPlayer) return null;
+
+      return state.players.find((player) => player.id === projectedPlayer.id) ?? null;
+    },
+    [onlineProjection, relativeSeatMap, state.players],
+  );
+
   const opponentSeats = useMemo(
     () => (["top", "left", "right"] as const).map((side) => {
       const serverIndex = relativeSeatMap?.[side] ?? null;
-      const member = serverIndex === null ? null : onlineRoom?.members.find((entry) => entry.playerIndex === serverIndex) ?? null;
       const player = playerForSeat(side);
+
       return {
         side,
-        id: player?.id ?? member?.userId ?? `waiting-${side}`,
-        name: player?.name ?? member?.displayName ?? "",
-        count: onlineGameplayReady ? (player ? stableOpponentTileCounts[player.id] ?? player.hand.length : 0) : 0,
-        active: onlineGameplayReady && turnView.playerId === player?.id,
+        id: player?.id ?? `waiting-${side}`,
+        name: player?.name ?? "",
+        count: onlineGameplayReady
+          ? (player ? stableOpponentTileCounts[player.id] ?? player.hand.length : 0)
+          : 0,
+        active:
+          onlineGameplayReady &&
+          serverIndex !== null &&
+          turnView.playerIndex === serverIndex,
         turnTimeLeft,
         turnDurationSeconds: turnView.durationSeconds,
         turnTimerPhase: state.hasDrawnThisTurn ? "throw" as const : "draw" as const,
       };
     }),
-    [onlineGameplayReady, onlineRoom?.members, playerForSeat, relativeSeatMap, stableOpponentTileCounts, state.players, turnTimeLeft, turnView.durationSeconds, turnView.playerId, state.hasDrawnThisTurn],
+    [
+      onlineGameplayReady,
+      playerForSeat,
+      relativeSeatMap,
+      stableOpponentTileCounts,
+      state.hasDrawnThisTurn,
+      turnTimeLeft,
+      turnView.durationSeconds,
+      turnView.playerIndex,
+    ],
   );
+
   const seatOrderedPlayers = useMemo(() => {
-    if (!relativeSeatMap) return [state.players[0], state.players[2], state.players[3], state.players[1]];
-    return ["bottom", "top", "left", "right"].map((seat) => playerForSeat(seat as RelativeSeat) ?? state.players[0]);
-  }, [playerForSeat, relativeSeatMap, state.players]);
+    const fallbackBySeat: Record<RelativeSeat, typeof state.players[number]> = {
+      bottom: state.players[0],
+      right: state.players[1],
+      top: state.players[2],
+      left: state.players[3],
+    };
+
+    return (["bottom", "top", "left", "right"] as const).map(
+      (seat) => playerForSeat(seat) ?? fallbackBySeat[seat],
+    );
+  }, [playerForSeat, state.players]);
   const presentedSeatOrderedPlayers = useMemo(
     () =>
       seatOrderedPlayers.map((player) => {
@@ -1569,7 +1583,6 @@ const shouldShowScorePopup =
     setShowDiscardHistory(false);
     setShowFinalTileCelebration(false);
     setTurnWarningToastVisible(false);
-    setKonkanFinalPresentationReady(false);
     setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
     setProfilePlayer(null);
 
@@ -2053,4 +2066,6 @@ const forceKonkanStyles = StyleSheet.create({
     backgroundColor: "#f8d774",
   },
 });
+
+
 

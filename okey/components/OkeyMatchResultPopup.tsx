@@ -18,10 +18,10 @@ export type OkeyMatchPopupRewards = {
 
 export function shouldShowOkeyMatchResultPopup(
   requested: boolean,
-  matchFinished: boolean,
-  settlement: OkeyMatchSettlement | null | undefined,
+  _matchFinished?: boolean,
+  _settlement?: OkeyMatchSettlement | null | undefined,
 ): boolean {
-  return requested && (!matchFinished || settlement != null);
+  return requested;
 }
 
 export function mapOkeySettlementToPopupRewards(

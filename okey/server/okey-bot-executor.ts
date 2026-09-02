@@ -151,9 +151,9 @@ export async function executeOkeyBotTurn(
 
     while (steps.length < MAX_BOT_TRANSITIONS_PER_INVOCATION) {
       if (currentState.matchFinished) return completed("match_finished");
-      if (currentState.roundFinished || currentState.roundState.phase !== "playing") {
-        return completed("round_finished");
-      }
+if (currentState.roundState.phase !== "playing") {
+  return completed("round_finished");
+}
 
       const currentPlayerIndex = currentState.roundState.currentPlayerIndex;
       const currentPlayer = currentState.roundState.players[currentPlayerIndex];

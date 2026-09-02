@@ -68,8 +68,8 @@ test("active timer and match result are announced with semantic roles", () => {
   expect(result.getByRole("button").props.accessibilityLabel).toBe("دەرچوون");
 });
 
-test("final match result remains hidden until settlement rewards are ready", () => {
-  expect(shouldShowOkeyMatchResultPopup(true, true, null)).toBe(false);
+test("final match result is requested and enriched by settlement rewards", () => {
+  expect(shouldShowOkeyMatchResultPopup(true, true, null)).toBe(true);
   expect(
     shouldShowOkeyMatchResultPopup(true, true, {
       type: "winner",
@@ -77,6 +77,7 @@ test("final match result remains hidden until settlement rewards are ready", () 
       playerReward: { pointDelta: 40, gemDelta: 2 },
     } as any),
   ).toBe(true);
+  expect(shouldShowOkeyMatchResultPopup(false, true, null)).toBe(false);
 });
 test("discard exposes separate accessible actions for taking a tile and viewing history", () => {
   const take = jest.fn();

@@ -48,6 +48,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
   const timeoutInFlightRef = useRef(false);
   const timeoutRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextRoundStartKeyRef = useRef<string | null>(null);
+  const [terminalPresentationCompletedRound, setTerminalPresentationCompletedRound] = useState<string | null>(null);
   const botClaimRegistryRef = useRef(new BotTurnClaimRegistry());
   const mountedRef = useRef(true);
 
@@ -97,6 +98,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     setLoading(true);
     setError(null);
     nextRoundStartKeyRef.current = null;
+    setTerminalPresentationCompletedRound(null);
     setFinalPresentationCompletedFor(null);
     setRoundResultCompletedFor(null);
     setRoundResultCountdownRemaining(null);
@@ -341,9 +343,19 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
   const completedPresentationKey = lifecycle?.completedRoundId ?? null;
 
   const completeFinalPresentation = useCallback(() => {
-    if (!completedPresentationKey || !lifecycle?.roundFinished) return;
-    setFinalPresentationCompletedFor(completedPresentationKey);
-  }, [completedPresentationKey, lifecycle?.roundFinished]);
+    if (!lifecycle?.roundFinished) return;
+
+    // Terminal presentation completion must always produce a React state update.
+    // A ref-only latch can leave Android waiting for an unrelated native event
+    // (for example a touch) before the final popup is painted.
+    if (lifecycle.matchFinished) {
+      setTerminalPresentationCompletedRound(lifecycle.roundId ?? "terminal");
+    }
+
+    if (completedPresentationKey) {
+      setFinalPresentationCompletedFor(completedPresentationKey);
+    }
+  }, [completedPresentationKey, lifecycle?.roundFinished, lifecycle?.matchFinished, lifecycle?.roundId]);
 
   const completeRoundResultPresentation = useCallback(async () => {
     if (
@@ -378,15 +390,38 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     applySnapshot,
     refresh,
   ]);
+
+  const isFinalPresentationComplete =
+    phase === "match_finished"
+      ? (
+          (completedPresentationKey !== null && finalPresentationCompletedFor === completedPresentationKey) ||
+          (terminalPresentationCompletedRound !== null &&
+            terminalPresentationCompletedRound === (lifecycle?.roundId ?? "terminal"))
+        )
+      : (
+          completedPresentationKey !== null &&
+          finalPresentationCompletedFor === completedPresentationKey
+        );
+
   const showRoundResultPopup =
     phase === "round_result" &&
     roundResult !== null &&
     finalPresentationCompletedFor === completedPresentationKey &&
     roundResultCompletedFor !== completedPresentationKey;
+
   const showFinalMatchPopup =
     phase === "match_finished" &&
     finalResult !== null &&
-    finalPresentationCompletedFor === completedPresentationKey;
+    isFinalPresentationComplete;
+
+  useEffect(() => {
+    if (phase !== "match_finished" || isFinalPresentationComplete) return;
+    const timeoutMs = options.terminalPresentationTimeoutMs ?? 6_500;
+    const timer = setTimeout(() => {
+      completeFinalPresentation();
+    }, timeoutMs);
+    return () => clearTimeout(timer);
+  }, [phase, isFinalPresentationComplete, options.terminalPresentationTimeoutMs, completeFinalPresentation]);
 
   useEffect(() => {
     const durationMs = options.roundResultDurationMs;
@@ -445,9 +480,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     finalResult,
     showRoundResultPopup,
     showFinalMatchPopup,
-    finalPresentationComplete:
-      completedPresentationKey !== null &&
-      finalPresentationCompletedFor === completedPresentationKey,
+    finalPresentationComplete: isFinalPresentationComplete,
     completeFinalPresentation,
     completeRoundResultPresentation,
     roundResultCountdownRemaining,
@@ -462,3 +495,4 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     confirmExit,
   };
 }
+

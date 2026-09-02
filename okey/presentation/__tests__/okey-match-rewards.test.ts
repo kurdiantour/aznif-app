@@ -53,8 +53,8 @@ test("missing settlement stays pending instead of fabricating empty rewards", ()
   assert.equal(mapOkeySettlementToPopupRewards(null, "teamA", "teamA"), null);
 });
 
-test("final popup stays hidden until the viewer settlement is present", () => {
-  assert.equal(shouldShowOkeyMatchResultPopup(true, true, null), false);
+test("final popup visibility follows presentation request state and is enriched by settlement", () => {
+  assert.equal(shouldShowOkeyMatchResultPopup(true, true, null), true);
   assert.equal(shouldShowOkeyMatchResultPopup(true, true, funSettlement), true);
   assert.equal(shouldShowOkeyMatchResultPopup(false, true, funSettlement), false);
 });
