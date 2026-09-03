@@ -345,6 +345,8 @@ function OkeyGameTableSceneContent() {
     spendTileOnTableMeld,
     lockKonkanSetOnTable,
     turnTimeLeft,
+    turnTimeLeftMilliseconds,
+    serverClockOffsetMs,
     isAppActive,
     lifecycleResumeToken,
     onlineProjection,
@@ -736,7 +738,10 @@ const shouldShowScorePopup =
   const {
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
+    completeOpponentPresentationFlight,
     hasQueuedPresentation,
+    presentedTurnPlayerId,
+    presentedTurnPlayerIndex,
   } = useOkeyOpponentTileFlightCoordinator({
     state,
     adapter: onlineAdapter,
@@ -756,6 +761,10 @@ const shouldShowScorePopup =
   const isHumanTurn =
     turnView.phase === "playing" &&
     turnView.playerId === humanPlayer.id;
+
+  const isPresentedHumanTurn =
+    turnView.phase === "playing" &&
+    presentedTurnPlayerId === humanPlayer.id;
 
   useEffect(() => {
     setTurnWarningToastVisible(false);
@@ -777,7 +786,7 @@ const shouldShowScorePopup =
     if (
       !onlineGameplayReady ||
       !isAppActive ||
-      !isHumanTurn ||
+      !isPresentedHumanTurn ||
       !turnView.playerId ||
       turnTimeLeft <= 0 ||
       turnTimeLeft > 5
@@ -794,7 +803,7 @@ const shouldShowScorePopup =
   }, [
     emitFeedback,
     isAppActive,
-    isHumanTurn,
+    isPresentedHumanTurn,
     onlineGameplayReady,
     turnTimeLeft,
     turnView.deadlineAt,
@@ -1052,6 +1061,7 @@ const shouldShowScorePopup =
     toLocalRect,
     resetTimeoutPresentation,
     startNextQueuedPresentation,
+    completeOpponentPresentationFlight,
   });
   useEffect(() => {
     if (!onlineMatchId || !onlineProjection || takeoverExitStartedRef.current) return;
@@ -1310,7 +1320,9 @@ const shouldShowScorePopup =
           onlineGameplayReady &&
           serverIndex !== null &&
           turnView.playerIndex === serverIndex,
-        turnTimeLeft,
+        turnTimeLeftMilliseconds,
+        turnDeadlineAt: turnView.deadlineAt,
+        serverClockOffsetMs,
         turnDurationSeconds: turnView.durationSeconds,
         turnTimerPhase: state.hasDrawnThisTurn ? "throw" as const : "draw" as const,
       };
@@ -1321,7 +1333,9 @@ const shouldShowScorePopup =
       relativeSeatMap,
       stableOpponentTileCounts,
       state.hasDrawnThisTurn,
-      turnTimeLeft,
+      serverClockOffsetMs,
+      turnTimeLeftMilliseconds,
+      turnView.deadlineAt,
       turnView.durationSeconds,
       turnView.playerIndex,
     ],
@@ -1359,9 +1373,9 @@ const shouldShowScorePopup =
       seat,
       kind: player.kind,
       teamId: player.teamId,
-      isActive: turnView.playerId === player.id,
+      isActive: presentedTurnPlayerId === player.id,
       timeLeft:
-        turnView.playerId === player.id
+        presentedTurnPlayerId === player.id
           ? Math.max(0, Math.ceil(turnTimeLeft))
           : 0,
       tileCount,
@@ -1836,7 +1850,7 @@ const shouldShowScorePopup =
 
           turnTimerActive={
             turnTimerVisible &&
-            turnView.playerId === humanPlayer.id
+            isHumanTurn
           }
           turnWarningToastVisible={turnWarningToastVisible}
           turnWarningToastMessage={
@@ -1844,7 +1858,9 @@ const shouldShowScorePopup =
               ? "هەلدانی تاشەبەردێک انجام بدە"
               : undefined
           }
-          turnTimeLeft={turnTimeLeft}
+          turnTimeLeftMilliseconds={turnTimeLeftMilliseconds}
+          turnDeadlineAt={turnView.deadlineAt}
+          serverClockOffsetMs={serverClockOffsetMs}
           turnDurationSeconds={turnView.durationSeconds}
           turnTimerPhase={state.hasDrawnThisTurn ? "throw" : "draw"}
           dealResetKey={dealLifecycleKey}
@@ -1918,7 +1934,7 @@ const shouldShowScorePopup =
   visible={showMatchMenu}
   players={seatOrderedPlayers}
   humanPlayer={humanPlayer}
-  activePlayerId={turnView.playerId}
+  activePlayerId={presentedTurnPlayerId}
   translateX={matchMenuTranslateX}
   onClose={closeMatchMenu}
   onLeavePress={() => {
@@ -2077,6 +2093,3 @@ const presentationOverlayStyles = StyleSheet.create({
     alignItems: "center",
   },
 });
-
-
-

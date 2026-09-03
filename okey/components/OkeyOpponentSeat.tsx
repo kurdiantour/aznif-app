@@ -13,7 +13,9 @@ export function OkeyOpponentSeat({
   count,
   active,
   side,
-  turnTimeLeft,
+  turnTimeLeftMilliseconds,
+  turnDeadlineAt,
+  serverClockOffsetMs,
   turnDurationSeconds,
   turnTimerPhase = "throw",
   onMeasured,
@@ -24,7 +26,9 @@ export function OkeyOpponentSeat({
   count: number;
   active: boolean;
   side: "top" | "left" | "right";
-  turnTimeLeft: number;
+  turnTimeLeftMilliseconds: number;
+  turnDeadlineAt: string | null;
+  serverClockOffsetMs: number;
   turnDurationSeconds: number | null;
   turnTimerPhase?: "draw" | "throw";
   onMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
@@ -73,7 +77,9 @@ export function OkeyOpponentSeat({
       <View style={styles.opponentRack}>
         <OkeyTurnTimerBar
           active={active}
-          remainingSeconds={turnTimeLeft}
+          deadlineAt={turnDeadlineAt}
+          serverClockOffsetMs={serverClockOffsetMs}
+          remainingMilliseconds={turnTimeLeftMilliseconds}
           durationSeconds={turnDurationSeconds}
           phase={turnTimerPhase}
           orientation="horizontal"

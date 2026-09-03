@@ -14,7 +14,7 @@ import {
   type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
 import type { OkeyGameState, OkeyTile } from "@/okey/types/okey";
-import type { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
+import type { SupabaseOkeyMatchAdapter, OkeyCommittedTransition } from "@/okey/adapters/supabase-okey-match-adapter";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 type OnlineTimeoutDiscardFlight = {
@@ -35,6 +35,12 @@ type ActivePresentation = {
 
 type QueuedPresentationEvent = {
   event: OkeyActionEvent;
+};
+
+type PresentedTurnSnapshot = {
+  version: number;
+  playerId: string | null;
+  playerIndex: number | null;
 };
 
 type LaunchTileFlightOptions = {
@@ -239,8 +245,93 @@ export function useOkeyOpponentTileFlightCoordinator({
   toLocalRect,
 }: UseOkeyOpponentTileFlightCoordinatorInput) {
   const presentationQueueRef = useRef<QueuedPresentationEvent[]>([]);
+  const pendingTurnTransitionsRef = useRef<PresentedTurnSnapshot[]>([]);
+  const activePresentationVersionRef = useRef<number | null>(null);
+  const latestAuthoritativeTurnRef = useRef<PresentedTurnSnapshot>({
+    version: projectionVersion ?? 0,
+    playerId: state.players[state.currentPlayerIndex]?.id ?? null,
+    playerIndex: state.currentPlayerIndex ?? null,
+  });
+  const presentedTurnVersionRef = useRef(projectionVersion ?? 0);
+  const [presentedTurn, setPresentedTurn] = useState<PresentedTurnSnapshot>(
+    latestAuthoritativeTurnRef.current,
+  );
   const [actionEventTick, setActionEventTick] = useState(0);
 
+  const flushPresentedTurnTransitions = useCallback(() => {
+    let latestReady: PresentedTurnSnapshot | null = null;
+
+    while (pendingTurnTransitionsRef.current.length > 0) {
+      const candidate = pendingTurnTransitionsRef.current[0];
+      if (!candidate) break;
+
+      const hasQueuedEventThroughCandidate = presentationQueueRef.current.some(
+        (queued) => queued.event.version <= candidate.version,
+      );
+      const hasActiveFlightThroughCandidate =
+        activePresentationVersionRef.current !== null &&
+        activePresentationVersionRef.current <= candidate.version;
+
+      if (hasQueuedEventThroughCandidate || hasActiveFlightThroughCandidate) {
+        break;
+      }
+
+      pendingTurnTransitionsRef.current.shift();
+      if (candidate.version >= presentedTurnVersionRef.current) {
+        latestReady = candidate;
+        presentedTurnVersionRef.current = candidate.version;
+      }
+    }
+
+    if (latestReady) {
+      setPresentedTurn(latestReady);
+    }
+  }, []);
+
+  const queueCommittedTurnTransition = useCallback((
+    transition: OkeyCommittedTransition,
+  ) => {
+    const playerIndex = transition.projection.currentPlayerIndex;
+    const snapshot: PresentedTurnSnapshot = {
+      version: transition.version,
+      playerId: transition.projection.players[playerIndex]?.id ?? null,
+      playerIndex,
+    };
+
+    latestAuthoritativeTurnRef.current = snapshot;
+    if (snapshot.version < presentedTurnVersionRef.current) return;
+
+    pendingTurnTransitionsRef.current = pendingTurnTransitionsRef.current
+      .filter((entry) => entry.version !== snapshot.version);
+    pendingTurnTransitionsRef.current.push(snapshot);
+    pendingTurnTransitionsRef.current.sort((left, right) => left.version - right.version);
+    flushPresentedTurnTransitions();
+  }, [flushPresentedTurnTransitions]);
+
+  useEffect(() => {
+    if (projectionVersion === null) return;
+
+    const snapshot: PresentedTurnSnapshot = {
+      version: projectionVersion,
+      playerId: state.players[state.currentPlayerIndex]?.id ?? null,
+      playerIndex: state.currentPlayerIndex ?? null,
+    };
+    latestAuthoritativeTurnRef.current = snapshot;
+
+    const alreadyQueued = pendingTurnTransitionsRef.current.some(
+      (entry) => entry.version === snapshot.version,
+    );
+    if (!alreadyQueued && snapshot.version >= presentedTurnVersionRef.current) {
+      pendingTurnTransitionsRef.current.push(snapshot);
+      pendingTurnTransitionsRef.current.sort((left, right) => left.version - right.version);
+    }
+    flushPresentedTurnTransitions();
+  }, [
+    flushPresentedTurnTransitions,
+    projectionVersion,
+    state.currentPlayerIndex,
+    state.players,
+  ]);
 
   const startNextQueuedPresentation = useCallback((): boolean => {
     // `tileFlight` is the only visual busy condition. Game progression is never
@@ -258,6 +349,7 @@ export function useOkeyOpponentTileFlightCoordinator({
       );
       if (actorIndex < 0 || !event.actorPlayerId || (actorIndex === 0 && !isEliminatedEvent)) {
         presentationQueueRef.current.shift();
+        flushPresentedTurnTransitions();
         continue;
       }
       const consumeEvent = () => {
@@ -267,6 +359,7 @@ export function useOkeyOpponentTileFlightCoordinator({
 
       if (event.type === "open" || event.type === "meld" || event.type === "konkan") {
         consumeEvent();
+        flushPresentedTurnTransitions();
         continue;
       }
 
@@ -292,6 +385,7 @@ export function useOkeyOpponentTileFlightCoordinator({
         };
 
         consumeEvent();
+        activePresentationVersionRef.current = event.version;
 
         launchTileFlight({
           flight: {
@@ -311,6 +405,7 @@ export function useOkeyOpponentTileFlightCoordinator({
 
       if (event.type !== "discard") {
         consumeEvent();
+        flushPresentedTurnTransitions();
         continue;
       }
 
@@ -322,6 +417,7 @@ export function useOkeyOpponentTileFlightCoordinator({
         (tileId ? eventState.discardPile.find((entry) => entry.id === tileId) ?? null : null);
       if (!tile) {
         consumeEvent();
+        flushPresentedTurnTransitions();
         continue;
       }
       const discardIndex = eventState.discardPile.findIndex((entry) => entry.id === tile.id);
@@ -336,6 +432,7 @@ export function useOkeyOpponentTileFlightCoordinator({
           height: discardRect.height,
         };
         consumeEvent();
+        activePresentationVersionRef.current = event.version;
         launchTileFlight({
           flight: {
             id: `eliminated-discard-${event.version}-${event.sequence}`,
@@ -367,6 +464,7 @@ export function useOkeyOpponentTileFlightCoordinator({
           : null;
 
       consumeEvent();
+      activePresentationVersionRef.current = event.version;
       launchTileFlight({
         flight: {
           id: `opponent-discard-${event.version}-${event.sequence}`,
@@ -384,6 +482,7 @@ export function useOkeyOpponentTileFlightCoordinator({
   }, [
     deckTopRectRef,
     discardTopRectRef,
+    flushPresentedTurnTransitions,
     opponentSeatRectsRef,
     rackRectRef,
     projectionVersion,
@@ -411,7 +510,7 @@ export function useOkeyOpponentTileFlightCoordinator({
   useEffect(() => {
     if (!adapter) return;
 
-    return adapter.subscribeActionEvents((event) => {
+    const unsubscribeEvents = adapter.subscribeActionEvents((event) => {
       presentationQueueRef.current.push({ event });
       presentationQueueRef.current.sort(
         (left, right) =>
@@ -420,7 +519,16 @@ export function useOkeyOpponentTileFlightCoordinator({
       );
       setActionEventTick((value) => value + 1);
     });
-  }, [adapter]);
+
+    const unsubscribeTransitions = adapter.subscribeCommittedTransitions(
+      queueCommittedTurnTransition,
+    );
+
+    return () => {
+      unsubscribeEvents();
+      unsubscribeTransitions();
+    };
+  }, [adapter, queueCommittedTurnTransition]);
 
   /**
    * Ingest every committed event whose authoritative projection is already
@@ -448,8 +556,26 @@ export function useOkeyOpponentTileFlightCoordinator({
     tileFlight,
   ]);
 
+  const completeOpponentPresentationFlight = useCallback((
+    completedFlight: TileFlight | null,
+  ) => {
+    if (!completedFlight) return;
+    if (
+      completedFlight.id.startsWith("opponent-") ||
+      completedFlight.id.startsWith("eliminated-")
+    ) {
+      activePresentationVersionRef.current = null;
+      flushPresentedTurnTransitions();
+    }
+  }, [flushPresentedTurnTransitions]);
+
   const resetOpponentPresentation = useCallback(() => {
     presentationQueueRef.current = [];
+    pendingTurnTransitionsRef.current = [];
+    activePresentationVersionRef.current = null;
+    const latest = latestAuthoritativeTurnRef.current;
+    presentedTurnVersionRef.current = latest.version;
+    setPresentedTurn(latest);
   }, []);
 
   activePresentationRef.current.resetOpponent = resetOpponentPresentation;
@@ -461,7 +587,11 @@ export function useOkeyOpponentTileFlightCoordinator({
   return {
     startNextQueuedPresentation,
     retryQueuedOpponentFlight,
+    completeOpponentPresentationFlight,
     hasQueuedPresentation,
+    presentedTurnPlayerId: presentedTurn.playerId,
+    presentedTurnPlayerIndex: presentedTurn.playerIndex,
+    presentedTurnVersion: presentedTurn.version,
   };
 }
 
@@ -648,9 +778,11 @@ export function useOkeyTileFlightCompletion(input: {
   toLocalRect: (rect: ScreenRect) => ScreenRect;
   resetTimeoutPresentation: () => void;
   startNextQueuedPresentation: () => boolean;
+  completeOpponentPresentationFlight: (flight: TileFlight | null) => void;
 }) {
   return () => {
     const completedFlight = input.tileFlight;
+    input.completeOpponentPresentationFlight(completedFlight);
     const landedDiscardTile = completedFlight?.id.includes("discard-")
       ? completedFlight.tile
       : null;
@@ -713,3 +845,4 @@ export function useOkeyTileFlightCompletion(input: {
     });
   };
 }
+

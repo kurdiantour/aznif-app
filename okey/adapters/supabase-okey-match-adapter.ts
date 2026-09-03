@@ -16,6 +16,13 @@ import {
   reconnectOkeyRoom,
 } from "@/okey/multiplayer/okey-room-api";
 
+export type OkeyCommittedTransition = {
+  version: number;
+  previousProjection: OkeyMatchServerProjection | null;
+  projection: OkeyMatchServerProjection;
+  actionEvents: OkeyActionEvent[];
+};
+
 function createCommandId(): string {
   if (
     typeof globalThis.crypto?.randomUUID === "function"
@@ -65,6 +72,9 @@ export class SupabaseOkeyMatchAdapter
 
   private readonly actionEventListeners =
     new Set<(event: OkeyActionEvent) => void>();
+
+  private readonly committedTransitionListeners =
+    new Set<(transition: OkeyCommittedTransition) => void>();
 
   private readonly resetListeners = new Set<() => void>();
 
@@ -150,6 +160,7 @@ export class SupabaseOkeyMatchAdapter
       if (
         this.listeners.size === 0 &&
         this.actionEventListeners.size === 0 &&
+        this.committedTransitionListeners.size === 0 &&
         this.invalidationListeners.size === 0 &&
         this.statusListeners.size === 0
       ) {
@@ -165,7 +176,27 @@ export class SupabaseOkeyMatchAdapter
       this.actionEventListeners.delete(listener);
       if (
         this.listeners.size === 0 && this.actionEventListeners.size === 0 &&
+        this.committedTransitionListeners.size === 0 &&
         this.invalidationListeners.size === 0 && this.statusListeners.size === 0
+      ) {
+        this.closeRealtimeChannel();
+      }
+    };
+  }
+
+  subscribeCommittedTransitions(
+    listener: (transition: OkeyCommittedTransition) => void,
+  ): () => void {
+    this.committedTransitionListeners.add(listener);
+    if (!this.channel) this.openRealtimeChannel();
+    return () => {
+      this.committedTransitionListeners.delete(listener);
+      if (
+        this.listeners.size === 0 &&
+        this.actionEventListeners.size === 0 &&
+        this.committedTransitionListeners.size === 0 &&
+        this.invalidationListeners.size === 0 &&
+        this.statusListeners.size === 0
       ) {
         this.closeRealtimeChannel();
       }
@@ -181,6 +212,7 @@ export class SupabaseOkeyMatchAdapter
       this.invalidationListeners.delete(listener);
       if (
         this.listeners.size === 0 && this.actionEventListeners.size === 0 &&
+        this.committedTransitionListeners.size === 0 &&
         this.invalidationListeners.size === 0 && this.statusListeners.size === 0
       ) this.closeRealtimeChannel();
     };
@@ -193,6 +225,7 @@ export class SupabaseOkeyMatchAdapter
       this.statusListeners.delete(listener);
       if (
         this.listeners.size === 0 && this.actionEventListeners.size === 0 &&
+        this.committedTransitionListeners.size === 0 &&
         this.invalidationListeners.size === 0 && this.statusListeners.size === 0
       ) this.closeRealtimeChannel();
     };
@@ -514,6 +547,22 @@ export class SupabaseOkeyMatchAdapter
     }
   }
 
+  private publishCommittedTransition(
+    previousProjection: OkeyMatchServerProjection | null,
+    projection: OkeyMatchServerProjection,
+    actionEvents: OkeyActionEvent[],
+  ): void {
+    const transition: OkeyCommittedTransition = {
+      version: projection.version,
+      previousProjection,
+      projection,
+      actionEvents,
+    };
+    for (const listener of this.committedTransitionListeners) {
+      listener(transition);
+    }
+  }
+
   private publishResponse(
     response: unknown,
   ): void {
@@ -533,15 +582,21 @@ export class SupabaseOkeyMatchAdapter
 
     this.syncServerClock(payload.serverNow);
 
-    if (payload.actionEvents && Array.isArray(payload.actionEvents)) {
-      this.publishActionEvents(payload.actionEvents);
+    const actionEvents = payload.actionEvents && Array.isArray(payload.actionEvents)
+      ? payload.actionEvents
+      : [];
+
+    if (actionEvents.length > 0) {
+      this.publishActionEvents(actionEvents);
     }
 
     if (payload.projection) {
       const projection = Object.prototype.hasOwnProperty.call(payload, "settlement")
         ? { ...payload.projection, settlement: payload.settlement ?? null }
         : payload.projection;
+      const previousProjection = this.snapshot;
       this.publish(projection);
+      this.publishCommittedTransition(previousProjection, projection, actionEvents);
     }
   }
 
@@ -722,8 +777,10 @@ export class SupabaseOkeyMatchAdapter
             return;
           }
 
+          const previousProjection = this.snapshot;
           this.publishActionEvents(incomingEvents);
           this.publish(merged);
+          this.publishCommittedTransition(previousProjection, merged, incomingEvents);
           this.notifyRealtimeSnapshot(merged);
         },
       )

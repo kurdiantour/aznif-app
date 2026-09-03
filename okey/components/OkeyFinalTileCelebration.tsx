@@ -207,7 +207,7 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
               tile={tile}
               width={tileWidth}
               height={tileHeight}
-              isOkey={isOkeyWildcard(tile, okeyTile)}
+              isWildcard={isOkeyWildcard(tile, okeyTile)}
             />
           ) : (
             <OkeyTileBack width={tileWidth} height={tileHeight} />

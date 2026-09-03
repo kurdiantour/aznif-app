@@ -86,5 +86,8 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     completeFinalPresentation: core.completeFinalPresentation,
     draw, discard, commitOpenIntent, declareKonkan, spendTileOnTableMeld, lockKonkanSetOnTable,
     turnTimeLeft: core.turnSecondsLeft ?? 0,
+    turnTimeLeftMilliseconds: core.turnMillisecondsLeft ?? 0,
+    serverClockOffsetMs: commands?.getServerClockOffsetMs() ?? 0,
   };
 }
+

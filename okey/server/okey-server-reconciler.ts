@@ -808,6 +808,7 @@ export async function reconcileAuthoritativeServerTurns(options: {
         broadcastStateUpdate: options.broadcastStateUpdate,
         deterministicCommandId: options.deterministicCommandId,
         now: getNow,
+        maxIterations: 1,
       });
 
       if (eliminatedResult.executedCount === 0) break;
@@ -817,7 +818,7 @@ export async function reconcileAuthoritativeServerTurns(options: {
       currentVersion = eliminatedResult.version;
       currentDeadline = eliminatedResult.turnDeadlineAt;
       allActionEvents.push(...eliminatedResult.actionEvents);
-      continue;
+      break;
     }
 
     if (decision.type === "bot-turn") {
@@ -857,7 +858,7 @@ export async function reconcileAuthoritativeServerTurns(options: {
         currentVersion = Number(bundleRaw.version);
         currentDeadline = bundleRaw.turn_deadline_at as string | null;
       }
-      continue;
+      break;
     }
 
     if (decision.type === "expired-human-turn") {
@@ -879,7 +880,7 @@ export async function reconcileAuthoritativeServerTurns(options: {
       currentVersion = timeoutResult.version;
       currentDeadline = timeoutResult.turnDeadlineAt;
       allActionEvents.push(...timeoutResult.actionEvents);
-      continue;
+      break;
     }
 
     if (decision.type === "due-next-round") {
@@ -901,7 +902,7 @@ export async function reconcileAuthoritativeServerTurns(options: {
       currentVersion = nextRoundResult.version;
       currentDeadline = nextRoundResult.turnDeadlineAt;
       allActionEvents.push(...nextRoundResult.actionEvents);
-      continue;
+      break;
     }
 
     // "terminal", "idle", etc.
@@ -1235,3 +1236,4 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
     reason: "max_duration_exceeded",
   };
 }
+

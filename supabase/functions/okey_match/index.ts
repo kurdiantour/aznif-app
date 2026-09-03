@@ -26,7 +26,9 @@ import {
   reconcileAuthoritativeServerTurns,
   reconcileAuthoritativeServerLifecycleWakeup,
 } from "../../../okey/server/okey-server-reconciler.ts";
+import { isOkeyBotControlled } from "../../../okey/engine/okey-bot-policy.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
+import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 
 type OkeyAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -859,6 +861,32 @@ const commit =
     finalVersion,
     finalDeadline,
   );
+
+  // Background Orchestration: Dispatch server-owned Bot continuation
+  const nextPlayer = finalState.roundState.players[finalState.roundState.currentPlayerIndex];
+  const isNextTurnBot = !finalState.matchFinished &&
+    finalState.roundState.phase === "playing" &&
+    isOkeyBotControlled(nextPlayer);
+
+  const edgeRuntime = (globalThis as any).EdgeRuntime;
+
+  if (isNextTurnBot && supabaseUrl) {
+    const workerSecret = Deno.env.get("OKEY_WORKER_SECRET") || Deno.env.get("BOT_WORKER_SECRET") || "";
+    const handoffPromise = handOffOkeyBotTurn({
+      supabaseUrl,
+      workerSecret,
+      matchId,
+      state: finalState,
+      version: finalVersion,
+    }).catch((err) => {
+      console.error("okey_bot_initial_handoff_error", err);
+    });
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(handoffPromise);
+    } else {
+      void handoffPromise;
+    }
+  }
 
   if (
     !finalState.matchFinished &&

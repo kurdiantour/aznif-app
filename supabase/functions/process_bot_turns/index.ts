@@ -22,6 +22,7 @@ import {
   roundToNearestFive,
 } from "../_shared/game-utils.ts";
 import { executeOkeyBotTurn } from "../../../okey/server/okey-bot-executor.ts";
+import { reconcileAuthoritativeServerLifecycleWakeup } from "../../../okey/server/okey-server-reconciler.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 
@@ -172,6 +173,61 @@ serve(async (req) => {
       }, {
         client: svc,
         deterministicCommandId,
+        dispatchContinuation: async (continuationInput: {
+          matchId: string;
+          state: any;
+          version: number;
+        }) => {
+          if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
+          const edgeRuntime = (globalThis as any).EdgeRuntime;
+          const handoffPromise = handOffOkeyBotTurn({
+            supabaseUrl: SUPABASE_URL,
+            workerSecret: OKEY_WORKER_SECRET,
+            matchId: continuationInput.matchId,
+            state: continuationInput.state,
+            version: continuationInput.version,
+          }).catch((err: any) => {
+            console.error("okey_bot_continuation_dispatch_error", err);
+          });
+          if (edgeRuntime?.waitUntil) {
+            edgeRuntime.waitUntil(handoffPromise);
+          } else {
+            await handoffPromise;
+          }
+        },
+        dispatchLifecycleWakeup: async (wakeupInput: {
+          matchId: string;
+          state: any;
+          version: number;
+          eligibleAt: string;
+        }) => {
+          const edgeRuntime = (globalThis as any).EdgeRuntime;
+          const wakeUpPromise = reconcileAuthoritativeServerLifecycleWakeup({
+            client: svc,
+            matchId: wakeupInput.matchId,
+            requesterUserId,
+            initialState: wakeupInput.state,
+            initialVersion: wakeupInput.version,
+            eligibleAt: wakeupInput.eligibleAt,
+            deterministicCommandId,
+            broadcastStateUpdate: async (payload: any) => {
+              const channel = svc.channel(`okey-match:${wakeupInput.matchId}`);
+              await channel.send({
+                type: "broadcast",
+                event: "state_update",
+                payload,
+              });
+              await svc.removeChannel(channel);
+            },
+          }).catch((wakeUpError: any) => {
+            console.error("Server lifecycle wake-up failed for match", wakeupInput.matchId, wakeUpError);
+          });
+          if (edgeRuntime?.waitUntil) {
+            edgeRuntime.waitUntil(wakeUpPromise);
+          } else {
+            void wakeUpPromise;
+          }
+        },
       });
       return json(result, result.ok ? 200 : 500);
     }

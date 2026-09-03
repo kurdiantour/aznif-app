@@ -175,7 +175,9 @@ export function OkeyPlayerRack({
   turnWarningToastVisible = false,
   turnWarningToastMessage,
   showTurnTimer = true,
-  turnTimeLeft,
+  turnTimeLeftMilliseconds,
+  turnDeadlineAt,
+  serverClockOffsetMs,
   turnDurationSeconds,
   turnTimerPhase = "throw",
   dealResetKey,
@@ -219,7 +221,9 @@ export function OkeyPlayerRack({
   turnWarningToastVisible?: boolean;
   turnWarningToastMessage?: string;
   showTurnTimer?: boolean;
-  turnTimeLeft: number;
+  turnTimeLeftMilliseconds: number;
+  turnDeadlineAt: string | null;
+  serverClockOffsetMs: number;
   turnDurationSeconds: number | null;
   turnTimerPhase?: "draw" | "throw";
   dealResetKey?: string;
@@ -875,7 +879,9 @@ export function OkeyPlayerRack({
         <OkeyTurnTimerBar
           active={turnTimerActive}
           visible={showTurnTimer}
-          remainingSeconds={turnTimeLeft}
+          deadlineAt={turnDeadlineAt}
+          serverClockOffsetMs={serverClockOffsetMs}
+          remainingMilliseconds={turnTimeLeftMilliseconds}
           durationSeconds={turnDurationSeconds}
           phase={turnTimerPhase}
           style={styles.rackTurnTimer}
@@ -965,3 +971,4 @@ export function OkeyPlayerRack({
 
 export const MemoizedOkeyPlayerRack =
   memo(OkeyPlayerRack);
+

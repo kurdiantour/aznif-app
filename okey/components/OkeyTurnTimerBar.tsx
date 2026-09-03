@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import {
   Animated,
+  Easing,
   View,
   type StyleProp,
   type ViewStyle,
@@ -10,10 +11,14 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { styles } from "./okeyStyles";
 
+const PHASE_COLOR_TRANSITION_MS = 220;
+
 export function OkeyTurnTimerBar({
   active,
   visible = true,
-  remainingSeconds,
+  deadlineAt,
+  serverClockOffsetMs,
+  remainingMilliseconds,
   durationSeconds,
   phase = "throw",
   orientation = "horizontal",
@@ -22,33 +27,88 @@ export function OkeyTurnTimerBar({
 }: {
   active: boolean;
   visible?: boolean;
-  remainingSeconds: number;
+  deadlineAt: string | null;
+  serverClockOffsetMs: number;
+  remainingMilliseconds: number;
   durationSeconds: number | null;
   phase?: "draw" | "throw";
   orientation?: "horizontal" | "vertical";
   reverse?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const progress = useRef(new Animated.Value(1)).current;
+  const progress = useRef(new Animated.Value(0)).current;
+  const drawColorMix = useRef(
+    new Animated.Value(phase === "draw" ? 1 : 0),
+  ).current;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     progress.stopAnimation();
 
-    const duration =
-      typeof durationSeconds === "number" && Number.isFinite(durationSeconds) && durationSeconds > 0
-        ? durationSeconds
+    const durationMilliseconds =
+      typeof durationSeconds === "number" &&
+      Number.isFinite(durationSeconds) &&
+      durationSeconds > 0
+        ? durationSeconds * 1_000
         : 0;
-    const remaining = Number.isFinite(remainingSeconds)
-      ? Math.max(0, remainingSeconds)
-      : 0;
+    const deadlineMilliseconds = deadlineAt ? Date.parse(deadlineAt) : Number.NaN;
 
-    if (!active || duration <= 0) {
+    if (
+      !active ||
+      durationMilliseconds <= 0 ||
+      !Number.isFinite(deadlineMilliseconds)
+    ) {
       progress.setValue(0);
       return;
     }
 
-    progress.setValue(Math.min(1, remaining / duration));
-  }, [active, durationSeconds, progress, remainingSeconds]);
+    const serverNowMilliseconds = Date.now() + serverClockOffsetMs;
+    const timeLeftMilliseconds = Math.max(
+      0,
+      deadlineMilliseconds - serverNowMilliseconds,
+    );
+    const initialProgress = Math.min(
+      1,
+      timeLeftMilliseconds / durationMilliseconds,
+    );
+
+    // Every authoritative deadline is one timer segment. Start exactly at the
+    // server-derived position, then run continuously to zero. The visual
+    // countdown follows the authoritative deadline directly.
+    progress.setValue(initialProgress);
+
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: timeLeftMilliseconds,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start();
+  }, [
+    active,
+    deadlineAt,
+    durationSeconds,
+    progress,
+    serverClockOffsetMs,
+  ]);
+
+  useLayoutEffect(() => {
+    drawColorMix.stopAnimation();
+
+    if (phase === "draw") {
+      // DRAW starts green immediately. There must never be a red frame before
+      // the authoritative draw phase becomes visible.
+      drawColorMix.setValue(1);
+      return;
+    }
+
+    // The phase transition from DRAW to THROW is intentionally visualized
+    // as a smooth green-to-red handoff.
+    Animated.timing(drawColorMix, {
+      toValue: 0,
+      duration: PHASE_COLOR_TRANSITION_MS,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start();
+  }, [drawColorMix, phase]);
 
   const fillStyle =
     orientation === "horizontal"
@@ -76,7 +136,7 @@ export function OkeyTurnTimerBar({
       accessibilityRole="timer"
       accessibilityLabel={
         active && visible
-          ? `کاتی نۆبەت، ${Math.ceil(Math.max(0, remainingSeconds))} چرکە`
+          ? `کاتی نۆبەت، ${Math.ceil(Math.max(0, remainingMilliseconds) / 1_000)} چرکە`
           : undefined
       }
       accessibilityLiveRegion="polite"
@@ -95,20 +155,26 @@ export function OkeyTurnTimerBar({
       <Animated.View
         style={[
           styles.turnTimerFill,
-          phase === "draw" && styles.turnTimerFillDraw,
           fillStyle,
           !visible && { opacity: 0 },
         ]}
       >
-        {phase === "draw" ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            { position: "absolute", inset: 0 },
+            { opacity: drawColorMix },
+          ]}
+        >
           <LinearGradient
             colors={["#0b5d2a", "#35d06f", "#168a45"]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={{ flex: 1 }}
           />
-        ) : null}
+        </Animated.View>
       </Animated.View>
     </View>
   );
 }
+

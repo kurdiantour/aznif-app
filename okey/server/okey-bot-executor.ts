@@ -14,7 +14,6 @@ import {
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
 } from "./okey-authoritative.ts";
-import { reconcileAuthoritativeEliminatedTurns } from "./okey-server-reconciler.ts";
 
 type OkeyAuthoritativeBundle = {
   version: number | string;
@@ -54,9 +53,20 @@ export type OkeyBotExecutorDependencies = {
     publicProjection: OkeyMatchServerProjection;
     actionEvents: OkeyActionEvent[];
   }) => Promise<void>;
+  dispatchContinuation?: (input: {
+    matchId: string;
+    state: OkeyAuthoritativeMatchState;
+    version: number;
+  }) => Promise<boolean | void>;
+  dispatchLifecycleWakeup?: (input: {
+    matchId: string;
+    state: OkeyAuthoritativeMatchState;
+    version: number;
+    eligibleAt: string;
+  }) => Promise<void>;
 };
 
-const MAX_BOT_TRANSITIONS_PER_INVOCATION = 64;
+const MAX_BOT_TRANSITIONS_PER_INVOCATION = 1;
 
 async function defaultBroadcast(
   client: any,
@@ -327,25 +337,6 @@ if (currentState.roundState.phase !== "playing") {
       currentState = committedState;
       currentVersion = committedVersion;
 
-      if (botStep === "discard" && !currentState.matchFinished) {
-        const eliminatedReconcile = await reconcileAuthoritativeEliminatedTurns({
-          client,
-          matchId: input.matchId,
-          state: currentState,
-          version: currentVersion,
-          turnDeadlineAt: committedDeadline,
-          broadcastStateUpdate: async (payload) => {
-            if (dependencies.broadcastStateUpdate) {
-              await dependencies.broadcastStateUpdate(payload);
-            } else {
-              await defaultBroadcast(client, payload);
-            }
-          },
-        });
-        currentState = eliminatedReconcile.state;
-        currentVersion = eliminatedReconcile.version;
-      }
-
       if (currentState.matchFinished) {
         const winnerTeamId = currentState.matchWinnerTeamId;
         if (!winnerTeamId && currentState.leaveTerminationReason !== "no-humans") {
@@ -365,12 +356,44 @@ if (currentState.roundState.phase !== "playing") {
         }
         return completed("match_finished");
       }
+
+      if (currentState.roundState.phase === "finished") {
+        if (currentState.nextRoundEligibleAt && dependencies.dispatchLifecycleWakeup) {
+          try {
+            await dependencies.dispatchLifecycleWakeup({
+              matchId: input.matchId,
+              state: currentState,
+              version: currentVersion,
+              eligibleAt: currentState.nextRoundEligibleAt,
+            });
+          } catch (wakeupError) {
+            console.error(`Okey bot lifecycle wakeup dispatch failed for ${input.matchId}`, wakeupError);
+          }
+        }
+        return completed("round_finished");
+      }
+
+      if (dependencies.dispatchContinuation) {
+        const nextClaim = getOkeyBotTurnClaim(currentState, currentVersion);
+        if (nextClaim) {
+          try {
+            await dependencies.dispatchContinuation({
+              matchId: input.matchId,
+              state: currentState,
+              version: currentVersion,
+            });
+          } catch (continuationError) {
+            console.error(`Okey bot continuation dispatch failed for ${input.matchId}`, continuationError);
+          }
+        }
+      }
     }
 
-    return completed("safety_limit_reached");
+    return completed("transition_committed");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`process_bot_turns Okey failed for ${input.matchId}`, error);
     return { ok: false, processed: false, error: message };
   }
 }
+
