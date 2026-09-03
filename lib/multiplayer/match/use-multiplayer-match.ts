@@ -42,6 +42,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectPolicyRef = useRef(new RealtimeReconnectPolicy());
+  const hasExitedRef = useRef(false);
   const lastActivityRef = useRef(Date.now());
   const refreshInFlightRef = useRef<Promise<TSnapshot> | null>(null);
   const timeoutKeyRef = useRef<string | null>(null);
@@ -114,6 +115,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
       return;
     }
 
+    hasExitedRef.current = false;
     let active = true;
     let subscribe = () => undefined;
     const scheduleReconnect = (delay: number) => {
@@ -127,7 +129,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
       unsubscribeRef.current?.();
       unsubscribeRef.current = options.adapter!.subscribe({
         onInvalidated: (publicSnapshot) => {
-          if (!active) return;
+          if (!active || hasExitedRef.current) return;
           lastActivityRef.current = Date.now();
           if (publicSnapshot) {
             applySnapshot(publicSnapshot);
@@ -136,7 +138,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
           void refresh().catch((caught) => console.warn("Multiplayer realtime reconcile failed", caught));
         },
         onStatus: (status, statusError) => {
-          if (!active) return;
+          if (!active || hasExitedRef.current) return;
           const delay = reconnectPolicyRef.current.observe(status);
           if (status === "SUBSCRIBED") {
             setError(null);
@@ -175,7 +177,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     if (!options.roomId || !options.adapter) return;
     const subscription = AppState.addEventListener("change", (state) => {
       setIsAppActive(state === "active");
-      if (state !== "active") return;
+      if (state !== "active" || hasExitedRef.current) return;
       void resume().catch((caught) => {
         console.warn("Multiplayer resume reconcile failed", caught);
         void refresh().catch(() => undefined);
@@ -206,7 +208,7 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
   );
 
   useEffect(() => {
-    if (!options.roomId || loading || phase === "match_finished" || phase === "cancelled") return;
+    if (!options.roomId || hasExitedRef.current || loading || phase === "match_finished" || phase === "cancelled") return;
     const interval = setInterval(() => {
       if (Date.now() - lastActivityRef.current < (options.staleAfterMs ?? DEFAULT_STALE_MS)) return;
       void refresh().catch((caught) => console.warn("Multiplayer watchdog reconcile failed", caught));
@@ -461,6 +463,12 @@ export function useMultiplayerMatch<TSnapshot, TRoundResult, TFinalResult>(
     setLeaving(true);
     try {
       await options.adapter.leave();
+      hasExitedRef.current = true;
+      unsubscribeRef.current?.();
+      unsubscribeRef.current = null;
+      clearReconnect();
+      clearTimeoutRetry();
+      setSnapshot(null);
       setExitConfirmationVisible(false);
     } finally {
       setLeaving(false);

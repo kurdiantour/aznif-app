@@ -3,10 +3,16 @@ import type { OkeyGameState, OkeyTile } from "@/okey/types/okey";
 
 const placeholder = (id: string): OkeyTile => ({ id, color: "black", value: 0, copy: 1 });
 
-export function projectOkeyServerState(projection: OkeyMatchServerProjection): OkeyGameState {
+export function projectOkeyServerState(
+  projection: OkeyMatchServerProjection,
+  currentUserId: string | null,
+): OkeyGameState {
   const count = projection.players.length;
-  const viewer = projection.phase === "playing"
-    ? projection.players.findIndex((player) => Array.isArray(player.hand)) : -1;
+  // Viewer identity remains the authenticated user after terminal projections
+  // deliberately stop exposing a private hand.
+  const viewer = currentUserId
+    ? projection.players.findIndex((player) => player.id === currentUserId)
+    : -1;
   const normalize = (index: number) => viewer < 0 ? index : (index - viewer + count) % count;
   const projectedPlayers = projection.players.map((player) => ({
     ...player,

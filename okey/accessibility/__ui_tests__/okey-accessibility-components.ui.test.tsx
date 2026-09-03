@@ -52,14 +52,21 @@ test("table meld is exposed as one meaningful summary", () => {
 });
 
 test("active timer and match result are announced with semantic roles", () => {
-  const timer = render(<OkeyTurnTimerBar active remainingSeconds={25} durationSeconds={30} />);
+  const timer = render(<OkeyTurnTimerBar
+    active
+    deadlineAt={new Date(Date.now() + 25_000).toISOString()}
+    serverClockOffsetMs={0}
+    remainingMilliseconds={25_000}
+    durationSeconds={30}
+  />);
   expect(timer.getByRole("timer").props.accessibilityLabel).toBe("کاتی نۆبەت، 25 چرکە");
 
   const result = render(
     <OkeyMatchResultPopup
       visible
-      winnerTeamId="teamA"
-      matchScores={{ teamA: 10, teamB: 20 }}
+      viewerWon
+      viewerScore={10}
+      opponentScore={20}
       onNewMatch={jest.fn()}
     />,
   );

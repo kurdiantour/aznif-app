@@ -509,7 +509,10 @@ function OkeyGameTableSceneContent() {
   const meldDropRectsRef = useRef<MeldDropRect[]>([]);
   const hoveredMeldTargetRef = useRef<MeldDropRect | null>(null);
   const humanMeldDropZone = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  const humanPlayer = state.players[0];
+  const humanPlayer = useMemo(
+    () => state.players.find((player) => player.id === currentUserId) ?? state.players[0],
+    [currentUserId, state.players],
+  );
   const presentedHumanRackTiles = useMemo(() => {
     if (
       !optimisticDiscardRackTile ||
@@ -552,10 +555,10 @@ function OkeyGameTableSceneContent() {
   });
 
 
-const viewerTeamId: OkeyTeamId =
-  humanPlayer.teamId === "teamB"
-    ? "teamB"
-    : "teamA";
+const viewerTeamId: OkeyTeamId = useMemo(() => {
+  const viewer = onlineProjection?.players.find((player) => player.id === currentUserId);
+  return viewer?.teamId === "teamB" ? "teamB" : "teamA";
+}, [currentUserId, onlineProjection?.players]);
 
 const opponentTeamId: OkeyTeamId =
   viewerTeamId === "teamA"
@@ -640,14 +643,9 @@ const displayCurrentRoundScoreDetails =
     ],
   );
 
-const displayMatchWinnerTeamId:
-  OkeyTeamId | null =
-  matchWinnerTeamId === null
-    ? null
-    : matchWinnerTeamId ===
-        viewerTeamId
-      ? "teamA"
-      : "teamB";
+const viewerWon = matchWinnerTeamId === null
+  ? null
+  : matchWinnerTeamId === viewerTeamId;
 
 const matchSettlementRewards = useMemo(
   () => mapOkeySettlementToPopupRewards(
@@ -1277,14 +1275,14 @@ const shouldShowScorePopup =
   const turnTimerVisible = onlineGameplayReady && state.phase === "playing" && !showRoundResultPopup && !showMatchResultPopup;
 
   const localPlayerIndex = useMemo(() => {
-    if (!onlineProjection) return null;
+    if (!onlineProjection || !currentUserId) return null;
 
     const index = onlineProjection.players.findIndex(
-      (player) => player.id === humanPlayer.id,
+      (player) => player.id === currentUserId,
     );
 
     return index >= 0 ? index : null;
-  }, [humanPlayer.id, onlineProjection]);
+  }, [currentUserId, onlineProjection]);
 
   const relativeSeatMap = useMemo(
     () => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex),
@@ -1985,8 +1983,9 @@ const shouldShowScorePopup =
 
         <OkeyMatchResultPopup
           visible={shouldRenderMatchResultPopup}
-          winnerTeamId={displayMatchWinnerTeamId}
-          matchScores={teamScores}
+          viewerWon={viewerWon}
+          viewerScore={matchScores[viewerTeamId]}
+          opponentScore={matchScores[opponentTeamId]}
           rewards={matchSettlementRewards}
           onNewMatch={() => {
             router.replace(exitRoute);

@@ -47,16 +47,18 @@ export function mapOkeySettlementToPopupRewards(
 
 type Props = {
   visible: boolean;
-  winnerTeamId: OkeyTeamId | null;
-  matchScores: Record<OkeyTeamId, number>;
+  viewerWon: boolean | null;
+  viewerScore: number;
+  opponentScore: number;
   rewards?: OkeyMatchPopupRewards | null;
   onNewMatch: () => void;
 };
 
 export function OkeyMatchResultPopup({
   visible,
-  winnerTeamId,
-  matchScores,
+  viewerWon,
+  viewerScore,
+  opponentScore,
   rewards,
   onNewMatch,
 }: Props) {
@@ -64,7 +66,7 @@ export function OkeyMatchResultPopup({
     return null;
   }
 
-  const humanTeamWon = winnerTeamId === "teamA";
+  const humanTeamWon = viewerWon === true;
   const isAznifMatch = rewards?.currencyLabel === "MC";
 
   const winnerText = humanTeamWon
@@ -148,7 +150,7 @@ export function OkeyMatchResultPopup({
                 </Text>
 
                 <Text style={styles.teamAScore}>
-                  {matchScores.teamA}
+                  {viewerScore}
                 </Text>
               </View>
 
@@ -160,7 +162,7 @@ export function OkeyMatchResultPopup({
                 </Text>
 
                 <Text style={styles.teamBScore}>
-                  {matchScores.teamB}
+                  {opponentScore}
                 </Text>
               </View>
             </View>

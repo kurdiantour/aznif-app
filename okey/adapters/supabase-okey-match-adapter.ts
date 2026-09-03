@@ -104,6 +104,9 @@ export class SupabaseOkeyMatchAdapter
     | Promise<void>
     | null = null;
 
+  private terminalSettlementRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private terminalSettlementRefreshAttempts = 0;
+
   private pendingRealtimeVersion:
     | number
     | null = null;
@@ -601,20 +604,38 @@ export class SupabaseOkeyMatchAdapter
   }
 
   private scheduleTerminalSettlementRefresh(): void {
-    if (this.terminalSettlementRefreshPromise || this.closed) {
-      return;
-    }
+    if (
+      this.closed ||
+      this.snapshot?.settlement ||
+      this.terminalSettlementRefreshPromise ||
+      this.terminalSettlementRetryTimer
+    ) return;
+
+    const retry = () => {
+      if (this.closed || this.snapshot?.settlement) return;
+      this.terminalSettlementRetryTimer = setTimeout(() => {
+        this.terminalSettlementRetryTimer = null;
+        this.scheduleTerminalSettlementRefresh();
+      }, Math.min(5_000, 500 * 2 ** Math.min(this.terminalSettlementRefreshAttempts, 4)));
+    };
 
     this.terminalSettlementRefreshPromise = (async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      if (this.closed) return;
+      if (this.closed || this.snapshot?.settlement) return;
       try {
         await this.refresh();
       } catch {
-        // Keep listeners notified by current projection.
+        // A finished match has no watchdog. Keep recovering settlement until
+        // this client receives its own persisted reward projection.
       }
     })().finally(() => {
       this.terminalSettlementRefreshPromise = null;
+      if (this.snapshot?.settlement) {
+        this.terminalSettlementRefreshAttempts = 0;
+      } else {
+        this.terminalSettlementRefreshAttempts += 1;
+        retry();
+      }
     });
   }
 
@@ -795,6 +816,10 @@ export class SupabaseOkeyMatchAdapter
   private closeRealtimeChannel(): void {
     this.closed = true;
     this.pendingRealtimeVersion = null;
+    if (this.terminalSettlementRetryTimer) {
+      clearTimeout(this.terminalSettlementRetryTimer);
+      this.terminalSettlementRetryTimer = null;
+    }
 
     if (!this.channel) {
       return;

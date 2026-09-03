@@ -40,7 +40,10 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   const refresh = core.refresh;
   const applySnapshot = core.applySnapshot;
   const fallback = useMemo(() => createInitialOkeyGame(), []);
-  const state = useMemo(() => projection ? projectOkeyServerState(projection) : fallback, [fallback, projection]);
+  const state = useMemo(
+    () => projection ? projectOkeyServerState(projection, currentUserId) : fallback,
+    [currentUserId, fallback, projection],
+  );
 
   const dispatch = useCallback(async (command: OkeyAuthoritativeCommand) => {
     if (!commands) return false;

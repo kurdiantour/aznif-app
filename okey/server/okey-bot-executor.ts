@@ -68,6 +68,25 @@ export type OkeyBotExecutorDependencies = {
 
 const MAX_BOT_TRANSITIONS_PER_INVOCATION = 1;
 
+function getOkeyBotTurnClaim(
+  state: OkeyAuthoritativeMatchState,
+  version: number,
+) {
+  const playerIndex = state.roundState.currentPlayerIndex;
+  const player = state.roundState.players[playerIndex];
+  return createBotTurnClaim({
+    version,
+    actorId: player?.id,
+    ownership: player
+      ? projectSeatOwnership({
+          seatId: String(playerIndex),
+          ownerPlayerId: player.id,
+          controlledByBot: player.controlledByBot === true,
+        })
+      : null,
+  });
+}
+
 async function defaultBroadcast(
   client: any,
   input: {
