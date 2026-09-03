@@ -4,6 +4,7 @@ import { useAudioPlayer } from "expo-audio";
 
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import type { OkeyTile } from "@/okey/types/okey";
+import { OKEY_ROUND_END_PRESENTATION_BUDGET } from "@/okey/presentation/okey-presentation-budget";
 import { OkeyTileBack, OkeyTileFace } from "./OkeyTileFace";
 
 type ScreenRect = { x: number; y: number; width: number; height: number };
@@ -23,10 +24,10 @@ const SPARKS = Array.from({ length: 12 }, (_, index) => ({
   distance: 92 + (index % 3) * 18,
 }));
 const FINISH_SOUND = require("@/assets/audio/game/bang.mp3");
-export const OKEY_FINAL_TILE_ANIMATION_MS = 2_000;
-export const OKEY_FINAL_TILE_HOLD_MS = 3_000;
-export const OKEY_FINAL_TILE_PRESENTATION_MS =
-  OKEY_FINAL_TILE_ANIMATION_MS + OKEY_FINAL_TILE_HOLD_MS;
+
+export const OKEY_FINAL_TILE_ANIMATION_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.FINAL_TILE_ANIMATION_MS;
+export const OKEY_FINAL_TILE_HOLD_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.FINAL_TILE_HOLD_MS;
+export const OKEY_FINAL_TILE_PRESENTATION_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.CELEBRATION_DURATION_MS;
 
 export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcement, onComplete, playFinishSound }: Props) {
   const entrance = useRef(new Animated.Value(0)).current;
@@ -152,65 +153,90 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
             },
           ]}
         />
-        <Animated.View
-          style={[
-            styles.halo,
-            {
-              opacity: entrance.interpolate({ inputRange: [0.45, 0.72, 1], outputRange: [0, 0.95, 0.6] }),
-              transform: [{ scale: Animated.multiply(entrance.interpolate({ inputRange: [0.45, 1], outputRange: [0.25, 1] }), Animated.add(1, Animated.multiply(pulse, 0.08))) }],
-            },
-          ]}
-        />
         {SPARKS.map((spark, index) => (
           <Animated.View
-            key={spark.angle}
+            key={`spark-${index}`}
             style={[
-              styles.sparkOrbit,
+              styles.spark,
               {
-                opacity: entrance.interpolate({ inputRange: [0.45, 0.62, 1], outputRange: [0, 1, 0] }),
+                backgroundColor: spark.color,
+                opacity: entrance.interpolate({ inputRange: [0.45, 0.78, 1], outputRange: [0, 1, 0.7] }),
                 transform: [
                   { rotate: spark.angle },
-                  { scale: entrance.interpolate({ inputRange: [0.48, 0.7, 1], outputRange: [0, 1, 0.75] }) },
+                  {
+                    translateY: entrance.interpolate({
+                      inputRange: [0.45, 1],
+                      outputRange: [0, -spark.distance],
+                    }),
+                  },
+                  {
+                    scale: entrance.interpolate({
+                      inputRange: [0.45, 0.8, 1],
+                      outputRange: [0.2, 1.25, 0.85],
+                    }),
+                  },
                 ],
               },
             ]}
-          >
-            <View style={[styles.spark, { height: index % 2 === 0 ? 14 : 8, backgroundColor: spark.color, transform: [{ translateY: -spark.distance }] }]} />
-          </Animated.View>
+          />
         ))}
         <Animated.View
-          style={{
-            width: tileWidth,
-            height: tileHeight,
-            opacity: entrance.interpolate({ inputRange: [0, 0.12, 1], outputRange: [0.2, 1, 1] }),
-            transform: [
-              { translateY: entrance.interpolate({ inputRange: [0, 0.58, 0.78, 1], outputRange: [0, -18, 5, 0] }) },
-              { rotate: entrance.interpolate({ inputRange: [0, 0.72, 1], outputRange: ["-18deg", "390deg", "360deg"] }) },
-              { rotateY: entrance.interpolate({ inputRange: [0, 0.48, 1], outputRange: ["0deg", "180deg", "360deg"] }) },
-              { scale: Animated.multiply(entrance.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.72, 1.32, 1] }), pulseScale) },
-            ],
-          }}
+          style={[
+            styles.tileWrap,
+            {
+              transform: [
+                {
+                  scale: entrance.interpolate({
+                    inputRange: [0, 0.62, 0.86, 1],
+                    outputRange: [0.35, 1.18, 0.96, 1],
+                  }),
+                },
+                {
+                  rotateZ: entrance.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: ["-18deg", "6deg", "0deg"],
+                  }),
+                },
+                { scale: pulseScale },
+              ],
+            },
+          ]}
         >
-          {tile ? <OkeyTileFace tile={tile} width={tileWidth} height={tileHeight} isWildcard={isOkeyWildcard(tile, okeyTile)} /> : <OkeyTileBack />}
+          {tile ? (
+            <OkeyTileFace
+              tile={tile}
+              width={tileWidth}
+              height={tileHeight}
+              isOkey={isOkeyWildcard(tile, okeyTile)}
+            />
+          ) : (
+            <OkeyTileBack width={tileWidth} height={tileHeight} />
+          )}
         </Animated.View>
       </View>
       <Animated.View
         style={[
-          styles.copy,
-          { left: copyLeft, width: copyWidth,
-            opacity: entrance.interpolate({ inputRange: [0.66, 0.88, 1], outputRange: [0, 0.35, 1] }),
-            transform: [{ translateY: entrance.interpolate({ inputRange: [0.66, 1], outputRange: [24, 0] }) }],
+          styles.banner,
+          {
+            left: copyLeft,
+            top: centerY + tileHeight + 14,
+            width: copyWidth,
+            opacity: entrance.interpolate({ inputRange: [0.55, 0.88, 1], outputRange: [0, 0.95, 1] }),
+            transform: [
+              {
+                translateY: entrance.interpolate({
+                  inputRange: [0.55, 1],
+                  outputRange: [18, 0],
+                }),
+              },
+            ],
           },
         ]}
       >
-        {announcement ? (
-          <Text style={styles.title}>{announcement}</Text>
-        ) : (
-          <>
-            <View style={styles.winnerPill}><Text style={styles.winnerPillText}>بەردی کۆتایی</Text></View>
-            <Text style={styles.title}>یارییەکە تەواو بوو!</Text>
-          </>
-        )}
+        <Text style={styles.bannerKicker}>دەستی تەواوکەر</Text>
+        <Text style={styles.bannerTitle} numberOfLines={1}>
+          {announcement ?? "تاشی سەرکەوتن"}
+        </Text>
       </Animated.View>
     </View>
   );
@@ -219,50 +245,108 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
-    elevation: 1000,
-    alignItems: "center",
+    zIndex: 90,
+    elevation: 90,
     justifyContent: "center",
-    backgroundColor: "rgba(2,6,23,0.84)",
-    overflow: "hidden",
+    alignItems: "center",
   },
-  stage: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  flash: {
+    position: "absolute",
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "#fff6bf",
+  },
   spotlight: {
     position: "absolute",
     width: 250,
-    height: "72%",
-    backgroundColor: "rgba(248,215,116,0.12)",
-    borderBottomLeftRadius: 125,
-    borderBottomRightRadius: 125,
-    transform: [{ perspective: 600 }, { rotateX: "28deg" }],
+    height: 380,
+    borderRadius: 125,
+    backgroundColor: "rgba(255, 224, 130, 0.22)",
   },
-  cinematicRing: { position: "absolute", borderStyle: "dashed", borderColor: "rgba(255,226,129,0.85)" },
-  outerRing: { width: 190, height: 190, borderRadius: 95, borderWidth: 2 },
-  innerRing: { width: 154, height: 154, borderRadius: 77, borderWidth: 1, borderColor: "rgba(255,246,202,0.62)" },
-  ringGem: { position: "absolute", width: 8, height: 8, borderRadius: 2, backgroundColor: "#fff0a8", transform: [{ rotate: "45deg" }], shadowColor: "#ffe06d", shadowOpacity: 1, shadowRadius: 7, elevation: 10 },
-  ringGemTop: { top: -5, left: 89 },
-  ringGemBottom: { bottom: -5, left: 89 },
-  ringGemLeft: { left: -5, top: 89 },
-  ringGemRight: { right: -5, top: 89 },
-  flash: { position: "absolute", width: 110, height: 110, borderRadius: 55, backgroundColor: "#fff1a8" },
-  halo: {
+  stage: {
     position: "absolute",
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    backgroundColor: "rgba(248,215,116,0.22)",
-    borderWidth: 2,
-    borderColor: "rgba(255,239,164,0.9)",
-    shadowColor: "#ffd965",
-    shadowOpacity: 0.95,
-    shadowRadius: 24,
-    elevation: 18,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  sparkOrbit: { position: "absolute", width: 4, height: 4, alignItems: "center" },
-  spark: { width: 4, borderRadius: 3, shadowColor: "#ffe994", shadowOpacity: 1, shadowRadius: 5, elevation: 12 },
-  copy: { position: "absolute", top: "64%", alignItems: "center", paddingHorizontal: 12 },
-  winnerPill: { marginBottom: 8, paddingHorizontal: 14, height: 25, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(248,215,116,0.16)", borderWidth: 1, borderColor: "rgba(248,215,116,0.48)" },
-  winnerPillText: { color: "#f8d774", fontSize: 11, lineHeight: 15, fontFamily: "SpedaBold", writingDirection: "rtl" },
-  eyebrow: { color: "rgba(255,255,255,0.78)", fontSize: 13, lineHeight: 19, fontFamily: "SpedaBold", textAlign: "center", writingDirection: "rtl" },
-  title: { marginTop: 2, color: "#f8d774", fontSize: 20, lineHeight: 28, fontFamily: "SpedaBold", textAlign: "center", writingDirection: "rtl" },
+  tileWrap: {
+    shadowColor: "#f7cf57",
+    shadowOpacity: 0.85,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 16,
+  },
+  cinematicRing: {
+    position: "absolute",
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  outerRing: {
+    width: 170,
+    height: 170,
+    borderColor: "rgba(255, 230, 140, 0.65)",
+  },
+  innerRing: {
+    width: 130,
+    height: 130,
+    borderColor: "rgba(255, 196, 70, 0.5)",
+    borderStyle: "dashed",
+  },
+  ringGem: {
+    position: "absolute",
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#fff6ca",
+  },
+  ringGemTop: {
+    top: -4,
+    left: "50%",
+    marginLeft: -3.5,
+  },
+  ringGemBottom: {
+    bottom: -4,
+    left: "50%",
+    marginLeft: -3.5,
+  },
+  ringGemLeft: {
+    left: -4,
+    top: "50%",
+    marginTop: -3.5,
+  },
+  ringGemRight: {
+    right: -4,
+    top: "50%",
+    marginTop: -3.5,
+  },
+  spark: {
+    position: "absolute",
+    width: 5,
+    height: 14,
+    borderRadius: 2.5,
+  },
+  banner: {
+    position: "absolute",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(10, 18, 30, 0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(247, 207, 87, 0.45)",
+  },
+  bannerKicker: {
+    color: "#f8d977",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  bannerTitle: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 2,
+    textAlign: "center",
+  },
 });

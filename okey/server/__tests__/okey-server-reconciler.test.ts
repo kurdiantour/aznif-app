@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createAuthoritativeOkeyMatch,
   settleAuthoritativeOkeyRound,
+  OKEY_ROUND_END_PRESENTATION_BUDGET,
   type OkeyAuthoritativeMatchState,
   type OkeyServerPlayerIdentity,
 } from "../okey-authoritative.ts";
@@ -17,6 +18,7 @@ import {
   reconcileAuthoritativeNextRound,
   reconcileAuthoritativeMatchStart,
   reconcileAuthoritativeServerTurns,
+  reconcileAuthoritativeServerLifecycleWakeup,
   runOkeyLifecycleReconciler,
   type OkeyAuthoritativeSnapshotBundle,
   type OkeyLifecycleDecision,
@@ -967,4 +969,265 @@ test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions 
   assert.doesNotMatch(edge, /action === "play-eliminated"/);
   assert.doesNotMatch(edge, /action === "resolve-timeout"/);
   assert.doesNotMatch(edge, /action === "start-next-round"/);
+  assert.match(edge, /reconcileAuthoritativeServerLifecycleWakeup/);
+});
+
+test("Server Lifecycle Wake-up: waits full presentation budget (8.5s) until nextRoundEligibleAt before executing Reconciler", async () => {
+  const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
+  const budgetDelayMs = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS; // 8,500ms
+  const eligibleAt = new Date(roundFinishTime + budgetDelayMs).toISOString();
+  let currentTime = roundFinishTime;
+  const sleptIntervals: number[] = [];
+
+  const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const settledMatch: OkeyAuthoritativeMatchState = settleAuthoritativeOkeyRound({
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      phase: "finished",
+      winnerId: "p1",
+      endReason: "win",
+    },
+  }, roundFinishTime);
+
+  // Step 1: Round finished sets nextRoundEligibleAt to exact budget (now + 8.5s)
+  assert.equal(settledMatch.nextRoundEligibleAt, eligibleAt);
+  assert.equal(budgetDelayMs, 8_500);
+
+  // Step 2 & 3: Before 8.5s (during celebration and popup display), server lifecycle remains idle
+  const celebrationMidpoint = evaluateOkeyServerLifecycle(
+    createTestBundle(settledMatch, 10, null),
+    roundFinishTime + OKEY_ROUND_END_PRESENTATION_BUDGET.CELEBRATION_DURATION_MS - 1_000, // t = 4.0s
+  );
+  assert.equal(celebrationMidpoint.type, "idle");
+  if (celebrationMidpoint.type === "idle") {
+    assert.equal(celebrationMidpoint.reason, "next_round_countdown");
+  }
+
+  const popupDisplayMidpoint = evaluateOkeyServerLifecycle(
+    createTestBundle(settledMatch, 10, null),
+    roundFinishTime + OKEY_ROUND_END_PRESENTATION_BUDGET.CELEBRATION_DURATION_MS + 1_500, // t = 6.5s
+  );
+  assert.equal(popupDisplayMidpoint.type, "idle");
+  if (popupDisplayMidpoint.type === "idle") {
+    assert.equal(popupDisplayMidpoint.reason, "next_round_countdown");
+  }
+
+  // Step 4: At t >= 8.5s, server reaches due-next-round
+  const afterBudgetElapsed = evaluateOkeyServerLifecycle(
+    createTestBundle(settledMatch, 10, null),
+    roundFinishTime + budgetDelayMs, // t = 8.5s
+  );
+  assert.equal(afterBudgetElapsed.type, "due-next-round");
+
+  let reconcileAttempts = 0;
+  let serverCommitted = false;
+
+  const mockClient = {
+    rpc: (name: string, args: any) => {
+      if (name === "okey_get_authoritative_bundle") {
+        return {
+          single: async () => ({
+            data: {
+              version: 10,
+              turn_deadline_at: null,
+              state: settledMatch,
+            },
+            error: null,
+          }),
+        };
+      }
+      if (name === "okey_commit_authoritative_action") {
+        reconcileAttempts += 1;
+        serverCommitted = true;
+        const nextState = startAuthoritativeOkeyNextRound(settledMatch, currentTime);
+        return {
+          single: async () => ({
+            data: {
+              applied: true,
+              version: 11,
+              state: nextState,
+              turn_deadline_at: "2026-09-02T12:00:38.500Z",
+              action_events: [{ type: "round", payload: { round: 2 } }],
+            },
+            error: null,
+          }),
+        };
+      }
+      return { single: async () => ({ data: null, error: null }) };
+    },
+  };
+
+  const wakeupResult = await reconcileAuthoritativeServerLifecycleWakeup({
+    client: mockClient,
+    matchId: "test-wakeup-delay",
+    requesterUserId: "p1",
+    initialState: settledMatch,
+    initialVersion: 10,
+    eligibleAt,
+    now: () => currentTime,
+    sleep: async (ms: number) => {
+      sleptIntervals.push(ms);
+      currentTime += ms;
+    },
+    maxRetryDurationMs: 14_000,
+    retryIntervalMs: 500,
+  });
+
+  // Must have waited exactly 8,500 ms before executing the transition
+  assert.deepEqual(sleptIntervals, [8_500]);
+  assert.equal(wakeupResult.ok, true);
+  assert.equal(wakeupResult.executed, true);
+  assert.equal(wakeupResult.reason, "next_round_started");
+  assert.equal(wakeupResult.state?.roundState.phase, "playing");
+  assert.equal(wakeupResult.state?.currentRound, 2);
+  assert.equal(serverCommitted, true);
+  assert.equal(reconcileAttempts, 1);
+});
+
+test("Server Lifecycle Wake-up: retries on transient conflict and round never remains in phase=finished", async () => {
+  const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
+  const budgetDelayMs = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS;
+  const eligibleAt = new Date(roundFinishTime + budgetDelayMs).toISOString();
+  let currentTime = roundFinishTime;
+  const sleptIntervals: number[] = [];
+
+  const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const settledMatch: OkeyAuthoritativeMatchState = settleAuthoritativeOkeyRound({
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      phase: "finished",
+      winnerId: "p1",
+      endReason: "win",
+    },
+  }, roundFinishTime);
+
+  let attemptCount = 0;
+
+  const mockClient = {
+    rpc: (name: string, args: any) => {
+      if (name === "okey_get_authoritative_bundle") {
+        return {
+          single: async () => ({
+            data: {
+              version: 10,
+              turn_deadline_at: null,
+              state: settledMatch,
+            },
+            error: null,
+          }),
+        };
+      }
+      if (name === "okey_commit_authoritative_action") {
+        attemptCount += 1;
+        // First 2 attempts fail with transient version conflict / lock
+        if (attemptCount <= 2) {
+          return {
+            single: async () => ({
+              data: { applied: false },
+              error: { message: "version_conflict" },
+            }),
+          };
+        }
+        // 3rd attempt succeeds
+        const nextState = startAuthoritativeOkeyNextRound(settledMatch, currentTime);
+        return {
+          single: async () => ({
+            data: {
+              applied: true,
+              version: 11,
+              state: nextState,
+              turn_deadline_at: "2026-09-02T12:00:39.500Z",
+              action_events: [{ type: "round", payload: { round: 2 } }],
+            },
+            error: null,
+          }),
+        };
+      }
+      return { single: async () => ({ data: null, error: null }) };
+    },
+  };
+
+  const wakeupResult = await reconcileAuthoritativeServerLifecycleWakeup({
+    client: mockClient,
+    matchId: "test-wakeup-retry",
+    requesterUserId: "p1",
+    initialState: settledMatch,
+    initialVersion: 10,
+    eligibleAt,
+    now: () => currentTime,
+    sleep: async (ms: number) => {
+      sleptIntervals.push(ms);
+      currentTime += ms;
+    },
+    maxRetryDurationMs: 14_000,
+    retryIntervalMs: 500,
+  });
+
+  // Slept 8500ms initially + 500ms after attempt 1 + 500ms after attempt 2 = 9500ms
+  assert.deepEqual(sleptIntervals, [8_500, 500, 500]);
+  assert.equal(wakeupResult.ok, true);
+  assert.equal(wakeupResult.executed, true);
+  assert.equal(wakeupResult.reason, "next_round_started");
+  assert.equal(wakeupResult.state?.roundState.phase, "playing");
+  assert.equal(wakeupResult.state?.currentRound, 2);
+  assert.equal(attemptCount, 3);
+});
+
+test("Server Lifecycle Wake-up: gracefully recognizes if match was already transitioned by concurrent worker", async () => {
+  const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
+  const budgetDelayMs = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS;
+  const eligibleAt = new Date(roundFinishTime + budgetDelayMs).toISOString();
+  let currentTime = roundFinishTime;
+
+  const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const settledMatch: OkeyAuthoritativeMatchState = settleAuthoritativeOkeyRound({
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      phase: "finished",
+      winnerId: "p1",
+      endReason: "win",
+    },
+  }, roundFinishTime);
+
+  const alreadyStartedMatch = startAuthoritativeOkeyNextRound(settledMatch, roundFinishTime + budgetDelayMs);
+
+  const mockClient = {
+    rpc: (name: string, args: any) => {
+      if (name === "okey_get_authoritative_bundle") {
+        return {
+          single: async () => ({
+            data: {
+              version: 11,
+              turn_deadline_at: "2026-09-02T12:00:38.500Z",
+              state: alreadyStartedMatch,
+            },
+            error: null,
+          }),
+        };
+      }
+      return { single: async () => ({ data: null, error: null }) };
+    },
+  };
+
+  const wakeupResult = await reconcileAuthoritativeServerLifecycleWakeup({
+    client: mockClient,
+    matchId: "test-wakeup-concurrent",
+    requesterUserId: "p1",
+    initialState: settledMatch,
+    initialVersion: 10,
+    eligibleAt,
+    now: () => currentTime,
+    sleep: async (ms: number) => {
+      currentTime += ms;
+    },
+    maxRetryDurationMs: 14_000,
+    retryIntervalMs: 500,
+  });
+
+  assert.equal(wakeupResult.ok, true);
+  assert.equal(wakeupResult.state?.roundState.phase, "playing");
+  assert.equal(wakeupResult.reason, "already_transitioned");
 });

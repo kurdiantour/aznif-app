@@ -22,7 +22,10 @@ import {
   type OkeyActionEvent,
   type OkeyActionEventDraft,
 } from "../../../okey/server/okey-action-events.ts";
-import { reconcileAuthoritativeServerTurns } from "../../../okey/server/okey-server-reconciler.ts";
+import {
+  reconcileAuthoritativeServerTurns,
+  reconcileAuthoritativeServerLifecycleWakeup,
+} from "../../../okey/server/okey-server-reconciler.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 
 type OkeyAuthoritativeBundle = {
@@ -856,6 +859,37 @@ const commit =
     finalVersion,
     finalDeadline,
   );
+
+  if (
+    !finalState.matchFinished &&
+    finalState.roundState.phase === "finished" &&
+    finalState.nextRoundEligibleAt
+  ) {
+    const wakeUpPromise = reconcileAuthoritativeServerLifecycleWakeup({
+      client: service,
+      matchId,
+      requesterUserId: authData.user.id,
+      initialState: finalState,
+      initialVersion: finalVersion,
+      eligibleAt: finalState.nextRoundEligibleAt,
+      deterministicCommandId,
+      broadcastStateUpdate: async (payload) => {
+        await broadcastStateUpdate(
+          payload.commandId,
+          payload.version,
+          payload.publicProjection,
+          payload.actionEvents,
+        );
+      },
+    }).catch((wakeUpError) => {
+      console.error("Server lifecycle wake-up failed for match", matchId, wakeUpError);
+    });
+
+    const edgeRuntime = (globalThis as any).EdgeRuntime;
+    if (edgeRuntime && typeof edgeRuntime.waitUntil === "function") {
+      edgeRuntime.waitUntil(wakeUpPromise);
+    }
+  }
 
   if (finalState.matchFinished) {
     const result =

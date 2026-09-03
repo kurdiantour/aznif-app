@@ -13,6 +13,9 @@ import {
 } from "../engine/okey-engine.ts";
 
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+import { OKEY_ROUND_END_PRESENTATION_BUDGET } from "../presentation/okey-presentation-budget.ts";
+
+export { OKEY_ROUND_END_PRESENTATION_BUDGET };
 
 import {
   resolveTimeoutTurn,
@@ -362,7 +365,7 @@ export function settleAuthoritativeOkeyRound(
   }
 
   const pendingForfeitTeamId = match.pendingForfeitTeamId;
-  const OKEY_NEXT_ROUND_DELAY_MS = 3_000;
+  const OKEY_NEXT_ROUND_DELAY_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS;
   const nextRoundEligibleAt = new Date(now + OKEY_NEXT_ROUND_DELAY_MS).toISOString();
   const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
     ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"

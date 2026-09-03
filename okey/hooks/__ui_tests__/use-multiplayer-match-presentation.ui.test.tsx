@@ -2,6 +2,8 @@ import { act, render } from "@testing-library/react-native";
 import { useMultiplayerMatch } from "@/lib/multiplayer/match/use-multiplayer-match";
 import type { MultiplayerLifecycle, MultiplayerMatchAdapter } from "@/lib/multiplayer/match/contracts";
 
+import { OKEY_ROUND_END_PRESENTATION_BUDGET } from "@/okey/presentation/okey-presentation-budget";
+
 type Snapshot = { lifecycle: MultiplayerLifecycle; result: string };
 
 const finishedRound = (matchFinished = false): Snapshot => ({
@@ -12,7 +14,7 @@ const finishedRound = (matchFinished = false): Snapshot => ({
     completedRoundId: "7:1",
     turnPlayerId: null,
     turnDeadlineAt: null,
-    nextRoundEligibleAt: new Date(Date.now() + 3_000).toISOString(),
+    nextRoundEligibleAt: new Date(Date.now() + OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS).toISOString(),
     roundFinished: true,
     matchFinished,
   },

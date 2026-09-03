@@ -8,6 +8,7 @@ import {
   resolveAuthoritativeMatchDeadline,
   settleAuthoritativeOkeyRound,
   startAuthoritativeOkeyNextRound,
+  OKEY_ROUND_END_PRESENTATION_BUDGET,
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
   type OkeyServerPlayerIdentity,
@@ -226,6 +227,14 @@ export function evaluateOkeyServerLifecycle(
         eligibleAt,
       };
     }
+
+    // Fallback: If round is finished and not match finished without eligibleAt, it is due next round
+    return {
+      type: "due-next-round",
+      expectedVersion: version,
+      expectedRound: state.currentRound,
+      eligibleAt: new Date(now).toISOString(),
+    };
   }
 
   return {
@@ -1008,5 +1017,221 @@ export async function runOkeyLifecycleReconciler(
     finalBundle: currentBundle,
     finalDecision,
     reason: "max_iterations",
+  };
+}
+
+export type OkeyServerLifecycleWakeupOptions = {
+  client: any;
+  matchId: string;
+  requesterUserId?: string;
+  initialState?: OkeyAuthoritativeMatchState;
+  initialVersion?: number;
+  eligibleAt?: string | null;
+  broadcastStateUpdate?: (input: {
+    matchId: string;
+    commandId: string;
+    version: number;
+    publicProjection: OkeyMatchServerProjection;
+    actionEvents: OkeyActionEvent[];
+  }) => Promise<void>;
+  deterministicCommandId?: (source: string) => Promise<string>;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  maxRetryDurationMs?: number;
+  retryIntervalMs?: number;
+};
+
+export type OkeyServerLifecycleWakeupResult = {
+  ok: boolean;
+  executed: boolean;
+  state: OkeyAuthoritativeMatchState | null;
+  version: number | null;
+  attempts: number;
+  reason:
+    | "next_round_started"
+    | "match_finished"
+    | "already_transitioned"
+    | "max_duration_exceeded"
+    | "fetch_failed"
+    | "not_eligible";
+};
+
+/**
+ * Server Lifecycle Wake-up for Okey matches.
+ *
+ * 1. Waits until nextRoundEligibleAt (minimum 3 seconds from round end).
+ * 2. Wakes up on the Server and executes the authoritative Reconciler.
+ * 3. In case of transient conflicts or errors, automatically retries up to 8 seconds total.
+ * 4. Ensures the round never remains in phase=finished after 8 seconds.
+ * 5. Uses the existing authoritative reconciler and reducer path without any client triggers.
+ */
+export async function reconcileAuthoritativeServerLifecycleWakeup(
+  options: OkeyServerLifecycleWakeupOptions,
+): Promise<OkeyServerLifecycleWakeupResult> {
+  const getNow = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const startTime = getNow();
+  const maxDurationMs = Math.max(
+    1,
+    options.maxRetryDurationMs ?? (OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS + 5_000),
+  );
+  const retryIntervalMs = Math.max(10, options.retryIntervalMs ?? 500);
+  const matchId = options.matchId;
+  const requesterUserId = options.requesterUserId ?? "server-lifecycle-wake-up";
+
+  // Step 1: Wait for eligibleAt (minimum 3 seconds delay)
+  const eligibleAt = options.eligibleAt ?? options.initialState?.nextRoundEligibleAt ?? null;
+  if (eligibleAt) {
+    const eligibleAtMs = Date.parse(eligibleAt);
+    if (Number.isFinite(eligibleAtMs)) {
+      const initialDelay = Math.max(0, eligibleAtMs - getNow());
+      if (initialDelay > 0) {
+        await sleep(initialDelay);
+      }
+    }
+  }
+
+  let attempts = 0;
+
+  // Step 2 & 3: Run Reconciler and retry up to maxDurationMs (8 seconds)
+  while (getNow() - startTime <= maxDurationMs) {
+    attempts += 1;
+
+    let currentState: OkeyAuthoritativeMatchState | null = options.initialState ?? null;
+    let currentVersion: number | null = options.initialVersion !== undefined ? Number(options.initialVersion) : null;
+    let currentDeadline: string | null = null;
+
+    if (attempts > 1 || !currentState || currentVersion === null) {
+      const { data: bundleRaw, error: bundleError } = await options.client
+        .rpc("okey_get_authoritative_bundle", {
+          p_match_id: matchId,
+          p_user_id: requesterUserId,
+          p_command_id: null,
+        })
+        .single();
+
+      if (bundleError || !bundleRaw) {
+        if (getNow() - startTime + retryIntervalMs <= maxDurationMs) {
+          await sleep(retryIntervalMs);
+          continue;
+        }
+        break;
+      }
+
+      currentState = bundleRaw.state as OkeyAuthoritativeMatchState;
+      currentVersion = Number(bundleRaw.version);
+      currentDeadline = bundleRaw.turn_deadline_at as string | null;
+    }
+
+    if (!currentState || currentVersion === null) {
+      break;
+    }
+
+    if (currentState.matchFinished) {
+      return {
+        ok: true,
+        executed: false,
+        state: currentState,
+        version: currentVersion,
+        attempts,
+        reason: "match_finished",
+      };
+    }
+
+    if (currentState.roundState.phase !== "finished") {
+      return {
+        ok: true,
+        executed: false,
+        state: currentState,
+        version: currentVersion,
+        attempts,
+        reason: "already_transitioned",
+      };
+    }
+
+    const reconcileResult = await reconcileAuthoritativeServerTurns({
+      client: options.client,
+      matchId,
+      requesterUserId,
+      state: currentState,
+      version: currentVersion,
+      turnDeadlineAt: currentDeadline,
+      broadcastStateUpdate: options.broadcastStateUpdate,
+      deterministicCommandId: options.deterministicCommandId,
+      now: getNow,
+    });
+
+    if (
+      reconcileResult.executedNextRoundCount > 0 ||
+      reconcileResult.state.roundState.phase !== "finished" ||
+      reconcileResult.state.matchFinished
+    ) {
+      return {
+        ok: true,
+        executed: true,
+        state: reconcileResult.state,
+        version: reconcileResult.version,
+        attempts,
+        reason: "next_round_started",
+      };
+    }
+
+    const elapsed = getNow() - startTime;
+    if (elapsed + retryIntervalMs > maxDurationMs) {
+      break;
+    }
+
+    await sleep(retryIntervalMs);
+  }
+
+  // Step 4: Fallback attempt before finishing: Round must not remain in phase=finished after 8s
+  try {
+    const { data: finalBundle } = await options.client
+      .rpc("okey_get_authoritative_bundle", {
+        p_match_id: matchId,
+        p_user_id: requesterUserId,
+        p_command_id: null,
+      })
+      .single();
+
+    if (finalBundle) {
+      const state = finalBundle.state as OkeyAuthoritativeMatchState;
+      const ver = Number(finalBundle.version);
+      if (!state.matchFinished && state.roundState.phase === "finished") {
+        const finalReconcile = await reconcileAuthoritativeServerTurns({
+          client: options.client,
+          matchId,
+          requesterUserId,
+          state,
+          version: ver,
+          turnDeadlineAt: null,
+          broadcastStateUpdate: options.broadcastStateUpdate,
+          deterministicCommandId: options.deterministicCommandId,
+          now: getNow,
+        });
+
+        if (finalReconcile.executedNextRoundCount > 0 || finalReconcile.state.roundState.phase !== "finished") {
+          return {
+            ok: true,
+            executed: true,
+            state: finalReconcile.state,
+            version: finalReconcile.version,
+            attempts: attempts + 1,
+            reason: "next_round_started",
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Final server lifecycle wake-up attempt failed", err);
+  }
+
+  return {
+    ok: false,
+    executed: false,
+    state: null,
+    version: null,
+    attempts,
+    reason: "max_duration_exceeded",
   };
 }

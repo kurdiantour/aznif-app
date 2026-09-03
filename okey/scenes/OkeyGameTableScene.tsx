@@ -1777,44 +1777,7 @@ const shouldShowScorePopup =
           okeyTile={state.okeyTile}
           onClose={() => setShowDiscardHistory(false)}
         />
-<OkeyScoreDetailsPopup
-  visible={shouldShowScorePopup}
-  onClose={showRoundResultPopup ? undefined : () => setShowScoreDetails(false)}
-  scoreDetails={displayCurrentRoundScoreDetails}
-  round={currentRoundResult?.round ?? currentRound}
-  playerNamesById={playerNamesById}
-  maxRounds={maxRounds}
-  roundResults={displayRoundResults}
-  matchScores={teamScores}
-  waitingForNextRound={showRoundResultPopup}
-  isTileCycleLimit={
-    showRoundResultPopup &&
-    currentRoundResult?.endReason === "tile-cycle-limit"
-  }
-/>
-
-<OkeyMatchResultPopup
-  visible={shouldRenderMatchResultPopup}
-  winnerTeamId={displayMatchWinnerTeamId}
-  matchScores={teamScores}
-  rewards={matchSettlementRewards}
-  onNewMatch={() => {
-    router.replace(exitRoute);
-  }}
-/>
-        {showFinalTileCelebration ? (
-          <OkeyFinalTileCelebration
-            tile={topDiscard ?? state.indicatorTile}
-            okeyTile={state.okeyTile}
-            sourceRect={discardTopRectRef.current ? toLocalRect(discardTopRectRef.current) : null}
-            playFinishSound
-            onComplete={() => {
-              setShowFinalTileCelebration(false);
-              completeFinalPresentation();
-            }}
-          />
-        ) : null}
-                  <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
+        <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
 {canPlayAfterDraw && openAction.allowed ? (
             <Pressable
               style={styles.openSetsButton}
@@ -1973,7 +1936,47 @@ const shouldShowScorePopup =
   }}
 />
 
+      {/* Dedicated Topmost Presentation Overlay (Always painted on top of Rack and all scene layers) */}
+      <View pointerEvents="box-none" style={presentationOverlayStyles.root}>
+        {showFinalTileCelebration ? (
+          <OkeyFinalTileCelebration
+            tile={topDiscard ?? state.indicatorTile}
+            okeyTile={state.okeyTile}
+            sourceRect={discardTopRectRef.current ? toLocalRect(discardTopRectRef.current) : null}
+            playFinishSound
+            onComplete={() => {
+              setShowFinalTileCelebration(false);
+              completeFinalPresentation();
+            }}
+          />
+        ) : null}
 
+        <OkeyScoreDetailsPopup
+          visible={shouldShowScorePopup}
+          onClose={showRoundResultPopup ? undefined : () => setShowScoreDetails(false)}
+          scoreDetails={displayCurrentRoundScoreDetails}
+          round={currentRoundResult?.round ?? currentRound}
+          playerNamesById={playerNamesById}
+          maxRounds={maxRounds}
+          roundResults={displayRoundResults}
+          matchScores={teamScores}
+          waitingForNextRound={showRoundResultPopup}
+          isTileCycleLimit={
+            showRoundResultPopup &&
+            currentRoundResult?.endReason === "tile-cycle-limit"
+          }
+        />
+
+        <OkeyMatchResultPopup
+          visible={shouldRenderMatchResultPopup}
+          winnerTeamId={displayMatchWinnerTeamId}
+          matchScores={teamScores}
+          rewards={matchSettlementRewards}
+          onNewMatch={() => {
+            router.replace(exitRoute);
+          }}
+        />
+      </View>
     </TableBackground>
   );
 }
@@ -2062,6 +2065,16 @@ const forceKonkanStyles = StyleSheet.create({
     height: "100%",
     borderRadius: 1,
     backgroundColor: "#f8d774",
+  },
+});
+
+const presentationOverlayStyles = StyleSheet.create({
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 
