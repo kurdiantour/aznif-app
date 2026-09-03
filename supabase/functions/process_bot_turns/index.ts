@@ -135,6 +135,9 @@ serve(async (req) => {
     );
 
     if (mode === "okey") {
+      if (!isTrustedWorker) {
+        return json({ error: "Unauthorized" }, 401);
+      }
       if (!match_id) return json({ error: "Missing match_id" }, 400);
       if (
         !Number.isSafeInteger(expected_version) ||
@@ -145,32 +148,17 @@ serve(async (req) => {
         return json({ error: "Invalid Okey bot turn claim" }, 400);
       }
 
-      let requesterUserId: string | null = null;
-
-      if (isTrustedWorker) {
-        const { data: seat, error: seatError } = await svc
-          .schema("okey")
-          .from("match_seats")
-          .select("user_id")
-          .eq("match_id", match_id)
-          .is("membership_released_at", null)
-          .order("player_index", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (seatError) throw seatError;
-        requesterUserId = seat?.user_id ?? null;
-      } else {
-        const token = (req.headers.get("authorization") || "")
-          .replace(/^Bearer\s+/i, "")
-          .trim();
-        if (!token) return json({ error: "Unauthorized" }, 401);
-
-        const { data: userData, error: userError } = await svc.auth.getUser(token);
-        if (userError || !userData.user) {
-          return json({ error: "Invalid auth token" }, 401);
-        }
-        requesterUserId = userData.user.id;
-      }
+      const { data: seat, error: seatError } = await svc
+        .schema("okey")
+        .from("match_seats")
+        .select("user_id")
+        .eq("match_id", match_id)
+        .is("membership_released_at", null)
+        .order("player_index", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (seatError) throw seatError;
+      const requesterUserId = seat?.user_id ?? null;
 
       if (!requesterUserId) {
         return json({ ok: true, processed: false, reason: "match_has_no_seats" });

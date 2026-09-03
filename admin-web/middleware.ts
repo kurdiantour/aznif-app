@@ -1,7 +1,7 @@
-﻿import { accessCookieName } from "@/lib/supabase-server";
+import { accessCookieName } from "@/lib/supabase-server";
 import { NextResponse, type NextRequest } from "next/server";
 
-const protectedRoutes = ["/dashboard", "/users", "/aznif", "/treasury"];
+const protectedRoutes = ["/dashboard", "/users", "/aznif", "/treasury", "/economy"];
 
 export function middleware(request: NextRequest) {
   const isProtected = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route));
@@ -19,7 +19,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/users/:path*", "/aznif/:path*", "/treasury/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/users/:path*", "/aznif/:path*", "/treasury/:path*", "/economy/:path*", "/login"],
 };
-
-

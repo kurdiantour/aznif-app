@@ -37,7 +37,7 @@ test("external commits, Bot commits and maintenance all use one-step exact claim
   assert.doesNotMatch(matchGateway, /handOffOkeyBotTurn/);
   assert.doesNotMatch(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
   assert.match(worker, /\.is\("membership_released_at", null\)/);
-  assert.match(maintenance, /\.eq\("status", "playing"\)[\s\S]*handOffOkeyBotTurn/);
+  assert.match(maintenance, /\.eq\("status", "playing"\)[\s\S]*reconcileAuthoritativeServerTurns/);
   assert.match(handoff, /expected_version: claim\.expectedVersion/);
   assert.match(handoff, /expected_actor_id: claim\.expectedActorId/);
   assert.doesNotMatch(handoff, /while\s*\(|setInterval|setTimeout/);

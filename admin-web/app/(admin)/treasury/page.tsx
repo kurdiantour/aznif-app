@@ -1,5 +1,5 @@
-﻿import TreasuryPanel from "@/components/treasury/treasury-panel";
+import { redirect } from "next/navigation";
 
-export default function TreasuryPage() {
-  return <TreasuryPanel />;
+export default function LegacyTreasuryPage() {
+  redirect("/economy/treasury");
 }

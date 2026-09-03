@@ -2,15 +2,13 @@ import { supabase } from "@/lib/supabase";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
-  OkeyEliminatedTurnClaim,
-  OkeyNextRoundClaim,
-  OkeyBotTurnClaim,
   OnlineOkeyMatchAdapter,
 } from "@/okey/adapters/okey-match-adapter";
 
 import type {
   OkeyAuthoritativeCommand,
   OkeyMatchServerProjection,
+  OkeyMatchSettlement,
 } from "@/okey/server/okey-authoritative";
 
 import {
@@ -47,12 +45,6 @@ class OkeyAuthoritativeCommandNotAppliedError extends Error {
     this.name = "OkeyAuthoritativeCommandNotAppliedError";
   }
 }
-
-export type OkeyTurnTimeoutClaim = {
-  expectedVersion: number;
-  expectedTurnDeadlineAt: string;
-  expectedTurnPlayerId: string;
-};
 
 export class SupabaseOkeyMatchAdapter
   implements OnlineOkeyMatchAdapter
@@ -374,108 +366,6 @@ export class SupabaseOkeyMatchAdapter
     );
   }
 
-  async playEliminatedTurn(
-    claim: OkeyEliminatedTurnClaim,
-  ): Promise<void> {
-    return this.runAuthoritativeMutation(() => ({
-      action: "play-eliminated",
-      expectedVersion: claim.expectedVersion,
-      expectedActorId: claim.expectedActorId,
-    }));
-  }
-
-  async startNextRound(
-    claim: OkeyNextRoundClaim,
-  ): Promise<void> {
-    return this.runAuthoritativeMutation(
-      () => ({
-        action: "start-next-round",
-        expectedVersion: claim.expectedVersion,
-        expectedRound: claim.expectedRound,
-      }),
-      { refreshOnError: false, throwParsedError: true },
-    );
-  }
-
-  async processBotTurn(
-    claim: OkeyBotTurnClaim,
-  ): Promise<void> {
-    const { data, error } = await supabase.functions.invoke("process_bot_turns", {
-      body: {
-        mode: "okey",
-        match_id: this.matchId,
-        expected_version: claim.expectedVersion,
-        expected_actor_id: claim.expectedActorId,
-      },
-    });
-    if (error) {
-      const errorBody = await this.readFunctionErrorBody(error);
-      console.warn("Okey bot turn request failed", {
-        matchId: this.matchId,
-        claim,
-        error: errorBody ?? error,
-      });
-      throw errorBody ?? error;
-    }
-    if (data?.ok === false || typeof data?.error === "string") {
-      console.warn("Okey bot turn execution failed", {
-        matchId: this.matchId,
-        claim,
-        response: data,
-      });
-      throw data;
-    }
-    if (data?.processed === false) {
-      console.warn("Okey bot turn was not processed", {
-        matchId: this.matchId,
-        claim,
-        reason: data.reason ?? "unknown",
-      });
-    }
-    return data;
-  }
-
-  async resolveTimeout(
-    claim: OkeyTurnTimeoutClaim,
-  ): Promise<any> {
-    const commandId = createCommandId();
-
-    return this.enqueueAuthoritativeCommand(
-      async () => {
-        const { data, error } =
-          await supabase.functions.invoke(
-            "okey_match",
-            {
-              body: {
-                action: "resolve-timeout",
-                matchId: this.matchId,
-                commandId,
-                expectedVersion: claim.expectedVersion,
-                expectedTurnDeadlineAt: claim.expectedTurnDeadlineAt,
-                expectedTurnPlayerId: claim.expectedTurnPlayerId,
-              },
-            },
-          );
-
-        if (error) {
-          const errorBody =
-            await this.readFunctionErrorBody(
-              error,
-            );
-
-          this.syncServerClock(
-            errorBody?.serverNow,
-          );
-
-          throw errorBody || error;
-        }
-
-        this.publishResponse(data);
-        return data;
-      },
-    );
-  }
-
   private syncServerClock(serverNow: unknown): void {
     if (typeof serverNow !== "string") return;
     const serverNowMs = Date.parse(serverNow);
@@ -523,15 +413,24 @@ export class SupabaseOkeyMatchAdapter
             "okey_match",
             {
               body: {
-                action: "snapshot",
                 matchId: this.matchId,
+                action: "snapshot",
                 afterVersion: this.actionEventVersion,
               },
             },
           );
 
         if (error) {
-          throw error;
+          const errorBody =
+            await this.readFunctionErrorBody(
+              error,
+            );
+
+          this.syncServerClock(
+            errorBody?.serverNow,
+          );
+
+          throw errorBody || error;
         }
 
         this.publishResponse(data);
@@ -542,7 +441,7 @@ export class SupabaseOkeyMatchAdapter
     return this.refreshPromise;
   }
 
-  private refreshAfterRealtimeInvalidation(
+  private async refreshAfterRealtimeInvalidation(
     version: number,
   ): Promise<void> {
     this.pendingRealtimeVersion = Math.max(
@@ -554,179 +453,119 @@ export class SupabaseOkeyMatchAdapter
       return this.realtimeRefreshPromise;
     }
 
-    this.realtimeRefreshPromise = (async () => {
-      let retryDelayMs = 50;
-
-      while (
-        !this.closed &&
-        this.pendingRealtimeVersion !== null
-      ) {
-        const targetVersion =
-          this.pendingRealtimeVersion;
-        this.pendingRealtimeVersion = null;
-
-        if (
-          (this.snapshot?.version ?? -1) >=
-          targetVersion
+    this.realtimeRefreshPromise =
+      (async () => {
+        while (
+          this.pendingRealtimeVersion !== null
         ) {
-          retryDelayMs = 50;
-          continue;
-        }
+          const targetVersion =
+            this.pendingRealtimeVersion;
 
-        try {
-          await this.refresh();
-        } catch {
-          this.pendingRealtimeVersion = Math.max(
-            this.pendingRealtimeVersion ?? -1,
-            targetVersion,
-          );
-          await new Promise<void>((resolve) =>
-            setTimeout(resolve, retryDelayMs),
-          );
-          retryDelayMs = Math.min(
-            retryDelayMs * 2,
-            1_000,
-          );
-          continue;
-        }
+          this.pendingRealtimeVersion = null;
 
-        if (
-          (this.snapshot?.version ?? -1) <
-          targetVersion
-        ) {
-          this.pendingRealtimeVersion = Math.max(
-            this.pendingRealtimeVersion ?? -1,
-            targetVersion,
-          );
-          await new Promise<void>((resolve) =>
-            setTimeout(resolve, retryDelayMs),
-          );
-          retryDelayMs = Math.min(
-            retryDelayMs * 2,
-            1_000,
-          );
-        } else {
-          retryDelayMs = 50;
+          try {
+            await this.refresh();
+          } catch {
+            // Keep subscription active and retry on future events.
+          }
+
+          const snapshotVersion = this.snapshot?.version ?? -1;
+          if (snapshotVersion >= targetVersion) {
+            if (
+              this.pendingRealtimeVersion === null ||
+              this.pendingRealtimeVersion <= snapshotVersion
+            ) {
+              this.pendingRealtimeVersion = null;
+              break;
+            }
+            continue;
+          }
+
+          // The snapshot has not reached the requested version yet.
+          // Do not spin; a future Realtime event/reconnect will retry.
+          if (this.pendingRealtimeVersion === null) {
+            break;
+          }
         }
-      }
-    })().finally(() => {
-      this.realtimeRefreshPromise = null;
-    });
+      })().finally(() => {
+        this.realtimeRefreshPromise = null;
+      });
 
     return this.realtimeRefreshPromise;
   }
 
-  private publishResponse(data: unknown): void {
-    if (!data || typeof data !== "object") {
+  private publish(
+    projection: OkeyMatchServerProjection,
+  ): void {
+    const previousSnapshot = this.snapshot;
+    this.snapshot = projection;
+
+    if (
+      projection.matchFinished &&
+      !("settlement" in projection && projection.settlement)
+    ) {
+      this.scheduleTerminalSettlementRefresh();
+    }
+
+    if (previousSnapshot !== projection) {
+      for (const listener of this.listeners) {
+        listener(projection);
+      }
+    }
+  }
+
+  private publishResponse(
+    response: unknown,
+  ): void {
+    if (
+      !response ||
+      typeof response !== "object"
+    ) {
       return;
     }
 
-    const response = data as {
-      projection?: OkeyMatchServerProjection | null;
-      settlement?: OkeyMatchServerProjection["settlement"];
-      serverNow?: string;
+    const payload = response as {
+      projection?: OkeyMatchServerProjection;
       actionEvents?: OkeyActionEvent[];
+      settlement?: OkeyMatchSettlement | null;
+      serverNow?: string;
     };
 
-    this.syncServerClock(response.serverNow);
+    this.syncServerClock(payload.serverNow);
 
-    if (!response.projection) {
-      return;
+    if (payload.actionEvents && Array.isArray(payload.actionEvents)) {
+      this.publishActionEvents(payload.actionEvents);
     }
 
-    const initialProjection = this.snapshot === null;
-    if (!initialProjection) {
-      this.publishActionEvents(response.actionEvents ?? []);
-    }
-    this.publish({
-      ...response.projection,
-      settlement: "settlement" in response
-        ? response.settlement ?? null
-        : this.snapshot?.settlement ?? null,
-    });
-    if (initialProjection && this.actionEventVersion === null) {
-      this.actionEventVersion = response.projection.version;
+    if (payload.projection) {
+      const projection = Object.prototype.hasOwnProperty.call(payload, "settlement")
+        ? { ...payload.projection, settlement: payload.settlement ?? null }
+        : payload.projection;
+      this.publish(projection);
     }
   }
-  private publish(
-    snapshot:
-      | OkeyMatchServerProjection
-      | null
-      | undefined,
-  ): void {
-    if (this.closed || !snapshot) {
-      return;
-    }
 
-
-    if (
-      this.snapshot &&
-      snapshot.version <
-        this.snapshot.version
-    ) {
-      return;
-    }
-
-    if (
-      this.snapshot &&
-      snapshot.currentRound !== this.snapshot.currentRound
-    ) {
-      this.triggerReset();
-    }
-
-    this.snapshot = snapshot;
-
-    for (
-      const listener of
-      this.listeners
-    ) {
-      listener(snapshot);
-    }
-
-    this.ensureTerminalSettlementRefresh();
-  }
-
-  private ensureTerminalSettlementRefresh(): void {
-    if (
-      this.closed ||
-      !this.snapshot?.matchFinished ||
-      this.snapshot.settlement ||
-      this.terminalSettlementRefreshPromise
-    ) {
+  private scheduleTerminalSettlementRefresh(): void {
+    if (this.terminalSettlementRefreshPromise || this.closed) {
       return;
     }
 
     this.terminalSettlementRefreshPromise = (async () => {
-      let retryDelayMs = 50;
-
-      while (
-        !this.closed &&
-        this.snapshot?.matchFinished &&
-        !this.snapshot.settlement
-      ) {
-        await new Promise<void>((resolve) =>
-          setTimeout(resolve, retryDelayMs),
-        );
-
-        try {
-          await this.refresh();
-        } catch {}
-
-        retryDelayMs = Math.min(retryDelayMs * 2, 2_000);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (this.closed) return;
+      try {
+        await this.refresh();
+      } catch {
+        // Keep listeners notified by current projection.
       }
     })().finally(() => {
       this.terminalSettlementRefreshPromise = null;
-      this.ensureTerminalSettlementRefresh();
     });
   }
 
   private publishActionEvents(events: OkeyActionEvent[]): void {
-    const ordered = [...events].sort(
-      (left, right) => left.version - right.version || left.sequence - right.sequence,
-    );
-    for (const event of ordered) {
-      if (event.matchId !== this.matchId) continue;
-      const key = `${event.version}:${event.sequence}`;
+    for (const event of events) {
+      const key = `${event.version}:${event.sequence}:${event.type}:${event.actorPlayerId}`;
       if (this.deliveredActionEventKeys.has(key)) continue;
       this.deliveredActionEventKeys.add(key);
       this.actionEventVersion = Math.max(this.actionEventVersion ?? 0, event.version);
@@ -736,23 +575,56 @@ export class SupabaseOkeyMatchAdapter
 
   private mergePublicProjection(
     publicProjection: OkeyMatchServerProjection,
+    actionEvents: OkeyActionEvent[] = [],
   ): OkeyMatchServerProjection | null {
     if (!this.snapshot) return null;
 
-    const privateHands = new Map(
-      this.snapshot.players.flatMap((player) =>
-        Array.isArray(player.hand)
-          ? [[player.id, player.hand] as const]
-          : [],
-      ),
+    if (publicProjection.currentRound !== this.snapshot.currentRound) {
+      return null;
+    }
+
+    const localPlayer = this.snapshot.players.find((player) =>
+      Array.isArray(player.hand),
     );
+
+    if (localPlayer && Array.isArray(localPlayer.hand)) {
+      const nextLocalPlayer = publicProjection.players.find(
+        (player) => player.id === localPlayer.id,
+      );
+
+      if (!nextLocalPlayer) return null;
+
+      if (nextLocalPlayer.handCount !== localPlayer.hand.length) {
+        return null;
+      }
+
+      if (actionEvents.some((event) => event.actorPlayerId === localPlayer.id)) {
+        return null;
+      }
+
+      if (
+        Boolean(nextLocalPlayer.controlledByBot) !== Boolean(localPlayer.controlledByBot) ||
+        Boolean(nextLocalPlayer.eliminated) !== Boolean(localPlayer.eliminated)
+      ) {
+        return null;
+      }
+
+      return {
+        ...publicProjection,
+        players: publicProjection.players.map((player) => {
+          if (player.id === localPlayer.id) {
+            return { ...player, hand: localPlayer.hand };
+          }
+          return player;
+        }),
+        settlement: 'settlement' in publicProjection
+          ? publicProjection.settlement ?? null
+          : this.snapshot.settlement ?? null,
+      };
+    }
 
     return {
       ...publicProjection,
-      players: publicProjection.players.map((player) => {
-        const hand = privateHands.get(player.id);
-        return hand ? { ...player, hand } : player;
-      }),
       settlement: 'settlement' in publicProjection
         ? publicProjection.settlement ?? null
         : this.snapshot.settlement ?? null,
@@ -841,15 +713,16 @@ export class SupabaseOkeyMatchAdapter
 
           if (!hasUsableProjection) return;
 
-          const merged = this.mergePublicProjection(projection);
+          const incomingEvents = Array.isArray(message.actionEvents)
+            ? message.actionEvents
+            : [];
+          const merged = this.mergePublicProjection(projection, incomingEvents);
           if (!merged) {
             this.refreshRealtimeGap(message.version);
             return;
           }
 
-          this.publishActionEvents(
-            Array.isArray(message.actionEvents) ? message.actionEvents : [],
-          );
+          this.publishActionEvents(incomingEvents);
           this.publish(merged);
           this.notifyRealtimeSnapshot(merged);
         },

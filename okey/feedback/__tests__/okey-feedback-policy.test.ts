@@ -1,6 +1,52 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { OkeyFeedbackGate } from "../../hooks/useOkeyFeedback.ts";
+
+const feedbackSource = readFileSync(
+  new URL("../../hooks/useOkeyFeedback.ts", import.meta.url),
+  "utf8",
+);
+
+function loadOkeyFeedbackGate() {
+  const start = feedbackSource.indexOf("export class OkeyFeedbackGate");
+  const end = feedbackSource.indexOf("\nconst TILE_SOUND", start);
+
+  assert.notEqual(start, -1, "OkeyFeedbackGate must exist in useOkeyFeedback.ts");
+  assert.notEqual(end, -1, "OkeyFeedbackGate must stay isolated from Expo side effects");
+
+  const executableClass = feedbackSource
+    .slice(start, end)
+    .replace("export class OkeyFeedbackGate", "class OkeyFeedbackGate")
+    .replace(/private readonly /g, "")
+    .replace(/private /g, "")
+    .replace(/maxKeys: number;/g, "maxKeys;")
+    .replace(/preferences: OkeyFeedbackPreferences;/g, "preferences;")
+    .replace(/new Set<string>\(\)/g, "new Set()")
+    .replace(/keyQueue: string\[\] = \[\]/g, "keyQueue = []")
+    .replace(/preferences: OkeyFeedbackPreferences/g, "preferences")
+    .replace(/maxKeys: number/g, "maxKeys")
+    .replace(/active: boolean/g, "active")
+    .replace(/event: OkeyFeedbackEvent/g, "event")
+    .replace(/eventKey: string/g, "eventKey")
+    .replace(/: OkeyFeedbackDecision \| null/g, "");
+
+  return new Function(`${executableClass}\nreturn OkeyFeedbackGate;`)() as new (
+    preferences: { soundEnabled: boolean; hapticsEnabled: boolean },
+    maxKeys?: number,
+  ) => {
+    setActive(active: boolean): void;
+    setPreferences(preferences: {
+      soundEnabled: boolean;
+      hapticsEnabled: boolean;
+    }): void;
+    consume(
+      event: string,
+      eventKey: string,
+    ): { event: string; playSound: boolean; playHaptic: boolean } | null;
+  };
+}
+
+const OkeyFeedbackGate = loadOkeyFeedbackGate();
 
 test("each event key is consumed only once across rerenders", () => {
   const gate = new OkeyFeedbackGate({ soundEnabled: true, hapticsEnabled: true });
@@ -10,9 +56,18 @@ test("each event key is consumed only once across rerenders", () => {
 
 test("sound and haptics can be disabled independently", () => {
   const soundOnly = new OkeyFeedbackGate({ soundEnabled: true, hapticsEnabled: false });
-  assert.deepEqual(soundOnly.consume("rack-move", "move:1"), { event: "rack-move", playSound: true, playHaptic: false });
+  assert.deepEqual(soundOnly.consume("rack-move", "move:1"), {
+    event: "rack-move",
+    playSound: true,
+    playHaptic: false,
+  });
+
   const hapticOnly = new OkeyFeedbackGate({ soundEnabled: false, hapticsEnabled: true });
-  assert.deepEqual(hapticOnly.consume("rack-move", "move:2"), { event: "rack-move", playSound: false, playHaptic: true });
+  assert.deepEqual(hapticOnly.consume("rack-move", "move:2"), {
+    event: "rack-move",
+    playSound: false,
+    playHaptic: true,
+  });
 });
 
 test("background suppresses feedback without consuming the event", () => {
@@ -41,6 +96,8 @@ test("valid, invalid, round and match events remain distinct", () => {
 
 test("bounded history releases old keys", () => {
   const gate = new OkeyFeedbackGate({ soundEnabled: true, hapticsEnabled: true }, 2);
-  gate.consume("rack-select", "1"); gate.consume("rack-select", "2"); gate.consume("rack-select", "3");
+  gate.consume("rack-select", "1");
+  gate.consume("rack-select", "2");
+  gate.consume("rack-select", "3");
   assert.ok(gate.consume("rack-select", "1"));
 });

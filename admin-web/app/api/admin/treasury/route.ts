@@ -7,32 +7,43 @@ import {
 } from "@/lib/supabase-server";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { includeGameCommissionBurns } from "@/lib/treasury-report";
+import { getRemoteTreasuryReport } from "@/lib/treasury-report";
 
 async function accessTokenFromCookies() {
   return (await cookies()).get(accessCookieName)?.value;
+}
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    if ("message" in error && typeof (error as any).message === "string") {
+      return (error as any).message;
+    }
+    if ("error" in error && typeof (error as any).error === "string") {
+      return (error as any).error;
+    }
+  }
+  return fallback;
 }
 
 export async function GET() {
   try {
     if (isDevBypassEnabled()) {
       const supabase = createDevServiceSupabase();
-      const { data, error } = await supabase.rpc("admin_get_aznif_treasury", { p_limit: 50 });
-      if (error) throw error;
-      return NextResponse.json({ treasury: await includeGameCommissionBurns(supabase, data) });
+      const treasury = await getRemoteTreasuryReport(supabase);
+      return NextResponse.json({ treasury });
     }
 
     const accessToken = await accessTokenFromCookies();
     if (!accessToken) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 
     const { supabase } = await assertAdmin(accessToken);
-    const { data, error } = await supabase.rpc("admin_get_aznif_treasury", { p_limit: 50 });
-    if (error) throw error;
-
     const service = createAdminSupabase();
-    return NextResponse.json({ treasury: await includeGameCommissionBurns(service, data) });
+    const treasury = await getRemoteTreasuryReport(supabase, service);
+
+    return NextResponse.json({ treasury });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load treasury";
+    const message = extractErrorMessage(error, "Unable to load treasury");
     if (process.env.NODE_ENV !== "production") {
       console.error("Admin treasury load failed:", error);
     }

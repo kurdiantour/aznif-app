@@ -14,6 +14,7 @@ import {
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
 } from "./okey-authoritative.ts";
+import { reconcileAuthoritativeEliminatedTurns } from "./okey-server-reconciler.ts";
 
 type OkeyAuthoritativeBundle = {
   version: number | string;
@@ -294,6 +295,13 @@ if (currentState.roundState.phase !== "playing") {
       if (!Number.isSafeInteger(committedVersion) || committedVersion !== nextVersion) {
         throw new Error("okey_bot_commit_version_mismatch");
       }
+      const committedDeadline = (commit as { turn_deadline_at?: string | null }).turn_deadline_at ?? deadline;
+      const committedState = (commit as { state?: OkeyAuthoritativeMatchState }).state ?? nextState;
+      const committedPublicProjection = projectOkeyMatchPublicState(
+        committedState,
+        committedVersion,
+        committedDeadline,
+      );
       const actionEvents = (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [];
       try {
         await (dependencies.broadcastStateUpdate
@@ -301,14 +309,14 @@ if (currentState.roundState.phase !== "playing") {
               matchId: input.matchId,
               commandId,
               version: committedVersion,
-              publicProjection,
+              publicProjection: committedPublicProjection,
               actionEvents,
             })
             : defaultBroadcast(client, {
               matchId: input.matchId,
               commandId,
               version: committedVersion,
-              publicProjection,
+              publicProjection: committedPublicProjection,
               actionEvents,
             }));
       } catch (broadcastError) {
@@ -316,8 +324,27 @@ if (currentState.roundState.phase !== "playing") {
       }
 
       steps.push(botStep);
-      currentState = nextState;
+      currentState = committedState;
       currentVersion = committedVersion;
+
+      if (botStep === "discard" && !currentState.matchFinished) {
+        const eliminatedReconcile = await reconcileAuthoritativeEliminatedTurns({
+          client,
+          matchId: input.matchId,
+          state: currentState,
+          version: currentVersion,
+          turnDeadlineAt: committedDeadline,
+          broadcastStateUpdate: async (payload) => {
+            if (dependencies.broadcastStateUpdate) {
+              await dependencies.broadcastStateUpdate(payload);
+            } else {
+              await defaultBroadcast(client, payload);
+            }
+          },
+        });
+        currentState = eliminatedReconcile.state;
+        currentVersion = eliminatedReconcile.version;
+      }
 
       if (currentState.matchFinished) {
         const winnerTeamId = currentState.matchWinnerTeamId;

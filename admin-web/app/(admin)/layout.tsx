@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,12 +17,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Link href="/dashboard"><span className="nav-icon">□</span> Dashboard</Link>
           <Link href="/users"><span className="nav-icon">◎</span> Players</Link>
           <Link href="/aznif"><span className="nav-icon">+</span> Add Aznif</Link>
-          <Link href="/treasury"><span className="nav-icon">$</span> Treasury</Link>
+        </nav>
+
+        <p className="nav-label section-label">Aznif Economy</p>
+        <nav className="nav">
+          <Link href="/economy/overview"><span className="nav-icon">📊</span> Overview</Link>
+          <Link href="/economy/transactions"><span className="nav-icon">⇄</span> Transactions</Link>
+          <Link href="/economy/treasury"><span className="nav-icon">$</span> Treasury</Link>
+          <Link href="/economy/commission-income"><span className="nav-icon">💰</span> Commission Income</Link>
         </nav>
 
         <p className="nav-label account-label">Account</p>
         <nav className="nav">
-          <Link href="/dashboard"><span className="nav-icon">⚙</span> Settings</Link>
+          <Link href="/settings"><span className="nav-icon">⚙</span> Settings</Link>
           <Link href="/dashboard"><span className="nav-icon">?</span> Help</Link>
         </nav>
 
@@ -34,6 +41,3 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </main>
   );
 }
-
-
-

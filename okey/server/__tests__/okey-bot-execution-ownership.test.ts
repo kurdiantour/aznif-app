@@ -4,30 +4,31 @@ import test from "node:test";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
-test("Okey Bot execution is server-owned and bound to the observed version and actor", () => {
+test("Okey Bot execution is 100% server-owned through reconciler with zero client triggers", () => {
   const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
   const matchAdapter = read("okey/adapters/okey-multiplayer-adapter.ts");
   const hook = read("okey/hooks/useOkeyMultiplayerGame.ts");
-  const core = read("lib/multiplayer/match/use-multiplayer-match.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
   const executor = read("okey/server/okey-bot-executor.ts");
+  const reconciler = read("okey/server/okey-server-reconciler.ts");
+  const edge = read("supabase/functions/okey_match/index.ts");
+  const maintenance = read("supabase/functions/okey_maintenance/index.ts");
+  const matchAdapterInterface = read("okey/adapters/okey-match-adapter.ts");
 
-  assert.ok(adapter.includes("processBotTurn") || adapter.includes("process_bot_turns"));
-  const executeBotTurn =
-    matchAdapter.split("async executeBotTurn")[1]?.split("async startNextRound")[0] ?? "";
-  assert.ok(executeBotTurn.includes("processBotTurn(claim)"));
-  assert.ok(!executeBotTurn.includes("refresh()"));
-  const coreBotExecution =
-    core.split("executeBotTurn!(claim)")[1]?.split(".catch")[0] ?? "";
-  assert.ok(coreBotExecution.includes("return refresh()"));
-  assert.ok(hook.includes("selectBotTurn: selectOkeyBotTurn"));
-  assert.ok(core.includes("BotTurnClaimRegistry"));
-  assert.ok(core.includes("executeBotTurn"));
-  assert.ok(!hook.includes("useOkeyMultiplayerBotController"));
-  assert.ok(worker.includes("executeOkeyBotTurn"));
-  assert.ok(executor.includes("classifyBotTurnClaim"));
-  assert.ok(executor.includes("currentActorId: currentPlayer?.id"));
-  assert.ok(executor.includes('reason: "stale_bot_turn"'));
-  assert.ok(executor.includes("p_expected_version: currentVersion"));
-  assert.ok(!executor.includes("while (true)"));
+  // Client must NOT have any bot triggers or claims:
+  assert.doesNotMatch(adapter, /processBotTurn/);
+  assert.doesNotMatch(matchAdapterInterface, /processBotTurn/);
+  assert.doesNotMatch(matchAdapter, /async executeBotTurn/);
+  assert.doesNotMatch(hook, /selectBotTurn/);
+  assert.doesNotMatch(hook, /canExecuteBotTurn/);
+
+  // Server owns bot execution through reconciler and executor:
+  assert.match(reconciler, /reconcileAuthoritativeServerTurns/);
+  assert.match(edge, /reconcileAuthoritativeServerTurns/);
+  assert.match(maintenance, /reconcileAuthoritativeServerTurns/);
+  assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
+  assert.match(executor, /executeOkeyBotTurn/);
+  assert.match(executor, /classifyBotTurnClaim/);
+  assert.match(executor, /p_expected_version: currentVersion/);
 });
+

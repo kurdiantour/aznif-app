@@ -21,9 +21,10 @@ jest.mock("@/lib/supabase", () => ({
 
 import { SupabaseOkeyMatchAdapter } from "../supabase-okey-match-adapter";
 
-function projection(version: number) {
+function projection(version: number, currentRound = 1) {
   return {
     version,
+    currentRound,
     phase: "playing",
     turnDeadlineAt: null,
     players: [],
@@ -34,9 +35,10 @@ function projection(version: number) {
 function setSnapshot(
   adapter: SupabaseOkeyMatchAdapter,
   version: number,
+  currentRound = 1,
 ) {
   (adapter as unknown as { snapshot: unknown }).snapshot =
-    projection(version);
+    projection(version, currentRound);
 }
 
 function deferred<T>() {
@@ -66,7 +68,7 @@ test("authoritative commands are sent one at a time and the queued command uses 
       error: null,
     });
 
-  const first = adapter.dispatch({ type: "draw-deck" } as any);
+  const first = adapter.dispatch({ type: "draw", source: "deck" } as any);
   const second = adapter.dispatch({ type: "discard", tileId: "tile-1" } as any);
 
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -110,7 +112,7 @@ test("version conflict performs one snapshot sync and rejects without retrying t
     });
 
   await expect(
-    adapter.dispatch({ type: "draw-deck" } as any),
+    adapter.dispatch({ type: "draw", source: "deck" } as any),
   ).rejects.toThrow("version_conflict");
 
   expect(mockInvoke).toHaveBeenCalledTimes(2);
@@ -120,69 +122,7 @@ test("version conflict performs one snapshot sync and rejects without retrying t
   ]);
 });
 
-test("next-round claim carries exact version and round and refreshes an already-started conflict", async () => {
-  const adapter = new SupabaseOkeyMatchAdapter("match-next-round");
-  setSnapshot(adapter, 14);
-
-  mockInvoke
-    .mockResolvedValueOnce({
-      data: null,
-      error: {
-        context: {
-          json: async () => ({ error: "already_started", code: "already_processed" }),
-        },
-      },
-    })
-    .mockResolvedValueOnce({
-      data: { projection: projection(15) },
-      error: null,
-    });
-
-  await expect(adapter.startNextRound({
-    expectedVersion: 14,
-    expectedRound: 2,
-  })).resolves.toBeUndefined();
-
-  expect(mockInvoke.mock.calls[0]?.[1]).toMatchObject({
-    body: {
-      action: "start-next-round",
-      expectedVersion: 14,
-      expectedRound: 2,
-    },
-  });
-  expect(mockInvoke.mock.calls.map((call) => (call[1] as any).body.action)).toEqual([
-    "start-next-round",
-    "snapshot",
-  ]);
-  expect(adapter.getSnapshot()?.version).toBe(15);
-});
-
-test("eliminated-turn claim carries the exact actor and version", async () => {
-  const adapter = new SupabaseOkeyMatchAdapter("match-eliminated");
-  setSnapshot(adapter, 21);
-
-  mockInvoke.mockResolvedValueOnce({
-    data: { projection: projection(22) },
-    error: null,
-  });
-
-  await adapter.playEliminatedTurn({
-    expectedVersion: 21,
-    expectedActorId: "burned-player",
-  });
-
-  expect(mockInvoke).toHaveBeenCalledTimes(1);
-  expect(mockInvoke.mock.calls[0]?.[1]).toMatchObject({
-    body: {
-      action: "play-eliminated",
-      expectedVersion: 21,
-      expectedActorId: "burned-player",
-    },
-  });
-  expect(adapter.getSnapshot()?.version).toBe(22);
-});
-
-test("a queued timeout for an older version syncs instead of racing the completed human command", async () => {
+test("queued client commands serialize properly in the command queue", async () => {
   const adapter = new SupabaseOkeyMatchAdapter("match-3");
   setSnapshot(adapter, 7);
   const humanResponse = deferred<any>();
@@ -190,16 +130,12 @@ test("a queued timeout for an older version syncs instead of racing the complete
   mockInvoke
     .mockImplementationOnce(() => humanResponse.promise)
     .mockResolvedValueOnce({
-      data: { projection: projection(8) },
+      data: { projection: projection(9) },
       error: null,
     });
 
-  const humanCommand = adapter.dispatch({ type: "discard", tileId: "tile-2" } as any);
-  const timeout = adapter.resolveTimeout({
-    expectedVersion: 7,
-    expectedTurnDeadlineAt: "2026-08-23T13:20:00.000Z",
-    expectedTurnPlayerId: "player-1",
-  });
+  const firstCommand = adapter.dispatch({ type: "draw", source: "deck" } as any);
+  const secondCommand = adapter.dispatch({ type: "discard", tileId: "tile-2" } as any);
 
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(mockInvoke).toHaveBeenCalledTimes(1);
@@ -209,13 +145,13 @@ test("a queued timeout for an older version syncs instead of racing the complete
     error: null,
   });
 
-  await humanCommand;
-  await timeout;
+  await firstCommand;
+  await secondCommand;
 
   expect(mockInvoke).toHaveBeenCalledTimes(2);
   expect(mockInvoke.mock.calls.map((call) => (call[1] as any).body.action)).toEqual([
     "command",
-    "resolve-timeout",
+    "command",
   ]);
 });
 
@@ -303,72 +239,247 @@ test("Realtime invalidations preserve the highest pending version during refresh
   expect(adapter.getSnapshot()?.version).toBe(3);
 });
 
-test('contiguous Realtime applies projection and events without fetching', () => {
-  const adapter = new SupabaseOkeyMatchAdapter('match-realtime');
-  const tile = { id: 'local-tile', color: 'red', value: 7, copy: 1 };
+test("contiguous Realtime applies projection and events without fetching when local hand is unaffected", () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-realtime");
+  const tile = { id: "local-tile", color: "red", value: 7, copy: 1 };
   (adapter as any).snapshot = {
     ...projection(10),
-    settlement: { type: 'winner' },
+    settlement: { type: "winner" },
     players: [
-      { id: 'local', handCount: 1, hand: [tile] },
-      { id: 'remote', handCount: 14 },
+      { id: "local", handCount: 1, hand: [tile] },
+      { id: "remote", handCount: 14 },
     ],
   };
   const publicProjection = {
     ...projection(11),
     players: [
-      { id: 'local', handCount: 2 },
-      { id: 'remote', handCount: 13 },
+      { id: "local", handCount: 1 },
+      { id: "remote", handCount: 13 },
     ],
   };
   delete (publicProjection as any).settlement;
   const event = {
-    matchId: 'match-realtime', version: 11, sequence: 1,
-    type: 'draw', actorPlayerId: 'remote', payload: { source: 'discard' },
+    matchId: "match-realtime",
+    version: 11,
+    sequence: 1,
+    type: "draw",
+    actorPlayerId: "remote",
+    payload: { source: "discard" },
   } as any;
   const snapshots: any[] = [];
   const events: any[] = [];
   adapter.subscribeActionEvents((next) => events.push(next));
   adapter.subscribeInvalidation((next) => snapshots.push(next));
 
-  mockRealtimeHandler!({ payload: {
-    matchId: 'match-realtime', commandId: 'command-11', version: 11,
-    publicProjection, actionEvents: [event],
-  } });
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-realtime",
+      commandId: "command-11",
+      version: 11,
+      publicProjection,
+      actionEvents: [event],
+    },
+  });
 
   expect(mockInvoke).not.toHaveBeenCalled();
   expect(adapter.getSnapshot()).toMatchObject({
     version: 11,
-    settlement: { type: 'winner' },
+    settlement: { type: "winner" },
     players: [
-      { id: 'local', handCount: 2, hand: [tile] },
-      { id: 'remote', handCount: 13 },
+      { id: "local", handCount: 1, hand: [tile] },
+      { id: "remote", handCount: 13 },
     ],
   });
   expect(snapshots).toHaveLength(1);
   expect(events).toEqual([event]);
 
-  mockRealtimeHandler!({ payload: {
-    matchId: 'match-realtime', commandId: 'duplicate', version: 11,
-    publicProjection, actionEvents: [{ ...event, sequence: 2 }],
-  } });
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-realtime",
+      commandId: "duplicate",
+      version: 11,
+      publicProjection,
+      actionEvents: [{ ...event, sequence: 2 }],
+    },
+  });
   expect(snapshots).toHaveLength(1);
   expect(events).toEqual([event]);
 
-  mockRealtimeHandler!({ payload: {
-    matchId: 'match-realtime', commandId: 'malformed-next', version: 12,
-    actionEvents: [{ ...event, version: 12, sequence: 3 }],
-  } });
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-realtime",
+      commandId: "malformed-next",
+      version: 12,
+      actionEvents: [{ ...event, version: 12, sequence: 3 }],
+    },
+  });
   expect(mockInvoke).not.toHaveBeenCalled();
   expect(adapter.getSnapshot()?.version).toBe(11);
 });
 
-test('Realtime version gap fetches one recovery snapshot', async () => {
-  const adapter = new SupabaseOkeyMatchAdapter('match-gap');
+test("Realtime with round change fetches fresh snapshot and does not preserve old round hand", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-round-change");
+  adapter.subscribeInvalidation(() => {});
+  const oldTile = { id: "old-tile", color: "blue", value: 3, copy: 1 };
+  (adapter as any).snapshot = {
+    ...projection(10, 1),
+    players: [
+      { id: "local", handCount: 1, hand: [oldTile] },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  const newRoundTile = { id: "new-tile", color: "black", value: 10, copy: 1 };
+  const freshSnapshot = {
+    ...projection(11, 2),
+    players: [
+      { id: "local", handCount: 14, hand: [newRoundTile] },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  mockInvoke.mockResolvedValueOnce({
+    data: { projection: freshSnapshot, actionEvents: [] },
+    error: null,
+  });
+
+  const nextPublicProjection = {
+    ...projection(11, 2),
+    players: [
+      { id: "local", handCount: 14 },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-round-change",
+      commandId: "cmd-next-round",
+      version: 11,
+      publicProjection: nextPublicProjection,
+      actionEvents: [],
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe("snapshot");
+  expect(adapter.getSnapshot()?.players[0].hand).toEqual([newRoundTile]);
+});
+
+test("Realtime with local handCount mismatch fetches fresh snapshot", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-hand-mismatch");
+  adapter.subscribeInvalidation(() => {});
+  const localTile = { id: "t1", color: "red", value: 5, copy: 1 };
+  (adapter as any).snapshot = {
+    ...projection(10),
+    players: [
+      { id: "local", handCount: 1, hand: [localTile] },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  const freshSnapshot = {
+    ...projection(11),
+    players: [
+      { id: "local", handCount: 2, hand: [localTile, { id: "t2", color: "red", value: 6, copy: 1 }] },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  mockInvoke.mockResolvedValueOnce({
+    data: { projection: freshSnapshot, actionEvents: [] },
+    error: null,
+  });
+
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-hand-mismatch",
+      commandId: "cmd-draw",
+      version: 11,
+      publicProjection: {
+        ...projection(11),
+        players: [
+          { id: "local", handCount: 2 },
+          { id: "remote", handCount: 14 },
+        ],
+      },
+      actionEvents: [],
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe("snapshot");
+  expect(adapter.getSnapshot()?.players[0].handCount).toBe(2);
+});
+
+test("Realtime with server-originated action on local player fetches fresh snapshot", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-timeout-local");
+  adapter.subscribeInvalidation(() => {});
+  const localTile = { id: "t1", color: "yellow", value: 1, copy: 1 };
+  (adapter as any).snapshot = {
+    ...projection(10),
+    players: [
+      { id: "local", handCount: 14, hand: [localTile] },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  const freshSnapshot = {
+    ...projection(11),
+    players: [
+      { id: "local", handCount: 14, hand: [{ id: "t2", color: "yellow", value: 2, copy: 1 }] },
+      { id: "remote", handCount: 14 },
+    ],
+  };
+
+  mockInvoke.mockResolvedValueOnce({
+    data: { projection: freshSnapshot, actionEvents: [] },
+    error: null,
+  });
+
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-timeout-local",
+      commandId: "cmd-timeout",
+      version: 11,
+      publicProjection: {
+        ...projection(11),
+        players: [
+          { id: "local", handCount: 14 },
+          { id: "remote", handCount: 14 },
+        ],
+      },
+      actionEvents: [
+        {
+          matchId: "match-timeout-local",
+          version: 11,
+          sequence: 0,
+          type: "discard",
+          actorPlayerId: "local",
+          payload: { tileId: "t1", reason: "timeout" },
+        },
+      ],
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe("snapshot");
+  expect(adapter.getSnapshot()?.players[0].hand).toEqual([{ id: "t2", color: "yellow", value: 2, copy: 1 }]);
+});
+
+test("Realtime version gap fetches one recovery snapshot", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-gap");
+  adapter.subscribeInvalidation(() => {});
   setSnapshot(adapter, 3);
   const recovered = {
     ...projection(5),
-    players: [{ id: 'local', handCount: 1, hand: [{ id: 'fresh' }] }],
+    players: [{ id: "local", handCount: 1, hand: [{ id: "fresh" }] }],
   };
   const snapshots: any[] = [];
   adapter.subscribeInvalidation((next) => snapshots.push(next));
@@ -377,14 +488,63 @@ test('Realtime version gap fetches one recovery snapshot', async () => {
     error: null,
   });
 
-  mockRealtimeHandler!({ payload: {
-    matchId: 'match-gap', commandId: 'command-5', version: 5,
-    publicProjection: projection(5), actionEvents: [],
-  } });
+  mockRealtimeHandler!({
+    payload: {
+      matchId: "match-gap",
+      commandId: "command-5",
+      version: 5,
+      publicProjection: projection(5),
+      actionEvents: [],
+    },
+  });
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(mockInvoke).toHaveBeenCalledTimes(1);
-  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe('snapshot');
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body.action).toBe("snapshot");
   expect(snapshots).toEqual([recovered]);
   expect(adapter.getSnapshot()?.version).toBe(5);
 });
+
+
+test("snapshot refresh backfills missed action events after the last delivered version", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-backfill");
+  setSnapshot(adapter, 3);
+  (adapter as any).actionEventVersion = 3;
+  const delivered: any[] = [];
+  const unsubscribe = adapter.subscribeActionEvents((event) => delivered.push(event));
+
+  mockInvoke.mockResolvedValueOnce({
+    data: {
+      projection: projection(9),
+      actionEvents: [
+        { matchId: "match-backfill", version: 4, sequence: 0, type: "draw", actorPlayerId: "bot-1", payload: { source: "deck" } },
+        { matchId: "match-backfill", version: 5, sequence: 0, type: "discard", actorPlayerId: "bot-1", payload: { tileId: "red-10-1" } },
+        { matchId: "match-backfill", version: 6, sequence: 0, type: "draw", actorPlayerId: "bot-2", payload: { source: "deck" } },
+        { matchId: "match-backfill", version: 7, sequence: 0, type: "discard", actorPlayerId: "bot-2", payload: { tileId: "blue-11-1" } },
+        { matchId: "match-backfill", version: 8, sequence: 0, type: "draw", actorPlayerId: "bot-3", payload: { source: "deck" } },
+        { matchId: "match-backfill", version: 9, sequence: 0, type: "discard", actorPlayerId: "bot-3", payload: { tileId: "red-11-1" } },
+      ],
+    },
+    error: null,
+  });
+
+  await adapter.refresh();
+
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body).toMatchObject({
+    action: "snapshot",
+    matchId: "match-backfill",
+    afterVersion: 3,
+  });
+  expect(delivered.map((event) => [event.version, event.type])).toEqual([
+    [4, "draw"],
+    [5, "discard"],
+    [6, "draw"],
+    [7, "discard"],
+    [8, "draw"],
+    [9, "discard"],
+  ]);
+  expect((adapter as any).actionEventVersion).toBe(9);
+  expect(adapter.getSnapshot()?.version).toBe(9);
+  unsubscribe();
+});
+

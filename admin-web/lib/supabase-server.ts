@@ -1,4 +1,4 @@
-﻿import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import "server-only";
 
 export const accessCookieName = "aznif_admin_access_token";
@@ -43,10 +43,17 @@ export function createServerSupabase(accessToken?: string): SupabaseClient {
 }
 
 export function createAdminSupabase(): SupabaseClient {
-  return createClient(supabaseUrl(), supabaseServiceRoleKey(), {
+  const key = supabaseServiceRoleKey();
+  return createClient(supabaseUrl(), key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+      },
     },
   });
 }

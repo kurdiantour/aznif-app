@@ -296,31 +296,22 @@ export function createAuthoritativeOkeyMatch(
     OkeyServerPlayerIdentity,
     OkeyServerPlayerIdentity,
   ],
-
   dealerIndex = Math.floor(
     secureRandom() * 4,
   ),
 ): OkeyAuthoritativeMatchState {
   return {
     currentRound: 1,
-
     roundResults: [],
-
     matchScores: {
       teamA: 0,
       teamB: 0,
     },
-
     matchFinished: false,
-
     matchWinnerTeamId: null,
-
     forcedKonkanTeamId: null,
-
     roundStartsAt: null,
-
     nextRoundEligibleAt: null,
-
     timeoutCountsByPlayerId:
       Object.fromEntries(
         players.map((player) => [
@@ -328,15 +319,10 @@ export function createAuthoritativeOkeyMatch(
           0,
         ]),
       ),
-
     manualLeftPlayerIds: [],
-
     pendingForfeitTeamId: null,
-
     leaveTerminationReason: null,
-
     lastTimeoutDiscardEvent: null,
-
     roundState:
       createAuthoritativeOkeyGame(
         players,
@@ -370,14 +356,14 @@ export function settleAuthoritativeOkeyRound(
 
   if (
     match.matchFinished ||
-    finishedRound.phase !==
-      "finished"
+    finishedRound.phase !== "finished"
   ) {
     return match;
   }
 
   const pendingForfeitTeamId = match.pendingForfeitTeamId;
-  const nextRoundEligibleAt = new Date(now).toISOString();
+  const OKEY_NEXT_ROUND_DELAY_MS = 3_000;
+  const nextRoundEligibleAt = new Date(now + OKEY_NEXT_ROUND_DELAY_MS).toISOString();
   const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
     ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"
     : null;

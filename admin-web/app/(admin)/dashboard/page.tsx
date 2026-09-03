@@ -6,31 +6,48 @@ import Link from "next/link";
 async function getPlayers(): Promise<AdminPlayer[]> {
   if (isDevBypassEnabled()) {
     const supabase = createDevServiceSupabase();
-    const { data, error } = await supabase
+    const { data: profileRows, error: profileError } = await supabase
       .from("profiles")
-      .select("id,email,player_id,username,avatar_id,points,games_played,games_won,games_lost,is_admin,created_at,updated_at,wallets(mc,coin,gem)")
+      .select("id,email,player_id,username,avatar_id,points,games_played,games_won,games_lost,is_admin,created_at,updated_at")
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (error) throw error;
+    if (profileError) throw profileError;
 
-    return (data ?? []).map((row: any) => ({
-      user_id: row.id,
-      email: row.email,
-      player_id: row.player_id,
-      username: row.username,
-      avatar_id: row.avatar_id,
-      coin: Number(row.wallets?.coin ?? 0),
-      points: Number(row.points ?? 0),
-      games_played: Number(row.games_played ?? 0),
-      games_won: Number(row.games_won ?? 0),
-      games_lost: Number(row.games_lost ?? 0),
-      aznif: Number(row.wallets?.mc ?? 0),
-      gem: Number(row.wallets?.gem ?? 0),
-      is_admin: Boolean(row.is_admin),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }));
+    const profileIds = (profileRows ?? []).map((p: any) => p.id);
+    const walletMap = new Map<string, any>();
+
+    if (profileIds.length > 0) {
+      const { data: walletRows, error: walletError } = await supabase
+        .from("wallets")
+        .select("user_id,mc,coin,gem")
+        .in("user_id", profileIds);
+
+      if (!walletError && walletRows) {
+        walletRows.forEach((w: any) => walletMap.set(w.user_id, w));
+      }
+    }
+
+    return (profileRows ?? []).map((row: any) => {
+      const wallet = walletMap.get(row.id);
+      return {
+        user_id: row.id,
+        email: row.email,
+        player_id: row.player_id,
+        username: row.username,
+        avatar_id: row.avatar_id,
+        coin: Number(wallet?.coin ?? 0),
+        points: Number(row.points ?? 0),
+        games_played: Number(row.games_played ?? 0),
+        games_won: Number(row.games_won ?? 0),
+        games_lost: Number(row.games_lost ?? 0),
+        aznif: Number(wallet?.mc ?? 0),
+        gem: Number(wallet?.gem ?? 0),
+        is_admin: Boolean(row.is_admin),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+    });
   }
 
   const accessToken = (await cookies()).get(accessCookieName)?.value;

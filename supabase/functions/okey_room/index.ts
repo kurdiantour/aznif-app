@@ -1,11 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-import {
-  createAuthoritativeOkeyMatch,
-  getNextOkeyMatchTurnDeadline,
-  projectOkeyMatchPublicState,
-} from "../../../okey/server/okey-authoritative.ts";
+import { reconcileAuthoritativeMatchStart } from "../../../okey/server/okey-server-reconciler.ts";
 
 type OkeyCurrency = "fun" | "aznif";
 
@@ -49,6 +45,12 @@ type ChargeResult = {
   totalEntry?: number;
   totalCommission?: number;
   prizePool?: number;
+};
+
+type ActiveMembershipRow = {
+  match_id: string;
+  player_index: number;
+  status: string;
 };
 
 const TABLE_ECONOMY: Record<string, TableEconomy> = {
@@ -331,7 +333,7 @@ serve(async (req) => {
     }
 
     return json({
-      memberships: (membershipRows ?? []).map((membership: any) => ({
+      memberships: (membershipRows ?? []).map((membership: ActiveMembershipRow) => ({
         matchId: String(membership.match_id),
         playerIndex: Number(membership.player_index),
         status: membership.status,
@@ -712,43 +714,36 @@ serve(async (req) => {
         }),
       );
 
-      const state =
-        createAuthoritativeOkeyMatch(
-          identities as [
-            typeof identities[0],
-            typeof identities[0],
-            typeof identities[0],
-            typeof identities[0],
-          ],
-        );
+      const matchId = room.matchId;
 
-      const deadline =
-        getNextOkeyMatchTurnDeadline(state);
-
-      const projection =
-        projectOkeyMatchPublicState(
-          state,
-          0,
-          deadline,
-        );
-
-      const started =
-        await callRoomAction("start", {
-          p_match_id: room.matchId,
-          p_state: state,
-          p_projection: projection,
-          p_turn_deadline_at: deadline,
-        });
+      const matchStartResult = await reconcileAuthoritativeMatchStart<OkeyRoomSnapshot>({
+        client: service,
+        matchId,
+        members: identities as [
+          typeof identities[0],
+          typeof identities[0],
+          typeof identities[0],
+          typeof identities[0],
+        ],
+        startRoomAction: ({ state, projection, turnDeadlineAt }) => {
+          return callRoomAction("start", {
+            p_match_id: matchId,
+            p_state: state,
+            p_projection: projection,
+            p_turn_deadline_at: turnDeadlineAt,
+          });
+        },
+      });
 
       if (
-        !started.error &&
-        started.data
+        matchStartResult.executed &&
+        matchStartResult.room
       ) {
-        room = started.data;
+        room = matchStartResult.room;
         startedMatch = true;
       } else {
         startFailureDetails =
-          started.error?.message ??
+          matchStartResult.error ??
           "start_returned_no_room";
       }
     } catch (error) {
@@ -958,3 +953,4 @@ serve(async (req) => {
     room: withTableEconomy(room),
   });
 });
+

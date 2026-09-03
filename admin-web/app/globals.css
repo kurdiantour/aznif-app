@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: light;
 
   --bg: #ffffff;
@@ -823,3 +823,393 @@ td input[type="checkbox"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* =========================================
+   AZNIF ECONOMY STYLES
+========================================= */
+
+.section-label {
+  margin-top: 24px;
+}
+
+.economy-main-stats {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 1400px) {
+  .economy-main-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .economy-main-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .economy-main-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gold-stat {
+  background: #fdf5e6;
+}
+
+.burn-breakdown-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1000px) {
+  .burn-breakdown-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Allocation Progress Bar */
+.economy-progress-wrap {
+  margin: 18px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfbfd;
+}
+
+.economy-progress-bar {
+  display: flex;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e5e7eb;
+}
+
+.bar-segment {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.bar-treasury {
+  background: #16b887;
+}
+
+.bar-players {
+  background: #1677ff;
+}
+
+.bar-burned {
+  background: #ff4057;
+}
+
+.economy-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.economy-legend > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-treasury {
+  background: #16b887;
+}
+
+.dot-players {
+  background: #1677ff;
+}
+
+.dot-burned {
+  background: #ff4057;
+}
+
+/* Metric Rows */
+.economy-metric-rows {
+  display: grid;
+  gap: 12px;
+}
+
+.compact-metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.compact-metric-row strong {
+  display: block;
+  font-size: 13px;
+}
+
+.compact-metric-row span {
+  font-size: 11px;
+}
+
+.compact-metric-row b {
+  font-size: 15px;
+}
+
+/* Burn Details */
+.burn-detail-list {
+  display: grid;
+  gap: 12px;
+}
+
+.burn-card-mini {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.burn-card-icon {
+  font-size: 20px;
+  text-align: center;
+}
+
+.burn-card-mini strong {
+  display: block;
+  font-size: 13px;
+}
+
+.burn-card-mini span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.burn-card-mini b {
+  font-size: 14px;
+  color: var(--danger);
+}
+
+.quick-links-card {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.quick-links-card h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.quick-links-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-links-buttons a {
+  text-align: center;
+  font-size: 12px;
+}
+
+/* Transactions Filter Form */
+.filter-panel {
+  margin-bottom: 20px;
+  padding: 18px;
+}
+
+.economy-filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.filter-group label {
+  font-weight: 500;
+}
+
+.filter-group select,
+.filter-group input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--input);
+  font-size: 13px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.filter-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+/* Transaction Table Cells */
+.amount-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.amount-positive {
+  color: #129b76;
+}
+
+.amount-negative {
+  color: #ff4057;
+}
+
+.currency-tag {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.raw-type-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.game-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.domino-badge {
+  background: #eaf0ff;
+  color: #1677ff;
+}
+
+.okey-badge {
+  background: #fff0e3;
+  color: #d97706;
+}
+
+.treasury-badge {
+  background: #edf7e9;
+  color: #16b887;
+}
+
+.platform-badge {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.match-id-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f3f7;
+  font-size: 11px;
+  font-family: monospace;
+  color: #374151;
+}
+
+.date-cell {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.pill.info {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.pill.neutral {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* Pagination Bar */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Category Filter Tabs */
+.category-tabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.category-tab-btn {
+  min-height: 38px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.category-tab-btn:hover {
+  background: #f7f8fb;
+  color: var(--text);
+  border-color: #d1d5db;
+}
+
+.category-tab-btn.active {
+  background: #15161b;
+  color: #ffffff;
+  border-color: #15161b;
+}
+
+.simplified-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.simplified-filter-form .flex-2 {
+  flex: 2 1 240px;
+}
+
+.simplified-filter-form .filter-group {
+  flex: 1 1 150px;
+}
+
+

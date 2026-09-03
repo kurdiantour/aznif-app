@@ -18,13 +18,13 @@ test("Okey Party reserves one complete team pair atomically", () => {
 test("Party allocation and follow state commit in the same transaction", () => {
   assert.match(sql, /update public\.domino_parties set flow_status='matchmaking'/);
   assert.match(sql, /party_member_already_in_match/);
-  assert.match(sql, /grant execute on function public\.matchmake_okey_party[^;]+to service_role/);
+  assert.match(sql, /if auth\.role\(\)<>'service_role' then raise exception 'service_role_required'/);
   assert.match(gateway, /service\.rpc\("matchmake_okey_party"/);
   assert.doesNotMatch(gateway, /service\.rpc\("align_okey_party_teammates"/);
 });
 
 test("Waiting popup distinguishes bundled avatar ids from remote URLs", () => {
-  assert.match(popup, /AVATAR_IDS\.includes\(member\.avatarUrl as AvatarId\)/);
+  assert.match(popup, /AVATAR_IDS\.includes\(\s*member\.avatarUrl as AvatarId\s*\)/);
   assert.match(popup, /avatarId=\{avatarId\}/);
   assert.match(popup, /avatarUrl=\{avatarId \? undefined/);
 });

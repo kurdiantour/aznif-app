@@ -3,15 +3,12 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
   applyAuthoritativeOkeyMatchCommand,
-  applyAuthoritativeOkeyEliminatedTurn,
   applyAuthoritativeManualLeave,
   deriveOkeyDailyQuestGameplayEvents,
   getOkeyMatchTurnDeadlineAfterTransition,
   OkeyCommandError,
   projectOkeyMatchPublicState,
   projectOkeyMatchState,
-  resolveAuthoritativeMatchDeadline,
-  startAuthoritativeOkeyNextRound,
   type OkeyAuthoritativeCommand,
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
@@ -21,11 +18,12 @@ import type {
   OkeyMeld,
 } from "../../../okey/types/okey.ts";
 import {
-  createForcedDrawDiscardEvents,
   createOkeyCommandActionEvents,
   type OkeyActionEvent,
   type OkeyActionEventDraft,
 } from "../../../okey/server/okey-action-events.ts";
+import { reconcileAuthoritativeServerTurns } from "../../../okey/server/okey-server-reconciler.ts";
+import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 
 type OkeyAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -238,9 +236,6 @@ serve(async (req) => {
   if (
     action !== "snapshot" &&
     action !== "command" &&
-    action !== "play-eliminated" &&
-    action !== "start-next-round" &&
-    action !== "resolve-timeout" &&
     action !== "manual-leave"
   ) {
     return json(
@@ -491,6 +486,33 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
    * settlement.
    */
   if (isSnapshot) {
+    let currentState = state;
+    let currentVersion = Number(bundle.version);
+    let currentDeadline = bundle.turn_deadline_at;
+
+    if (!currentState.matchFinished && currentState.roundState.phase === "playing") {
+      const serverReconcile = await reconcileAuthoritativeServerTurns({
+        client: service,
+        matchId,
+        requesterUserId: authData.user.id,
+        state: currentState,
+        version: currentVersion,
+        turnDeadlineAt: currentDeadline,
+        deterministicCommandId,
+        broadcastStateUpdate: async (payload) => {
+          await broadcastStateUpdate(
+            payload.commandId,
+            payload.version,
+            payload.publicProjection,
+            payload.actionEvents,
+          );
+        },
+      });
+      currentState = serverReconcile.state;
+      currentVersion = serverReconcile.version;
+      currentDeadline = serverReconcile.turnDeadlineAt;
+    }
+
     const afterVersion = Number(body.afterVersion);
     let actionEvents: OkeyActionEvent[] = [];
     if (Number.isSafeInteger(afterVersion) && afterVersion >= 0) {
@@ -515,9 +537,9 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     }
     let settlement: unknown = null;
 
-    if (state.matchFinished) {
+    if (currentState.matchFinished) {
       const result =
-        await settleFinishedState(state);
+        await settleFinishedState(currentState);
 
       if (result.error) {
         console.error(
@@ -533,9 +555,9 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       settlement,
       actionEvents,
       projection: projectForViewer(
-        state,
-        bundle.version,
-        bundle.turn_deadline_at,
+        currentState,
+        currentVersion,
+        currentDeadline,
       ),
     });
   }
@@ -554,30 +576,18 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
         await settleFinishedState(state);
 
       if (result.error) {
-        return json(
-          {
-            error: "settlement_recovery_failed",
-            details: result.error.message,
-            applied: false,
-            committed: true,
-            version: bundle.version,
-            projection: projectForViewer(
-              state,
-              bundle.version,
-              bundle.turn_deadline_at,
-            ),
-          },
-          500,
+        console.error(
+          "Okey settlement recovery failed during duplicate",
+          result.error,
         );
+      } else {
+        settlement = result.settlement;
       }
-
-      settlement = result.settlement;
     }
 
     return json({
-      applied: false,
+      applied: true,
       settlement,
-      actionEvents: [],
       projection: projectForViewer(
         state,
         bundle.version,
@@ -592,11 +602,7 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       : null;
 
   if (
-    (
-      action === "command" ||
-      action === "play-eliminated" ||
-      action === "start-next-round"
-    ) &&
+    action === "command" &&
     clientExpectedVersion !== null &&
     clientExpectedVersion !== Number(bundle.version)
   ) {
@@ -617,81 +623,10 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
   let acceptedCommand:
     | OkeyAuthoritativeCommand
-    | { type: "manual-leave" | "system-timeout" | "system-eliminated-turn" | "start-next-round" };
+    | { type: "manual-leave" };
 
   try {
-    if (action === "start-next-round") {
-      const expectedRound = Number(body.expectedRound);
-
-      if (
-        clientExpectedVersion === null ||
-        !Number.isInteger(expectedRound) ||
-        expectedRound < 1
-      ) {
-        return json({ error: "invalid_next_round_claim" }, 400);
-      }
-
-      if (state.matchFinished) {
-        return json({ error: "match_finished" }, 409);
-      }
-
-      if (
-        state.pendingForfeitTeamId ||
-        state.leaveTerminationReason === "team-forfeit"
-      ) {
-        return json({ error: "team_forfeit_pending" }, 409);
-      }
-
-      if (
-        state.currentRound !== expectedRound ||
-        state.roundState.phase !== "finished"
-      ) {
-        return json(
-          {
-            error: "already_started",
-            code: "already_processed",
-            version: bundle.version,
-          },
-          409,
-        );
-      }
-
-      const eligibleAtMs = Date.parse(state.nextRoundEligibleAt ?? "");
-      const serverNowMs = Date.now();
-      if (!Number.isFinite(eligibleAtMs)) {
-        return json({ error: "next_round_eligibility_missing" }, 409);
-      }
-      if (serverNowMs < eligibleAtMs) {
-        return json(
-          {
-            error: "next_round_not_ready",
-            retryAfterMs: Math.max(0, eligibleAtMs - serverNowMs),
-            eligibleAt: state.nextRoundEligibleAt,
-          },
-          409,
-        );
-      }
-
-      nextState = startAuthoritativeOkeyNextRound(state);
-      commandType = "start-next-round";
-      acceptedCommand = { type: "start-next-round" };
-    } else if (action === "play-eliminated") {
-      const expectedActorId = body.expectedActorId;
-      if (
-        clientExpectedVersion === null ||
-        typeof expectedActorId !== "string" ||
-        expectedActorId.length === 0
-      ) {
-        return json({ error: "invalid_eliminated_turn_claim" }, 400);
-      }
-
-      nextState = applyAuthoritativeOkeyEliminatedTurn(
-        state,
-        expectedActorId,
-      );
-      commandType = "system-eliminated-turn";
-      acceptedCommand = { type: "system-eliminated-turn" };
-    } else if (action === "manual-leave") {
+    if (action === "manual-leave") {
       nextState =
         applyAuthoritativeManualLeave(
           state,
@@ -700,95 +635,6 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
 
       commandType = "manual-leave";
       acceptedCommand = { type: "manual-leave" };
-    } else if (action === "resolve-timeout") {
-      const expectedTurnDeadlineAt = body.expectedTurnDeadlineAt;
-      const expectedTurnPlayerId = body.expectedTurnPlayerId;
-
-      if (
-        clientExpectedVersion === null ||
-        typeof expectedTurnDeadlineAt !== "string" ||
-        typeof expectedTurnPlayerId !== "string"
-      ) {
-        return json(
-          {
-            error: "stale_timeout",
-            code: "stale_timeout",
-            version: bundle.version,
-            details: "Timeout claim is missing its turn identity",
-          },
-          409,
-        );
-      }
-
-      if (clientExpectedVersion !== Number(bundle.version)) {
-        return json(
-          {
-            error: clientExpectedVersion < Number(bundle.version)
-              ? "already_processed"
-              : "stale_timeout",
-            code: clientExpectedVersion < Number(bundle.version)
-              ? "already_processed"
-              : "stale_timeout",
-            version: bundle.version,
-            expiresAt: bundle.turn_deadline_at,
-            details: `Client expected version ${clientExpectedVersion} does not match database version ${bundle.version}`,
-          },
-          409,
-        );
-      }
-
-      const currentPlayerIndex = state.roundState.currentPlayerIndex;
-      const currentPlayerId = state.roundState.players[currentPlayerIndex]?.id;
-
-      if (
-        expectedTurnDeadlineAt !== bundle.turn_deadline_at ||
-        expectedTurnPlayerId !== currentPlayerId
-      ) {
-        return json(
-          {
-            error: "stale_timeout",
-            code: "stale_timeout",
-            version: bundle.version,
-            expiresAt: bundle.turn_deadline_at,
-            details: "Timeout claim does not match the active turn",
-          },
-          409,
-        );
-      }
-
-      const deadlineMs = Date.parse(bundle.turn_deadline_at ?? "");
-      const serverNowMs = Date.now();
-      if (!Number.isFinite(deadlineMs)) {
-        return json(
-          {
-            error: "stale_timeout",
-            code: "stale_timeout",
-            version: bundle.version,
-          },
-          409,
-        );
-      }
-      if (serverNowMs < deadlineMs) {
-        return json(
-          {
-            error: "turn_timer_not_expired",
-            code: "turn_timer_not_expired",
-            version: bundle.version,
-            expiresAt: bundle.turn_deadline_at,
-            retryAfterMs: Math.max(0, deadlineMs - serverNowMs),
-          },
-          409,
-        );
-      }
-
-      nextState =
-        resolveAuthoritativeMatchDeadline(
-          state,
-          bundle.turn_deadline_at,
-        );
-
-      commandType = "system-timeout";
-      acceptedCommand = { type: "system-timeout" };
     } else {
       if (
         bundle.turn_deadline_at &&
@@ -862,33 +708,6 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
     case "manual-leave":
       actionEventDrafts = [{ type: "leave", actorPlayerId: state.roundState.players[playerIndex]?.id ?? null, payload: {} }];
       break;
-    case "start-next-round":
-      actionEventDrafts = [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }];
-      break;
-    case "system-timeout": {
-      const event = nextState.lastTimeoutDiscardEvent;
-      const tile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
-      const actorPlayerId = event?.playerId ?? actingPlayer?.id ?? "";
-      actionEventDrafts = event?.source === "rack"
-        ? [{ type: "discard", actorPlayerId, payload: { tileId: tile?.id ?? null, tile, reason: "timeout" } }]
-        : createForcedDrawDiscardEvents({
-            actorPlayerId,
-            source: "deck",
-            tile,
-            reason: "timeout",
-          });
-      break;
-    }
-    case "system-eliminated-turn": {
-      const tile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
-      actionEventDrafts = createForcedDrawDiscardEvents({
-        actorPlayerId: actingPlayer?.id ?? "",
-        source: "deck",
-        tile,
-        reason: "eliminated",
-      });
-      break;
-    }
     default:
       actionEventDrafts = createOkeyCommandActionEvents(
         acceptedCommand,
@@ -965,13 +784,8 @@ const commit =
     return json(
       {
         error: conflict
-          ? action === "resolve-timeout" || action === "play-eliminated" || action === "start-next-round"
-            ? "already_processed"
-            : "version_conflict"
+          ? "version_conflict"
           : "commit_failed",
-        code: conflict && (action === "resolve-timeout" || action === "play-eliminated" || action === "start-next-round")
-          ? "already_processed"
-          : undefined,
         details: commitError?.message,
       },
       conflict ? 409 : 500,
@@ -986,6 +800,11 @@ const commit =
     commit.version,
     commit.turn_deadline_at,
   );
+  const committedPublicProjection = projectOkeyMatchPublicState(
+    committedState,
+    commit.version,
+    commit.turn_deadline_at,
+  );
 
   /*
    * The game-state broadcast must not be blocked by a later settlement
@@ -996,7 +815,7 @@ const commit =
     await broadcastStateUpdate(
       body.commandId as string,
       commit.version,
-      publicProjection,
+      committedPublicProjection,
       committedActionEvents,
     );
   } catch (broadcastError) {
@@ -1006,10 +825,42 @@ const commit =
     );
   }
 
-  if (committedState.matchFinished) {
+  const serverReconcile = await reconcileAuthoritativeServerTurns({
+    client: service,
+    matchId,
+    requesterUserId: authData.user.id,
+    state: committedState,
+    version: commit.version,
+    turnDeadlineAt: commit.turn_deadline_at,
+    deterministicCommandId,
+    broadcastStateUpdate: async (payload) => {
+      await broadcastStateUpdate(
+        payload.commandId,
+        payload.version,
+        payload.publicProjection,
+        payload.actionEvents,
+      );
+    },
+  });
+
+  const finalState = serverReconcile.state;
+  const finalVersion = serverReconcile.version;
+  const finalDeadline = serverReconcile.turnDeadlineAt;
+  const finalActionEvents = [
+    ...committedActionEvents,
+    ...serverReconcile.actionEvents,
+  ];
+
+  const finalProjection = projectForViewer(
+    finalState,
+    finalVersion,
+    finalDeadline,
+  );
+
+  if (finalState.matchFinished) {
     const result =
       await settleFinishedState(
-        committedState,
+        finalState,
       );
 
     if (result.error) {
@@ -1023,8 +874,8 @@ const commit =
           error: "settlement_failed",
           details: result.error.message,
           committed: true,
-          version: commit.version,
-          projection: committedProjection,
+          version: finalVersion,
+          projection: finalProjection,
         },
         500,
       );
@@ -1032,16 +883,16 @@ const commit =
 
     return json({
       applied: commit.applied,
-      actionEvents: committedActionEvents,
+      actionEvents: finalActionEvents,
       settlement: result.settlement,
-      projection: committedProjection,
+      projection: finalProjection,
     });
   }
 
   return json({
     applied: commit.applied,
-    actionEvents: committedActionEvents,
-    projection: committedProjection,
+    actionEvents: finalActionEvents,
+    projection: finalProjection,
   });
 });
 

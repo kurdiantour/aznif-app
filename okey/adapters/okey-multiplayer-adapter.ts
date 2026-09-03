@@ -1,7 +1,6 @@
 import type {
   MultiplayerMatchAdapter,
   MultiplayerSubscription,
-  MultiplayerTimeoutClaim,
 } from "@/lib/multiplayer/match";
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import { SupabaseOkeyMatchAdapter } from "./supabase-okey-match-adapter";
@@ -39,26 +38,6 @@ export class OkeyMultiplayerAdapter
       unsubscribeInvalidation();
       unsubscribeStatus();
     };
-  }
-
-  async claimTimeout(claim: MultiplayerTimeoutClaim) {
-    await this.commands.resolveTimeout(claim);
-    return this.requireSnapshot();
-  }
-
-  async executeBotTurn(claim: { expectedVersion: number; expectedActorId: string }) {
-    await this.commands.processBotTurn(claim);
-  }
-
-  async startNextRound(completedRoundId: string) {
-    const [versionText, roundText] = completedRoundId.split(":");
-    const expectedVersion = Number(versionText);
-    const expectedRound = Number(roundText);
-    if (!Number.isSafeInteger(expectedVersion) || !Number.isSafeInteger(expectedRound)) {
-      throw new Error("okey_invalid_completed_round_id");
-    }
-    await this.commands.startNextRound({ expectedVersion, expectedRound });
-    return this.requireSnapshot();
   }
 
   leave() {

@@ -57,10 +57,8 @@ type Props = {
   matchScores?:
     Record<OkeyTeamId, number>;
 
-  countdownRemaining?:
-    number | null;
-
   isTileCycleLimit?: boolean;
+  waitingForNextRound?: boolean;
 };
 
 function formatRoundScore(score: number) {
@@ -76,8 +74,8 @@ export function OkeyScoreDetailsPopup({
   maxRounds = 7,
   roundResults = [],
   matchScores,
-  countdownRemaining = null,
   isTileCycleLimit = false,
+  waitingForNextRound = false,
 }: Props) {
   if (!visible) {
     return null;
@@ -125,19 +123,6 @@ export function OkeyScoreDetailsPopup({
         ? calculatedTotals
         : scoreDetails.scores
     );
-
-const countdownMessage =
-  countdownRemaining === null
-    ? ""
-    : isTileCycleLimit
-      ? `ئەم خولە دوای ${Math.max(
-          0,
-          countdownRemaining,
-        )} چرکە دەست پێ دەکاتەوە`
-      : `خولی داهاتوو دوای ${Math.max(
-          0,
-          countdownRemaining,
-        )} چرکە دەست پێ دەکات`;
 
   return (
     <View
@@ -363,12 +348,14 @@ const countdownMessage =
           </Text>
         </View>
 
-        <Text
-          accessibilityLiveRegion="polite"
-          style={styles.target}
-        >
-          {countdownMessage}
-        </Text>
+{waitingForNextRound ? (
+  <Text
+    accessibilityLiveRegion="polite"
+    style={styles.target}
+  >
+    چاوەڕێی دەستی داهاتوو...
+  </Text>
+) : null}
       </View>
     </View>
   );

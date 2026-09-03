@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useMultiplayerMatch } from "@/lib/multiplayer/match";
 import { OkeyMultiplayerAdapter } from "@/okey/adapters/okey-multiplayer-adapter";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
-import { buildOkeyCoreFinalResult, buildOkeyCoreRoundResult, canCurrentOkeyUserClaimTimeout, canOkeyParticipantDriveBots, getOkeyTimeoutError, selectOkeyBotTurn, selectOkeyMultiplayerLifecycle } from "@/okey/adapters/okey-multiplayer-projection";
+import { buildOkeyCoreFinalResult, buildOkeyCoreRoundResult, selectOkeyMultiplayerLifecycle } from "@/okey/adapters/okey-multiplayer-projection";
 import { createInitialOkeyGame, getRoundResultScoreDetails } from "@/okey/engine/okey-engine";
 import { projectOkeyServerState } from "@/okey/presentation/okey-server-projection";
 import { OKEY_RULESET_V1 } from "@/okey/rules/okey-ruleset-v1";
@@ -27,18 +27,12 @@ const projectResults = (projection: OkeyMatchServerProjection): OkeyRoundResult[
 export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string | null = null) {
   const commands = useMemo(() => matchId ? new SupabaseOkeyMatchAdapter(matchId) : null, [matchId]);
   const adapter = useMemo(() => commands ? new OkeyMultiplayerAdapter(commands) : null, [commands]);
-  const canClaimTimeout = useCallback((snapshot: OkeyMatchServerProjection, claim: Parameters<typeof canCurrentOkeyUserClaimTimeout>[1]) =>
-    canCurrentOkeyUserClaimTimeout(snapshot, claim, currentUserId), [currentUserId]);
   const getServerNow = useCallback(() => commands
     ? new Date(Date.now() + commands.getServerClockOffsetMs()).toISOString() : null, [commands]);
   const core = useMultiplayerMatch({
     roomId: matchId, adapter, selectLifecycle: selectOkeyMultiplayerLifecycle,
     buildRoundResult: buildOkeyCoreRoundResult, buildFinalResult: buildOkeyCoreFinalResult,
-    getSnapshotServerNow: getServerNow, getTimeoutError: getOkeyTimeoutError,
-    canClaimTimeout,
-    selectBotTurn: selectOkeyBotTurn,
-    canExecuteBotTurn: (snapshot) => canOkeyParticipantDriveBots(snapshot, currentUserId),
-    roundResultDurationMs: 5_000,
+    getSnapshotServerNow: getServerNow,
     roundSyncIntervalMs: 1_000,
   });
   const projection = core.snapshot;
@@ -46,20 +40,6 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   const applySnapshot = core.applySnapshot;
   const fallback = useMemo(() => createInitialOkeyGame(), []);
   const state = useMemo(() => projection ? projectOkeyServerState(projection) : fallback, [fallback, projection]);
-
-  const eliminatedClaimRef = useRef<string | null>(null);
-  useEffect(() => {
-    const actor = projection?.players[projection.currentPlayerIndex];
-    if (!commands || !projection || projection.phase !== "playing" || !actor?.eliminated) {
-      eliminatedClaimRef.current = null;
-      return;
-    }
-    const key = `${projection.version}:${actor.id}`;
-    if (eliminatedClaimRef.current === key) return;
-    eliminatedClaimRef.current = key;
-    void commands.playEliminatedTurn({ expectedVersion: projection.version, expectedActorId: actor.id })
-      .catch(() => { eliminatedClaimRef.current = null; void refresh().catch(() => undefined); });
-  }, [commands, projection, refresh]);
 
   const dispatch = useCallback(async (command: OkeyAuthoritativeCommand) => {
     if (!commands) return false;
@@ -103,10 +83,7 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     showMatchResultPopup,
     finalPresentationComplete: core.finalPresentationComplete,
     completeFinalPresentation: core.completeFinalPresentation,
-    completeRoundResultPresentation: core.completeRoundResultPresentation,
-    roundResultCountdownRemaining: core.roundResultCountdownRemaining,
     draw, discard, commitOpenIntent, declareKonkan, spendTileOnTableMeld, lockKonkanSetOnTable,
     turnTimeLeft: core.turnSecondsLeft ?? 0,
   };
 }
-

@@ -12,7 +12,7 @@ const finishedRound = (matchFinished = false): Snapshot => ({
     completedRoundId: "7:1",
     turnPlayerId: null,
     turnDeadlineAt: null,
-    nextRoundEligibleAt: new Date(0).toISOString(),
+    nextRoundEligibleAt: new Date(Date.now() + 3_000).toISOString(),
     roundFinished: true,
     matchFinished,
   },
@@ -35,14 +35,16 @@ const playingRound: Snapshot = {
 };
 
 function createAdapter(snapshot: Snapshot) {
-  const startNextRound = jest.fn(async () => undefined);
+  let listener: ((snapshot: Snapshot) => void) | null = null;
   const adapter: MultiplayerMatchAdapter<Snapshot> = {
     load: async () => snapshot,
-    subscribe: () => () => undefined,
-    startNextRound,
+    subscribe: (observer) => {
+      listener = (next) => observer.onInvalidated(next);
+      return () => { listener = null; };
+    },
     leave: async () => undefined,
   };
-  return { adapter, startNextRound };
+  return { adapter, emitSnapshot: (next: Snapshot) => listener?.(next) };
 }
 
 function renderMatch(adapter: MultiplayerMatchAdapter<Snapshot>) {
@@ -53,7 +55,6 @@ function renderMatch(adapter: MultiplayerMatchAdapter<Snapshot>) {
     selectLifecycle: (snapshot: Snapshot) => snapshot.lifecycle,
     buildRoundResult: (snapshot: Snapshot) => snapshot.result,
     buildFinalResult: (snapshot: Snapshot) => snapshot.result,
-    roundResultDurationMs: 5_000,
     roundSyncIntervalMs: 60_000,
   };
   function Harness() {
@@ -64,9 +65,9 @@ function renderMatch(adapter: MultiplayerMatchAdapter<Snapshot>) {
   return () => current!;
 }
 
-test("round start waits for final-tile completion and score-popup completion", async () => {
+test("round result presentation displays score popup visually without numeric countdown and client never calls startNextRound", async () => {
   jest.useFakeTimers();
-  const { adapter, startNextRound } = createAdapter(finishedRound());
+  const { adapter, emitSnapshot } = createAdapter(finishedRound());
   const match = renderMatch(adapter);
   await act(async () => {
     await Promise.resolve();
@@ -74,37 +75,37 @@ test("round start waits for final-tile completion and score-popup completion", a
   });
 
   expect(match().showRoundResultPopup).toBe(false);
-  expect(startNextRound).not.toHaveBeenCalled();
 
   act(() => match().completeFinalPresentation());
   expect(match().showRoundResultPopup).toBe(true);
-  expect(startNextRound).not.toHaveBeenCalled();
+  // Okey does not use a 5-second countdown timer; numeric countdown is null
+  expect(match().roundResultCountdownRemaining).toBe(null);
 
-  expect(match().roundResultCountdownRemaining).toBe(5);
-  act(() => jest.advanceTimersByTime(1_000));
-  expect(match().roundResultCountdownRemaining).toBe(4);
-  act(() => jest.advanceTimersByTime(1_000));
-  expect(match().roundResultCountdownRemaining).toBe(3);
-  act(() => jest.advanceTimersByTime(1_000));
-  expect(match().roundResultCountdownRemaining).toBe(2);
-  act(() => jest.advanceTimersByTime(1_000));
-  expect(match().roundResultCountdownRemaining).toBe(1);
-  expect(startNextRound).not.toHaveBeenCalled();
+  // Time passes (3 to 8 seconds window) - popup remains visible and unchanged
+  act(() => jest.advanceTimersByTime(3_000));
+  expect(match().showRoundResultPopup).toBe(true);
+  expect(match().roundResultCountdownRemaining).toBe(null);
 
-  await act(async () => {
-    jest.advanceTimersByTime(1_000);
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-  expect(startNextRound).toHaveBeenCalledTimes(1);
-  expect(startNextRound).toHaveBeenCalledWith("7:1");
+  act(() => jest.advanceTimersByTime(2_000));
+  expect(match().showRoundResultPopup).toBe(true);
   expect(match().lifecycle?.roundFinished).toBe(true);
+
+  // Server independently broadcasts new round snapshot (Server-owned round transition)
+  act(() => {
+    emitSnapshot(playingRound);
+  });
+
+  expect(match().lifecycle?.roundFinished).toBe(false);
+  expect(match().lifecycle?.version).toBe(8);
+  expect(match().phase).toBe("playing");
+  expect(match().showRoundResultPopup).toBe(false);
+
   jest.useRealTimers();
 });
 
-test("finished match waits for final-tile completion and never starts another round", async () => {
+test("finished match waits for final presentation completion and never starts another round", async () => {
   jest.useFakeTimers();
-  const { adapter, startNextRound } = createAdapter(finishedRound(true));
+  const { adapter } = createAdapter(finishedRound(true));
   const match = renderMatch(adapter);
   await act(async () => {
     await Promise.resolve();
@@ -114,50 +115,13 @@ test("finished match waits for final-tile completion and never starts another ro
   expect(match().showFinalMatchPopup).toBe(false);
   act(() => match().completeFinalPresentation());
   expect(match().showFinalMatchPopup).toBe(true);
-  expect(startNextRound).not.toHaveBeenCalled();
-  jest.useRealTimers();
-});
-
-test("completed final presentation remains latched while next-round snapshot is pending", async () => {
-  jest.useFakeTimers();
-  const startNextRound = jest.fn(() => new Promise<Snapshot>(() => undefined));
-  const adapter: MultiplayerMatchAdapter<Snapshot> = {
-    load: async () => finishedRound(),
-    subscribe: () => () => undefined,
-    startNextRound,
-    leave: async () => undefined,
-  };
-  const match = renderMatch(adapter);
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-
-  act(() => match().completeFinalPresentation());
-  expect(match().finalPresentationComplete).toBe(true);
-  expect(match().showRoundResultPopup).toBe(true);
-
-  act(() => jest.advanceTimersByTime(5_000));
-  expect(startNextRound).toHaveBeenCalledTimes(1);
-  expect(match().lifecycle?.roundFinished).toBe(true);
-  expect(match().showRoundResultPopup).toBe(false);
-  expect(match().finalPresentationComplete).toBe(true);
   jest.useRealTimers();
 });
 
 test("snapshot version bumps in finished match do not invalidate completed final popup", async () => {
   jest.useFakeTimers();
-  let listener: ((snapshot: Snapshot) => void) | null = null;
   const initialSnapshot = finishedRound(true);
-  const adapter: MultiplayerMatchAdapter<Snapshot> = {
-    load: async () => initialSnapshot,
-subscribe: (observer) => {
-  listener = (snapshot) => observer.onInvalidated(snapshot);
-  return () => { listener = null; };
-},
-    startNextRound: jest.fn(async () => undefined),
-    leave: async () => undefined,
-  };
+  const { adapter, emitSnapshot } = createAdapter(initialSnapshot);
   const match = renderMatch(adapter);
   await act(async () => {
     await Promise.resolve();
@@ -181,7 +145,7 @@ subscribe: (observer) => {
   };
 
   act(() => {
-    listener?.(updatedSnapshot);
+    emitSnapshot(updatedSnapshot);
   });
 
   // Popup MUST remain visible and latched
@@ -194,12 +158,7 @@ test("terminal match safety timeout automatically completes final presentation i
   jest.useFakeTimers();
   let current: ReturnType<typeof useMultiplayerMatch<Snapshot, string, string>> | null = null;
   const initialSnapshot = finishedRound(true);
-  const adapter: MultiplayerMatchAdapter<Snapshot> = {
-    load: async () => initialSnapshot,
-    subscribe: () => () => undefined,
-    startNextRound: jest.fn(async () => undefined),
-    leave: async () => undefined,
-  };
+  const { adapter } = createAdapter(initialSnapshot);
   const options = {
     roomId: "match-1",
     adapter,

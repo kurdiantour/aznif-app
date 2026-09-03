@@ -1,4 +1,4 @@
-import type { MultiplayerLifecycle, MultiplayerTimeoutClaim } from "@/lib/multiplayer/match";
+import type { MultiplayerLifecycle } from "@/lib/multiplayer/match";
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 
 export function selectOkeyMultiplayerLifecycle(
@@ -45,22 +45,6 @@ export function selectOkeyBotTurn(projection: OkeyMatchServerProjection) {
   };
 }
 
-export function canOkeyParticipantDriveBots(
-  projection: OkeyMatchServerProjection,
-  currentUserId: string | null,
-) {
-  const viewer = projection.players.find((player) => player.id === currentUserId);
-  return !!viewer && viewer.controlledByBot !== true;
-}
-
-export function canCurrentOkeyUserClaimTimeout(
-  projection: OkeyMatchServerProjection,
-  claim: MultiplayerTimeoutClaim,
-  currentUserId: string | null,
-) {
-  return !!currentUserId && currentUserId === claim.expectedTurnPlayerId &&
-    projection.phase === "playing" && !projection.matchFinished;
-}
 
 export function getOkeyTimeoutError(error: unknown) {
   const value = error && typeof error === "object"

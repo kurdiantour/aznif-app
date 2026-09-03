@@ -338,8 +338,6 @@ function OkeyGameTableSceneContent() {
     showMatchResultPopup,
     finalPresentationComplete,
     completeFinalPresentation,
-    completeRoundResultPresentation,
-    roundResultCountdownRemaining,
     draw,
     discard,
     commitOpenIntent,
@@ -1788,7 +1786,7 @@ const shouldShowScorePopup =
   maxRounds={maxRounds}
   roundResults={displayRoundResults}
   matchScores={teamScores}
-  countdownRemaining={showRoundResultPopup ? roundResultCountdownRemaining : null}
+  waitingForNextRound={showRoundResultPopup}
   isTileCycleLimit={
     showRoundResultPopup &&
     currentRoundResult?.endReason === "tile-cycle-limit"

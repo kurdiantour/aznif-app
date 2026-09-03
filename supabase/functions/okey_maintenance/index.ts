@@ -1,17 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-import {
-  getNextOkeyMatchTurnDeadline,
-  projectOkeyMatchPublicState,
-  settleAuthoritativeOkeyRound,
-  startAuthoritativeOkeyNextRound,
-  type OkeyAuthoritativeMatchState,
-  type OkeyMatchServerProjection,
+import type {
+  OkeyAuthoritativeMatchState,
+  OkeyMatchServerProjection,
 } from "../../../okey/server/okey-authoritative.ts";
 import type { OkeyActionEvent } from "../../../okey/server/okey-action-events.ts";
+import { reconcileAuthoritativeServerTurns } from "../../../okey/server/okey-server-reconciler.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
-import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
 
 const MATCH_LIMIT = 100;
 
@@ -35,6 +31,7 @@ type PlayingMatchRow = {
   id: string;
   version: number | string;
   status: "playing";
+  turn_deadline_at?: string | null;
 };
 
 function json(body: unknown, status = 200) {
@@ -301,82 +298,27 @@ serve(async (request) => {
         continue;
       }
 
-      const expectedVersion = Number(match.version);
-      const finishingTeamForfeit =
-        Boolean(state.pendingForfeitTeamId) ||
-        state.leaveTerminationReason === "team-forfeit";
-      const nextState = finishingTeamForfeit
-        ? settleAuthoritativeOkeyRound(state)
-        : startAuthoritativeOkeyNextRound(state);
-      const nextVersion = expectedVersion + 1;
-      const deadline = getNextOkeyMatchTurnDeadline(nextState);
-      const commandId = await deterministicCommandId(
-        "okey:" + match.id +
-          ":maintenance-next-round:" + expectedVersion +
-          ":" + state.currentRound,
-      );
-      const publicProjection = projectOkeyMatchPublicState(
-        nextState,
-        nextVersion,
-        deadline,
-      );
-      const { data: commit, error: commitError } = await service
-        .rpc("okey_commit_authoritative_action", {
-          p_match_id: match.id,
-          p_user_id: claimantSeat.user_id,
-          p_command_id: commandId,
-          p_expected_version: expectedVersion,
-          p_command_type: finishingTeamForfeit
-            ? "round-end-team-forfeit"
-            : "start-next-round",
-          p_state: nextState,
-          p_projection: publicProjection,
-          p_status: nextState.matchFinished ? "finished" : "playing",
-          p_turn_deadline_at: deadline,
-          p_action_events: finishingTeamForfeit
-            ? []
-            : [{ type: "round", actorPlayerId: null, payload: { round: nextState.currentRound } }],
-        })
-        .single();
-
-      if (commitError || !commit) {
-        if (commitError?.message?.includes("version_conflict")) {
-          recoveryConflicts += 1;
-          continue;
-        }
-        throw new Error(commitError?.message ?? "next_round_recovery_commit_failed");
-      }
-
-      recoveredRounds += 1;
-      if (!nextState.matchFinished) {
-        try {
-          await handOffOkeyBotTurn({
-            supabaseUrl,
-            workerSecret,
-            matchId: match.id,
-            state: nextState,
-            version: Number((commit as { version: number }).version),
-          });
-        } catch (handoffError) {
-          console.error(
-            "Okey next-round Bot handoff failed for " + match.id,
-            handoffError,
+      const serverReconcile = await reconcileAuthoritativeServerTurns({
+        client: service,
+        matchId: match.id,
+        requesterUserId: claimantSeat.user_id,
+        state,
+        version: Number(match.version),
+        turnDeadlineAt: null,
+        deterministicCommandId,
+        broadcastStateUpdate: async (payload) => {
+          await broadcast(
+            match.id,
+            payload.commandId,
+            payload.version,
+            payload.publicProjection,
+            payload.actionEvents,
           );
-        }
-      }
-      try {
-        await broadcast(
-          match.id,
-          commandId,
-          Number((commit as { version: number }).version),
-          publicProjection,
-          (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [],
-        );
-      } catch (broadcastError) {
-        console.error(
-          "Okey next-round recovery broadcast failed for " + match.id,
-          broadcastError,
-        );
+        },
+      });
+
+      if (serverReconcile.executedNextRoundCount > 0) {
+        recoveredRounds += serverReconcile.executedNextRoundCount;
       }
     } catch (error) {
       failed += 1;
@@ -388,7 +330,7 @@ serve(async (request) => {
   const { data: playingMatches, error: botRecoveryQueryError } = await service
     .schema("okey")
     .from("matches")
-    .select("id, version, status")
+    .select("id, version, status, turn_deadline_at")
     .eq("status", "playing")
     .order("updated_at", { ascending: true })
     .limit(MATCH_LIMIT);
@@ -403,7 +345,7 @@ serve(async (request) => {
     );
   }
 
-  let botTurnsHandedOff = 0;
+  let serverTurnsReconciled = 0;
 
   for (const match of (playingMatches ?? []) as PlayingMatchRow[]) {
     try {
@@ -419,18 +361,47 @@ serve(async (request) => {
         continue;
       }
 
-      const handedOff = await handOffOkeyBotTurn({
-        supabaseUrl,
-        workerSecret,
+      const { data: seat } = await service
+        .schema("okey")
+        .from("match_seats")
+        .select("user_id")
+        .eq("match_id", match.id)
+        .is("membership_released_at", null)
+        .order("player_index", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      const requesterUserId = seat?.user_id ?? "maintenance-worker";
+
+      const serverReconcile = await reconcileAuthoritativeServerTurns({
+        client: service,
         matchId: match.id,
+        requesterUserId,
         state: stateRow.state as OkeyAuthoritativeMatchState,
         version: Number(match.version),
+        turnDeadlineAt: match.turn_deadline_at ?? null,
+        deterministicCommandId,
+        broadcastStateUpdate: async (payload) => {
+          await broadcast(
+            match.id,
+            payload.commandId,
+            payload.version,
+            payload.publicProjection,
+            payload.actionEvents,
+          );
+        },
       });
 
-      if (handedOff) botTurnsHandedOff += 1;
+      if (
+        serverReconcile.executedTimeoutCount > 0 ||
+        serverReconcile.botProcessed ||
+        serverReconcile.executedEliminatedCount > 0
+      ) {
+        serverTurnsReconciled += 1;
+      }
     } catch (error) {
       failed += 1;
-      const message = error instanceof Error ? error.message : "unknown_bot_handoff_error";
+      const message = error instanceof Error ? error.message : "unknown_reconcile_error";
       failures.push({ matchId: match.id, error: message });
     }
   }
@@ -442,10 +413,9 @@ serve(async (request) => {
     recoveredRounds,
     recoveryConflicts,
     playingMatchesScanned: playingMatches?.length ?? 0,
-    botTurnsHandedOff,
+    serverTurnsReconciled,
     skipped,
     failed,
     failures,
   });
 });
-

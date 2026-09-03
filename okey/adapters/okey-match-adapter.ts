@@ -4,22 +4,6 @@ import type {
   OkeyMatchServerProjection,
 } from "@/okey/server/okey-authoritative";
 
-
-export type OkeyNextRoundClaim = {
-  expectedVersion: number;
-  expectedRound: number;
-};
-
-export type OkeyEliminatedTurnClaim = {
-  expectedVersion: number;
-  expectedActorId: string;
-};
-
-export type OkeyBotTurnClaim = {
-  expectedVersion: number;
-  expectedActorId: string;
-};
-
 export interface OnlineOkeyMatchAdapter {
   readonly kind: "online";
 
@@ -44,12 +28,6 @@ export interface OnlineOkeyMatchAdapter {
     command:
       OkeyAuthoritativeCommand,
   ): Promise<void>;
-
-  playEliminatedTurn(claim: OkeyEliminatedTurnClaim): Promise<void>;
-
-  startNextRound(claim: OkeyNextRoundClaim): Promise<void>;
-
-  processBotTurn(claim: OkeyBotTurnClaim): Promise<void>;
 
   reconnect(): Promise<void>;
 
