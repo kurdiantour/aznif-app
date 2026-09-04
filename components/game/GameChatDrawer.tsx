@@ -1,3 +1,4 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
 import {
@@ -5,6 +6,7 @@ import {
   sendGameChatMessage,
   type GameChatMessage,
   type GameChatMode,
+  type GameChatType,
 } from "@/lib/gameChat";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +17,7 @@ import {
   FlatList,
   Keyboard,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,29 +26,27 @@ import {
 
 type GameChatDrawerProps = {
   visible: boolean;
-  mode: GameChatMode;
-  roomId: string;
+  gameType: GameChatType;
+  matchId: string;
+  mode?: GameChatMode | null;
   currentUserId?: string | null;
   enabled?: boolean;
-  transport?: GameChatTransport;
   onClose: () => void;
-};
-
-export type GameChatTransport = {
-  getMessages: (roomId: string) => Promise<GameChatMessage[]>;
-  sendMessage: (roomId: string, body: string) => Promise<GameChatMessage>;
-  subscribe: (roomId: string, onInvalidate: () => void) => () => void;
 };
 
 function formatMessageTime(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
 
   return date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
+
 function mergeMessages(
   current: GameChatMessage[],
   incoming: GameChatMessage,
@@ -58,20 +59,37 @@ function mergeMessages(
     left.created_at.localeCompare(right.created_at),
   );
 }
+
 const QUICK_CHAT_MESSAGES = [
   "سڵاو",
   "باشە",
-  "زۆر جوانە",
-  "خێرا بکە",
+  "زۆر جوانە دەست خوش",
+  "خێرا یاری بکەن، ئەوە چیە",
+  "ئاگات لە یاری بێت کاکە",
+  "باشە ئاگام لێیە برام",
+  "ئاگام لێ نەبوو ببۆرە",
+];
+
+const QUICK_CHAT_EMOJIS = [
+  "😂",
+  "🤣",
+  "😭",
+  "😍",
+  "😎",
+  "😏",
+  "😱",
+  "😡",
+  "👏",
+  "❤️",
 ];
 
 export default function GameChatDrawer({
   visible,
-  mode,
-  roomId,
+  gameType,
+  matchId,
+  mode = null,
   currentUserId,
   enabled = true,
-  transport,
   onClose,
 }: GameChatDrawerProps) {
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
@@ -81,20 +99,35 @@ export default function GameChatDrawer({
   const [error, setError] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+
   const inputRef = useRef<TextInput | null>(null);
   const listRef = useRef<FlatList<GameChatMessage> | null>(null);
+
   const canSend = useMemo(
-    () => enabled && !!roomId && draft.trim().length > 0 && !sending,
-    [draft, enabled, roomId, sending],
+    () =>
+      enabled &&
+      !!matchId &&
+      draft.trim().length > 0 &&
+      !sending,
+    [draft, enabled, matchId, sending],
   );
+
   const showUnavailableMessage = !enabled;
+
   useEffect(() => {
-    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
-      setKeyboardVisible(true);
-    });
-    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
-      setKeyboardVisible(false);
-    });
+    const showSubscription = Keyboard.addListener(
+      "keyboardDidShow",
+      () => {
+        setKeyboardVisible(true);
+      },
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      "keyboardDidHide",
+      () => {
+        setKeyboardVisible(false);
+      },
+    );
 
     return () => {
       showSubscription.remove();
@@ -120,95 +153,128 @@ export default function GameChatDrawer({
   }
 
   useEffect(() => {
-    if (!visible || !enabled || !roomId) return;
+    if (!visible || !enabled || !matchId) {
+      return;
+    }
 
     let isMounted = true;
+
     setLoading(true);
     setError(null);
 
     const loadMessages = () =>
-      transport
-        ? transport.getMessages(roomId)
-        : getGameChatMessages(mode, roomId);
+      getGameChatMessages(gameType, matchId, mode);
 
     loadMessages()
       .then((nextMessages) => {
-        if (isMounted) setMessages(nextMessages);
+        if (isMounted) {
+          setMessages(nextMessages);
+        }
       })
       .catch((err) => {
-        console.warn("Failed to load game chat messages", err);
-        if (isMounted) setError("نەتوانرا پەیامەکان باربکرێن.");
+        console.warn(
+          "Failed to load game chat messages",
+          err,
+        );
+
+        if (isMounted) {
+          setError("نەتوانرا پەیامەکان باربکرێن.");
+        }
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       });
 
-    const unsubscribe = transport
-      ? transport.subscribe(roomId, () => {
-          void loadMessages()
-            .then((nextMessages) => {
-              if (isMounted) setMessages(nextMessages);
-            })
-            .catch((err) => {
-              console.warn("Failed to refresh game chat messages", err);
-              if (isMounted) setError("نەتوانرا پەیامەکان نوێ بکرێنەوە.");
-            });
-        })
-      : (() => {
-          const channel = supabase
-            .channel(`game_chat_messages:${mode}:${roomId}`)
-            .on(
-              "postgres_changes",
-              {
-                event: "INSERT",
-                schema: "public",
-                table: "game_chat_messages",
-                filter: `room_id=eq.${roomId}`,
-              },
-              (payload) => {
-                const message = payload.new as GameChatMessage;
-                if (message.mode !== mode) return;
-                setMessages((current) => mergeMessages(current, message));
-              },
-            )
-            .subscribe();
+    const channel = supabase
+      .channel(
+        `game_chat_messages:${gameType}:${matchId}:${mode ?? "all"}`,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "game_chat_messages",
+          filter: `match_id=eq.${matchId}`,
+        },
+        (payload) => {
+          const message = payload.new as GameChatMessage;
 
-          return () => { void supabase.removeChannel(channel); };
-        })();
+          if (message.game_type !== gameType) {
+            return;
+          }
+
+          if (mode !== null && message.mode !== mode) {
+            return;
+          }
+
+          setMessages((current) =>
+            mergeMessages(current, message),
+          );
+        },
+      )
+      .subscribe();
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      void supabase.removeChannel(channel);
     };
-  }, [enabled, mode, roomId, transport, visible]);
-
+  }, [enabled, gameType, matchId, mode, visible]);
 
   useEffect(() => {
-    if (!visible || messages.length === 0) return;
+    if (!visible || messages.length === 0) {
+      return;
+    }
 
     const timer = setTimeout(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+      listRef.current?.scrollToEnd({
+        animated: true,
+      });
     }, 50);
 
     return () => clearTimeout(timer);
   }, [messages.length, visible]);
-  if (!visible) return null;
 
-  async function sendMessageText(text: string, clearDraft: boolean) {
-    if (!enabled || !roomId || !text || sending) return;
+  if (!visible) {
+    return null;
+  }
+
+  async function sendMessageText(
+    text: string,
+    clearDraft: boolean,
+  ) {
+    if (!enabled || !matchId || !text || sending) {
+      return;
+    }
 
     setSending(true);
     setError(null);
 
     try {
-      const sentMessage = transport
-        ? await transport.sendMessage(roomId, text)
-        : await sendGameChatMessage(mode, roomId, text);
-      setMessages((current) => mergeMessages(current, sentMessage));
-      if (clearDraft) setDraft("");
+      const sentMessage = await sendGameChatMessage(
+        gameType,
+        matchId,
+        text,
+        mode,
+      );
+
+      setMessages((current) =>
+        mergeMessages(current, sentMessage),
+      );
+
+      if (clearDraft) {
+        setDraft("");
+      }
+
       Keyboard.dismiss();
     } catch (err) {
-      console.warn("Failed to send game chat message", err);
+      console.warn(
+        "Failed to send game chat message",
+        err,
+      );
+
       setError("نەتوانرا پەیامەکە بنێردرێت.");
     } finally {
       setSending(false);
@@ -222,6 +288,7 @@ export default function GameChatDrawer({
   function sendQuickMessage(text: string) {
     void sendMessageText(text, false);
   }
+
   return (
     <View style={styles.overlay}>
       <Pressable
@@ -247,97 +314,203 @@ export default function GameChatDrawer({
         <View style={styles.content}>
           {loading ? (
             <View style={styles.loadingRow}>
-              <ActivityIndicator color="#f8f3df" size="small" />
+              <ActivityIndicator
+                color="#f8f3df"
+                size="small"
+              />
             </View>
           ) : null}
 
           {showUnavailableMessage ? (
-            <Text style={styles.emptyText}>گفتوگۆ تەنها لە یارییە سەرهێڵییەکان کار دەکات.</Text>
+            <Text style={styles.emptyText}>
+              گفتوگۆ تەنها لە یارییە سەرهێڵییەکان کار دەکات.
+            </Text>
           ) : null}
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? (
+            <Text style={styles.errorText}>
+              {error}
+            </Text>
+          ) : null}
 
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messages}
-            keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-            onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
-            renderItem={({ item }) => {
-              const isMine = item.sender_user_id === currentUserId;
+          <View style={styles.chatBody}>
+            <View style={styles.realMessagesArea}>
+              <FlatList
+                ref={listRef}
+                data={messages}
+                keyExtractor={(item) => item.id}
+                style={styles.messageList}
+                contentContainerStyle={styles.messages}
+                keyboardShouldPersistTaps="handled"
+                onContentSizeChange={() =>
+                  listRef.current?.scrollToEnd({
+                    animated: true,
+                  })
+                }
+                onLayout={() =>
+                  listRef.current?.scrollToEnd({
+                    animated: false,
+                  })
+                }
+                renderItem={({ item }) => {
+                  const isMine =
+                    item.sender_user_id === currentUserId;
 
-              return (
-                <View
-                  style={[
-                    styles.messageRow,
-                    isMine ? styles.myMessageRow : styles.otherMessageRow,
-                  ]}
-                >
-                  {!isMine ? (
-                    <PlayerAvatar
-                      avatarId={item.sender_avatar_id as AvatarId | undefined}
-                      avatarUrl={item.sender_avatar_url ?? undefined}
-                      size={28}
-                      style={styles.avatar}
-                    />
-                  ) : null}
-
-                  <View
-                    style={[
-                      styles.bubble,
-                      isMine ? styles.userBubble : styles.otherBubble,
-                    ]}
-                  >
-                    <View style={styles.messageMetaRow}>
+                  return (
+                    <View
+                      style={[
+                        styles.messageRow,
+                        isMine
+                          ? styles.myMessageRow
+                          : styles.otherMessageRow,
+                      ]}
+                    >
                       {!isMine ? (
-                        <Text numberOfLines={1} style={styles.senderName}>
-                          {item.sender_name}
-                        </Text>
+                        <PlayerAvatar
+                          avatarId={
+                            item.sender_avatar_id as
+                              | AvatarId
+                              | undefined
+                          }
+                          avatarUrl={
+                            item.sender_avatar_url ??
+                            undefined
+                          }
+                          size={28}
+                          style={styles.avatar}
+                        />
                       ) : null}
-                      <Text style={styles.messageTime}>{formatMessageTime(item.created_at)}</Text>
+
+                      <View
+                        style={[
+                          styles.bubble,
+                          isMine
+                            ? styles.userBubble
+                            : styles.otherBubble,
+                        ]}
+                      >
+                        <View style={styles.messageMetaRow}>
+                          {!isMine ? (
+                            <Text
+                              numberOfLines={1}
+                              style={styles.senderName}
+                            >
+                              {item.sender_name}
+                            </Text>
+                          ) : null}
+
+                          <Text style={styles.messageTime}>
+                            {formatMessageTime(
+                              item.created_at,
+                            )}
+                          </Text>
+                        </View>
+
+                        <Text style={styles.messageText}>
+                          {item.body}
+                        </Text>
+                      </View>
+
+                      {isMine ? (
+                        <PlayerAvatar
+                          avatarId={
+                            item.sender_avatar_id as
+                              | AvatarId
+                              | undefined
+                          }
+                          avatarUrl={
+                            item.sender_avatar_url ??
+                            undefined
+                          }
+                          size={28}
+                          style={styles.avatar}
+                        />
+                      ) : null}
                     </View>
+                  );
+                }}
+              />
+            </View>
 
-                    <Text style={styles.messageText}>{item.body}</Text>
-                  </View>
+<LinearGradient
+  colors={[
+    "rgba(255,255,255,0)",
+    "rgba(255,255,255,0.10)",
+    "rgba(255,255,255,0.24)",
+    "rgba(255,255,255,0.10)",
+    "rgba(255,255,255,0)",
+  ]}
+  locations={[0, 0.25, 0.5, 0.75, 1]}
+  start={{ x: 0.5, y: 0 }}
+  end={{ x: 0.5, y: 1 }}
+  style={styles.verticalDivider}
+/>
 
-                  {isMine ? (
-                    <PlayerAvatar
-                      avatarId={item.sender_avatar_id as AvatarId | undefined}
-                      avatarUrl={item.sender_avatar_url ?? undefined}
-                      size={28}
-                      style={styles.avatar}
-                    />
-                  ) : null}
-                </View>
-              );
-            }}
-          />
+            <ScrollView
+              style={styles.quickMessages}
+              contentContainerStyle={
+                styles.quickMessagesContent
+              }
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {QUICK_CHAT_MESSAGES.map((message) => (
+                <Pressable
+                  key={message}
+                  style={styles.quickMessageButton}
+                  onPress={() =>
+                    sendQuickMessage(message)
+                  }
+                  disabled={
+                    sending ||
+                    !enabled ||
+                    !matchId
+                  }
+                >
+                  <Text style={styles.quickMessageText}>
+                    {message}
+                  </Text>
+                </Pressable>
+              ))}
 
-
-          <View style={styles.quickMessages}>
-            {QUICK_CHAT_MESSAGES.map((message) => (
-              <Pressable
-                key={message}
-                style={styles.quickMessageButton}
-                onPress={() => sendQuickMessage(message)}
-                disabled={sending || !enabled || !roomId}
-              >
-                <Text style={styles.quickMessageText}>{message}</Text>
-              </Pressable>
-            ))}
+              <View style={styles.quickEmojiRow}>
+                {QUICK_CHAT_EMOJIS.map((emoji) => (
+                  <Pressable
+                    key={emoji}
+                    style={styles.quickEmojiButton}
+                    onPress={() => sendQuickMessage(emoji)}
+                    disabled={sending || !enabled || !matchId}
+                  >
+                    <Text style={styles.quickEmojiText}>
+                      {emoji}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
           </View>
+
           <View style={styles.composer}>
             <Pressable
-              style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+              style={[
+                styles.sendButton,
+                !canSend &&
+                  styles.sendButtonDisabled,
+              ]}
               onPress={sendMessage}
               disabled={!canSend}
             >
               {sending ? (
-                <ActivityIndicator color="#ffffff" size="small" />
+                <ActivityIndicator
+                  color="#ffffff"
+                  size="small"
+                />
               ) : (
-                <Ionicons name="send" size={16} color="#ffffff" />
+                <Ionicons
+                  name="send"
+                  size={16}
+                  color="#ffffff"
+                />
               )}
             </Pressable>
 
@@ -345,8 +518,12 @@ export default function GameChatDrawer({
               ref={inputRef}
               value={draft}
               onChangeText={setDraft}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
+              onFocus={() =>
+                setInputFocused(true)
+              }
+              onBlur={() =>
+                setInputFocused(false)
+              }
               placeholder="ناردنی پەیام"
               placeholderTextColor="rgba(255,255,255,0.42)"
               style={styles.input}
@@ -355,7 +532,11 @@ export default function GameChatDrawer({
               blurOnSubmit={false}
               submitBehavior="submit"
               onSubmitEditing={sendMessage}
-              editable={enabled && !!roomId && !sending}
+              editable={
+                enabled &&
+                !!matchId &&
+                !sending
+              }
               maxLength={500}
             />
           </View>
@@ -374,10 +555,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "flex-start",
   },
+
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(9, 3, 18, 0.24)",
   },
+
   panel: {
     width: "50%",
     maxWidth: "100%",
@@ -392,18 +575,24 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOpacity: 0.28,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
     elevation: 20,
   },
+
   content: {
     flex: 1,
     paddingTop: 15,
   },
+
   loadingRow: {
     minHeight: 32,
     alignItems: "center",
     justifyContent: "center",
   },
+
   emptyText: {
     marginBottom: 8,
     color: "rgba(248,243,239,0.7)",
@@ -412,6 +601,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     writingDirection: "rtl",
   },
+
   errorText: {
     marginBottom: 8,
     color: "#fca5a5",
@@ -420,45 +610,149 @@ const styles = StyleSheet.create({
     textAlign: "center",
     writingDirection: "rtl",
   },
+
+  chatBody: {
+    flex: 1,
+    flexDirection: "row",
+    minHeight: 0,
+  },
+
+  realMessagesArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+verticalDivider: {
+  width: 2,
+  height: "80%",
+  alignSelf: "center",
+  marginHorizontal: 10,
+},
+
+  dividerFadeTop: {
+    width: 1,
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  dividerHighlight: {
+    width: 1,
+    height: 24,
+    borderRadius: 1,
+    backgroundColor: "rgba(255,255,255,0.42)",
+  },
+
+  dividerFadeBottom: {
+    width: 1,
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+quickMessages: {
+  width: 150,
+  flexGrow: 0,
+  height: "100%",
+},
+
+  quickMessagesContent: {
+    paddingBottom: 20,
+  },
+
+quickMessageButton: {
+  width: "100%",
+  minHeight: 30,
+  justifyContent: "center",
+
+  marginBottom: 6,
+  paddingHorizontal: 8,
+
+  backgroundColor: "rgba(255,255,255,0.045)",
+},
+
+  quickMessageText: {
+    color: "#f8f3df",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
+    writingDirection: "rtl",
+    textAlign: "center",
+  },
+
+  quickEmojiRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+
+  quickEmojiButton: {
+    flex: 1,
+    minWidth: 0,
+    height: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  quickEmojiText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+
+  messageList: {
+    flex: 1,
+  },
+
   messages: {
     gap: 8,
     paddingBottom: 10,
   },
+
   messageRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
   },
+
   myMessageRow: {
     justifyContent: "flex-end",
   },
+
   otherMessageRow: {
     justifyContent: "flex-start",
   },
+
   avatar: {
     borderWidth: 1,
     borderColor: "rgba(250,204,21,0.58)",
   },
+
   bubble: {
     maxWidth: "78%",
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+
   userBubble: {},
+
   otherBubble: {},
+
   messageMetaRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
     marginBottom: 3,
-  },  senderName: {
+  },
+
+  senderName: {
     flexShrink: 1,
     color: "#f8d774",
     fontSize: 10,
     fontFamily: "SpedaRegular",
     textAlign: "left",
   },
+
   messageText: {
     color: "#ffffff",
     fontSize: 12,
@@ -466,6 +760,7 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     writingDirection: "rtl",
   },
+
   messageTime: {
     flexShrink: 0,
     color: "rgba(248,243,223,0.48)",
@@ -473,31 +768,9 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     fontFamily: "SpedaRegular",
     textAlign: "left",
-  },  quickMessages: {
-    flexDirection: "row-reverse",
-    flexWrap: "wrap",
-    gap: 6,
-    paddingTop: 8,
-    paddingBottom: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.12)",
   },
-  quickMessageButton: {
-    minHeight: 28,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-  },
-  quickMessageText: {
-    color: "#f8f3df",
-    fontSize: 11,
-    fontFamily: "SpedaBold",
-    writingDirection: "rtl",
-  },  composer: {
+
+  composer: {
     flexDirection: "row-reverse",
     alignItems: "flex-end",
     gap: 8,
@@ -505,6 +778,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.12)",
   },
+
   input: {
     flex: 1,
     minHeight: 40,
@@ -520,6 +794,7 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     writingDirection: "rtl",
   },
+
   sendButton: {
     width: 40,
     height: 40,
@@ -528,6 +803,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   sendButtonDisabled: {
     opacity: 0.45,
   },

@@ -3,8 +3,8 @@ import { useLocalSearchParams, useRouter, } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View, } from "react-native";
 
-import GameChatDrawer, { type GameChatTransport } from "@/components/game/GameChatDrawer";
-import type { GameChatMessage } from "@/lib/gameChat";
+import GameChatDrawer from "@/components/game/GameChatDrawer";
+import GameChatBubble from "@/components/game/GameChatBubble";
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
@@ -44,9 +44,6 @@ import {
   getOkeyRoomStatus,
   leaveOkeyRoom,
   subscribeOkeyRoom,
-  getOkeyChatMessages,
-  sendOkeyChatMessage,
-  subscribeOkeyChat,
   type OkeyRoomSnapshot,
 } from "@/okey/multiplayer/okey-room-api";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
@@ -74,6 +71,24 @@ const PLAYER_PREVIEW_MELD_TILE_WIDTH = 18;
 const PLAYER_PREVIEW_MELD_TILE_HEIGHT = 24;
 
 type RelativeSeat = "bottom" | "right" | "top" | "left";
+
+const GAME_CHAT_EMOJIS = new Set([
+  "😂",
+  "🤣",
+  "😭",
+  "😍",
+  "😎",
+  "😏",
+  "😱",
+  "😡",
+  "👏",
+  "❤️",
+]);
+
+type OkeySeatEmojiReaction = {
+  id: string;
+  emoji: string;
+};
 
 function getRelativeSeatMap(localPlayerIndex: number): Record<RelativeSeat, number> {
   const local = ((localPlayerIndex % 4) + 4) % 4;
@@ -287,31 +302,9 @@ function OkeyGameTableSceneContent() {
   const responsiveLayout = useOkeyResponsiveLayout();
   const [showGameChat, setShowGameChat] =
     useState(false);
-  const okeyChatMembersRef = useRef(onlineRoom?.members ?? []);
-  okeyChatMembersRef.current = onlineRoom?.members ?? [];
-
-  const okeyChatTransport = useMemo<GameChatTransport>(() => {
-    const normalize = (message: Awaited<ReturnType<typeof sendOkeyChatMessage>>): GameChatMessage => {
-      const member = okeyChatMembersRef.current.find((entry) => entry.userId === message.user_id);
-      return {
-        id: message.id,
-        mode: "2v2",
-        room_id: message.match_id,
-        sender_user_id: message.user_id,
-        sender_name: member?.displayName ?? "Player",
-        sender_avatar_id: null,
-        sender_avatar_url: member?.avatarUrl ?? null,
-        body: message.body,
-        created_at: message.created_at,
-      };
-    };
-
-    return {
-      getMessages: async (matchId) => (await getOkeyChatMessages(matchId)).map(normalize),
-      sendMessage: async (matchId, body) => normalize(await sendOkeyChatMessage(matchId, body)),
-      subscribe: subscribeOkeyChat,
-    };
-  }, []);
+  const [chatEmojiBySeat, setChatEmojiBySeat] = useState<
+    Partial<Record<RelativeSeat, OkeySeatEmojiReaction>>
+  >({});
 
   const onlineController = useOkeyMultiplayerGame(
     activeOnlineMatchId,
@@ -1302,6 +1295,87 @@ const shouldShowScorePopup =
     [onlineProjection, relativeSeatMap, state.players],
   );
 
+  const resolveRelativeSeatByPlayerId = useStableEvent((playerId: string) => {
+    for (const seat of ["bottom", "right", "top", "left"] as const) {
+      if (playerForSeat(seat)?.id === playerId) {
+        return seat;
+      }
+    }
+
+    return null;
+  });
+
+  const clearChatEmoji = useStableEvent((seat: RelativeSeat, messageId: string) => {
+    setChatEmojiBySeat((current) => {
+      if (current[seat]?.id !== messageId) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[seat];
+      return next;
+    });
+  });
+
+  useEffect(() => {
+    if (!onlineMatchId || !onlineGameplayReady) {
+      setChatEmojiBySeat({});
+      return;
+    }
+
+    const channel = supabase
+      .channel(`okey_game_emoji_bubbles:${onlineMatchId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "game_chat_messages",
+          filter: `match_id=eq.${onlineMatchId}`,
+        },
+        (payload) => {
+          const message = payload.new as {
+            id?: string;
+            game_type?: string;
+            sender_user_id?: string;
+            body?: string;
+          };
+
+          if (
+            message.game_type !== "okey" ||
+            typeof message.id !== "string" ||
+            typeof message.sender_user_id !== "string" ||
+            typeof message.body !== "string"
+          ) {
+            return;
+          }
+
+          const emoji = message.body.trim();
+          if (!GAME_CHAT_EMOJIS.has(emoji)) {
+            return;
+          }
+
+          const seat = resolveRelativeSeatByPlayerId(message.sender_user_id);
+          if (!seat) {
+            return;
+          }
+
+          setChatEmojiBySeat((current) => ({
+            ...current,
+            [seat]: {
+              id: message.id as string,
+              emoji,
+            },
+          }));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [onlineGameplayReady, onlineMatchId, resolveRelativeSeatByPlayerId]);
+
   const opponentSeats = useMemo(
     () => (["top", "left", "right"] as const).map((side) => {
       const serverIndex = relativeSeatMap?.[side] ?? null;
@@ -1708,6 +1782,22 @@ const shouldShowScorePopup =
       }
     />
 
+    {(["top", "left", "right", "bottom"] as const).map((seat) => {
+      const reaction = chatEmojiBySeat[seat];
+      if (!reaction) return null;
+
+return (
+  <GameChatBubble
+    key={`${seat}:${reaction.id}`}
+    seat={seat}
+    message={reaction.emoji}
+    messageId={reaction.id}
+    isEmoji
+    onComplete={() => clearChatEmoji(seat, reaction.id)}
+  />
+);
+    })}
+
     <MemoizedOkeyTableMeldAreas
       players={presentedSeatOrderedPlayers}
       okeyTile={state.okeyTile}
@@ -1919,15 +2009,15 @@ const shouldShowScorePopup =
         player={profilePlayer}
         onDismiss={() => setProfilePlayer(null)}
       />
-      <GameChatDrawer
-        visible={showGameChat}
-        mode="2v2"
-        roomId={onlineMatchId ?? ""}
-        currentUserId={currentUserId}
-        enabled={!!onlineMatchId && !!currentUserId && onlineRoom?.status !== "waiting"}
-        transport={okeyChatTransport}
-        onClose={() => setShowGameChat(false)}
-      />
+<GameChatDrawer
+  visible={showGameChat}
+  gameType="okey"
+  matchId={onlineMatchId ?? ""}
+  mode={null}
+  currentUserId={currentUserId}
+  enabled={!!onlineMatchId && !!currentUserId && onlineRoom?.status !== "waiting"}
+  onClose={() => setShowGameChat(false)}
+/>
 <MatchMenuDrawer
   visible={showMatchMenu}
   players={seatOrderedPlayers}

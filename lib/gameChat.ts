@@ -1,12 +1,14 @@
 import type { AvatarId } from "@/constants/avatars";
 import { supabase } from "@/lib/supabase";
 
+export type GameChatType = "domino" | "okey";
 export type GameChatMode = "1v1" | "2v2";
 
 export type GameChatMessage = {
   id: string;
-  mode: GameChatMode;
-  room_id: string;
+  game_type: GameChatType;
+  mode: GameChatMode | null;
+  match_id: string;
   sender_user_id: string;
   sender_name: string;
   sender_avatar_id: AvatarId | null;
@@ -16,17 +18,24 @@ export type GameChatMessage = {
 };
 
 const GAME_CHAT_SELECT =
-  "id, mode, room_id, sender_user_id, sender_name, sender_avatar_id, body, created_at";
+  "id, game_type, mode, match_id, sender_user_id, sender_name, sender_avatar_id, body, created_at";
 
 export async function getGameChatMessages(
-  mode: GameChatMode,
-  roomId: string,
+  gameType: GameChatType,
+  matchId: string,
+  mode: GameChatMode | null = null,
 ): Promise<GameChatMessage[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("game_chat_messages")
     .select(GAME_CHAT_SELECT)
-    .eq("mode", mode)
-    .eq("room_id", roomId)
+    .eq("game_type", gameType)
+    .eq("match_id", matchId);
+
+  if (mode !== null) {
+    query = query.eq("mode", mode);
+  }
+
+  const { data, error } = await query
     .order("created_at", { ascending: true })
     .limit(100);
 
@@ -36,14 +45,16 @@ export async function getGameChatMessages(
 }
 
 export async function sendGameChatMessage(
-  mode: GameChatMode,
-  roomId: string,
+  gameType: GameChatType,
+  matchId: string,
   body: string,
+  mode: GameChatMode | null = null,
 ): Promise<GameChatMessage> {
   const { data, error } = await supabase.rpc("send_game_chat_message", {
-    p_mode: mode,
-    p_room_id: roomId,
+    p_game_type: gameType,
+    p_match_id: matchId,
     p_body: body,
+    p_mode: mode,
   });
 
   if (error) throw error;

@@ -1,13 +1,24 @@
 import { supabase } from "@/lib/supabase";
 import { AppState } from "react-native";
+
 const COUNTDOWN_START_CLOCK_SAFETY_MS = 75;
 const COUNTDOWN_START_RETRY_MS = 500;
 
-export function getOkeyCountdownStartCheckDelay(countdownEndsAt: string, now = Date.now()) {
+export function getOkeyCountdownStartCheckDelay(
+  countdownEndsAt: string,
+  now = Date.now(),
+) {
   const deadline = Date.parse(countdownEndsAt);
-  if (!Number.isFinite(deadline)) return null;
+
+  if (!Number.isFinite(deadline)) {
+    return null;
+  }
+
   const remaining = deadline - now;
-  return remaining > 0 ? remaining + COUNTDOWN_START_CLOCK_SAFETY_MS : COUNTDOWN_START_RETRY_MS;
+
+  return remaining > 0
+    ? remaining + COUNTDOWN_START_CLOCK_SAFETY_MS
+    : COUNTDOWN_START_RETRY_MS;
 }
 
 export type OkeyRoomMember = {
@@ -35,55 +46,6 @@ export type OkeyRoomSnapshot = {
   members: OkeyRoomMember[];
 };
 
-export type OkeyChatMessage = {
-  id: string;
-  match_id: string;
-  user_id: string;
-  body: string;
-  created_at: string;
-};
-
-async function chatAction(
-  body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase.functions.invoke("okey_chat", { body });
-
-  if (error) {
-    throw new Error(error.message || "okey_chat_request_failed");
-  }
-
-  if (!data || typeof data !== "object") {
-    throw new Error("okey_chat_response_invalid");
-  }
-
-  if ("error" in data && data.error) {
-    throw new Error(String(data.error));
-  }
-
-  return data as Record<string, unknown>;
-}
-
-export async function getOkeyChatMessages(matchId: string): Promise<OkeyChatMessage[]> {
-  const data = await chatAction({ action: "list", matchId });
-  return Array.isArray(data.messages) ? data.messages as OkeyChatMessage[] : [];
-}
-
-export async function sendOkeyChatMessage(matchId: string, body: string): Promise<OkeyChatMessage> {
-  const data = await chatAction({ action: "send", matchId, body });
-  if (!data.message) throw new Error("okey_chat_response_invalid");
-  return data.message as OkeyChatMessage;
-}
-
-export function subscribeOkeyChat(matchId: string, listener: () => void) {
-  const channel = supabase
-    .channel(`okey-chat:${matchId}`)
-    .on("broadcast", { event: "invalidate" }, listener)
-    .subscribe();
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
-}
 async function roomAction(
   body: Record<string, unknown>,
 ): Promise<OkeyRoomSnapshot> {
@@ -95,7 +57,10 @@ async function roomAction(
   );
 
   if (error) {
-    let errorBody: { error?: string; details?: string } | null = null;
+    let errorBody: {
+      error?: string;
+      details?: string;
+    } | null = null;
 
     try {
       if ("context" in error && error.context) {
@@ -108,7 +73,9 @@ async function roomAction(
     throw new Error(
       errorBody?.details
         ? `${errorBody.error ?? "okey_room_request_failed"}: ${errorBody.details}`
-        : errorBody?.error ?? error.message ?? "okey_room_request_failed",
+        : errorBody?.error ??
+            error.message ??
+            "okey_room_request_failed",
     );
   }
 
@@ -180,14 +147,19 @@ export function subscribeOkeyRoom(
   let countdownAwaitingStart = false;
 
   const clearCountdownStartTimer = () => {
-    if (countdownStartTimer) clearTimeout(countdownStartTimer);
+    if (countdownStartTimer) {
+      clearTimeout(countdownStartTimer);
+    }
+
     countdownStartTimer = null;
     scheduledCountdownDeadline = null;
   };
 
   const deliver = (room: OkeyRoomSnapshot) => {
     countdownAwaitingStart =
-      room.status === "waiting" && room.countdownEndsAt !== null;
+      room.status === "waiting" &&
+      room.countdownEndsAt !== null;
+
     scheduleCountdownStartCheck(room);
     listener(room);
   };
@@ -226,36 +198,65 @@ export function subscribeOkeyRoom(
     return refreshInFlight;
   };
 
-
   const runCountdownStartCheck = async () => {
     const pendingRefresh = refreshInFlight;
-    if (pendingRefresh) await pendingRefresh;
-    if (active) await refresh();
+
+    if (pendingRefresh) {
+      await pendingRefresh;
+    }
+
+    if (active) {
+      await refresh();
+    }
   };
 
   function scheduleCountdownStartRetry() {
-    if (!active || !countdownAwaitingStart || countdownStartTimer) return;
+    if (
+      !active ||
+      !countdownAwaitingStart ||
+      countdownStartTimer
+    ) {
+      return;
+    }
 
     scheduledCountdownDeadline = null;
+
     countdownStartTimer = setTimeout(() => {
       countdownStartTimer = null;
       void runCountdownStartCheck();
     }, 500);
   }
 
-  function scheduleCountdownStartCheck(room: OkeyRoomSnapshot) {
-    if (room.status !== "waiting" || !room.countdownEndsAt) {
+  function scheduleCountdownStartCheck(
+    room: OkeyRoomSnapshot,
+  ) {
+    if (
+      room.status !== "waiting" ||
+      !room.countdownEndsAt
+    ) {
       clearCountdownStartTimer();
       return;
     }
 
-    if (scheduledCountdownDeadline === room.countdownEndsAt && countdownStartTimer) return;
+    if (
+      scheduledCountdownDeadline === room.countdownEndsAt &&
+      countdownStartTimer
+    ) {
+      return;
+    }
+
     clearCountdownStartTimer();
 
-    const delay = getOkeyCountdownStartCheckDelay(room.countdownEndsAt);
-    if (delay === null) return;
+    const delay = getOkeyCountdownStartCheckDelay(
+      room.countdownEndsAt,
+    );
+
+    if (delay === null) {
+      return;
+    }
 
     scheduledCountdownDeadline = room.countdownEndsAt;
+
     countdownStartTimer = setTimeout(() => {
       countdownStartTimer = null;
       scheduledCountdownDeadline = null;
@@ -281,12 +282,24 @@ export function subscribeOkeyRoom(
     });
 
   let heartbeatInFlight = false;
+
   const heartbeat = async () => {
-    if (!active || heartbeatInFlight || AppState.currentState !== "active") return;
+    if (
+      !active ||
+      heartbeatInFlight ||
+      AppState.currentState !== "active"
+    ) {
+      return;
+    }
+
     heartbeatInFlight = true;
+
     try {
       const room = await heartbeatOkeyRoom(matchId);
-      if (active) deliver(room);
+
+      if (active) {
+        deliver(room);
+      }
     } catch (error) {
       reportError(error);
     } finally {
@@ -295,10 +308,21 @@ export function subscribeOkeyRoom(
   };
 
   void heartbeat();
-  const heartbeatTimer = setInterval(() => void heartbeat(), 60_000);
-  const appStateSubscription = AppState.addEventListener("change", (state) => {
-    if (state === "active") void heartbeat();
-  });
+
+  const heartbeatTimer = setInterval(
+    () => void heartbeat(),
+    60_000,
+  );
+
+  const appStateSubscription =
+    AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") {
+          void heartbeat();
+        }
+      },
+    );
 
   return () => {
     active = false;
@@ -308,19 +332,28 @@ export function subscribeOkeyRoom(
     void supabase.removeChannel(channel);
   };
 }
+
 export type OkeyActiveMembership = {
   matchId: string;
   playerIndex: number;
   status: "waiting" | "playing";
 };
 
-export async function getActiveOkeyMemberships(): Promise<OkeyActiveMembership[]> {
-  const { data, error } = await supabase.functions.invoke("okey_room", {
-    body: { action: "active-memberships" },
-  });
+export async function getActiveOkeyMemberships(): Promise<
+  OkeyActiveMembership[]
+> {
+  const { data, error } =
+    await supabase.functions.invoke("okey_room", {
+      body: {
+        action: "active-memberships",
+      },
+    });
 
   if (error) {
-    let errorBody: { error?: string; details?: string } | null = null;
+    let errorBody: {
+      error?: string;
+      details?: string;
+    } | null = null;
 
     try {
       if ("context" in error && error.context) {
@@ -332,15 +365,21 @@ export async function getActiveOkeyMemberships(): Promise<OkeyActiveMembership[]
 
     throw new Error(
       errorBody?.details
-        ? (errorBody.error ?? "okey_active_memberships_failed") + ": " + errorBody.details
-        : errorBody?.error ?? error.message ?? "okey_active_memberships_failed",
+        ? `${errorBody.error ?? "okey_active_memberships_failed"}: ${errorBody.details}`
+        : errorBody?.error ??
+            error.message ??
+            "okey_active_memberships_failed",
     );
   }
 
-  if (!data || !Array.isArray(data.memberships)) {
-    throw new Error("okey_active_memberships_response_invalid");
+  if (
+    !data ||
+    !Array.isArray(data.memberships)
+  ) {
+    throw new Error(
+      "okey_active_memberships_response_invalid",
+    );
   }
 
   return data.memberships as OkeyActiveMembership[];
 }
-

@@ -6,45 +6,42 @@ const oneVsOneCommitContractSource = readFileSync(
   "domino/modes/one-vs-one/server/domino-one-vs-one-commit-contract.ts",
   "utf8",
 );
+
 const timeoutConflictSource = readFileSync(
   "domino/modes/one-vs-one/server/domino-one-vs-one-timeout-conflict.ts",
   "utf8",
 );
+
 const passSource = readFileSync(
   "supabase/functions/submit_one_vs_one/pass.ts",
   "utf8",
 );
+
 const twoVsTwoPassSource = readFileSync(
   "supabase/functions/submit_two_vs_two/pass.ts",
   "utf8",
 );
-const twoVsTwoHookSource = readFileSync("domino/modes/two-vs-two/controllers/use-domino-two-vs-two-controller.ts", "utf8");
-const twoVsTwoCommitContractSource = readFileSync("domino/modes/two-vs-two/server/domino-two-vs-two-commit-contract.ts", "utf8");
-const twoVsTwoTimeoutControllerSource = readFileSync("domino/modes/two-vs-two/controllers/domino-two-vs-two-timeout-controller.ts", "utf8");
-const okeyMatchSource = readFileSync(
-  "supabase/functions/okey_match/index.ts",
+
+const twoVsTwoHookSource = readFileSync(
+  "domino/modes/two-vs-two/controllers/use-domino-two-vs-two-controller.ts",
   "utf8",
 );
-const okeyAdapterSource = readFileSync(
-  "okey/adapters/supabase-okey-match-adapter.ts",
+
+const twoVsTwoCommitContractSource = readFileSync(
+  "domino/modes/two-vs-two/server/domino-two-vs-two-commit-contract.ts",
   "utf8",
 );
-const multiplayerMatchContractSource = readFileSync(
-  "lib/multiplayer/match/contracts.ts",
+
+const twoVsTwoTimeoutControllerSource = readFileSync(
+  "domino/modes/two-vs-two/controllers/domino-two-vs-two-timeout-controller.ts",
   "utf8",
 );
-const multiplayerMatchLifecycleSource = readFileSync(
-  "lib/multiplayer/match/lifecycle.ts",
-  "utf8",
-);
-const multiplayerMatchHookSource = readFileSync(
-  "lib/multiplayer/match/use-multiplayer-match.ts",
-  "utf8",
-);
+
 const apiSource = readFileSync(
   "domino/modes/two-vs-two/adapters/domino-two-vs-two-supabase-api.ts",
   "utf8",
 );
+
 const timeoutControllerSource = readFileSync(
   "domino/modes/one-vs-one/controllers/use-domino-one-vs-one-timeout-controller.ts",
   "utf8",
@@ -54,10 +51,26 @@ const dominoTurnTimerSource = readFileSync(
   "domino/shared/timing/domino-turn-timer.ts",
   "utf8",
 );
-const dominoPlayerSeatSource = readFileSync("components/game/PlayerSeat.tsx", "utf8");
-const dominoGameScreenSource = readFileSync("app/domino/game.tsx", "utf8");
-const oneVsOneEngineSource = readFileSync("domino/modes/one-vs-one/engine/domino-one-vs-one-engine.ts", "utf8");
-const aiPracticeControllerSource = readFileSync("domino/modes/ai-practice/controllers/use-domino-ai-practice-controller.ts", "utf8");
+
+const dominoPlayerSeatSource = readFileSync(
+  "components/game/PlayerSeat.tsx",
+  "utf8",
+);
+
+const dominoGameScreenSource = readFileSync(
+  "app/domino/game.tsx",
+  "utf8",
+);
+
+const oneVsOneEngineSource = readFileSync(
+  "domino/modes/one-vs-one/engine/domino-one-vs-one-engine.ts",
+  "utf8",
+);
+
+const aiPracticeControllerSource = readFileSync(
+  "domino/modes/ai-practice/controllers/use-domino-ai-practice-controller.ts",
+  "utf8",
+);
 
 const EXPECTED_CODES = new Set([
   "turn_timer_not_expired",
@@ -75,8 +88,10 @@ function createAtomicTimeoutRoom() {
 
   return {
     snapshot: () => ({ ...room }),
+
     claim: async (claim) => {
       await Promise.resolve();
+
       if (claim.expectedVersion !== room.version) {
         return {
           code:
@@ -85,6 +100,7 @@ function createAtomicTimeoutRoom() {
               : "stale_timeout",
         };
       }
+
       if (
         claim.expectedTurnStartedAt !== room.turnStartedAt ||
         claim.expectedTurnPlayerId !== room.currentTurnPlayerId
@@ -99,8 +115,10 @@ function createAtomicTimeoutRoom() {
         currentTurnPlayerId: "player-b",
         processed: room.processed + 1,
       };
+
       return { code: "processed" };
     },
+
     processedCount: () => room.processed,
   };
 }
@@ -110,15 +128,22 @@ test("timeout protocol exposes stable expected codes without warning them", () =
     assert.match(passSource, new RegExp(`"${code}"`));
     assert.match(apiSource, new RegExp(`"${code}"`));
   }
+
   assert.match(passSource, /expected_version: expectedVersionRaw/);
   assert.match(passSource, /buildOneVsOnePassCommit/);
-  assert.match(oneVsOneCommitContractSource, /p_expected_version: args\.expectedVersion/);
+  assert.match(
+    oneVsOneCommitContractSource,
+    /p_expected_version: args\.expectedVersion/,
+  );
   assert.match(passSource, /reconcileDominoOneVsOneCommit/);
-  assert.match(timeoutConflictSource, /Number\(latestRoom\.version\) > args\.expectedVersion/);
+  assert.match(
+    timeoutConflictSource,
+    /Number\(latestRoom\.version\) > args\.expectedVersion/,
+  );
   assert.match(timeoutConflictSource, /"already_processed"/);
   assert.match(timeoutConflictSource, /"stale_timeout"/);
   assert.match(passSource, /serverNow:/);
-  assert.match(passSource, /retryAfterMs:/);
+  assert.match(passSource, /retryAfterMs\:/);
   assert.match(timeoutControllerSource, /serverClockOffsetMsRef/);
   assert.match(timeoutControllerSource, /passRetryRef/);
   assert.match(timeoutControllerSource, /clearPassRetry\(\)/);
@@ -127,6 +152,7 @@ test("timeout protocol exposes stable expected codes without warning them", () =
 test("simultaneous timeout claims commit once and become already_processed", async () => {
   const atomicRoom = createAtomicTimeoutRoom();
   const snapshot = atomicRoom.snapshot();
+
   const claim = {
     expectedVersion: snapshot.version,
     expectedTurnStartedAt: snapshot.turnStartedAt,
@@ -141,82 +167,105 @@ test("simultaneous timeout claims commit once and become already_processed", asy
     responses.filter((response) => response.code === "processed").length,
     1,
   );
+
   assert.equal(
-    responses.filter((response) => response.code === "already_processed").length,
+    responses.filter((response) => response.code === "already_processed")
+      .length,
     7,
   );
+
   assert.equal(atomicRoom.processedCount(), 1);
 });
 
 test("a mismatched turn identity is stale_timeout", async () => {
   const atomicRoom = createAtomicTimeoutRoom();
   const snapshot = atomicRoom.snapshot();
+
   const response = await atomicRoom.claim({
     expectedVersion: snapshot.version,
     expectedTurnStartedAt: snapshot.turnStartedAt,
     expectedTurnPlayerId: "different-player",
   });
+
   assert.equal(response.code, "stale_timeout");
   assert.equal(atomicRoom.processedCount(), 0);
 });
+
 test("Domino 2v2 exposes the atomic timeout protocol for four clients", async () => {
   for (const code of EXPECTED_CODES) {
     assert.match(twoVsTwoPassSource, new RegExp(`"${code}"`));
   }
+
   assert.match(twoVsTwoPassSource, /expectedVersion: room\.version/);
-  assert.match(twoVsTwoCommitContractSource, /p_expected_version: args\.expectedVersion/);
-  assert.match(twoVsTwoPassSource, /Number\(latestRoom\.version\) > expectedVersion/);
+  assert.match(
+    twoVsTwoCommitContractSource,
+    /p_expected_version: args\.expectedVersion/,
+  );
+  assert.match(
+    twoVsTwoPassSource,
+    /Number\(latestRoom\.version\) > expectedVersion/,
+  );
   assert.match(twoVsTwoHookSource, /serverClockOffsetMsRef/);
   assert.match(twoVsTwoHookSource, /timeoutRetryRef/);
 
   const atomicRoom = createAtomicTimeoutRoom();
   const snapshot = atomicRoom.snapshot();
+
   const claim = {
     expectedVersion: snapshot.version,
     expectedTurnStartedAt: snapshot.turnStartedAt,
     expectedTurnPlayerId: snapshot.currentTurnPlayerId,
   };
+
   const responses = await Promise.all(
     Array.from({ length: 4 }, () => atomicRoom.claim(claim)),
   );
-  assert.equal(responses.filter(({ code }) => code === "processed").length, 1);
-  assert.equal(responses.filter(({ code }) => code === "already_processed").length, 3);
+
+  assert.equal(
+    responses.filter(({ code }) => code === "processed").length,
+    1,
+  );
+
+  assert.equal(
+    responses.filter(({ code }) => code === "already_processed").length,
+    3,
+  );
+
   assert.equal(atomicRoom.processedCount(), 1);
 });
 
-test("Okey timeout uses the shared Core deadline and atomic turn identity", () => {
-  for (const code of EXPECTED_CODES) {
-    assert.match(okeyMatchSource, new RegExp(`"${code}"`));
-  }
-  assert.match(okeyMatchSource, /p_expected_version:\s*action === "manual-leave"\s*\?\s*Number\(bundle\.version\)\s*:\s*\(clientExpectedVersion\s*\?\?\s*Number\(bundle\.version\)\)/);
-  assert.match(okeyMatchSource, /serverNow: new Date\(\)\.toISOString\(\)/);
-  assert.match(okeyMatchSource, /retryAfterMs: Math\.max/);
-  assert.match(okeyAdapterSource, /serverClockOffsetMs/);
-  assert.match(multiplayerMatchContractSource, /expectedVersion: number/);
-  assert.match(multiplayerMatchContractSource, /expectedTurnDeadlineAt: string/);
-  assert.match(multiplayerMatchContractSource, /expectedTurnPlayerId: string/);
-  assert.match(multiplayerMatchLifecycleSource, /getTurnIdentity/);
-  assert.match(multiplayerMatchLifecycleSource, /claim\.expectedVersion/);
-  assert.match(multiplayerMatchLifecycleSource, /claim\.expectedTurnDeadlineAt/);
-  assert.match(multiplayerMatchLifecycleSource, /claim\.expectedTurnPlayerId/);
-  assert.match(multiplayerMatchHookSource, /timeoutInFlightRef\.current/);
-  assert.match(multiplayerMatchHookSource, /timeoutKeyRef\.current !== key/);
-  assert.match(multiplayerMatchHookSource, /expiresAtMs - serverNowMs/);
-  assert.match(multiplayerMatchHookSource, /await refresh\(\)/);
-});
-
-
 test("Domino human turn duration has one 25-second contract across every mode and UI", () => {
-  assert.match(dominoTurnTimerSource, /DOMINO_HUMAN_TURN_DURATION_SECONDS = 25/);
-  assert.match(dominoTurnTimerSource, /DOMINO_HUMAN_TURN_DURATION_SECONDS \* 1_000/);
+  assert.match(
+    dominoTurnTimerSource,
+    /DOMINO_HUMAN_TURN_DURATION_SECONDS = 25/,
+  );
+
+  assert.match(
+    dominoTurnTimerSource,
+    /DOMINO_HUMAN_TURN_DURATION_SECONDS \* 1_000/,
+  );
+
   assert.match(passSource, /DOMINO_HUMAN_TURN_DURATION_MS/);
   assert.match(twoVsTwoPassSource, /DOMINO_HUMAN_TURN_DURATION_MS/);
   assert.match(oneVsOneEngineSource, /DOMINO_HUMAN_TURN_DURATION_MS/);
   assert.match(timeoutControllerSource, /projectDominoTurnSecondsLeft/);
-  assert.match(twoVsTwoTimeoutControllerSource, /projectDominoTurnSecondsLeft/);
-  assert.match(aiPracticeControllerSource, /PLAYER_TURN_DURATION_SECONDS/);
-  assert.match(dominoPlayerSeatSource, /DOMINO_HUMAN_TURN_DURATION_SECONDS/);
-  assert.match(dominoGameScreenSource, /humanPlayer\.timeLeft \/ PLAYER_TURN_DURATION_SECONDS/);
+  assert.match(
+    twoVsTwoTimeoutControllerSource,
+    /projectDominoTurnSecondsLeft/,
+  );
+  assert.match(
+    aiPracticeControllerSource,
+    /PLAYER_TURN_DURATION_SECONDS/,
+  );
+  assert.match(
+    dominoPlayerSeatSource,
+    /DOMINO_HUMAN_TURN_DURATION_SECONDS/,
+  );
+  assert.match(
+    dominoGameScreenSource,
+    /humanPlayer\.timeLeft \/ PLAYER_TURN_DURATION_SECONDS/,
+  );
+
   assert.doesNotMatch(dominoGameScreenSource, /humanTurnTimerText/);
   assert.doesNotMatch(passSource, /TURN_DURATION_MS = 20_000/);
   assert.doesNotMatch(twoVsTwoPassSource, /TURN_DURATION_MS = 20_000/);

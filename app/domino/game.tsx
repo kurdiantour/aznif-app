@@ -254,18 +254,20 @@ useEffect(() => {
     if (isLocalGame || !roomId) return;
 
     const channel = supabase
-      .channel(`game_chat_unread:${gameMode}:${roomId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "game_chat_messages",
-          filter: `room_id=eq.${roomId}`,
-        },
-        (payload) => {
-          const message = payload.new as GameChatMessage;
-          if (message.mode !== gameMode) return;
+.channel(`game_chat_unread:domino:${gameMode}:${roomId}`)
+.on(
+  "postgres_changes",
+  {
+    event: "INSERT",
+    schema: "public",
+    table: "game_chat_messages",
+    filter: `match_id=eq.${roomId}`,
+  },
+  (payload) => {
+    const message = payload.new as GameChatMessage;
+
+    if (message.game_type !== "domino") return;
+    if (message.mode !== gameMode) return;
           if (message.sender_user_id === (profile?.id ?? localCurrentUserId)) return;
 
           setUnreadChatCount((count) =>
@@ -1082,8 +1084,9 @@ useEffect(() => {
 
 <GameChatDrawer
   visible={showGameChat}
+  gameType="domino"
+  matchId={roomId}
   mode={gameMode}
-  roomId={roomId}
   currentUserId={profile?.id ?? localCurrentUserId}
   enabled={!isLocalGame && !!roomId}
   onClose={() => setShowGameChat(false)}
