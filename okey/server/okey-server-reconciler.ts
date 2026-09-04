@@ -203,10 +203,10 @@ export function evaluateOkeyServerLifecycle(
   if (state.roundState.phase === "finished") {
     if (state.pendingForfeitTeamId || state.leaveTerminationReason === "team-forfeit") {
       return {
-        type: "terminal",
-        matchFinished: true,
-        winnerTeamId: state.pendingForfeitTeamId === "teamA" ? "teamB" : "teamA",
-        reason: "team-forfeit",
+        type: "due-next-round",
+        expectedVersion: version,
+        expectedRound: state.currentRound,
+        eligibleAt: new Date(now).toISOString(),
       };
     }
 
@@ -547,7 +547,7 @@ export async function reconcileAuthoritativeTimeoutTurn(options: {
       version: Number(committed.version),
       turnDeadlineAt: committed.turn_deadline_at ?? deadline,
       executed: true,
-      actionEvents: committed.action_events ?? [],
+      actionEvents: (committed.action_events ?? []) as OkeyActionEvent[],
     };
   } catch {
     return {
@@ -626,7 +626,8 @@ export async function reconcileAuthoritativeNextRound(options: {
     ? options.deterministicCommandId(`okey:${options.matchId}:${commandType}:${options.version}:${nextState.currentRound}`)
     : generateOkeyReconcilerCommandId(options.matchId, commandType, options.version, String(nextState.currentRound)));
 
-  const actionEventDrafts = finishingTeamForfeit    ? []
+  const actionEventDrafts = finishingTeamForfeit
+    ? []
     : [{ type: "round" as const, actorPlayerId: null, payload: { round: nextState.currentRound } }];
 
   const publicProjection = projectOkeyMatchPublicState(
@@ -635,22 +636,99 @@ export async function reconcileAuthoritativeNextRound(options: {
     deadline,
   );
 
-  const { data: commit, error: commitError } = await options.client
-    .rpc("okey_commit_authoritative_action", {
-      p_match_id: options.matchId,
-      p_user_id: actorPlayerId,
-      p_command_id: commandId,
-      p_expected_version: options.version,
-      p_command_type: commandType,
-      p_state: nextState,
-      p_projection: publicProjection,
-      p_status: nextState.matchFinished ? "finished" : "playing",
-      p_turn_deadline_at: deadline,
-      p_action_events: actionEventDrafts,
-    })
-    .single();
+  try {
+    const turnResult = await executeAuthoritativeOkeyTurn({
+      controller: "next-round",
+      matchId: options.matchId,
+      actorPlayerId,
+      commandId,
+      commandType,
+      expectedVersion: options.version,
+      intent: decision,
+      validate: () => ({
+        state: nextState,
+        projection: publicProjection,
+        deadline,
+        status: nextState.matchFinished ? ("finished" as const) : ("playing" as const),
+        actionEvents: actionEventDrafts,
+      }),
+      commit: async (prepared) => {
+        const { data, error } = await options.client
+          .rpc("okey_commit_authoritative_action", {
+            p_match_id: options.matchId,
+            p_user_id: actorPlayerId,
+            p_command_id: commandId,
+            p_expected_version: options.version,
+            p_command_type: commandType,
+            p_state: prepared.state,
+            p_projection: prepared.projection,
+            p_status: prepared.status,
+            p_turn_deadline_at: prepared.deadline,
+            p_action_events: prepared.actionEvents,
+          })
+          .single();
+        if (error || !data) throw new Error(error?.message ?? "okey_next_round_commit_failed");
+        return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
+      },
+      advance: async (committed) => {
+        const advancedState = committed.state ?? nextState;
+        if (advancedState.matchFinished && advancedState.matchWinnerTeamId && options.client?.rpc) {
+          try {
+            await options.client.rpc("okey_settle_match", {
+              p_match_id: options.matchId,
+              p_winner_team_id: advancedState.matchWinnerTeamId,
+            });
+          } catch {
+            // Settle recovery will safely retry idempotently during snapshot if needed
+          }
+        }
+        return {
+          ...committed,
+          state: advancedState,
+          turn_deadline_at: committed.turn_deadline_at ?? deadline,
+          action_events: committed.action_events ?? [],
+        };
+      },
+      broadcast: options.broadcastStateUpdate
+        ? async (committed) => {
+            try {
+              await options.broadcastStateUpdate!({
+                matchId: options.matchId,
+                commandId,
+                version: committed.version,
+                publicProjection: projectOkeyMatchPublicState(
+                  committed.state,
+                  committed.version,
+                  committed.turnDeadlineAt,
+                ),
+                actionEvents: committed.actionEvents,
+              });
+            } catch (broadcastError) {
+              console.error("Okey next-round broadcast failed", broadcastError);
+            }
+          }
+        : undefined,
+    });
 
-  if (commitError || !commit || (commit as { applied?: boolean }).applied === false) {
+    const committed = turnResult.committed;
+    if (committed.applied === false) {
+      return {
+        state: options.state,
+        version: options.version,
+        turnDeadlineAt: null,
+        executed: false,
+        actionEvents: [],
+      };
+    }
+
+    return {
+      state: committed.state,
+      version: Number(committed.version),
+      turnDeadlineAt: committed.turn_deadline_at ?? deadline,
+      executed: true,
+      actionEvents: (committed.action_events ?? []) as OkeyActionEvent[],
+    };
+  } catch {
     return {
       state: options.state,
       version: options.version,
@@ -659,38 +737,6 @@ export async function reconcileAuthoritativeNextRound(options: {
       actionEvents: [],
     };
   }
-
-  const committedVersion = Number((commit as { version: number }).version);
-  const committedDeadline = (commit as { turn_deadline_at?: string | null }).turn_deadline_at ?? deadline;
-  const committedState = (commit as { state?: OkeyAuthoritativeMatchState }).state ?? nextState;
-  const committedActionEvents = (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [];
-  const committedPublicProjection = projectOkeyMatchPublicState(
-    committedState,
-    committedVersion,
-    committedDeadline,
-  );
-
-  if (options.broadcastStateUpdate) {
-    try {
-      await options.broadcastStateUpdate({
-        matchId: options.matchId,
-        commandId,
-        version: committedVersion,
-        publicProjection: committedPublicProjection,
-        actionEvents: committedActionEvents,
-      });
-    } catch (broadcastError) {
-      console.error("Okey next-round broadcast failed", broadcastError);
-    }
-  }
-
-  return {
-    state: committedState,
-    version: committedVersion,
-    turnDeadlineAt: committedDeadline,
-    executed: true,
-    actionEvents: committedActionEvents,
-  };
 }
 
 export type OkeyMatchStartReconcileResult<TRoom = any> = {
@@ -718,11 +764,11 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
   ];
   startingPlayerIndex?: number;
   now?: () => number;
-startRoomAction?: (input: {
-  state: OkeyAuthoritativeMatchState;
-  projection: OkeyMatchServerProjection;
-  turnDeadlineAt: string | null;
-}) => Promise<{ data: TRoom | null; error: any }>;
+  startRoomAction?: (input: {
+    state: OkeyAuthoritativeMatchState;
+    projection: OkeyMatchServerProjection;
+    turnDeadlineAt: string | null;
+  }) => Promise<{ data: TRoom | null; error: any }>;
 }): Promise<OkeyMatchStartReconcileResult<TRoom>> {
   const getNow = options.now ?? Date.now;
   const state = createAuthoritativeOkeyMatch(
@@ -937,6 +983,47 @@ export async function reconcileAuthoritativeServerTurns(options: {
       currentVersion = nextRoundResult.version;
       currentDeadline = nextRoundResult.turnDeadlineAt;
       allActionEvents.push(...nextRoundResult.actionEvents);
+      // Controlled continuation: if starting player of the new round is a bot (with 15 tiles),
+      // execute at most 1 bot turn (discarding starting 15th tile) and then break.
+      const postNextRoundDecision = evaluateOkeyServerLifecycle({ state: currentState, version: currentVersion, turn_deadline_at: currentDeadline }, getNow());
+      if (postNextRoundDecision.type === "bot-turn" && postNextRoundDecision.ready) {
+        const requesterId = options.requesterUserId || postNextRoundDecision.expectedActorId;
+        const botResult = await executeOkeyBotTurn(
+          {
+            matchId: options.matchId,
+            requesterUserId: requesterId,
+            expectedVersion: postNextRoundDecision.expectedVersion,
+            expectedActorId: postNextRoundDecision.expectedActorId,
+          },
+          {
+            client: options.client,
+            deterministicCommandId:
+              options.deterministicCommandId ??
+              (async (src: string) => generateOkeyReconcilerCommandId(options.matchId, "bot", currentVersion, src)),
+            now: getNow,
+            broadcastStateUpdate: options.broadcastStateUpdate,
+          },
+        );
+
+        if (botResult.ok && botResult.processed && botResult.finalVersion) {
+          botProcessed = true;
+          transitions += (botResult.steps?.length ?? 1);
+
+          const { data: bundleRaw } = await options.client
+            .rpc("okey_get_authoritative_bundle", {
+              p_match_id: options.matchId,
+              p_user_id: requesterId,
+              p_command_id: null,
+            })
+            .single();
+
+          if (bundleRaw) {
+            currentState = bundleRaw.state as OkeyAuthoritativeMatchState;
+            currentVersion = Number(bundleRaw.version);
+            currentDeadline = bundleRaw.turn_deadline_at as string | null;
+          }
+        }
+      }
       break;
     }
 
@@ -1063,6 +1150,7 @@ export type OkeyServerLifecycleWakeupOptions = {
   initialState?: OkeyAuthoritativeMatchState;
   initialVersion?: number;
   eligibleAt?: string | null;
+  turnDeadlineAt?: string | null;
   broadcastStateUpdate?: (input: {
     matchId: string;
     commandId: string;
@@ -1085,6 +1173,9 @@ export type OkeyServerLifecycleWakeupResult = {
   attempts: number;
   reason:
     | "next_round_started"
+    | "timeout_executed"
+    | "bot_executed"
+    | "eliminated_executed"
     | "match_finished"
     | "already_transitioned"
     | "max_duration_exceeded"
@@ -1115,29 +1206,83 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
   const matchId = options.matchId;
   const requesterUserId = options.requesterUserId ?? "server-lifecycle-wake-up";
 
+  let currentState: OkeyAuthoritativeMatchState | null = options.initialState ?? null;
+  let currentVersion: number | null = options.initialVersion !== undefined ? Number(options.initialVersion) : null;
+  let currentDeadline: string | null = options.turnDeadlineAt ?? null;
+
+  if (!currentState || currentVersion === null) {
+    const { data: initialBundle } = await options.client
+      .rpc("okey_get_authoritative_bundle", {
+        p_match_id: matchId,
+        p_user_id: requesterUserId,
+        p_command_id: null,
+      })
+      .single();
+
+    if (initialBundle) {
+      currentState = initialBundle.state as OkeyAuthoritativeMatchState;
+      currentVersion = Number(initialBundle.version);
+      currentDeadline = initialBundle.turn_deadline_at as string | null;
+    }
+  }
+
+  if (
+    options.initialVersion !== undefined &&
+    currentVersion !== null &&
+    currentVersion !== Number(options.initialVersion)
+  ) {
+    return {
+      ok: true,
+      executed: false,
+      state: currentState,
+      version: currentVersion,
+      attempts: 0,
+      reason: "already_transitioned",
+    };
+  }
+
   // Step 1: Wait for eligibleAt (minimum 3 seconds delay)
-  const eligibleAt = options.eligibleAt ?? options.initialState?.nextRoundEligibleAt ?? null;
+  const currentPlayer = currentState?.roundState.players[currentState.roundState.currentPlayerIndex] ?? null;
+  const currentPlayerIsBot = currentPlayer ? isOkeyBotControlled(currentPlayer) : false;
+  const botNotBefore = currentPlayerIsBot ? currentState?.roundStartsAt ?? null : null;
+  const isTurnTimeoutWakeup = Boolean(
+    options.turnDeadlineAt ||
+    (!options.eligibleAt && !currentPlayerIsBot && currentDeadline),
+  );
+  const isNextRoundWakeup = Boolean(options.eligibleAt || currentState?.roundState.phase === "finished");
+  const targetDeadline =
+    options.eligibleAt ??
+    options.turnDeadlineAt ??
+    (currentState?.roundState.phase === "finished"
+      ? currentState?.nextRoundEligibleAt
+      : currentPlayerIsBot
+        ? botNotBefore
+        : currentDeadline);
+  const eligibleAt = targetDeadline;
+  let refreshAfterInitialSleep = false;
   if (eligibleAt) {
     const eligibleAtMs = Date.parse(eligibleAt);
     if (Number.isFinite(eligibleAtMs)) {
       const initialDelay = Math.max(0, eligibleAtMs - getNow());
       if (initialDelay > 0) {
         await sleep(initialDelay);
+        refreshAfterInitialSleep = true;
       }
     }
   }
 
+  const retryStartTime = getNow();
   let attempts = 0;
 
   // Step 2 & 3: Run Reconciler and retry up to maxDurationMs (8 seconds)
-  while (getNow() - startTime <= maxDurationMs) {
+  while (getNow() - retryStartTime <= maxDurationMs) {
     attempts += 1;
 
-    let currentState: OkeyAuthoritativeMatchState | null = options.initialState ?? null;
-    let currentVersion: number | null = options.initialVersion !== undefined ? Number(options.initialVersion) : null;
-    let currentDeadline: string | null = null;
 
-    if (attempts > 1 || !currentState || currentVersion === null) {
+
+
+
+    if (refreshAfterInitialSleep || attempts > 1 || !currentState || currentVersion === null) {
       const { data: bundleRaw, error: bundleError } = await options.client
         .rpc("okey_get_authoritative_bundle", {
           p_match_id: matchId,
@@ -1147,7 +1292,7 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
         .single();
 
       if (bundleError || !bundleRaw) {
-        if (getNow() - startTime + retryIntervalMs <= maxDurationMs) {
+        if (getNow() - retryStartTime + retryIntervalMs <= maxDurationMs) {
           await sleep(retryIntervalMs);
           continue;
         }
@@ -1157,10 +1302,25 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
       currentState = bundleRaw.state as OkeyAuthoritativeMatchState;
       currentVersion = Number(bundleRaw.version);
       currentDeadline = bundleRaw.turn_deadline_at as string | null;
+      refreshAfterInitialSleep = false;
     }
 
     if (!currentState || currentVersion === null) {
       break;
+    }
+
+    if (
+      options.initialVersion !== undefined &&
+      currentVersion !== Number(options.initialVersion)
+    ) {
+      return {
+        ok: true,
+        executed: false,
+        state: currentState,
+        version: currentVersion,
+        attempts,
+        reason: "already_transitioned",
+      };
     }
 
     if (currentState.matchFinished) {
@@ -1174,7 +1334,18 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
       };
     }
 
-    if (currentState.roundState.phase !== "finished") {
+    if (isNextRoundWakeup && currentState.roundState.phase !== "finished") {
+      return {
+        ok: true,
+        executed: false,
+        state: currentState,
+        version: currentVersion,
+        attempts,
+        reason: "already_transitioned",
+      };
+    }
+
+    if (isTurnTimeoutWakeup && options.initialVersion !== undefined && currentVersion > options.initialVersion) {
       return {
         ok: true,
         executed: false,
@@ -1197,9 +1368,42 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
       now: getNow,
     });
 
+    if (reconcileResult.executedTimeoutCount > 0) {
+      return {
+        ok: true,
+        executed: true,
+        state: reconcileResult.state,
+        version: reconcileResult.version,
+        attempts,
+        reason: "timeout_executed",
+      };
+    }
+
+    if (reconcileResult.botProcessed) {
+      return {
+        ok: true,
+        executed: true,
+        state: reconcileResult.state,
+        version: reconcileResult.version,
+        attempts,
+        reason: "bot_executed",
+      };
+    }
+
+    if (reconcileResult.executedEliminatedCount > 0) {
+      return {
+        ok: true,
+        executed: true,
+        state: reconcileResult.state,
+        version: reconcileResult.version,
+        attempts,
+        reason: "eliminated_executed",
+      };
+    }
+
     if (
       reconcileResult.executedNextRoundCount > 0 ||
-      reconcileResult.state.roundState.phase !== "finished" ||
+      (isNextRoundWakeup && reconcileResult.state.roundState.phase !== "finished") ||
       reconcileResult.state.matchFinished
     ) {
       return {
@@ -1212,7 +1416,7 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
       };
     }
 
-    const elapsed = getNow() - startTime;
+    const elapsed = getNow() - retryStartTime;
     if (elapsed + retryIntervalMs > maxDurationMs) {
       break;
     }
@@ -1233,7 +1437,8 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
     if (finalBundle) {
       const state = finalBundle.state as OkeyAuthoritativeMatchState;
       const ver = Number(finalBundle.version);
-      if (!state.matchFinished && state.roundState.phase === "finished") {
+      if (!state.matchFinished) {
+        if (state.roundState.phase === "finished") {
         const finalReconcile = await reconcileAuthoritativeServerTurns({
           client: options.client,
           matchId,
@@ -1256,6 +1461,30 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
             reason: "next_round_started",
           };
         }
+        } else if (isTurnTimeoutWakeup && (options.initialVersion === undefined || ver <= options.initialVersion)) {
+          const finalReconcile = await reconcileAuthoritativeServerTurns({
+            client: options.client,
+            matchId,
+            requesterUserId,
+            state,
+            version: ver,
+            turnDeadlineAt: finalBundle.turn_deadline_at as string | null,
+            broadcastStateUpdate: options.broadcastStateUpdate,
+            deterministicCommandId: options.deterministicCommandId,
+            now: getNow,
+          });
+
+          if (finalReconcile.executedTimeoutCount > 0) {
+            return {
+              ok: true,
+              executed: true,
+              state: finalReconcile.state,
+              version: finalReconcile.version,
+              attempts: attempts + 1,
+              reason: "timeout_executed",
+            };
+          }
+        }
       }
     }
   } catch (err) {
@@ -1271,4 +1500,8 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
     reason: "max_duration_exceeded",
   };
 }
+
+export const reconcileAuthoritativeServerScheduler = reconcileAuthoritativeServerLifecycleWakeup;
+
+
 

@@ -12,7 +12,8 @@ export type OkeyTurnController =
   | "disconnect"
   | "reconnect"
   | "manual-leave"
-  | "elimination";
+  | "elimination"
+  | "next-round";
 
 export type OkeyTurnCommit<TState, TEvent> = {
   applied?: boolean;

@@ -6,7 +6,6 @@ import type {
   OkeyMatchServerProjection,
 } from "../../../okey/server/okey-authoritative.ts";
 import type { OkeyActionEvent } from "../../../okey/server/okey-action-events.ts";
-import { reconcileAuthoritativeServerTurns } from "../../../okey/server/okey-server-reconciler.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 
 const MATCH_LIMIT = 100;
@@ -18,20 +17,6 @@ type MatchRow = {
   settlement_at: string | null;
   is_test: boolean;
   public_projection: OkeyMatchServerProjection;
-};
-
-type RecoverableRoundRow = {
-  id: string;
-  version: number | string;
-  status: "playing";
-  next_round_eligible_at: string;
-};
-
-type PlayingMatchRow = {
-  id: string;
-  version: number | string;
-  status: "playing";
-  turn_deadline_at?: string | null;
 };
 
 function json(body: unknown, status = 200) {
@@ -98,28 +83,17 @@ serve(async (request) => {
     .limit(MATCH_LIMIT);
 
   if (matchesError) {
-    console.error(
-      "Okey maintenance match query failed",
-      matchesError,
-    );
-
-    return json(
-      {
-        error: "match_query_failed",
-        details: matchesError.message,
-      },
-      500,
-    );
+    console.error("Okey maintenance settlement query failed", matchesError);
+    return json({
+      error: "match_query_failed",
+      details: matchesError.message,
+    }, 500);
   }
 
   let recoveredSettlements = 0;
   let skipped = 0;
   let failed = 0;
-
-  const failures: Array<{
-    matchId: string;
-    error: string;
-  }> = [];
+  const failures: Array<{ matchId: string; error: string }> = [];
 
   for (const match of (settlementMatches ?? []) as MatchRow[]) {
     try {
@@ -134,8 +108,10 @@ serve(async (request) => {
           .eq("id", match.id)
           .eq("is_test", true)
           .is("settlement_at", null);
+
         if (testSettlementError) throw new Error(testSettlementError.message);
         recoveredSettlements += 1;
+
         try {
           await broadcast(
             match.id,
@@ -147,54 +123,43 @@ serve(async (request) => {
           );
         } catch (broadcastError) {
           console.error(
-            `Okey test recovery broadcast failed for ${match.id}`,
+            `Okey test settlement recovery broadcast failed for ${match.id}`,
             broadcastError,
           );
         }
         continue;
       }
-      const { data: stateRow, error: stateError } =
-        await service
-          .schema("okey")
-          .from("match_private_states")
-          .select("state")
-          .eq("match_id", match.id)
-          .single();
+
+      const { data: stateRow, error: stateError } = await service
+        .schema("okey")
+        .from("match_private_states")
+        .select("state")
+        .eq("match_id", match.id)
+        .single();
 
       if (stateError || !stateRow) {
         skipped += 1;
         continue;
       }
 
-      const state =
-        stateRow.state as OkeyAuthoritativeMatchState;
-
+      const state = stateRow.state as OkeyAuthoritativeMatchState;
       if (!state.matchFinished) {
         skipped += 1;
         continue;
       }
 
       const winnerTeamId = state.matchWinnerTeamId;
-
-      if (
-        !winnerTeamId &&
-        state.leaveTerminationReason !== "no-humans"
-      ) {
-        throw new Error(
-          "finished_match_missing_winner_team",
-        );
+      if (!winnerTeamId && state.leaveTerminationReason !== "no-humans") {
+        throw new Error("finished_match_missing_winner_team");
       }
 
-      const { error: settlementError } =
-        await service.rpc("okey_settle_match", {
-          p_match_id: match.id,
-          p_winner_team_id: winnerTeamId,
-        });
+      const { error: settlementError } = await service.rpc("okey_settle_match", {
+        p_match_id: match.id,
+        p_winner_team_id: winnerTeamId,
+      });
 
       if (settlementError) {
-        throw new Error(
-          `settlement_recovery_failed: ${settlementError.message}`,
-        );
+        throw new Error(`settlement_recovery_failed: ${settlementError.message}`);
       }
 
       recoveredSettlements += 1;
@@ -209,199 +174,12 @@ serve(async (request) => {
           match.public_projection,
         );
       } catch (broadcastError) {
-        console.error(
-          `Okey recovery broadcast failed for ${match.id}`,
-          broadcastError,
-        );
+        console.error(`Okey settlement recovery broadcast failed for ${match.id}`, broadcastError);
       }
     } catch (error) {
       failed += 1;
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : "unknown_maintenance_error";
-
-      console.error(
-        `Okey maintenance failed for match ${match.id}`,
-        error,
-      );
-
-      failures.push({
-        matchId: match.id,
-        error: message,
-      });
-    }
-  }
-
-  const maintenanceNow = new Date().toISOString();
-  const { data: recoverableRounds, error: recoveryQueryError } = await service
-    .schema("okey")
-    .from("matches")
-    .select("id, version, status, next_round_eligible_at")
-    .eq("status", "playing")
-    .not("next_round_eligible_at", "is", null)
-    .lte("next_round_eligible_at", maintenanceNow)
-    .order("next_round_eligible_at", { ascending: true })
-    .limit(MATCH_LIMIT);
-
-  if (recoveryQueryError) {
-    return json(
-      {
-        error: "next_round_recovery_query_failed",
-        details: recoveryQueryError.message,
-      },
-      500,
-    );
-  }
-
-  let recoveredRounds = 0;
-  let recoveryConflicts = 0;
-
-  for (const match of (recoverableRounds ?? []) as RecoverableRoundRow[]) {
-    try {
-      const { data: stateRow, error: stateError } = await service
-        .schema("okey")
-        .from("match_private_states")
-        .select("state")
-        .eq("match_id", match.id)
-        .single();
-
-      if (stateError || !stateRow) {
-        skipped += 1;
-        continue;
-      }
-
-      const state = stateRow.state as OkeyAuthoritativeMatchState;
-      const eligibleAtMs = Date.parse(state.nextRoundEligibleAt ?? "");
-      if (
-        state.matchFinished ||
-        state.roundState.phase !== "finished" ||
-        !Number.isFinite(eligibleAtMs) ||
-        eligibleAtMs > Date.now()
-      ) {
-        skipped += 1;
-        continue;
-      }
-
-      const { data: claimantSeat, error: seatError } = await service
-        .schema("okey")
-        .from("match_seats")
-        .select("user_id")
-        .eq("match_id", match.id)
-        .order("player_index", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (seatError || !claimantSeat?.user_id) {
-        skipped += 1;
-        continue;
-      }
-
-      const serverReconcile = await reconcileAuthoritativeServerTurns({
-        client: service,
-        matchId: match.id,
-        requesterUserId: claimantSeat.user_id,
-        state,
-        version: Number(match.version),
-        turnDeadlineAt: null,
-        deterministicCommandId,
-        broadcastStateUpdate: async (payload) => {
-          await broadcast(
-            match.id,
-            payload.commandId,
-            payload.version,
-            payload.publicProjection,
-            payload.actionEvents,
-          );
-        },
-      });
-
-      if (serverReconcile.executedNextRoundCount > 0) {
-        recoveredRounds += serverReconcile.executedNextRoundCount;
-      }
-    } catch (error) {
-      failed += 1;
-      const message = error instanceof Error ? error.message : "unknown_recovery_error";
-      failures.push({ matchId: match.id, error: message });
-    }
-  }
-
-  const { data: playingMatches, error: botRecoveryQueryError } = await service
-    .schema("okey")
-    .from("matches")
-    .select("id, version, status, turn_deadline_at")
-    .eq("status", "playing")
-    .order("updated_at", { ascending: true })
-    .limit(MATCH_LIMIT);
-
-  if (botRecoveryQueryError) {
-    return json(
-      {
-        error: "bot_recovery_query_failed",
-        details: botRecoveryQueryError.message,
-      },
-      500,
-    );
-  }
-
-  let serverTurnsReconciled = 0;
-
-  for (const match of (playingMatches ?? []) as PlayingMatchRow[]) {
-    try {
-      const { data: stateRow, error: stateError } = await service
-        .schema("okey")
-        .from("match_private_states")
-        .select("state")
-        .eq("match_id", match.id)
-        .single();
-
-      if (stateError || !stateRow) {
-        skipped += 1;
-        continue;
-      }
-
-      const { data: seat } = await service
-        .schema("okey")
-        .from("match_seats")
-        .select("user_id")
-        .eq("match_id", match.id)
-        .is("membership_released_at", null)
-        .order("player_index", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      const requesterUserId = seat?.user_id ?? "maintenance-worker";
-
-      const serverReconcile = await reconcileAuthoritativeServerTurns({
-        client: service,
-        matchId: match.id,
-        requesterUserId,
-        state: stateRow.state as OkeyAuthoritativeMatchState,
-        version: Number(match.version),
-        turnDeadlineAt: match.turn_deadline_at ?? null,
-        deterministicCommandId,
-        broadcastStateUpdate: async (payload) => {
-          await broadcast(
-            match.id,
-            payload.commandId,
-            payload.version,
-            payload.publicProjection,
-            payload.actionEvents,
-          );
-        },
-      });
-
-      if (
-        serverReconcile.executedTimeoutCount > 0 ||
-        serverReconcile.botProcessed ||
-        serverReconcile.executedEliminatedCount > 0
-      ) {
-        serverTurnsReconciled += 1;
-      }
-    } catch (error) {
-      failed += 1;
-      const message = error instanceof Error ? error.message : "unknown_reconcile_error";
+      const message = error instanceof Error ? error.message : "unknown_maintenance_error";
+      console.error(`Okey maintenance settlement recovery failed for match ${match.id}`, error);
       failures.push({ matchId: match.id, error: message });
     }
   }
@@ -409,13 +187,9 @@ serve(async (request) => {
   return json({
     scanned: settlementMatches?.length ?? 0,
     recoveredSettlements,
-    recoverableRoundsScanned: recoverableRounds?.length ?? 0,
-    recoveredRounds,
-    recoveryConflicts,
-    playingMatchesScanned: playingMatches?.length ?? 0,
-    serverTurnsReconciled,
     skipped,
     failed,
     failures,
   });
 });
+

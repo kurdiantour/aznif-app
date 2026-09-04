@@ -25,6 +25,7 @@ import { executeOkeyBotTurn } from "../../../okey/server/okey-bot-executor.ts";
 import { reconcileAuthoritativeServerLifecycleWakeup } from "../../../okey/server/okey-server-reconciler.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
+import { handOffOkeyBotTurn, handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
@@ -122,6 +123,9 @@ serve(async (req) => {
       match_id,
       expected_version,
       expected_actor_id,
+      lifecycle_only = false,
+      eligible_at,
+      turn_deadline_at,
     } = await req.json();
     if (mode !== "1v1" && mode !== "2v2" && mode !== "okey")
       return json({ error: "Invalid mode" }, 400);
@@ -140,6 +144,72 @@ serve(async (req) => {
         return json({ error: "Unauthorized" }, 401);
       }
       if (!match_id) return json({ error: "Missing match_id" }, 400);
+
+      if (lifecycle_only === true) {
+        const { data: seat, error: seatError } = await svc
+          .schema("okey")
+          .from("match_seats")
+          .select("user_id")
+          .eq("match_id", match_id)
+          .order("player_index", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (seatError) throw seatError;
+
+        const requesterUserId = seat?.user_id ?? "server-lifecycle-worker";
+        const edgeRuntime = (globalThis as any).EdgeRuntime;
+        const lifecyclePromise = reconcileAuthoritativeServerLifecycleWakeup({
+          client: svc,
+          matchId: match_id,
+          requesterUserId,
+          deterministicCommandId,
+          ...(Number.isSafeInteger(expected_version) && expected_version >= 0
+            ? { initialVersion: Number(expected_version) }
+            : {}),
+          eligibleAt: typeof eligible_at === "string" ? eligible_at : null,
+          turnDeadlineAt: typeof turn_deadline_at === "string" ? turn_deadline_at : null,
+          broadcastStateUpdate: async (payload: any) => {
+            const channel = svc.channel(`okey-match:${match_id}`);
+            await channel.send({
+              type: "broadcast",
+              event: "state_update",
+              payload,
+            });
+            await svc.removeChannel(channel);
+          },
+        }).then(async (result: any) => {
+          if (
+            result?.executed === true &&
+            result?.state &&
+            result.state.matchFinished !== true &&
+            Number.isSafeInteger(result.version) &&
+            SUPABASE_URL &&
+            OKEY_WORKER_SECRET
+          ) {
+            await handOffOkeyServerLifecycle({
+              supabaseUrl: SUPABASE_URL,
+              workerSecret: OKEY_WORKER_SECRET,
+              matchId: match_id,
+              expectedVersion: Number(result.version),
+              eligibleAt: result.state.roundState?.phase === "finished"
+                ? result.state.nextRoundEligibleAt ?? null
+                : null,
+            });
+          }
+          return result;
+        }).catch((error: any) => {
+          console.error("okey_lifecycle_worker_error", match_id, error);
+        });
+
+        if (edgeRuntime?.waitUntil) {
+          edgeRuntime.waitUntil(lifecyclePromise);
+          return json({ ok: true, accepted: true, mode: "okey-lifecycle" }, 202);
+        }
+
+        await lifecyclePromise;
+        return json({ ok: true, accepted: true, mode: "okey-lifecycle" });
+      }
+
       if (
         !Number.isSafeInteger(expected_version) ||
         expected_version < 0 ||
@@ -199,33 +269,25 @@ serve(async (req) => {
           matchId: string;
           state: any;
           version: number;
-          eligibleAt: string;
+          eligibleAt?: string;
+          turnDeadlineAt?: string;
         }) => {
+          if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
           const edgeRuntime = (globalThis as any).EdgeRuntime;
-          const wakeUpPromise = reconcileAuthoritativeServerLifecycleWakeup({
-            client: svc,
+          const handoffPromise = handOffOkeyServerLifecycle({
+            supabaseUrl: SUPABASE_URL,
+            workerSecret: OKEY_WORKER_SECRET,
             matchId: wakeupInput.matchId,
-            requesterUserId,
-            initialState: wakeupInput.state,
-            initialVersion: wakeupInput.version,
-            eligibleAt: wakeupInput.eligibleAt,
-            deterministicCommandId,
-            broadcastStateUpdate: async (payload: any) => {
-              const channel = svc.channel(`okey-match:${wakeupInput.matchId}`);
-              await channel.send({
-                type: "broadcast",
-                event: "state_update",
-                payload,
-              });
-              await svc.removeChannel(channel);
-            },
-          }).catch((wakeUpError: any) => {
-            console.error("Server lifecycle wake-up failed for match", wakeupInput.matchId, wakeUpError);
+            expectedVersion: wakeupInput.version,
+            eligibleAt: wakeupInput.eligibleAt ?? null,
+            turnDeadlineAt: wakeupInput.turnDeadlineAt ?? null,
+          }).catch((wakeupError: any) => {
+            console.error("Server lifecycle handoff failed for match", wakeupInput.matchId, wakeupError);
           });
           if (edgeRuntime?.waitUntil) {
-            edgeRuntime.waitUntil(wakeUpPromise);
+            edgeRuntime.waitUntil(handoffPromise);
           } else {
-            void wakeUpPromise;
+            await handoffPromise;
           }
         },
       });
@@ -489,5 +551,3 @@ serve(async (req) => {
     return json({ error: failure.message, failure }, 500);
   }
 });
-
-

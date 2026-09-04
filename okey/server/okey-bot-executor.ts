@@ -63,7 +63,8 @@ export type OkeyBotExecutorDependencies = {
     matchId: string;
     state: OkeyAuthoritativeMatchState;
     version: number;
-    eligibleAt: string;
+    eligibleAt?: string;
+    turnDeadlineAt?: string;
   }) => Promise<void>;
 };
 
@@ -401,18 +402,27 @@ if (currentState.roundState.phase !== "playing") {
         return completed("round_finished");
       }
 
-      if (dependencies.dispatchContinuation) {
-        const nextClaim = getOkeyBotTurnClaim(currentState, currentVersion);
-        if (nextClaim) {
-          try {
-            await dependencies.dispatchContinuation({
-              matchId: input.matchId,
-              state: currentState,
-              version: currentVersion,
-            });
-          } catch (continuationError) {
-            console.error(`Okey bot continuation dispatch failed for ${input.matchId}`, continuationError);
-          }
+      const nextClaim = getOkeyBotTurnClaim(currentState, currentVersion);
+      if (nextClaim && dependencies.dispatchContinuation) {
+        try {
+          await dependencies.dispatchContinuation({
+            matchId: input.matchId,
+            state: currentState,
+            version: currentVersion,
+          });
+        } catch (continuationError) {
+          console.error(`Okey bot continuation dispatch failed for ${input.matchId}`, continuationError);
+        }
+      } else if (!nextClaim && committedDeadline && dependencies.dispatchLifecycleWakeup) {
+        try {
+          await dependencies.dispatchLifecycleWakeup({
+            matchId: input.matchId,
+            state: currentState,
+            version: currentVersion,
+            turnDeadlineAt: committedDeadline,
+          });
+        } catch (wakeupError) {
+          console.error(`Okey bot human-timeout wakeup dispatch failed for ${input.matchId}`, wakeupError);
         }
       }
     }
@@ -424,4 +434,5 @@ if (currentState.roundState.phase !== "playing") {
     return { ok: false, processed: false, error: message };
   }
 }
+
 

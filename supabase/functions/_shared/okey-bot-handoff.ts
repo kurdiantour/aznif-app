@@ -60,3 +60,37 @@ export async function handOffOkeyBotTurn(input: {
   }
   return true;
 }
+
+export async function handOffOkeyServerLifecycle(input: {
+  supabaseUrl: string;
+  workerSecret: string;
+  matchId: string;
+  expectedVersion?: number;
+  eligibleAt?: string | null;
+  turnDeadlineAt?: string | null;
+}): Promise<boolean> {
+  const response = await fetch(`${input.supabaseUrl}/functions/v1/process_bot_turns`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-okey-worker-key": input.workerSecret,
+    },
+    body: JSON.stringify({
+      mode: "okey",
+      match_id: input.matchId,
+      lifecycle_only: true,
+      ...(Number.isSafeInteger(input.expectedVersion)
+        ? { expected_version: input.expectedVersion }
+        : {}),
+      ...(input.eligibleAt ? { eligible_at: input.eligibleAt } : {}),
+      ...(input.turnDeadlineAt ? { turn_deadline_at: input.turnDeadlineAt } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`okey_lifecycle_handoff_failed:${response.status}:${await response.text()}`);
+  }
+  return true;
+}
+
+

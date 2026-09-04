@@ -7,7 +7,7 @@ import {
   type OkeyTurnController,
 } from "../../../lib/multiplayer/okey/okey-turn-engine.ts";
 
-for (const controller of ["human", "bot", "timeout", "disconnect", "reconnect", "manual-leave", "elimination"] as const satisfies readonly OkeyTurnController[]) {
+for (const controller of ["human", "bot", "timeout", "disconnect", "reconnect", "manual-leave", "elimination", "next-round"] as const satisfies readonly OkeyTurnController[]) {
   test(`${controller} uses Validate -> Commit -> Advance -> Broadcast`, async () => {
     const stages: string[] = [];
     const result = await executeAuthoritativeOkeyTurn({
@@ -99,5 +99,6 @@ test("Okey lifecycle entry points share the existing turn engine", () => {
   assert.match(room, /controller: action === "reconnect" \? "reconnect" : "disconnect"/);
   assert.match(reconciler, /controller: "elimination"/);
   assert.match(reconciler, /controller: "timeout"/);
+  assert.match(reconciler, /controller: "next-round"/);
   assert.doesNotMatch(room, /from ["'].*domino/);
 });

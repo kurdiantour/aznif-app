@@ -427,7 +427,13 @@ export class SupabaseOkeyMatchAdapter
         action: "manual-leave",
         expectedVersion: await this.requireSnapshotVersion(),
       }),
-      { refreshOnError: false },
+      {
+        refreshOnError: false,
+        notAppliedOnError: (body) =>
+          body?.error === "version_conflict" ||
+          body?.error === "manual_leave_retry_fetch_failed" ||
+          body?.error === "manual_leave_retry_exhausted",
+      },
     );
 
     await leaveOkeyRoom(
@@ -832,3 +838,4 @@ export class SupabaseOkeyMatchAdapter
     this.channel = null;
   }
 }
+
