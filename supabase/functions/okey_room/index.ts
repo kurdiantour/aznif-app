@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import { reconcileAuthoritativeMatchStart } from "../../../okey/server/okey-server-reconciler.ts";
+import { executeAuthoritativeOkeyTurn } from "../../../lib/multiplayer/okey/okey-turn-engine.ts";
 
 type OkeyCurrency = "fun" | "aznif";
 
@@ -501,6 +502,7 @@ serve(async (req) => {
     }
   }
   let room: OkeyRoomSnapshot | null = null;
+  let lifecycleBroadcasted = false;
   let roomError: { message: string } | null = null;
 
   if (action === "matchmake" && activeParty) {
@@ -522,6 +524,44 @@ serve(async (req) => {
     }
     const snapshot = await callRoomAction("status", { p_match_id: String(allocation.data) });
     room = snapshot.data; roomError = snapshot.error;
+  } else if (action === "reconnect" || action === "leave") {
+    try {
+      const lifecycle = await executeAuthoritativeOkeyTurn({
+        controller: action === "reconnect" ? "reconnect" : "disconnect",
+        matchId: body.matchId as string,
+        actorPlayerId: authData.user.id,
+        commandId: `${action}:${body.matchId}:${authData.user.id}`,
+        commandType: `seat-${action}`,
+        expectedVersion: 0,
+        intent: action,
+        validate: () => ({
+          state: null as OkeyRoomSnapshot | null,
+          projection: null,
+          deadline: null,
+          status: "playing" as const,
+          actionEvents: [] as never[],
+        }),
+        commit: async () => {
+          const result = await callRoomAction(action);
+          if (result.error || !result.data) throw new Error(result.error?.message ?? "room_lifecycle_commit_failed");
+          return { applied: true, version: result.data.version, state: result.data, turn_deadline_at: null, action_events: [] };
+        },
+        advance: async (committed) => committed,
+        broadcast: async (committed) => {
+          const channel = service.channel(`okey-room:${committed.matchId}`);
+          await channel.send({ type: "broadcast", event: "invalidate", payload: {
+            matchId: committed.matchId,
+            status: committed.state.status,
+            version: committed.version,
+          }});
+          await service.removeChannel(channel);
+        },
+      });
+      room = lifecycle.committed.state;
+      lifecycleBroadcasted = true;
+    } catch (error) {
+      roomError = { message: error instanceof Error ? error.message : "room_lifecycle_failed" };
+    }
   } else {
     const result = await callRoomAction(action);
     room = result.data; roomError = result.error;
@@ -926,10 +966,10 @@ serve(async (req) => {
   }
 
   if (
-    (
+    ((
       action !== "status" &&
       action !== "heartbeat"
-    ) ||
+    ) && !lifecycleBroadcasted) ||
     startedMatch
   ) {
     const channel = service.channel(

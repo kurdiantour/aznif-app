@@ -19,6 +19,7 @@ import {
   type OkeyActionEvent,
 } from "./okey-action-events.ts";
 import { executeOkeyBotTurn } from "./okey-bot-executor.ts";
+import { executeAuthoritativeOkeyTurn, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
 
 export type OkeyAuthoritativeSnapshotBundle = {
   version: number | string;
@@ -325,52 +326,73 @@ export async function reconcileAuthoritativeEliminatedTurns(options: {
       deadline,
     );
 
-    const { data: commit, error: commitError } = await options.client
-      .rpc("okey_commit_authoritative_action", {
-        p_match_id: options.matchId,
-        p_user_id: actor.id,
-        p_command_id: commandId,
-        p_expected_version: currentVersion,
-        p_command_type: "system-eliminated-turn",
-        p_state: nextState,
-        p_projection: publicProjection,
-        p_status: nextState.matchFinished ? "finished" : "playing",
-        p_turn_deadline_at: deadline,
-        p_action_events: actionEventDrafts,
-      })
-      .single();
-
-    if (commitError || !commit) {
+    let committed;
+    try {
+      const turnResult = await executeAuthoritativeOkeyTurn({
+        controller: "elimination",
+        matchId: options.matchId,
+        actorPlayerId: actor.id,
+        commandId,
+        commandType: "system-eliminated-turn",
+        expectedVersion: currentVersion,
+        intent: decision,
+        validate: () => ({
+          state: nextState,
+          projection: publicProjection,
+          deadline,
+          status: nextState.matchFinished ? "finished" as const : "playing" as const,
+          actionEvents: actionEventDrafts,
+        }),
+        commit: async (prepared) => {
+          const { data, error } = await options.client.rpc("okey_commit_authoritative_action", {
+            p_match_id: options.matchId,
+            p_user_id: actor.id,
+            p_command_id: commandId,
+            p_expected_version: currentVersion,
+            p_command_type: "system-eliminated-turn",
+            p_state: prepared.state,
+            p_projection: prepared.projection,
+            p_status: prepared.status,
+            p_turn_deadline_at: prepared.deadline,
+            p_action_events: prepared.actionEvents,
+          }).single();
+          if (error || !data) throw new Error(error?.message ?? "okey_elimination_commit_failed");
+          return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
+        },
+        advance: async (value) => ({
+          ...value,
+          state: value.state ?? nextState,
+          turn_deadline_at: value.turn_deadline_at ?? deadline,
+          action_events: value.action_events ?? [],
+        }),
+        broadcast: options.broadcastStateUpdate ? async (value) => {
+          try {
+            await options.broadcastStateUpdate!({
+              matchId: options.matchId,
+              commandId,
+              version: value.version,
+              publicProjection: projectOkeyMatchPublicState(
+                value.state,
+                value.version,
+                value.turnDeadlineAt,
+              ),
+              actionEvents: value.actionEvents,
+            });
+          } catch (broadcastError) {
+            console.error("Okey eliminated turn broadcast failed", broadcastError);
+          }
+        } : undefined,
+      });
+      committed = turnResult.committed;
+      if (committed.applied === false) break;
+    } catch {
       break;
     }
 
-    if ((commit as { applied?: boolean }).applied === false) {
-      break;
-    }
-
-    const committedVersion = Number((commit as { version: number }).version);
-    const committedDeadline = (commit as { turn_deadline_at?: string | null }).turn_deadline_at ?? deadline;
-    const committedState = (commit as { state?: OkeyAuthoritativeMatchState }).state ?? nextState;
-    const committedActionEvents = (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [];
-    const committedPublicProjection = projectOkeyMatchPublicState(
-      committedState,
-      committedVersion,
-      committedDeadline,
-    );
-
-    if (options.broadcastStateUpdate) {
-      try {
-        await options.broadcastStateUpdate({
-          matchId: options.matchId,
-          commandId,
-          version: committedVersion,
-          publicProjection: committedPublicProjection,
-          actionEvents: committedActionEvents,
-        });
-      } catch (broadcastError) {
-        console.error("Okey eliminated turn broadcast failed", broadcastError);
-      }
-    }
+    const committedVersion = Number(committed.version);
+    const committedDeadline = committed.turn_deadline_at ?? deadline;
+    const committedState = committed.state ?? nextState;
+    const committedActionEvents = committed.action_events ?? [];
 
     executedCount += 1;
     currentState = committedState;
@@ -467,22 +489,67 @@ export async function reconcileAuthoritativeTimeoutTurn(options: {
     deadline,
   );
 
-  const { data: commit, error: commitError } = await options.client
-    .rpc("okey_commit_authoritative_action", {
-      p_match_id: options.matchId,
-      p_user_id: actorPlayerId,
-      p_command_id: commandId,
-      p_expected_version: options.version,
-      p_command_type: "system-timeout",
-      p_state: nextState,
-      p_projection: publicProjection,
-      p_status: nextState.matchFinished ? "finished" : "playing",
-      p_turn_deadline_at: deadline,
-      p_action_events: actionEventDrafts,
-    })
-    .single();
-
-  if (commitError || !commit || (commit as { applied?: boolean }).applied === false) {
+  try {
+    const turnResult = await executeAuthoritativeOkeyTurn({
+      controller: "timeout",
+      matchId: options.matchId,
+      actorPlayerId,
+      commandId,
+      commandType: "system-timeout",
+      expectedVersion: options.version,
+      intent: decision,
+      validate: () => ({
+        state: nextState,
+        projection: publicProjection,
+        deadline,
+        status: nextState.matchFinished ? "finished" as const : "playing" as const,
+        actionEvents: actionEventDrafts,
+      }),
+      commit: async (prepared) => {
+        const { data, error } = await options.client.rpc("okey_commit_authoritative_action", {
+          p_match_id: options.matchId,
+          p_user_id: actorPlayerId,
+          p_command_id: commandId,
+          p_expected_version: options.version,
+          p_command_type: "system-timeout",
+          p_state: prepared.state,
+          p_projection: prepared.projection,
+          p_status: prepared.status,
+          p_turn_deadline_at: prepared.deadline,
+          p_action_events: prepared.actionEvents,
+        }).single();
+        if (error || !data) throw new Error(error?.message ?? "okey_timeout_commit_failed");
+        return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
+      },
+      advance: async (committed) => ({ ...committed, state: committed.state ?? nextState, turn_deadline_at: committed.turn_deadline_at ?? deadline, action_events: committed.action_events ?? [] }),
+      broadcast: options.broadcastStateUpdate ? async (committed) => {
+        try {
+          await options.broadcastStateUpdate!({
+            matchId: options.matchId,
+            commandId,
+            version: committed.version,
+            publicProjection: projectOkeyMatchPublicState(
+              committed.state,
+              committed.version,
+              committed.turnDeadlineAt,
+            ),
+            actionEvents: committed.actionEvents,
+          });
+        } catch (broadcastError) {
+          console.error("Okey timeout broadcast failed", broadcastError);
+        }
+      } : undefined,
+    });
+    const committed = turnResult.committed;
+    if (committed.applied === false) throw new Error("okey_timeout_not_committed");
+    return {
+      state: committed.state,
+      version: Number(committed.version),
+      turnDeadlineAt: committed.turn_deadline_at ?? deadline,
+      executed: true,
+      actionEvents: committed.action_events ?? [],
+    };
+  } catch {
     return {
       state: options.state,
       version: options.version,
@@ -491,38 +558,6 @@ export async function reconcileAuthoritativeTimeoutTurn(options: {
       actionEvents: [],
     };
   }
-
-  const committedVersion = Number((commit as { version: number }).version);
-  const committedDeadline = (commit as { turn_deadline_at?: string | null }).turn_deadline_at ?? deadline;
-  const committedState = (commit as { state?: OkeyAuthoritativeMatchState }).state ?? nextState;
-  const committedActionEvents = (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [];
-  const committedPublicProjection = projectOkeyMatchPublicState(
-    committedState,
-    committedVersion,
-    committedDeadline,
-  );
-
-  if (options.broadcastStateUpdate) {
-    try {
-      await options.broadcastStateUpdate({
-        matchId: options.matchId,
-        commandId,
-        version: committedVersion,
-        publicProjection: committedPublicProjection,
-        actionEvents: committedActionEvents,
-      });
-    } catch (broadcastError) {
-      console.error("Okey timeout broadcast failed", broadcastError);
-    }
-  }
-
-  return {
-    state: committedState,
-    version: committedVersion,
-    turnDeadlineAt: committedDeadline,
-    executed: true,
-    actionEvents: committedActionEvents,
-  };
 }
 
 export type OkeyNextRoundReconcileResult = {

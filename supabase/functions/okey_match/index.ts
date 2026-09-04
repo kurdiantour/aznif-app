@@ -29,6 +29,7 @@ import {
 import { isOkeyBotControlled } from "../../../okey/engine/okey-bot-policy.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 import { handOffOkeyBotTurn } from "../_shared/okey-bot-handoff.ts";
+import { executeAuthoritativeOkeyTurn } from "../../../lib/multiplayer/okey/okey-turn-engine.ts";
 
 type OkeyAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -749,50 +750,71 @@ const bundle = bundleRaw as OkeyAuthoritativeBundle;
       body.commandId as string,
     );
 
-const {
-  data: commitRaw,
-  error: commitError,
-} = await service
-  .rpc(
-    "okey_commit_authoritative_action_with_events",
-    {
-      p_match_id: matchId,
-      p_user_id: authData.user.id,
-      p_command_id: body.commandId,
-      p_expected_version:
-        action === "manual-leave"
-          ? Number(bundle.version)
-          : (clientExpectedVersion ?? Number(bundle.version)),
-      p_command_type: commandType,
-      p_state: nextState,
-      p_projection: publicProjection,
-      p_status:
-        nextState.matchFinished
-          ? "finished"
-          : "playing",
-      p_turn_deadline_at: deadline,
-      p_gameplay_events: dailyQuestEvents,
-      p_action_events: actionEventDrafts,
-    },
-  )
-  .single();
-
-const commit =
-  commitRaw as OkeyAuthoritativeCommit | null;
-
-  if (commitError || !commit) {
-    const conflict =
-      commitError?.message.includes(
-        "version_conflict",
-      ) ?? false;
-
-    return json(
-      {
-        error: conflict
-          ? "version_conflict"
-          : "commit_failed",
-        details: commitError?.message,
+  let commit: OkeyAuthoritativeCommit;
+  try {
+    const turnResult = await executeAuthoritativeOkeyTurn({
+      controller: action === "manual-leave" ? "manual-leave" : "human",
+      matchId,
+      actorPlayerId: authData.user.id,
+      commandId: body.commandId as string,
+      commandType,
+      expectedVersion: action === "manual-leave"
+        ? Number(bundle.version)
+        : (clientExpectedVersion ?? Number(bundle.version)),
+      intent: acceptedCommand,
+      validate: () => ({
+        state: nextState,
+        projection: publicProjection,
+        deadline,
+        status: nextState.matchFinished ? "finished" as const : "playing" as const,
+        actionEvents: actionEventDrafts,
+      }),
+      commit: async (prepared) => {
+        const { data, error } = await service.rpc(
+          "okey_commit_authoritative_action_with_events",
+          {
+            p_match_id: matchId,
+            p_user_id: authData.user.id,
+            p_command_id: body.commandId,
+            p_expected_version: action === "manual-leave"
+              ? Number(bundle.version)
+              : (clientExpectedVersion ?? Number(bundle.version)),
+            p_command_type: commandType,
+            p_state: prepared.state,
+            p_projection: prepared.projection,
+            p_status: prepared.status,
+            p_turn_deadline_at: prepared.deadline,
+            p_gameplay_events: dailyQuestEvents,
+            p_action_events: prepared.actionEvents,
+          },
+        ).single();
+        if (error || !data) throw new Error(error?.message ?? "commit_failed");
+        return data as OkeyAuthoritativeCommit;
       },
+      advance: async (committed) => committed,
+      broadcast: async (committed) => {
+        try {
+          await broadcastStateUpdate(
+            committed.commandId,
+            committed.version,
+            projectOkeyMatchPublicState(
+              committed.state,
+              committed.version,
+              committed.turnDeadlineAt,
+            ),
+            committed.actionEvents,
+          );
+        } catch (broadcastError) {
+          console.error("Okey match broadcast failed", broadcastError);
+        }
+      },
+    });
+    commit = turnResult.committed;
+  } catch (commitError) {
+    const details = commitError instanceof Error ? commitError.message : String(commitError);
+    const conflict = details.includes("version_conflict");
+    return json(
+      { error: conflict ? "version_conflict" : "commit_failed", details },
       conflict ? 409 : 500,
     );
   }
@@ -805,31 +827,6 @@ const commit =
     commit.version,
     commit.turn_deadline_at,
   );
-  const committedPublicProjection = projectOkeyMatchPublicState(
-    committedState,
-    commit.version,
-    commit.turn_deadline_at,
-  );
-
-  /*
-   * The game-state broadcast must not be blocked by a later settlement
-   * failure. Clients must still learn that the authoritative match
-   * reached its committed state.
-   */
-  try {
-    await broadcastStateUpdate(
-      body.commandId as string,
-      commit.version,
-      committedPublicProjection,
-      committedActionEvents,
-    );
-  } catch (broadcastError) {
-    console.error(
-      "Okey match broadcast failed",
-      broadcastError,
-    );
-  }
-
   const serverReconcile = await reconcileAuthoritativeServerTurns({
     client: service,
     matchId,

@@ -1,4 +1,5 @@
 import { createBotTurnClaim, classifyBotTurnClaim } from "../../lib/multiplayer/core/bot-turn-orchestration.ts";
+import { executeAuthoritativeOkeyTurn, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
 import { projectSeatOwnership } from "../../lib/multiplayer/core/seat-ownership.ts";
 import { chooseBotDrawSource, prepareBotTurn } from "../engine/okey-bot-engine.ts";
 import { discardTile, drawTile } from "../engine/okey-engine.ts";
@@ -295,62 +296,70 @@ if (currentState.roundState.phase !== "playing") {
         nextVersion,
         deadline,
       );
-      const { data: commit, error: commitError } = await client
-        .rpc("okey_commit_authoritative_action", {
-          p_match_id: input.matchId,
-          p_user_id: currentPlayer.id,
-          p_command_id: commandId,
-          p_expected_version: currentVersion,
-          p_command_type: `system-bot-${botStep}`,
-          p_state: nextState,
-          p_projection: publicProjection,
-          p_status: nextState.matchFinished ? "finished" : "playing",
-          p_turn_deadline_at: deadline,
-          p_action_events: actionEventDrafts,
-        })
-        .single();
-
-      if (commitError || !commit) {
-        if (commitError?.message?.includes("version_conflict")) {
-          return completed("stale_bot_controller");
-        }
-        throw new Error(commitError?.message ?? "okey_bot_commit_failed");
-      }
-      if ((commit as { applied?: boolean }).applied === false) {
-        return completed("already_processed");
-      }
-
-      const committedVersion = Number((commit as { version: number }).version);
+      const turnResult = await executeAuthoritativeOkeyTurn({
+        controller: "bot",
+        matchId: input.matchId,
+        actorPlayerId: currentPlayer.id,
+        commandId,
+        commandType: `system-bot-${botStep}`,
+        expectedVersion: currentVersion,
+        intent: botStep,
+        validate: () => ({
+          state: nextState,
+          projection: publicProjection,
+          deadline,
+          status: nextState.matchFinished ? "finished" as const : "playing" as const,
+          actionEvents: actionEventDrafts,
+        }),
+        commit: async (prepared) => {
+          const { data, error } = await client.rpc("okey_commit_authoritative_action", {
+            p_match_id: input.matchId,
+            p_user_id: currentPlayer.id,
+            p_command_id: commandId,
+            p_expected_version: currentVersion,
+            p_command_type: `system-bot-${botStep}`,
+            p_state: prepared.state,
+            p_projection: prepared.projection,
+            p_status: prepared.status,
+            p_turn_deadline_at: prepared.deadline,
+            p_action_events: prepared.actionEvents,
+          }).single();
+          if (error || !data) {
+            if (error?.message?.includes("version_conflict")) return { applied: false, version: currentVersion, state: currentState, turn_deadline_at: bundle.turn_deadline_at, action_events: [], rejectionReason: "stale_bot_controller" };
+            throw new Error(error?.message ?? "okey_bot_commit_failed");
+          }
+          return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
+        },
+        advance: async (committed) => ({ ...committed, state: committed.state ?? nextState, turn_deadline_at: committed.turn_deadline_at ?? deadline, action_events: committed.action_events ?? [] }),
+        broadcast: async (committed) => {
+          const payload = {
+            matchId: input.matchId,
+            commandId,
+            version: committed.version,
+            publicProjection: projectOkeyMatchPublicState(
+              committed.state,
+              committed.version,
+              committed.turnDeadlineAt,
+            ),
+            actionEvents: committed.actionEvents,
+          };
+          try {
+            await (dependencies.broadcastStateUpdate
+              ? dependencies.broadcastStateUpdate(payload)
+              : defaultBroadcast(client, payload));
+          } catch (broadcastError) {
+            console.error(`Okey bot broadcast failed for ${input.matchId}`, broadcastError);
+          }
+        },
+      });
+      const commit = turnResult.committed;
+      if (commit.applied === false) return completed(commit.rejectionReason ?? "already_processed");
+      const committedVersion = Number(commit.version);
       if (!Number.isSafeInteger(committedVersion) || committedVersion !== nextVersion) {
         throw new Error("okey_bot_commit_version_mismatch");
       }
-      const committedDeadline = (commit as { turn_deadline_at?: string | null }).turn_deadline_at ?? deadline;
-      const committedState = (commit as { state?: OkeyAuthoritativeMatchState }).state ?? nextState;
-      const committedPublicProjection = projectOkeyMatchPublicState(
-        committedState,
-        committedVersion,
-        committedDeadline,
-      );
-      const actionEvents = (commit as { action_events?: OkeyActionEvent[] }).action_events ?? [];
-      try {
-        await (dependencies.broadcastStateUpdate
-            ? dependencies.broadcastStateUpdate({
-              matchId: input.matchId,
-              commandId,
-              version: committedVersion,
-              publicProjection: committedPublicProjection,
-              actionEvents,
-            })
-            : defaultBroadcast(client, {
-              matchId: input.matchId,
-              commandId,
-              version: committedVersion,
-              publicProjection: committedPublicProjection,
-              actionEvents,
-            }));
-      } catch (broadcastError) {
-        console.error(`Okey bot broadcast failed for ${input.matchId}`, broadcastError);
-      }
+      const committedDeadline = commit.turn_deadline_at ?? deadline;
+      const committedState = commit.state ?? nextState;
 
       steps.push(botStep);
       currentState = committedState;

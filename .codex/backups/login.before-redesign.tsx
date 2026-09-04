@@ -1,11 +1,11 @@
-import { useProfile } from "@/lib/profile";
+import { useProfile } from "../../lib/profile";
 import {
   getCurrentUser,
   getOrCreateProfile,
   signInWithEmail,
   signUpWithEmail,
   updateMyProfile,
-} from "@/lib/supabaseAuth";
+} from "../../lib/supabaseAuth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -86,7 +86,7 @@ export default function LoginScreen() {
     try {
       const result =
         authMode === "signup"
-          ? await signUpWithEmail(cleanEmail, password)
+          ? await signUpWithEmail(cleanEmail, password, cleanUsername)
           : await signInWithEmail(cleanEmail, password);
 
       if (result.error) {
