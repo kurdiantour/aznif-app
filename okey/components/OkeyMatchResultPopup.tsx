@@ -278,7 +278,7 @@ export function OkeyMatchResultPopup({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1002,
     elevation: 1002,
   },

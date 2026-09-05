@@ -191,7 +191,7 @@ export default function WaitingPlayersPopup({
 const styles = StyleSheet.create({
   currencyEmoji: { fontSize: 20 },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1201,
     elevation: 1201,
   },

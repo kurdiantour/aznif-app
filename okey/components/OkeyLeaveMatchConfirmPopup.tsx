@@ -85,7 +85,7 @@ export default function OkeyLeaveMatchConfirmPopup({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
     alignItems: "center",
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(9, 3, 18, 0.28)",
   },
   modal: {

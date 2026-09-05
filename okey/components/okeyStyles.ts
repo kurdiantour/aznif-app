@@ -17,7 +17,7 @@ tableSurface: {
   flex: 1,
   borderRadius: 30,
   overflow: "visible",
-},  feltTexture: { ...StyleSheet.absoluteFillObject, opacity: 0.2, borderWidth: 8, borderColor: "rgba(255,255,255,0.025)" },
+},  feltTexture: { ...StyleSheet.absoluteFill, opacity: 0.2, borderWidth: 8, borderColor: "rgba(255,255,255,0.025)" },
   opponentSeat: { position: "absolute", alignItems: "center", gap: 0, zIndex: 500, elevation: 500 },
   topSeat: { top: 8, alignSelf: "center" },
 
@@ -74,7 +74,7 @@ nameText: {
   textAlign: "center",
 },
   countText: { color: "#f8d774", fontSize: 11, fontFamily: "SpedaRegular" },
-  tableMeldLayer: { ...StyleSheet.absoluteFillObject, zIndex: 7 },
+  tableMeldLayer: { ...StyleSheet.absoluteFill, zIndex: 7 },
 meldArea: {
   alignItems: "flex-start",
 },
@@ -107,7 +107,7 @@ meldContent: {
 },
 
 eliminatedMeldOverlay: {
-  ...StyleSheet.absoluteFillObject,
+  ...StyleSheet.absoluteFill,
   zIndex: 100,
   borderRadius: 8,
   backgroundColor: "rgba(255,255,255,0.42)",
@@ -125,7 +125,7 @@ meldPreview: {
   position: "relative",
   gap: 0,
 },
-  meldDropHighlight: { ...StyleSheet.absoluteFillObject, left: -5, right: -5, top: -5, bottom: -5, borderWidth: 2, borderColor: "#f8d774", borderRadius: 7, backgroundColor: "rgba(248,215,116,0.12)", shadowColor: "#f8d774", shadowOpacity: 0.95, shadowRadius: 8, zIndex: 40, elevation: 40 },
+  meldDropHighlight: { ...StyleSheet.absoluteFill, left: -5, right: -5, top: -5, bottom: -5, borderWidth: 2, borderColor: "#f8d774", borderRadius: 7, backgroundColor: "rgba(248,215,116,0.12)", shadowColor: "#f8d774", shadowOpacity: 0.95, shadowRadius: 8, zIndex: 40, elevation: 40 },
   jokerEndpointChoice: { position: "absolute", top: "50%", marginTop: -13, minWidth: 26, height: 26, paddingHorizontal: 6, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#f8d774", borderWidth: 1, borderColor: "#fff4bd", zIndex: 80, elevation: 80, shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 3 },
   jokerEndpointChoiceStart: { left: -34 },
   jokerEndpointChoiceEnd: { right: -34 },
@@ -201,7 +201,7 @@ deckCount: {
   disabled: { opacity: 0.42 },
   rackWrap: { position: "absolute", left: 0, right: 0, bottom: RACK_BOTTOM_BASE, height: RACK_HEIGHT, paddingHorizontal: RACK_DEFAULT_PADDING_HORIZONTAL, alignItems: "center", zIndex: 50 },
   playerRack: { width: "100%", maxWidth: 575, aspectRatio: 2014 / 510, position: "relative", overflow: "visible", direction: "ltr", shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 20 },
-  rackImage: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
+  rackImage: { ...StyleSheet.absoluteFill, width: "100%", height: "100%" },
   rackTileViewport: {
   position: "absolute",
   left: "3%",
@@ -295,20 +295,3 @@ tileBack: {
 },
   tileBackSmall: { width: 20, height: 28, marginHorizontal: -2, borderRadius: 4 },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

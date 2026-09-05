@@ -67,7 +67,7 @@ export function OkeyDiscardHistoryPopup({
 
 const styles = StyleSheet.create({
   overlayRoot: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1200,
     elevation: 1200,
     alignItems: "center",
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   },
 
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.62)",
   },
 

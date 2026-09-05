@@ -78,7 +78,7 @@ function FunCard({
       ) : (
         <LinearGradient
           colors={gradientColors || ["#1d1145", "#3b1676"]}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
       )}
 
@@ -99,7 +99,7 @@ function FunCard({
           "rgba(0,0,0,0.94)",
         ]}
         locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       {loading ? (
@@ -770,7 +770,7 @@ const styles = StyleSheet.create({
   },
 
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 3,
     alignItems: "center",
     justifyContent: "center",

@@ -249,8 +249,7 @@ serve(async (req) => {
           version: number;
         }) => {
           if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
-          const edgeRuntime = (globalThis as any).EdgeRuntime;
-          const handoffPromise = handOffOkeyBotTurn({
+          await handOffOkeyBotTurn({
             supabaseUrl: SUPABASE_URL,
             workerSecret: OKEY_WORKER_SECRET,
             matchId: continuationInput.matchId,
@@ -259,11 +258,6 @@ serve(async (req) => {
           }).catch((err: any) => {
             console.error("okey_bot_continuation_dispatch_error", err);
           });
-          if (edgeRuntime?.waitUntil) {
-            edgeRuntime.waitUntil(handoffPromise);
-          } else {
-            await handoffPromise;
-          }
         },
         dispatchLifecycleWakeup: async (wakeupInput: {
           matchId: string;
@@ -273,8 +267,7 @@ serve(async (req) => {
           turnDeadlineAt?: string;
         }) => {
           if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
-          const edgeRuntime = (globalThis as any).EdgeRuntime;
-          const handoffPromise = handOffOkeyServerLifecycle({
+          await handOffOkeyServerLifecycle({
             supabaseUrl: SUPABASE_URL,
             workerSecret: OKEY_WORKER_SECRET,
             matchId: wakeupInput.matchId,
@@ -284,11 +277,6 @@ serve(async (req) => {
           }).catch((wakeupError: any) => {
             console.error("Server lifecycle handoff failed for match", wakeupInput.matchId, wakeupError);
           });
-          if (edgeRuntime?.waitUntil) {
-            edgeRuntime.waitUntil(handoffPromise);
-          } else {
-            await handoffPromise;
-          }
         },
       });
       return json(result, result.ok ? 200 : 500);

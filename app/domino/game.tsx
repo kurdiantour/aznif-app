@@ -1,7 +1,7 @@
 import BoardArea from "@/components/game/BoardArea";
 import DrawPilePrompt from "@/components/game/DrawPilePrompt";
 import GameOverPopup from "@/components/game/GameOverPopup";
-import GameChatDrawer from "@/components/game/GameChatDrawer";
+import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
 import PlayerHand from "@/components/game/PlayerHand";
 import DominoTileFlightOverlay from "@/components/game/DominoTileFlightOverlay";
 import PlayerSeat from "@/components/game/PlayerSeat";
@@ -10,7 +10,6 @@ import RoundResultReveal from "@/components/game/RoundResultReveal";
 import ScorePopup from "@/components/game/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
-import type { GameChatMessage } from "@/lib/gameChat";
 import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import MiniScoreBoard from "@/components/game/MiniScoreBoard";
@@ -115,8 +114,6 @@ export default function GameScreen() {
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [showGameChat, setShowGameChat] = useState(false);
-  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [isLeavingMatch, setIsLeavingMatch] = useState(false);
   const [selectedTile, setSelectedTile] = useState<DominoTileData | null>(null);
   const [selectableBranches, setSelectableBranches] = useState<KozelBranch[]>(
@@ -147,14 +144,9 @@ export default function GameScreen() {
   const previousHandSignatureRef = useRef<string | null>(null);
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
-  const showGameChatRef = useRef(showGameChat);
   useEffect(() => {
   passTurnRef.current = game.passTurn;
 }, [game.passTurn]);
-
-  useEffect(() => {
-  showGameChatRef.current = showGameChat;
-}, [showGameChat]);
 
 useEffect(() => {
   const subscription = BackHandler.addEventListener(
@@ -250,41 +242,6 @@ useEffect(() => {
 
     void initializeGame();
   }, [isLocalGame, gameLoading, roomId, gameMode]);
-  useEffect(() => {
-    if (isLocalGame || !roomId) return;
-
-    const channel = supabase
-.channel(`game_chat_unread:domino:${gameMode}:${roomId}`)
-.on(
-  "postgres_changes",
-  {
-    event: "INSERT",
-    schema: "public",
-    table: "game_chat_messages",
-    filter: `match_id=eq.${roomId}`,
-  },
-  (payload) => {
-    const message = payload.new as GameChatMessage;
-
-    if (message.game_type !== "domino") return;
-    if (message.mode !== gameMode) return;
-          if (message.sender_user_id === (profile?.id ?? localCurrentUserId)) return;
-
-          setUnreadChatCount((count) =>
-  showGameChatRef.current ? 0 : Math.min(count + 1, 99)
-);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [gameMode, isLocalGame, localCurrentUserId, profile?.id, roomId]);
-
-  useEffect(() => {
-    if (showGameChat) setUnreadChatCount(0);
-  }, [showGameChat]);
 
   useEffect(() => {
     if (gameLoading || !game.myHand.length) return;
@@ -949,29 +906,7 @@ useEffect(() => {
 
           {!showMatchMenu ? (
             <View style={styles.topRightActions}>
-              <Pressable
-                accessibilityLabel="Open game chat"
-                style={styles.topRightActionButton}
-                onPress={() => {
-                  setUnreadChatCount(0);
-                  setShowGameChat(true);
-                }}
-              >
-                <Ionicons
-                  name="chatbubble-ellipses-outline"
-                  size={22}
-                  color="#f8f3df"
-                />
-                {unreadChatCount > 0 ? (
-                  <View style={styles.chatUnreadBadge}>
-                    <Text style={styles.chatUnreadText}>
-                      {unreadChatCount > 9 ? "9+" : unreadChatCount}
-                    </Text>
-                  </View>
-                ) : null}
-              </Pressable>
-
-              <Pressable
+<Pressable
                 accessibilityLabel="Open game settings"
                 style={styles.topRightActionButton}
                 onPress={openMatchMenu}
@@ -1082,16 +1017,20 @@ useEffect(() => {
 />
 
 
-<GameChatDrawer
-  visible={showGameChat}
+<MultiplayerGameChat
   gameType="domino"
   matchId={roomId}
   mode={gameMode}
   currentUserId={profile?.id ?? localCurrentUserId}
+  playerIdBySeat={{
+    bottom: humanPlayer?.id,
+    top: topPlayer?.id,
+    left: leftPlayer?.id,
+    right: rightPlayer?.id,
+  }}
   enabled={!isLocalGame && !!roomId}
-  onClose={() => setShowGameChat(false)}
-/>
-<MatchMenuDrawer
+  triggerVisible={!showMatchMenu}
+/><MatchMenuDrawer
   visible={showMatchMenu}
   players={game.players}
   humanPlayer={humanPlayer}
@@ -1119,7 +1058,7 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
-  previewDevOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "flex-end", paddingTop: 44, paddingRight: 10, zIndex: 1000, elevation: 1000 },
+  previewDevOverlay: { ...StyleSheet.absoluteFill, alignItems: "flex-end", paddingTop: 44, paddingRight: 10, zIndex: 1000, elevation: 1000 },
   previewDevPanel: { width: 160, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.16)", backgroundColor: "rgba(0,0,0,0.55)" },
   previewDevTitle: { color: "#fff", fontSize: 12, fontWeight: "700" },
   previewDevText: { marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 10, fontWeight: "600" },
@@ -1246,7 +1185,7 @@ const styles = StyleSheet.create({
   topRightActions: {
     position: "absolute",
     top: 18,
-    right: 18,
+    right: 68,
     zIndex: 90,
     flexDirection: "row",
     alignItems: "center",
@@ -1319,7 +1258,7 @@ const styles = StyleSheet.create({
     zIndex: 300,
   },
   qapatIntroOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 290,

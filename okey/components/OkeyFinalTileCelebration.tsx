@@ -244,7 +244,7 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 90,
     elevation: 90,
     justifyContent: "center",

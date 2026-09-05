@@ -68,7 +68,7 @@ function TurnRing({
       <Svg
         width={size}
         height={size}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       >
         <Circle
           cx={size / 2}

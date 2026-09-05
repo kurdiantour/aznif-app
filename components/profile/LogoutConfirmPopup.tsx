@@ -68,7 +68,7 @@ export function LogoutConfirmPopup({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1200,
     elevation: 1200,
     alignItems: "center",
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(2, 6, 23, 0.76)",
   },
   popup: {

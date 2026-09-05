@@ -227,7 +227,7 @@ export function OkeyKonkanReveal({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(2, 6, 23, 0.88)",
     alignItems: "center",
     justifyContent: "center",

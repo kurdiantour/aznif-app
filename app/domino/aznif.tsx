@@ -129,7 +129,7 @@ function AznifCard({
     >
       <LinearGradient
         colors={config.colors}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       <View style={styles.cardShade} />
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   },
 
   cardShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(2,6,23,0.24)",
   },
 

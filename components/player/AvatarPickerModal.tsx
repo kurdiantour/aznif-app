@@ -67,7 +67,7 @@ export function AvatarPickerModal({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1001,
     elevation: 1001,
     alignItems: "center",
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   },
 
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 0, 0.62)",
   },
 

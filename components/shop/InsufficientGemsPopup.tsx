@@ -112,7 +112,7 @@ export function PurchaseConfirmationPopup({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
     alignItems: "center",

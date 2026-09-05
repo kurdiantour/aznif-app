@@ -90,7 +90,7 @@ export default function LeaveMatchConfirmPopup({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     elevation: 1000,
     alignItems: "center",
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   },
 
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(9, 3, 18, 0.28)",
   },
 

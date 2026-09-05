@@ -9,9 +9,7 @@ import * as NavigationBar from "expo-navigation-bar";
 import { Stack } from "expo-router";
 import {
   StatusBar,
-  setStatusBarBackgroundColor,
   setStatusBarHidden,
-  setStatusBarTranslucent,
 } from "expo-status-bar";
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
@@ -23,11 +21,8 @@ async function applyImmersiveFullscreen() {
   if (Platform.OS !== "android") return;
 
   setStatusBarHidden(true, "none");
-  setStatusBarTranslucent(true);
-  setStatusBarBackgroundColor("transparent", false);
 
   try {
-    await NavigationBar.setButtonStyleAsync("light");
     await NavigationBar.setStyle("dark");
     await NavigationBar.setVisibilityAsync("hidden");
   } catch (error) {
@@ -69,8 +64,6 @@ export default function Layout() {
           <GameInvitesProvider>
             <StatusBar
               hidden
-              translucent
-              backgroundColor="transparent"
               style="light"
             />
             <Stack
@@ -114,7 +107,10 @@ export default function Layout() {
               />
               <Stack.Screen
                 name="okey/game"
-                options={{ autoHideHomeIndicator: true }}
+                options={{
+                  autoHideHomeIndicator: true,
+                  gestureEnabled: false,
+                }}
               />
               <Stack.Screen name="create-room" />
               <Stack.Screen name="domino/matchmaking" />

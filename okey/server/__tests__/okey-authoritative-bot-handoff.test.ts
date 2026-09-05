@@ -28,7 +28,7 @@ test("authoritative Bot handoff claims exactly the committed version and current
   assert.equal(getOkeyBotTurnClaim(match, 17), null);
 });
 
-test("external commits, Bot commits and maintenance all use one-step exact claims", () => {
+test("external and Bot commits use one-step exact claims while maintenance stays settlement-only", () => {
   const matchGateway = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
   const worker = readFileSync("supabase/functions/process_bot_turns/index.ts", "utf8");
   const maintenance = readFileSync("supabase/functions/okey_maintenance/index.ts", "utf8");
@@ -37,7 +37,9 @@ test("external commits, Bot commits and maintenance all use one-step exact claim
   assert.doesNotMatch(matchGateway, /handOffOkeyBotTurn/);
   assert.doesNotMatch(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
   assert.match(worker, /\.is\("membership_released_at", null\)/);
-  assert.match(maintenance, /\.eq\("status", "playing"\)[\s\S]*reconcileAuthoritativeServerTurns/);
+  assert.match(maintenance, /\.eq\("status", "finished"\)/);
+  assert.match(maintenance, /\.is\("settlement_at", null\)/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
   assert.match(handoff, /expected_version: claim\.expectedVersion/);
   assert.match(handoff, /expected_actor_id: claim\.expectedActorId/);
   assert.doesNotMatch(handoff, /while\s*\(|setInterval|setTimeout/);

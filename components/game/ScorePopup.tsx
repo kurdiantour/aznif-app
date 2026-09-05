@@ -264,7 +264,7 @@ export default function ScorePopup({
 
 const styles = StyleSheet.create({
   overlayRoot: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 999,
     elevation: 999,
     alignItems: "center",
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   },
 
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor:
       "rgba(0,0,0,0.65)",
   },

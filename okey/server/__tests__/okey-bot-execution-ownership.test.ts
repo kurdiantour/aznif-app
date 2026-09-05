@@ -25,7 +25,8 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   // Server owns bot execution through reconciler and executor:
   assert.match(reconciler, /reconcileAuthoritativeServerTurns/);
   assert.match(edge, /reconcileAuthoritativeServerTurns/);
-  assert.match(maintenance, /reconcileAuthoritativeServerTurns/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
+  assert.match(maintenance, /\.eq\("status", "finished"\)[\s\S]*settlement_at/);
   assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
   assert.match(executor, /executeOkeyBotTurn/);
   assert.match(executor, /classifyBotTurnClaim/);

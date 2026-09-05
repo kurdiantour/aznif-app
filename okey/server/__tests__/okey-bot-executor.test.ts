@@ -161,18 +161,18 @@ async function execute(
 }
 
 test(
-  "a Bot draw claim completes draw and discard in one invocation",
+  "a Bot draw claim commits exactly one draw transition per invocation",
   async () => {
     const state = botMatch(false);
 
     const { result, calls } = await execute(state);
 
     assert.equal(result.processed, true);
-    assert.deepEqual(result.steps, ["draw", "discard"]);
-    assert.equal(result.finalVersion, 7);
-    assert.equal(result.reason, "human_turn");
+    assert.deepEqual(result.steps, ["draw"]);
+    assert.equal(result.finalVersion, 6);
+    assert.equal(result.reason, "transition_committed");
 
-    assert.equal(calls.commits.length, 2);
+    assert.equal(calls.commits.length, 1);
 
     assert.equal(
       calls.commits[0].p_command_type,
@@ -189,15 +189,6 @@ test(
       "draw",
     );
 
-    assert.equal(
-      calls.commits[1].p_command_type,
-      "system-bot-discard",
-    );
-
-    assert.equal(
-      calls.commits[1].p_expected_version,
-      6,
-    );
   },
 );
 
@@ -210,7 +201,7 @@ test(
 
     assert.equal(result.processed, true);
     assert.deepEqual(result.steps, ["discard"]);
-    assert.equal(result.reason, "human_turn");
+    assert.equal(result.reason, "transition_committed");
 
     assert.equal(calls.commits.length, 1);
 
@@ -445,7 +436,7 @@ test(
 
     assert.equal(
       broadcasts.length,
-      2,
+      1,
     );
 
     assert.equal(
@@ -535,7 +526,7 @@ test(
 );
 
 test(
-  "one invocation carries the exact committed version into the next Bot step",
+  "one invocation commits only the claimed Bot step at the expected version",
   async () => {
     const state = botMatch(false);
 
@@ -546,20 +537,20 @@ test(
 
     assert.deepEqual(
       result.steps,
-      ["draw", "discard"],
+      ["draw"],
     );
 
     assert.deepEqual(
       calls.commits.map(
         (commit) => commit.p_expected_version,
       ),
-      [5, 6],
+      [5],
     );
   },
 );
 
 test(
-  "one invocation continues through consecutive Bots and stops at the next Human",
+  "one invocation stops after one transition even when the next seat is also a Bot",
   async () => {
     const state = botMatch(false);
 
@@ -585,24 +576,19 @@ test(
 
     assert.equal(
       result.reason,
-      "human_turn",
+      "transition_committed",
     );
 
     assert.deepEqual(
       result.steps,
-      [
-        "draw",
-        "discard",
-        "draw",
-        "discard",
-      ],
+      ["draw"],
     );
 
     assert.deepEqual(
       calls.commits.map(
         (commit) => commit.p_expected_version,
       ),
-      [5, 6, 7, 8],
+      [5],
     );
   },
 );
@@ -689,12 +675,12 @@ test(
 
     assert.deepEqual(
       appliedResult.steps,
-      ["draw", "discard"],
+      ["draw"],
     );
 
     assert.equal(
       appliedResult.reason,
-      "human_turn",
+      "transition_committed",
     );
 
     assert.equal(
@@ -704,12 +690,12 @@ test(
 
     assert.equal(
       broadcasts.length,
-      2,
+      1,
     );
 
     assert.equal(
       harness.calls.commits.length,
-      3,
+      2,
     );
   },
 );

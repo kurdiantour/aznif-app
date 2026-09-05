@@ -9,7 +9,7 @@ import { sendGameInvite } from "@/lib/gameInvites";
 import { usePresence } from "@/lib/presence";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -314,6 +314,10 @@ export function FriendsPanel({
     };
   }, [canRunSearch, meaningfulSearchQuery]);
 
+  function handleTransferSuccess() {
+    void refresh();
+  }
+
   useEffect(() => {
     if (transferSuccessSignal === 0) return;
 
@@ -352,10 +356,6 @@ export function FriendsPanel({
       avatarId: result.avatarId,
       friendshipId: "",
     });
-  }
-
-  function handleTransferSuccess() {
-    void refresh();
   }
 
   async function handleInvite(friend: Friend) {

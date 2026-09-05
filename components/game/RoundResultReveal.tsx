@@ -1,5 +1,5 @@
 import type { Player, RoundResult } from "@/domino/types/domino-game";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -34,8 +34,8 @@ export default function RoundResultReveal({
   rightPlayer,
   qapatPlayerId = null,
 }: Props) {
-  const handPointsProgress = useRef(new Animated.Value(0)).current;
-  const handRevealProgress = useRef(new Animated.Value(1)).current;
+  const [handPointsProgress] = useState(() => new Animated.Value(0));
+  const [handRevealProgress] = useState(() => new Animated.Value(1));
   const handPoints = roundResult?.awardedPoints ?? 0;
   const roundAnimationKey = visible && roundResult
     ? `${roundResult.winnerId ?? "round"}:${handPoints}`

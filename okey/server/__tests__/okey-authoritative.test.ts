@@ -461,7 +461,7 @@ test("tile-cycle completion also waits for a separate same-round restart", () =>
   assert.equal(restarted.roundState.dealerIndex, 3);
 });
 
-test("a whole-team leave finishes the match after the current round", () => {
+test("a whole-team leave finishes the match immediately", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = applyAuthoritativeManualLeave(match, 1);
   match = applyAuthoritativeManualLeave(match, 3);
@@ -469,24 +469,14 @@ test("a whole-team leave finishes the match after the current round", () => {
   assert.equal(match.pendingForfeitTeamId, "teamB");
   assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);
   assert.equal(isOkeyBotControlled(match.roundState.players[3]), true);
-  assert.equal(match.matchFinished, false);
+  assert.equal(match.matchFinished, true);
+  assert.equal(match.matchWinnerTeamId, "teamA");
   assert.equal(match.leaveTerminationReason, "team-forfeit");
-
-  const finished = settleAuthoritativeOkeyRound({
-    ...match,
-    roundState: {
-      ...match.roundState,
-      phase: "finished",
-      winnerId: match.roundState.players[1].id,
-      endReason: "win",
-    },
-  });
-
-  assert.equal(finished.matchFinished, true);
-  assert.equal(finished.matchWinnerTeamId, "teamA");
-  assert.equal(finished.currentRound, 1);
-  assert.equal(finished.roundResults.length, 1);
-  assert.equal(finished.roundState.phase, "finished");
+  assert.equal(match.nextRoundEligibleAt, null);
+  assert.equal(match.currentRound, 1);
+  assert.equal(match.roundResults.length, 0);
+  assert.equal(match.roundState.phase, "playing");
+  assert.equal(getNextOkeyMatchTurnDeadline(match), null);
 });
 
 test("manual leave plus teammate timeout takeover creates a team forfeit", () => {
@@ -519,7 +509,7 @@ test("two timeout takeovers on one team create a team forfeit", () => {
   assert.equal(match.leaveTerminationReason, "team-forfeit");
 });
 
-test("a whole-team forfeit after round settlement blocks the next round", () => {
+test("a whole-team forfeit after round settlement terminates without creating a next round", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = settleAuthoritativeOkeyRound({
     ...match,
@@ -545,41 +535,21 @@ test("a whole-team forfeit after round settlement blocks the next round", () => 
     (error) => error instanceof OkeyCommandError && error.code === "command_rejected",
   );
 });
-test("round three completes before the sole remaining human wins and round four is not created", () => {
+test("a whole-team departure in round three terminates immediately without bot continuation", () => {
   let match = {
     ...createAuthoritativeOkeyMatch(matchPlayers, 0),
     currentRound: 3,
   };
   match = applyAuthoritativeManualLeave(match, 1);
-  match = applyAuthoritativeManualLeave(match, 2);
   match = applyAuthoritativeManualLeave(match, 3);
 
-  assert.equal(match.matchFinished, false);
-  assert.equal(match.matchWinnerTeamId, null);
+  assert.equal(match.matchFinished, true);
+  assert.equal(match.matchWinnerTeamId, "teamA");
   assert.equal(match.leaveTerminationReason, "team-forfeit");
-  assert.deepEqual([...match.manualLeftPlayerIds].sort(), ["player-1", "player-2", "player-3"]);
-  assert.equal(isOkeyBotControlled(match.roundState.players[0]), false);
-  assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);
-  assert.equal(isOkeyBotControlled(match.roundState.players[2]), true);
-  assert.equal(isOkeyBotControlled(match.roundState.players[3]), true);
-  assert.ok(getNextOkeyMatchTurnDeadline(match));
-
-  const finished = settleAuthoritativeOkeyRound({
-    ...match,
-    roundState: {
-      ...match.roundState,
-      phase: "finished",
-      winnerId: match.roundState.players[2].id,
-      endReason: "win",
-    },
-  });
-
-  assert.equal(finished.matchFinished, true);
-  assert.equal(finished.matchWinnerTeamId, match.roundState.players[0].teamId);
-  assert.equal(finished.currentRound, 3);
-  assert.equal(finished.roundResults.at(-1)?.round, 3);
-  assert.equal(finished.roundState.phase, "finished");
-  assert.equal(getNextOkeyMatchTurnDeadline(finished), null);
+  assert.deepEqual([...match.manualLeftPlayerIds].sort(), ["player-1", "player-3"]);
+  assert.equal(match.currentRound, 3);
+  assert.equal(match.roundResults.length, 0);
+  assert.equal(getNextOkeyMatchTurnDeadline(match), null);
 });
 
 test("zero remaining humans terminate immediately without winner or bot continuation", () => {
@@ -706,4 +676,3 @@ test("open-and-discard rolls back the entire command when discard fails after a 
   assert.equal(state.players[actorPlayerIndex].hand.length, setTiles.length + 1);
   assert.notEqual(state.discardPile.at(-1)?.id, tileConsumedByOpen);
 });
-

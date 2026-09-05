@@ -15,11 +15,6 @@
       }
     },
     "android": {
-      "navigationBar": {
-        "visible": "sticky-immersive",
-        "barStyle": "light-content",
-        "backgroundColor": "#050b22"
-      },
       "adaptiveIcon": {
         "backgroundColor": "#050b22",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -38,11 +33,13 @@
               "host": "auth-callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
-        "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
@@ -72,7 +69,10 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-image",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

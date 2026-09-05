@@ -2,6 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
 import {
+  GAME_CHAT_EMOJIS,
   getGameChatMessages,
   sendGameChatMessage,
   type GameChatMessage,
@@ -68,19 +69,6 @@ const QUICK_CHAT_MESSAGES = [
   "ئاگات لە یاری بێت کاکە",
   "باشە ئاگام لێیە برام",
   "ئاگام لێ نەبوو ببۆرە",
-];
-
-const QUICK_CHAT_EMOJIS = [
-  "😂",
-  "🤣",
-  "😭",
-  "😍",
-  "😎",
-  "😏",
-  "😱",
-  "😡",
-  "👏",
-  "❤️",
 ];
 
 export default function GameChatDrawer({
@@ -159,8 +147,10 @@ export default function GameChatDrawer({
 
     let isMounted = true;
 
-    setLoading(true);
-    setError(null);
+    const loadingTimer = setTimeout(() => {
+      setLoading(true);
+      setError(null);
+    }, 0);
 
     const loadMessages = () =>
       getGameChatMessages(gameType, matchId, mode);
@@ -219,6 +209,7 @@ export default function GameChatDrawer({
 
     return () => {
       isMounted = false;
+      clearTimeout(loadingTimer);
       void supabase.removeChannel(channel);
     };
   }, [enabled, gameType, matchId, mode, visible]);
@@ -474,7 +465,7 @@ export default function GameChatDrawer({
               ))}
 
               <View style={styles.quickEmojiRow}>
-                {QUICK_CHAT_EMOJIS.map((emoji) => (
+                {[...GAME_CHAT_EMOJIS].map((emoji) => (
                   <Pressable
                     key={emoji}
                     style={styles.quickEmojiButton}
@@ -548,7 +539,7 @@ export default function GameChatDrawer({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     direction: "ltr",
     zIndex: 950,
     elevation: 950,
@@ -557,7 +548,7 @@ const styles = StyleSheet.create({
   },
 
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(9, 3, 18, 0.24)",
   },
 

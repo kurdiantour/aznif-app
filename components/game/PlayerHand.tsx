@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
   },
 
   tileFace: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 
   tileBack: {

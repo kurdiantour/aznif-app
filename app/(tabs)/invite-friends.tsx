@@ -6,7 +6,7 @@ import { getFriendRequests } from "@/lib/friends";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect } from "expo-router/react-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect } from "expo-router";
 import { useCallback, useContext, useEffect, useState } from "react";

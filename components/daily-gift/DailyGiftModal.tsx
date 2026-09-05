@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     fontSize: 27,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 5000,
     elevation: 5000,
     alignItems: "center",
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
   },
 
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(5,4,12,0.8)",
   },
 
@@ -796,7 +796,7 @@ const styles = StyleSheet.create({
   },
 
   claimFeedback: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 10,
     alignItems: "center",
     justifyContent: "center",

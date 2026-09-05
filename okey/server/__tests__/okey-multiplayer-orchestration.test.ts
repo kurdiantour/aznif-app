@@ -7,12 +7,11 @@ const read = (path: string) => readFileSync(path, "utf8");
 test("Okey Realtime broadcasts carry projections and only gaps fetch snapshots", () => {
   const edge = read("supabase/functions/okey_match/index.ts");
   const maintenance = read("supabase/functions/okey_maintenance/index.ts");
-  const testMatch = read("supabase/functions/okey_test_match/index.ts");
   const bot = read("okey/server/okey-bot-executor.ts");
   const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
   const core = read("lib/multiplayer/match/use-multiplayer-match.ts");
 
-  for (const broadcaster of [edge, maintenance, testMatch, bot]) {
+  for (const broadcaster of [edge, maintenance, bot]) {
     assert.ok(broadcaster.includes("commandId"));
     assert.ok(broadcaster.includes("publicProjection"));
     assert.ok(broadcaster.includes("actionEvents"));
@@ -61,8 +60,8 @@ test("Okey bot execution is 100% server-owned with exact-match and idempotency",
   assert.match(executor, /hasDrawnThisTurn \? "discard" : "draw"/);
   assert.match(executor, /botStep === "draw"[\s\S]*drawTile/);
   assert.match(executor, /prepareBotTurn/);
-  assert.match(executor, /completed\("already_processed"\)/);
-  assert.match(executor, /completed\("stale_bot_controller"\)/);
+  assert.match(executor, /commit\.rejectionReason \?\? "already_processed"/);
+  assert.match(executor, /reason: "stale_bot_turn"/);
   assert.doesNotMatch(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
   assert.doesNotMatch(executor, /dependencies\.handOffBotTurn/);
 });
@@ -79,7 +78,7 @@ test("Okey timeout execution is 100% server-owned without client triggers", () =
   assert.match(reconciler, /reconcileAuthoritativeTimeoutTurn/);
   assert.match(reconciler, /resolveAuthoritativeMatchDeadline/);
   assert.match(edge, /reconcileAuthoritativeServerTurns/);
-  assert.match(maintenance, /reconcileAuthoritativeServerTurns/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
 
   // Client does NOT trigger or advance timeouts:
   assert.doesNotMatch(adapter, /resolveTimeout/);
@@ -93,14 +92,14 @@ test("Okey timeout execution is 100% server-owned without client triggers", () =
   assert.match(hook, /turnTimeLeft: core\.turnSecondsLeft/);
 });
 
-test("Okey maintenance broadcasts the winning timeout commit and hands Bot turns off", () => {
+test("Okey maintenance settles finished matches while gameplay remains worker-owned", () => {
   const maintenance = read("supabase/functions/okey_maintenance/index.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
 
   assert.match(maintenance, /state_update/);
-  assert.match(maintenance, /reconcileAuthoritativeServerTurns/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
   assert.match(maintenance, /x-okey-worker-key/);
-  assert.match(maintenance, /settlement_at/);
+  assert.match(maintenance, /\.eq\("status", "finished"\)[\s\S]*settlement_at/);
   assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
   assert.match(worker, /\.schema\("okey"\)[\s\S]*\.from\("match_seats"\)/);
 });
@@ -116,8 +115,8 @@ test("Okey eliminated turns are 100% server-owned through reconciler without cli
 
   // Server owners:
   assert.match(edge, /reconcileAuthoritativeServerTurns/);
-  assert.match(maintenance, /reconcileAuthoritativeServerTurns/);
-  assert.match(bot, /reconcileAuthoritativeEliminatedTurns/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
+  assert.doesNotMatch(bot, /reconcileAuthoritativeEliminatedTurns/);
   assert.match(reconciler, /applyAuthoritativeOkeyEliminatedTurn/);
   assert.match(reconciler, /system-eliminated-turn/);
 

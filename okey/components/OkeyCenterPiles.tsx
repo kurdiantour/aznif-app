@@ -268,7 +268,7 @@ export function OkeyCenterPiles({
           accessibilityLabel={OKEY_ACCESSIBILITY.drawDeckLabel(deckCount)}
           accessibilityHint={OKEY_ACCESSIBILITY.drawDeckHint}
           accessibilityState={{ disabled: !canDraw }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         >
         <View
           pointerEvents="none"

@@ -169,7 +169,7 @@ export default function MatchMenuDrawer({
 
 const styles = StyleSheet.create({
   matchMenuOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     direction: "ltr",
     zIndex: 950,
     elevation: 950,
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
   },
 
   matchMenuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(9, 3, 18, 0.24)",
   },
 

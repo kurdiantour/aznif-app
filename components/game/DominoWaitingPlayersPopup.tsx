@@ -95,7 +95,7 @@ export default function DominoWaitingPlayersPopup({
 
 const styles = StyleSheet.create({
   currencyEmoji: { fontSize: 20 },
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 1201, elevation: 1201 },
+  overlay: { ...StyleSheet.absoluteFill, zIndex: 1201, elevation: 1201 },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(9, 3, 18, 0.24)",

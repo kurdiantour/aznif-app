@@ -546,7 +546,10 @@ if (action === "manual-leave") {
     let currentVersion = Number(bundle.version);
     let currentDeadline = bundle.turn_deadline_at;
 
-    if (!currentState.matchFinished && currentState.roundState.phase === "playing") {
+    // Snapshot is also a server-side recovery wakeup. It may reconcile an
+    // active turn or an overdue finished round, but the client still never
+    // chooses or applies the lifecycle transition itself.
+    if (!currentState.matchFinished) {
       const serverReconcile = await reconcileAuthoritativeServerTurns({
         client: service,
         matchId,
@@ -942,7 +945,6 @@ if (action === "manual-leave") {
 
   // Server-owned lifecycle handoff. A fresh worker invocation owns the next
   // Bot / Human timeout / Takeover / Next-Round transition.
-  const edgeRuntime = (globalThis as any).EdgeRuntime;
   if (!finalState.matchFinished && workerSecret) {
     const lifecycleHandoff = handOffOkeyServerLifecycle({
       supabaseUrl,
@@ -957,11 +959,10 @@ if (action === "manual-leave") {
       console.error("Okey server lifecycle handoff failed for match", matchId, handoffError);
     });
 
-    if (edgeRuntime?.waitUntil) {
-      edgeRuntime.waitUntil(lifecycleHandoff);
-    } else {
-      await lifecycleHandoff;
-    }
+    // Handoff acceptance is part of the authoritative command lifecycle.
+    // Await only the worker's fast 202 acknowledgement; the delayed lifecycle
+    // work itself remains background-owned by process_bot_turns.
+    await lifecycleHandoff;
   }
 
   if (finalState.matchFinished) {

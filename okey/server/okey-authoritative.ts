@@ -152,6 +152,196 @@ lastTimeoutDiscardEvent?:
 roundState: OkeyGameState;
 };
 
+export type OkeyAuthoritativeSnapshotBundle = {
+  version: number | string;
+  turn_deadline_at: string | null;
+  state: OkeyAuthoritativeMatchState;
+  status?: "playing" | "finished" | "waiting";
+};
+
+export type OkeyLifecycleDecision =
+  | {
+      type: "terminal";
+      matchFinished: true;
+      winnerTeamId: OkeyTeamId | null;
+      reason: string | null;
+    }
+  | {
+      type: "eliminated-turn";
+      expectedVersion: number;
+      expectedActorId: string;
+      playerIndex: number;
+    }
+  | {
+      type: "bot-turn";
+      expectedVersion: number;
+      expectedActorId: string;
+      playerIndex: number;
+      step: "draw" | "discard";
+      notBefore: string | null;
+      ready: boolean;
+    }
+  | {
+      type: "expired-human-turn";
+      expectedVersion: number;
+      expectedTurnPlayerId: string;
+      expectedTurnDeadlineAt: string;
+    }
+  | {
+      type: "due-next-round";
+      expectedVersion: number;
+      expectedRound: number;
+      eligibleAt: string;
+    }
+  | {
+      type: "idle";
+      reason:
+        | "waiting_for_human_action"
+        | "round_start_pending"
+        | "next_round_countdown"
+        | "match_finished_settled"
+        | "match_not_playing";
+      turnDeadlineAt?: string | null;
+      eligibleAt?: string | null;
+    };
+
+/**
+ * Evaluates the next authoritative server lifecycle action in deterministic priority order:
+ * 1. Terminal / Match Finished
+ * 2. Eliminated Current Actor
+ * 3. Bot Current Actor
+ * 4. Expired Human Turn Deadline
+ * 5. Due Next Round
+ * 6. Idle / Waiting for player action or countdown
+ */
+export function evaluateOkeyServerLifecycle(
+  bundle: OkeyAuthoritativeSnapshotBundle,
+  now = Date.now(),
+): OkeyLifecycleDecision {
+  const version = Number(bundle.version);
+  const state = bundle.state;
+  const turnDeadlineAt = bundle.turn_deadline_at;
+
+  // Priority 1: Terminal / Match Finished
+  if (state.matchFinished) {
+    return {
+      type: "terminal",
+      matchFinished: true,
+      winnerTeamId: state.matchWinnerTeamId,
+      reason: state.leaveTerminationReason,
+    };
+  }
+
+  // Active round playing phase
+  if (state.roundState.phase === "playing") {
+    const currentPlayerIndex = state.roundState.currentPlayerIndex;
+    const currentPlayer = state.roundState.players[currentPlayerIndex];
+
+    if (!currentPlayer) {
+      return {
+        type: "idle",
+        reason: "waiting_for_human_action",
+      };
+    }
+
+    // Priority 2: Eliminated Current Actor
+    if (currentPlayer.eliminated) {
+      return {
+        type: "eliminated-turn",
+        expectedVersion: version,
+        expectedActorId: currentPlayer.id,
+        playerIndex: currentPlayerIndex,
+      };
+    }
+
+    // Priority 3: Bot Current Actor
+    if (isOkeyBotControlled(currentPlayer)) {
+      const startPending = isOkeyRoundStartPending(state, now);
+      return {
+        type: "bot-turn",
+        expectedVersion: version,
+        expectedActorId: currentPlayer.id,
+        playerIndex: currentPlayerIndex,
+        step: state.roundState.hasDrawnThisTurn ? "discard" : "draw",
+        notBefore: state.roundStartsAt ?? null,
+        ready: !startPending,
+      };
+    }
+
+    // Round start delay for human player
+    if (isOkeyRoundStartPending(state, now)) {
+      return {
+        type: "idle",
+        reason: "round_start_pending",
+        turnDeadlineAt: state.roundStartsAt,
+      };
+    }
+
+    // Priority 4: Expired Human Turn Deadline
+    if (turnDeadlineAt) {
+      const deadlineMs = Date.parse(turnDeadlineAt);
+      if (Number.isFinite(deadlineMs) && now >= deadlineMs) {
+        return {
+          type: "expired-human-turn",
+          expectedVersion: version,
+          expectedTurnPlayerId: currentPlayer.id,
+          expectedTurnDeadlineAt: turnDeadlineAt,
+        };
+      }
+    }
+
+    return {
+      type: "idle",
+      reason: "waiting_for_human_action",
+      turnDeadlineAt,
+    };
+  }
+
+  // Round finished phase
+  if (state.roundState.phase === "finished") {
+    if (state.pendingForfeitTeamId || state.leaveTerminationReason === "team-forfeit") {
+      return {
+        type: "due-next-round",
+        expectedVersion: version,
+        expectedRound: state.currentRound,
+        eligibleAt: new Date(now).toISOString(),
+      };
+    }
+
+    // Priority 5: Due Next Round
+    const eligibleAt = state.nextRoundEligibleAt;
+    if (eligibleAt) {
+      const eligibleAtMs = Date.parse(eligibleAt);
+      if (Number.isFinite(eligibleAtMs) && now >= eligibleAtMs) {
+        return {
+          type: "due-next-round",
+          expectedVersion: version,
+          expectedRound: state.currentRound,
+          eligibleAt,
+        };
+      }
+      return {
+        type: "idle",
+        reason: "next_round_countdown",
+        eligibleAt,
+      };
+    }
+
+    // Fallback: If round is finished and not match finished without eligibleAt, it is due next round
+    return {
+      type: "due-next-round",
+      expectedVersion: version,
+      expectedRound: state.currentRound,
+      eligibleAt: new Date(now).toISOString(),
+    };
+  }
+
+  return {
+    type: "idle",
+    reason: "match_not_playing",
+  };
+}
+
 function secureRandom(): number {
   const value =
     new Uint32Array(1);
@@ -926,15 +1116,25 @@ function reconcileAuthoritativeHumanControl(
       ? remainingMembers[0].teamId === "teamA" ? "teamB" : "teamA"
       : null;
 
-  const reconciled: OkeyAuthoritativeMatchState = {
-    ...match,
-    pendingForfeitTeamId,
-    leaveTerminationReason: pendingForfeitTeamId ? "team-forfeit" : null,
-  };
+  if (pendingForfeitTeamId) {
+    const winnerTeamId: OkeyTeamId =
+      pendingForfeitTeamId === "teamA" ? "teamB" : "teamA";
 
-  return pendingForfeitTeamId && reconciled.roundState.phase === "finished"
-    ? settleAuthoritativeOkeyRound(reconciled)
-    : reconciled;
+    return {
+      ...match,
+      pendingForfeitTeamId,
+      leaveTerminationReason: "team-forfeit",
+      matchFinished: true,
+      matchWinnerTeamId: winnerTeamId,
+      nextRoundEligibleAt: null,
+    };
+  }
+
+  return {
+    ...match,
+    pendingForfeitTeamId: null,
+    leaveTerminationReason: null,
+  };
 }
 
 function reconcileAuthoritativeBotOwnership(

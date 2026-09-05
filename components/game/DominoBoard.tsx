@@ -220,7 +220,7 @@ export default function DominoBoard(props: Props) {
     const position = path[path.length - 1];
     return position ? <BranchTile key={`preview-${branch}-${tile.id}`} position={position} tileWidth={layout.tileWidth} tileHeight={layout.tileHeight} zIndex={80} /> : null;
   };
-  return <Animated.View style={[StyleSheet.absoluteFillObject, { transform: [{ scale: zoom }] }]}><WinningTileAnimationContext.Provider value={{ tileId: props.winningTileId, translateY: props.winningTranslateY, scale: props.winningScale, emphasisOpacity: props.winningEmphasisOpacity, centerProgress: props.winningCenterProgress, rotation: props.winningRotation }}>
+  return <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ scale: zoom }] }]}><WinningTileAnimationContext.Provider value={{ tileId: props.winningTileId, translateY: props.winningTranslateY, scale: props.winningScale, emphasisOpacity: props.winningEmphasisOpacity, centerProgress: props.winningCenterProgress, rotation: props.winningRotation }}>
     {!board.centerTile && <Pressable
       disabled={!props.selectedTile || !openingBranch}
       onPress={() => openingBranch && props.onSelectBranch?.(openingBranch)}

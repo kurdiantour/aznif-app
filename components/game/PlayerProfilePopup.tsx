@@ -3,7 +3,7 @@ import type { AvatarId } from "@/constants/avatars";
 import { sendFriendRequest } from "@/lib/friends";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
-import type { Player } from "@/domino/types/domino-game";
+import type { PlayerProfileTarget } from "@/components/game/player-profile-target";
 import { BlurView } from "expo-blur";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
@@ -16,7 +16,7 @@ export default function PlayerProfilePopup({
   player,
   onDismiss,
 }: {
-  player: Player | null;
+  player: PlayerProfileTarget | null;
   onDismiss: () => void;
 }) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -24,7 +24,7 @@ export default function PlayerProfilePopup({
   const [friendState, setFriendState] = useState<FriendState>("unavailable");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const translateX = useRef(new Animated.Value(420)).current;
+  const [translateX] = useState(() => new Animated.Value(420));
 
   useEffect(() => {
     if (!player) return;
@@ -122,7 +122,7 @@ export default function PlayerProfilePopup({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     direction: "ltr",
     zIndex: 980,
     elevation: 980,
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
   },
   card: {

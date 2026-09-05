@@ -142,7 +142,7 @@ const rackOnlyStyles = StyleSheet.create({
     color: "#FFF8E7", fontSize: 16, fontWeight: "700", fontFamily: "SpedaRegular", writingDirection: "rtl",
   },
   eliminated: {
-    ...StyleSheet.absoluteFillObject, zIndex: 10000, elevation: 10000,
+    ...StyleSheet.absoluteFill, zIndex: 10000, elevation: 10000,
     alignItems: "center", justifyContent: "center", paddingHorizontal: 22,
     borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,49,49,0.42)", backgroundColor: "rgba(0,0,0,0.92)",
   },

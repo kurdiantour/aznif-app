@@ -10,12 +10,17 @@ import {
 } from "react";
 
 import {
+  type MeldDropRect,
   type ScreenRect,
   type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
-import type { OkeyGameState, OkeyTile } from "@/okey/types/okey";
+import type { OkeyGameState, OkeyMeld, OkeyTile } from "@/okey/types/okey";
+import type { OkeyOpenAction, OkeyTableMeldAction } from "@/okey/engine/okey-engine";
+import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import type { SupabaseOkeyMatchAdapter, OkeyCommittedTransition } from "@/okey/adapters/supabase-okey-match-adapter";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
+import { useOkeyPresentationBoundary } from "@/okey/presentation/useOkeyPresentationPolicy";
+import { getOkeyRunEndForDrop } from "@/okey/presentation/okey-table-interactions";
 
 type OnlineTimeoutDiscardFlight = {
   eventId: string;
@@ -845,4 +850,373 @@ export function useOkeyTileFlightCompletion(input: {
     });
   };
 }
+type RackDropPlacement = { tileId: string; point: { x: number; y: number }; nonce: number } | null;
+type PendingDeckDrop = { point: { x: number; y: number }; previousHandTileIds: Set<string> } | null;
 
+export function useOkeyPlayerTileFlightCommands(input: {
+  state: OkeyGameState;
+  humanPlayer: OkeyGameState["players"][number];
+  topDiscard: OkeyTile | null;
+  canDraw: boolean;
+  canDiscardTile: boolean;
+  droppedMelds: OkeyMeld[];
+  tileFlight: TileFlight | null;
+  deckTopRectRef: MutableRefObject<ScreenRect | null>;
+  discardTopRectRef: MutableRefObject<ScreenRect | null>;
+  drawLandingRectRef: MutableRefObject<ScreenRect | null>;
+  rackTileRectsRef: MutableRefObject<Record<string, ScreenRect>>;
+  pendingDeckDropRef: MutableRefObject<PendingDeckDrop>;
+  awaitingDiscardRemovalTileIdRef: MutableRefObject<string | null>;
+  isPointInsideRack: (point: { x: number; y: number }) => boolean;
+  isPointInsideDiscardPile: (point: { x: number; y: number }) => boolean;
+  toLocalRect: (rect: ScreenRect) => ScreenRect;
+  draw: (source: "deck" | "discard") => Promise<boolean>;
+  discard: (tileId: string) => Promise<boolean>;
+  commitOpenIntent: (melds: OkeyMeld[], score: number, tileId?: string) => Promise<boolean>;
+  selectOpenAction: (melds: OkeyMeld[]) => OkeyOpenAction;
+  dropTileOnTableMeld: (tileId: string, point: { x: number; y: number }) => boolean;
+  emitInvalid: (key: string) => void;
+  launchTileFlight: (options: LaunchTileFlightOptions) => void;
+  setTileFlight: Dispatch<SetStateAction<TileFlight | null>>;
+  setHiddenRackTileIds: Dispatch<SetStateAction<string[]>>;
+  setHideDeckTopTile: Dispatch<SetStateAction<boolean>>;
+  setHideDiscardTopTile: Dispatch<SetStateAction<boolean>>;
+  setDiscardPresentationFallback: Dispatch<SetStateAction<OkeyTile | null>>;
+  setPresentedTopDiscard: Dispatch<SetStateAction<OkeyTile | null>>;
+  holdDiscardUntilAuthoritative: (tile: OkeyTile) => void;
+  releaseAuthoritativeDiscardHold: (tileId: string | null) => void;
+  setOptimisticDiscardRackTile: Dispatch<SetStateAction<OkeyTile | null>>;
+  setDiscardDropPlacement: Dispatch<SetStateAction<RackDropPlacement>>;
+  setSelectedTileId: Dispatch<SetStateAction<string | null>>;
+  setLocalDragCommittedMeldSignatures: Dispatch<SetStateAction<string[]>>;
+  setDiscardDragPoint: Dispatch<SetStateAction<{ x: number; y: number } | null>>;
+}) {
+  const {
+    state, humanPlayer, topDiscard, canDraw, canDiscardTile, droppedMelds, tileFlight,
+    deckTopRectRef, discardTopRectRef, drawLandingRectRef, rackTileRectsRef,
+    pendingDeckDropRef, awaitingDiscardRemovalTileIdRef, isPointInsideRack,
+    isPointInsideDiscardPile, toLocalRect, draw, discard, commitOpenIntent,
+    selectOpenAction, dropTileOnTableMeld, emitInvalid, launchTileFlight,
+    setTileFlight, setHiddenRackTileIds, setHideDeckTopTile, setHideDiscardTopTile,
+    setDiscardPresentationFallback, setPresentedTopDiscard, holdDiscardUntilAuthoritative,
+    releaseAuthoritativeDiscardHold, setOptimisticDiscardRackTile, setDiscardDropPlacement,
+    setSelectedTileId, setLocalDragCommittedMeldSignatures, setDiscardDragPoint,
+  } = input;
+
+  useEffect(() => {
+    releaseAuthoritativeDiscardHold(topDiscard?.id ?? null);
+  }, [releaseAuthoritativeDiscardHold, topDiscard?.id]);
+
+  const startDrawFlight = useCallback((source: "deck" | "discard") => {
+    if (!canDraw) return;
+    void draw(source);
+    if (tileFlight) return;
+    const tile = source === "deck" ? state.deck[0] ?? null : topDiscard;
+    const sourceRect = source === "deck" ? deckTopRectRef.current : discardTopRectRef.current;
+    const targetRect = drawLandingRectRef.current;
+    if (!tile || !sourceRect || !targetRect) return;
+    launchTileFlight({
+      flight: { id: `draw-${tile.id}-${Date.now()}`, tile, face: "front", from: toLocalRect(sourceRect), to: toLocalRect(targetRect) },
+      hideDeckTopTile: source === "deck",
+      hideDiscardTopTile: source === "discard",
+    });
+  }, [canDraw, deckTopRectRef, discardTopRectRef, draw, drawLandingRectRef, launchTileFlight, state.deck, tileFlight, toLocalRect, topDiscard]);
+
+  const rollbackDiscardPresentation = useCallback((tileId: string) => {
+    if (awaitingDiscardRemovalTileIdRef.current === tileId) awaitingDiscardRemovalTileIdRef.current = null;
+    setHiddenRackTileIds((current) => current.filter((entry) => entry !== tileId));
+    setTileFlight((current) => current?.tile?.id === tileId ? null : current);
+    setPresentedTopDiscard(topDiscard);
+    setDiscardPresentationFallback(null);
+    setHideDiscardTopTile(false);
+  }, [awaitingDiscardRemovalTileIdRef, setDiscardPresentationFallback, setHiddenRackTileIds, setHideDiscardTopTile, setPresentedTopDiscard, setTileFlight, topDiscard]);
+
+  const commitDiscardFromRack = useCallback((tileId: string) => {
+    if (!canDiscardTile) return false;
+    if (!humanPlayer.opened && droppedMelds.length > 0) {
+      const action = selectOpenAction(droppedMelds);
+      if (!action.allowed || action.mode !== "open-melds") { emitInvalid(`staged-open-discard:${tileId}:${Date.now()}`); return false; }
+      awaitingDiscardRemovalTileIdRef.current = tileId;
+      setSelectedTileId(null);
+      setHiddenRackTileIds([tileId]);
+      setHideDiscardTopTile(false);
+      const signatures = action.melds.map((meld) => meld.tiles.map((tile) => tile.id).sort().join("|"));
+      setLocalDragCommittedMeldSignatures((current) => [...new Set([...current, ...signatures])]);
+      void commitOpenIntent(action.melds, action.score, tileId).then((accepted) => {
+        if (accepted) return;
+        rollbackDiscardPresentation(tileId);
+        setLocalDragCommittedMeldSignatures((current) => current.filter((entry) => !signatures.includes(entry)));
+      });
+      return true;
+    }
+    awaitingDiscardRemovalTileIdRef.current = tileId;
+    setSelectedTileId(null);
+    setHiddenRackTileIds([tileId]);
+    setHideDiscardTopTile(false);
+    void discard(tileId).then((accepted) => { if (!accepted) rollbackDiscardPresentation(tileId); });
+    return true;
+  }, [awaitingDiscardRemovalTileIdRef, canDiscardTile, commitOpenIntent, discard, droppedMelds, emitInvalid, humanPlayer.opened, rollbackDiscardPresentation, selectOpenAction, setHiddenRackTileIds, setHideDiscardTopTile, setLocalDragCommittedMeldSignatures, setSelectedTileId]);
+
+  const handleDiscardDroppedOnRack = useCallback((point: { x: number; y: number }) => {
+    if (!canDraw || !topDiscard || !isPointInsideRack(point)) return false;
+    const tile = topDiscard;
+    const revealedDiscard = state.discardPile[state.discardPile.length - 2] ?? null;
+    setOptimisticDiscardRackTile(tile);
+    setPresentedTopDiscard(revealedDiscard);
+    setDiscardPresentationFallback(null);
+    setHideDiscardTopTile(false);
+    setDiscardDropPlacement({ tileId: tile.id, point, nonce: Date.now() });
+    void draw("discard").then((accepted) => {
+      if (accepted) return;
+      setOptimisticDiscardRackTile((current) => current?.id === tile.id ? null : current);
+      setDiscardDropPlacement((current) => current?.tileId === tile.id ? null : current);
+      setPresentedTopDiscard(tile);
+      setDiscardPresentationFallback(null);
+      setHideDiscardTopTile(false);
+    });
+    return true;
+  }, [canDraw, draw, isPointInsideRack, setDiscardDropPlacement, setDiscardPresentationFallback, setHideDiscardTopTile, setOptimisticDiscardRackTile, setPresentedTopDiscard, state.discardPile, topDiscard]);
+
+  const dropTileFromRack = useCallback((tileId: string, point: { x: number; y: number }) => {
+    if (!isPointInsideDiscardPile(point)) return dropTileOnTableMeld(tileId, point);
+    const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
+    if (!tile || !commitDiscardFromRack(tileId)) return false;
+    setPresentedTopDiscard(tile);
+    holdDiscardUntilAuthoritative(tile);
+    setHideDiscardTopTile(true);
+    return true;
+  }, [commitDiscardFromRack, dropTileOnTableMeld, holdDiscardUntilAuthoritative, humanPlayer.hand, isPointInsideDiscardPile, setHideDiscardTopTile, setPresentedTopDiscard]);
+
+  const startDiscardFlight = useCallback((tileId: string) => {
+    if (!canDiscardTile) return;
+    const tile = humanPlayer.hand.find((entry) => entry.id === tileId);
+    const sourceRect = rackTileRectsRef.current[tileId];
+    const targetRect = discardTopRectRef.current;
+    if (!commitDiscardFromRack(tileId)) return;
+    if (tileFlight || !tile || !sourceRect || !targetRect) return;
+    setDiscardPresentationFallback(topDiscard);
+    setHideDiscardTopTile(true);
+    setTileFlight({ id: `discard-${tileId}-${Date.now()}`, tile, face: "front", from: toLocalRect(sourceRect), to: toLocalRect(targetRect) });
+  }, [canDiscardTile, commitDiscardFromRack, discardTopRectRef, humanPlayer.hand, rackTileRectsRef, setDiscardPresentationFallback, setHideDiscardTopTile, setTileFlight, tileFlight, toLocalRect, topDiscard]);
+
+  const handleDeckDroppedOnRack = useCallback((point: { x: number; y: number }) => {
+    if (!canDraw || state.deck.length === 0 || !isPointInsideRack(point)) return;
+    const pending = { point, previousHandTileIds: new Set(humanPlayer.hand.map((tile) => tile.id)) };
+    pendingDeckDropRef.current = pending;
+    setHideDeckTopTile(false);
+    void draw("deck").then((accepted) => {
+      if (accepted || pendingDeckDropRef.current !== pending) return;
+      pendingDeckDropRef.current = null;
+      setDiscardDragPoint(null);
+      setHideDeckTopTile(false);
+    });
+  }, [canDraw, draw, humanPlayer.hand, isPointInsideRack, pendingDeckDropRef, setDiscardDragPoint, setHideDeckTopTile, state.deck.length]);
+
+  useLayoutEffect(() => {
+    const pending = pendingDeckDropRef.current;
+    if (!pending) return;
+    const tile = humanPlayer.hand.find((entry) => !pending.previousHandTileIds.has(entry.id));
+    if (!tile) return;
+    pendingDeckDropRef.current = null;
+    setDiscardDropPlacement({ tileId: tile.id, point: pending.point, nonce: Date.now() });
+  }, [humanPlayer.hand, pendingDeckDropRef, setDiscardDropPlacement]);
+
+  return { startDrawFlight, startDiscardFlight, handleDiscardDroppedOnRack, dropTileFromRack, handleDeckDroppedOnRack };
+}
+
+export function useOkeyTakeoverPresentationExit(input: {
+  matchId?: string;
+  projection: OkeyMatchServerProjection | null;
+  activePresentationRef: MutableRefObject<ActivePresentation>;
+  presentationToken: TileFlight | null;
+  onExit: () => void;
+}) {
+  const { matchId, projection, activePresentationRef, presentationToken, onExit } = input;
+  const exitStartedRef = useRef(false);
+  const previousControlRef = useRef<{ matchId: string; playerId: string; controlled: boolean } | null>(null);
+  const pendingTimeoutEventIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!matchId || !projection || exitStartedRef.current || projection.matchFinished) return;
+    const viewer = projection.players.find((player) => Array.isArray(player.hand));
+    if (!viewer) return;
+    const controlled = viewer.controlledByBot === true || viewer.kind === "bot";
+    const previous = previousControlRef.current;
+    previousControlRef.current = { matchId, playerId: viewer.id, controlled };
+    if (!controlled) { pendingTimeoutEventIdRef.current = null; return; }
+    const event = projection.lastTimeoutDiscardEvent;
+    const fresh = previous?.matchId === matchId && previous.playerId === viewer.id && previous.controlled === false;
+    if (pendingTimeoutEventIdRef.current === null && fresh && event?.playerId === viewer.id) {
+      if (activePresentationRef.current.completedTimeoutEventId === event.id) { exitStartedRef.current = true; onExit(); return; }
+      if (activePresentationRef.current.onlineTimeout?.eventId === event.id) { pendingTimeoutEventIdRef.current = event.id; return; }
+      exitStartedRef.current = true; onExit(); return;
+    }
+    const pendingId = pendingTimeoutEventIdRef.current;
+    if (pendingId) {
+      if (activePresentationRef.current.completedTimeoutEventId === pendingId || activePresentationRef.current.onlineTimeout?.eventId !== pendingId) {
+        pendingTimeoutEventIdRef.current = null; exitStartedRef.current = true; onExit();
+      }
+      return;
+    }
+    exitStartedRef.current = true;
+    onExit();
+  }, [activePresentationRef, matchId, onExit, presentationToken, projection]);
+}
+
+export function useOkeyOptimisticRackPresentation(
+  authoritativeHand: OkeyTile[],
+  optimisticTile: OkeyTile | null,
+  setOptimisticTile: Dispatch<SetStateAction<OkeyTile | null>>,
+) {
+  const presentedHand = optimisticTile && !authoritativeHand.some((tile) => tile.id === optimisticTile.id)
+    ? [...authoritativeHand, optimisticTile]
+    : authoritativeHand;
+  useLayoutEffect(() => {
+    if (optimisticTile && authoritativeHand.some((tile) => tile.id === optimisticTile.id)) {
+      setOptimisticTile(null);
+    }
+  }, [authoritativeHand, optimisticTile, setOptimisticTile]);
+  return presentedHand;
+}
+export function useOkeyPresentationResetLifecycle(input: {
+  resumeToken: number;
+  round: number;
+  players: OkeyGameState["players"];
+  topDiscard: OkeyTile | null;
+  resetRuntime: (players: OkeyGameState["players"], topDiscard: OkeyTile | null) => void;
+  resetTablePresentation: () => void;
+  pendingDeckDropRef: MutableRefObject<PendingDeckDrop>;
+  hoveredMeldTargetRef: MutableRefObject<{ playerId: string; meldId: string } | null>;
+  meldDropRectsRef: MutableRefObject<unknown[]>;
+  setDiscardDropPlacement: Dispatch<SetStateAction<RackDropPlacement>>;
+  setIsDiscardDragActive: Dispatch<SetStateAction<boolean>>;
+  setHoveredMeldTarget: Dispatch<SetStateAction<{ playerId: string; meldId: string } | null>>;
+  setDiscardDragPoint: Dispatch<SetStateAction<{ x: number; y: number } | null>>;
+}) {
+  const {
+    resumeToken, round, players, topDiscard, resetRuntime, resetTablePresentation,
+    pendingDeckDropRef, hoveredMeldTargetRef, meldDropRectsRef, setDiscardDropPlacement,
+    setIsDiscardDragActive, setHoveredMeldTarget, setDiscardDragPoint,
+  } = input;
+  useOkeyPresentationBoundary(resumeToken, () => {
+    resetRuntime(players, topDiscard);
+    pendingDeckDropRef.current = null;
+    setDiscardDropPlacement(null);
+    setIsDiscardDragActive(false);
+    setHoveredMeldTarget(null);
+    setDiscardDragPoint(null);
+  });
+  useOkeyPresentationBoundary(round, () => {
+    hoveredMeldTargetRef.current = null;
+    meldDropRectsRef.current = [];
+    resetRuntime(players, topDiscard);
+    pendingDeckDropRef.current = null;
+    resetTablePresentation();
+  });
+}
+
+export function useOkeyAuthoritativeRackRemovalPresentation(
+  authoritativeHand: OkeyTile[],
+  awaitingTileIdRef: MutableRefObject<string | null>,
+  setHiddenTileIds: Dispatch<SetStateAction<string[]>>,
+) {
+  useEffect(() => {
+    const tileId = awaitingTileIdRef.current;
+    if (!tileId || authoritativeHand.some((tile) => tile.id === tileId)) return;
+    awaitingTileIdRef.current = null;
+    setHiddenTileIds((current) => current.filter((entry) => entry !== tileId));
+  }, [authoritativeHand, awaitingTileIdRef, setHiddenTileIds]);
+}
+
+export function useOkeyTableMeldCommandPresentation(input: {
+  awaitingTileIdRef: MutableRefObject<string | null>;
+  setHiddenTileIds: Dispatch<SetStateAction<string[]>>;
+  setSelectedTileId: Dispatch<SetStateAction<string | null>>;
+  lockKonkan: (tileId: string, playerId: string, meldId: string, runEnd?: "start" | "end") => Promise<boolean>;
+  spendTile: (tileId: string, playerId: string, meldId: string, runEnd?: "start" | "end") => Promise<boolean>;
+}) {
+  const { awaitingTileIdRef, setHiddenTileIds, setSelectedTileId, lockKonkan, spendTile } = input;
+  return useCallback((action: OkeyTableMeldAction, runEnd?: "start" | "end") => {
+    const tileId = action.tileId;
+    awaitingTileIdRef.current = tileId;
+    setHiddenTileIds([tileId]);
+    setSelectedTileId(null);
+    const command = action.type === "lock-konkan" ? lockKonkan : spendTile;
+    void command(tileId, action.targetPlayerId, action.targetMeldId, runEnd).then((accepted) => {
+      if (accepted) return;
+      awaitingTileIdRef.current = null;
+      setHiddenTileIds((current) => current.filter((entry) => entry !== tileId));
+    });
+    return true;
+  }, [awaitingTileIdRef, lockKonkan, setHiddenTileIds, setSelectedTileId, spendTile]);
+}
+export function useOkeyMeldDropOrchestration(input: {
+  canPlayAfterDraw: boolean;
+  remainingMeldSlots: number;
+  humanOpened: boolean;
+  droppedMelds: OkeyMeld[];
+  hoveredTargetRef: MutableRefObject<MeldDropRect | null>;
+  findMeldTarget: (point: { x: number; y: number }, isValid: (rect: MeldDropRect) => boolean) => MeldDropRect | null;
+  isInsideHumanMeldZone: (point: { x: number; y: number }) => boolean;
+  selectTableMeldAction: (tileId: string, playerId: string, meldId: string) => OkeyTableMeldAction | null;
+  awaitingTileIdRef: MutableRefObject<string | null>;
+  setHiddenTileIds: Dispatch<SetStateAction<string[]>>;
+  setSelectedTileId: Dispatch<SetStateAction<string | null>>;
+  setHoveredTarget: Dispatch<SetStateAction<{ playerId: string; meldId: string } | null>>;
+  setDroppedMelds: Dispatch<SetStateAction<OkeyMeld[]>>;
+  setCommittedSignatures: Dispatch<SetStateAction<string[]>>;
+  lockKonkan: (tileId: string, playerId: string, meldId: string, runEnd?: "start" | "end") => Promise<boolean>;
+  spendTile: (tileId: string, playerId: string, meldId: string, runEnd?: "start" | "end") => Promise<boolean>;
+  commitOpenIntent: (melds: OkeyMeld[], score: number, tileId?: string) => Promise<boolean>;
+  emitFeedback: (event: "invalid" | "rack-move", key: string) => void;
+}) {
+  const {
+    canPlayAfterDraw, remainingMeldSlots, humanOpened, droppedMelds, hoveredTargetRef,
+    findMeldTarget, isInsideHumanMeldZone, selectTableMeldAction, awaitingTileIdRef,
+    setHiddenTileIds, setSelectedTileId, setHoveredTarget, setDroppedMelds,
+    setCommittedSignatures, lockKonkan, spendTile, commitOpenIntent, emitFeedback,
+  } = input;
+  const submitTableMeldAction = useOkeyTableMeldCommandPresentation({
+    awaitingTileIdRef, setHiddenTileIds, setSelectedTileId, lockKonkan, spendTile,
+  });
+  const getClosestValidMeldDropTarget = useCallback((tileId: string, point: { x: number; y: number }) =>
+    findMeldTarget(point, (rect) => selectTableMeldAction(tileId, rect.playerId, rect.meldId) !== null),
+  [findMeldTarget, selectTableMeldAction]);
+  const updateTileDragMeldTarget = useCallback((tileId: string | null, point: { x: number; y: number } | null) => {
+    const target = tileId && point ? getClosestValidMeldDropTarget(tileId, point) : null;
+    hoveredTargetRef.current = target;
+    setHoveredTarget((current) => current?.playerId === target?.playerId && current?.meldId === target?.meldId
+      ? current : target ? { playerId: target.playerId, meldId: target.meldId } : null);
+  }, [getClosestValidMeldDropTarget, hoveredTargetRef, setHoveredTarget]);
+  const dropTileOnTableMeld = useCallback((tileId: string, point: { x: number; y: number }) => {
+    const target = hoveredTargetRef.current;
+    if (!target) return false;
+    const action = selectTableMeldAction(tileId, target.playerId, target.meldId);
+    if (!action) return false;
+    return submitTableMeldAction(action, getOkeyRunEndForDrop(action.runEndOptions, point, target));
+  }, [hoveredTargetRef, selectTableMeldAction, submitTableMeldAction]);
+  const handleDropMeldGroup = useCallback((meld: OkeyMeld, point: { x: number; y: number }) => {
+    if (!canPlayAfterDraw || !isInsideHumanMeldZone(point) || remainingMeldSlots <= 0) {
+      emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`); return false;
+    }
+    if (humanOpened) {
+      const signature = meld.tiles.map((tile) => tile.id).sort().join("|");
+      setCommittedSignatures((current) => current.includes(signature) ? current : [...current, signature]);
+      void commitOpenIntent([meld], meld.score).then((accepted) => {
+        if (!accepted) setCommittedSignatures((current) => current.filter((entry) => entry !== signature));
+      });
+      setSelectedTileId(null);
+      emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
+      return true;
+    }
+    if (droppedMelds.length >= remainingMeldSlots) {
+      emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`); return false;
+    }
+    const existingIds = new Set(droppedMelds.flatMap((entry) => entry.tiles.map((tile) => tile.id)));
+    if (meld.tiles.some((tile) => existingIds.has(tile.id))) return false;
+    setDroppedMelds([...droppedMelds, { ...meld, id: `human-drop-${Date.now()}-${droppedMelds.length}` }]);
+    setSelectedTileId(null);
+    emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
+    return true;
+  }, [canPlayAfterDraw, commitOpenIntent, droppedMelds, emitFeedback, humanOpened, isInsideHumanMeldZone, remainingMeldSlots, setCommittedSignatures, setDroppedMelds, setSelectedTileId]);
+  return { getClosestValidMeldDropTarget, updateTileDragMeldTarget, dropTileOnTableMeld, handleDropMeldGroup };
+}

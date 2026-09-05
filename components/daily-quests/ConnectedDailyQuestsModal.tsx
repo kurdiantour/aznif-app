@@ -98,8 +98,8 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
 }
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 5000, elevation: 5000, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(5,4,12,0.82)" },
+  overlay: { ...StyleSheet.absoluteFill, zIndex: 5000, elevation: 5000, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(5,4,12,0.82)" },
   box: { width: "100%", maxWidth: 800, minHeight: 360, overflow: "hidden", borderRadius: 24, borderWidth: 1, borderColor: "rgba(255,212,92,0.52)", backgroundColor: "#14121d", paddingTop: 22, paddingBottom: 17, shadowColor: "#000", shadowOpacity: 0.46, shadowRadius: 20, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
   topGlow: { position: "absolute", top: -55, left: "23%", width: "54%", height: 110, borderRadius: 60, backgroundColor: "rgba(255,202,68,0.1)" },
   close: { position: "absolute", top: 12, right: 13, zIndex: 2, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,212,92,0.1)" },

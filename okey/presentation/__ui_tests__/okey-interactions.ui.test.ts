@@ -83,11 +83,11 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
 
 
 test("rapid double tap discards the same rack tile without waiting for a selection render", () => {
-  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
+  const interactions = readFileSync("okey/presentation/useOkeyTableActions.ts", "utf8");
 
-  expect(scene).toContain("const lastRackTapRef = useRef");
-  expect(scene).toMatch(
-    /previousTap\?\.tileId === tileId[\s\S]*?tappedAt - previousTap\.tappedAt <= 350[\s\S]*?startDiscardFlight\(tileId\)/,
+  expect(interactions).toContain("const lastTapRef = useRef");
+  expect(interactions).toMatch(
+    /previousTap\?\.tileId === tileId[\s\S]*?tappedAt - previousTap\.tappedAt <= 350[\s\S]*?discardTile\(tileId\)/,
   );
 });
 

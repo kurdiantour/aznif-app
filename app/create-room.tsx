@@ -391,7 +391,7 @@ export default function CreateRoomScreen() {
                 "#10141e",
               ]}
               style={
-                StyleSheet.absoluteFillObject
+                StyleSheet.absoluteFill
               }
             />
 
