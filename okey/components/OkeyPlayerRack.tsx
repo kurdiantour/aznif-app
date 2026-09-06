@@ -185,7 +185,6 @@ export function OkeyPlayerRack({
   dealOrigin,
   externalDropPlacement,
   onExternalDropPlaced,
-  externalHoverPoint,
   eliminated = false,
 }: {
   tiles: OkeyTile[];
@@ -234,7 +233,6 @@ export function OkeyPlayerRack({
     tileId: string,
     targetIndex: number,
   ) => void;
-  externalHoverPoint?: { x: number; y: number } | null;
   eliminated?: boolean;
 }) {
   const layout = useOkeyResponsiveLayout();
@@ -344,7 +342,6 @@ export function OkeyPlayerRack({
     draggingMeld,
     dragPosition,
     draggedMeldScale,
-    externalHoverTarget,
     getTileShiftValue,
     getTilePanHandlers,
   } = useOkeyRackDrag({
@@ -363,7 +360,6 @@ export function OkeyPlayerRack({
   onTileDragPointChange,
   externalDropPlacement,
   onExternalDropPlaced,
-  externalHoverPoint,
   clearReturningJokerForTile,
 });
 
@@ -589,34 +585,6 @@ export function OkeyPlayerRack({
     tileById,
   ]);
 
-  const renderInsertionIndicator = (
-    row: RackRow,
-    slotIndex: number,
-  ) => {
-    const activeTarget = externalHoverTarget;
-
-    if (
-      !activeTarget ||
-      activeTarget.row !== row ||
-      activeTarget.slotIndex !== slotIndex
-    ) {
-      return null;
-    }
-
-    return (
-      <View
-        pointerEvents="none"
-        style={[
-          styles.rackSlotIndicator,
-          {
-            width: rackTileWidth,
-            height: rackTileHeight,
-          },
-        ]}
-      />
-    );
-  };
-
   const renderRackTile = (
     tileId: string,
     row: RackRow,
@@ -775,7 +743,6 @@ export function OkeyPlayerRack({
         },
       ]}
     >
-      {renderInsertionIndicator(row, slotIndex)}
     </View>
   );
 

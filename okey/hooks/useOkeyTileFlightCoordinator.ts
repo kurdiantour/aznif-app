@@ -851,7 +851,7 @@ export function useOkeyTileFlightCompletion(input: {
   };
 }
 type RackDropPlacement = { tileId: string; point: { x: number; y: number }; nonce: number } | null;
-type PendingDeckDrop = { point: { x: number; y: number }; previousHandTileIds: Set<string> } | null;
+type PendingDeckDrop = { tileId: string } | null;
 
 export function useOkeyPlayerTileFlightCommands(input: {
   state: OkeyGameState;
@@ -885,11 +885,10 @@ export function useOkeyPlayerTileFlightCommands(input: {
   setPresentedTopDiscard: Dispatch<SetStateAction<OkeyTile | null>>;
   holdDiscardUntilAuthoritative: (tile: OkeyTile) => void;
   releaseAuthoritativeDiscardHold: (tileId: string | null) => void;
-  setOptimisticDiscardRackTile: Dispatch<SetStateAction<OkeyTile | null>>;
+  setOptimisticRackTile: Dispatch<SetStateAction<OkeyTile | null>>;
   setDiscardDropPlacement: Dispatch<SetStateAction<RackDropPlacement>>;
   setSelectedTileId: Dispatch<SetStateAction<string | null>>;
   setLocalDragCommittedMeldSignatures: Dispatch<SetStateAction<string[]>>;
-  setDiscardDragPoint: Dispatch<SetStateAction<{ x: number; y: number } | null>>;
 }) {
   const {
     state, humanPlayer, topDiscard, canDraw, canDiscardTile, droppedMelds, tileFlight,
@@ -899,8 +898,8 @@ export function useOkeyPlayerTileFlightCommands(input: {
     selectOpenAction, dropTileOnTableMeld, emitInvalid, launchTileFlight,
     setTileFlight, setHiddenRackTileIds, setHideDeckTopTile, setHideDiscardTopTile,
     setDiscardPresentationFallback, setPresentedTopDiscard, holdDiscardUntilAuthoritative,
-    releaseAuthoritativeDiscardHold, setOptimisticDiscardRackTile, setDiscardDropPlacement,
-    setSelectedTileId, setLocalDragCommittedMeldSignatures, setDiscardDragPoint,
+    releaseAuthoritativeDiscardHold, setOptimisticRackTile, setDiscardDropPlacement,
+    setSelectedTileId, setLocalDragCommittedMeldSignatures,
   } = input;
 
   useEffect(() => {
@@ -908,7 +907,7 @@ export function useOkeyPlayerTileFlightCommands(input: {
   }, [releaseAuthoritativeDiscardHold, topDiscard?.id]);
 
   const startDrawFlight = useCallback((source: "deck" | "discard") => {
-    if (!canDraw) return;
+    if (!canDraw || pendingDeckDropRef.current) return;
     void draw(source);
     if (tileFlight) return;
     const tile = source === "deck" ? state.deck[0] ?? null : topDiscard;
@@ -920,7 +919,7 @@ export function useOkeyPlayerTileFlightCommands(input: {
       hideDeckTopTile: source === "deck",
       hideDiscardTopTile: source === "discard",
     });
-  }, [canDraw, deckTopRectRef, discardTopRectRef, draw, drawLandingRectRef, launchTileFlight, state.deck, tileFlight, toLocalRect, topDiscard]);
+  }, [canDraw, deckTopRectRef, discardTopRectRef, draw, drawLandingRectRef, launchTileFlight, pendingDeckDropRef, state.deck, tileFlight, toLocalRect, topDiscard]);
 
   const rollbackDiscardPresentation = useCallback((tileId: string) => {
     if (awaitingDiscardRemovalTileIdRef.current === tileId) awaitingDiscardRemovalTileIdRef.current = null;
@@ -958,24 +957,24 @@ export function useOkeyPlayerTileFlightCommands(input: {
   }, [awaitingDiscardRemovalTileIdRef, canDiscardTile, commitOpenIntent, discard, droppedMelds, emitInvalid, humanPlayer.opened, rollbackDiscardPresentation, selectOpenAction, setHiddenRackTileIds, setHideDiscardTopTile, setLocalDragCommittedMeldSignatures, setSelectedTileId]);
 
   const handleDiscardDroppedOnRack = useCallback((point: { x: number; y: number }) => {
-    if (!canDraw || !topDiscard || !isPointInsideRack(point)) return false;
+    if (pendingDeckDropRef.current || !canDraw || !topDiscard || !isPointInsideRack(point)) return false;
     const tile = topDiscard;
     const revealedDiscard = state.discardPile[state.discardPile.length - 2] ?? null;
-    setOptimisticDiscardRackTile(tile);
+    setOptimisticRackTile(tile);
     setPresentedTopDiscard(revealedDiscard);
     setDiscardPresentationFallback(null);
     setHideDiscardTopTile(false);
     setDiscardDropPlacement({ tileId: tile.id, point, nonce: Date.now() });
     void draw("discard").then((accepted) => {
       if (accepted) return;
-      setOptimisticDiscardRackTile((current) => current?.id === tile.id ? null : current);
+      setOptimisticRackTile((current) => current?.id === tile.id ? null : current);
       setDiscardDropPlacement((current) => current?.tileId === tile.id ? null : current);
       setPresentedTopDiscard(tile);
       setDiscardPresentationFallback(null);
       setHideDiscardTopTile(false);
     });
     return true;
-  }, [canDraw, draw, isPointInsideRack, setDiscardDropPlacement, setDiscardPresentationFallback, setHideDiscardTopTile, setOptimisticDiscardRackTile, setPresentedTopDiscard, state.discardPile, topDiscard]);
+  }, [canDraw, draw, isPointInsideRack, pendingDeckDropRef, setDiscardDropPlacement, setDiscardPresentationFallback, setHideDiscardTopTile, setOptimisticRackTile, setPresentedTopDiscard, state.discardPile, topDiscard]);
 
   const dropTileFromRack = useCallback((tileId: string, point: { x: number; y: number }) => {
     if (!isPointInsideDiscardPile(point)) return dropTileOnTableMeld(tileId, point);
@@ -1000,26 +999,45 @@ export function useOkeyPlayerTileFlightCommands(input: {
   }, [canDiscardTile, commitDiscardFromRack, discardTopRectRef, humanPlayer.hand, rackTileRectsRef, setDiscardPresentationFallback, setHideDiscardTopTile, setTileFlight, tileFlight, toLocalRect, topDiscard]);
 
   const handleDeckDroppedOnRack = useCallback((point: { x: number; y: number }) => {
-    if (!canDraw || state.deck.length === 0 || !isPointInsideRack(point)) return;
-    const pending = { point, previousHandTileIds: new Set(humanPlayer.hand.map((tile) => tile.id)) };
+    if (
+      !canDraw ||
+      pendingDeckDropRef.current ||
+      state.deck.length === 0 ||
+      !isPointInsideRack(point)
+    ) return;
+
+    const tile = state.deck[0];
+    if (!tile) return;
+
+    const pending = { tileId: tile.id };
     pendingDeckDropRef.current = pending;
-    setHideDeckTopTile(false);
+    setOptimisticRackTile(tile);
+    setDiscardDropPlacement({ tileId: tile.id, point, nonce: Date.now() });
+    setHideDeckTopTile(true);
+
     void draw("deck").then((accepted) => {
       if (accepted || pendingDeckDropRef.current !== pending) return;
+
       pendingDeckDropRef.current = null;
-      setDiscardDragPoint(null);
+      setOptimisticRackTile((current) => current?.id === tile.id ? null : current);
+      setDiscardDropPlacement((current) => current?.tileId === tile.id ? null : current);
+      setSelectedTileId((current) => current === tile.id ? null : current);
       setHideDeckTopTile(false);
     });
-  }, [canDraw, draw, humanPlayer.hand, isPointInsideRack, pendingDeckDropRef, setDiscardDragPoint, setHideDeckTopTile, state.deck.length]);
+  }, [
+    canDraw, draw, isPointInsideRack, pendingDeckDropRef, setDiscardDropPlacement,
+    setHideDeckTopTile, setOptimisticRackTile, setSelectedTileId, state.deck,
+  ]);
 
   useLayoutEffect(() => {
     const pending = pendingDeckDropRef.current;
     if (!pending) return;
-    const tile = humanPlayer.hand.find((entry) => !pending.previousHandTileIds.has(entry.id));
-    if (!tile) return;
+    if (!humanPlayer.hand.some((tile) => tile.id === pending.tileId)) return;
+
     pendingDeckDropRef.current = null;
-    setDiscardDropPlacement({ tileId: tile.id, point: pending.point, nonce: Date.now() });
-  }, [humanPlayer.hand, pendingDeckDropRef, setDiscardDropPlacement]);
+    setOptimisticRackTile((current) => current?.id === pending.tileId ? null : current);
+    setHideDeckTopTile(false);
+  }, [humanPlayer.hand, pendingDeckDropRef, setHideDeckTopTile, setOptimisticRackTile]);
 
   return { startDrawFlight, startDiscardFlight, handleDiscardDroppedOnRack, dropTileFromRack, handleDeckDroppedOnRack };
 }
@@ -1090,12 +1108,11 @@ export function useOkeyPresentationResetLifecycle(input: {
   setDiscardDropPlacement: Dispatch<SetStateAction<RackDropPlacement>>;
   setIsDiscardDragActive: Dispatch<SetStateAction<boolean>>;
   setHoveredMeldTarget: Dispatch<SetStateAction<{ playerId: string; meldId: string } | null>>;
-  setDiscardDragPoint: Dispatch<SetStateAction<{ x: number; y: number } | null>>;
 }) {
   const {
     resumeToken, round, players, topDiscard, resetRuntime, resetTablePresentation,
     pendingDeckDropRef, hoveredMeldTargetRef, meldDropRectsRef, setDiscardDropPlacement,
-    setIsDiscardDragActive, setHoveredMeldTarget, setDiscardDragPoint,
+    setIsDiscardDragActive, setHoveredMeldTarget,
   } = input;
   useOkeyPresentationBoundary(resumeToken, () => {
     resetRuntime(players, topDiscard);
@@ -1103,7 +1120,6 @@ export function useOkeyPresentationResetLifecycle(input: {
     setDiscardDropPlacement(null);
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
-    setDiscardDragPoint(null);
   });
   useOkeyPresentationBoundary(round, () => {
     hoveredMeldTargetRef.current = null;
@@ -1220,3 +1236,4 @@ export function useOkeyMeldDropOrchestration(input: {
   }, [canPlayAfterDraw, commitOpenIntent, droppedMelds, emitFeedback, humanOpened, isInsideHumanMeldZone, remainingMeldSlots, setCommittedSignatures, setDroppedMelds, setSelectedTileId]);
   return { getClosestValidMeldDropTarget, updateTileDragMeldTarget, dropTileOnTableMeld, handleDropMeldGroup };
 }
+

@@ -6,10 +6,14 @@ import {
   createAuthoritativeOkeyMatch,
   settleAuthoritativeOkeyRound,
   startAuthoritativeOkeyNextRound,
-  OKEY_ROUND_END_PRESENTATION_BUDGET,
   type OkeyAuthoritativeMatchState,
   type OkeyServerPlayerIdentity,
 } from "../okey-authoritative.ts";
+import { OKEY_SERVER_ROUND_TRANSITION_DELAY_MS } from "../okey-lifecycle-timing.ts";
+
+import {
+  runAuthoritativeOkeyLifecycle,
+} from "../../../lib/multiplayer/okey/okey-turn-engine.ts";
 
 import {
   evaluateOkeyServerLifecycle,
@@ -21,7 +25,6 @@ import {
   reconcileAuthoritativeServerTurns,
   reconcileAuthoritativeServerLifecycleWakeup,
   reconcileAuthoritativeServerScheduler,
-  runOkeyLifecycleReconciler,
   type OkeyAuthoritativeSnapshotBundle,
   type OkeyLifecycleDecision,
 } from "../okey-server-reconciler.ts";
@@ -668,12 +671,12 @@ test("reconcileAuthoritativeServerTurns executes bot turn through executeOkeyBot
   assert.equal(result.state.roundState.currentPlayerIndex, 1);
 });
 
-test("runOkeyLifecycleReconciler re-evaluates state iteratively with injected transition executor", async () => {
+test("runAuthoritativeOkeyLifecycle owns lifecycle execution boundary", async () => {
   const initialBundle = createTestBundle(
     {
       roundState: {
         ...createAuthoritativeOkeyMatch(mockPlayers, 0).roundState,
-        currentPlayerIndex: 1, // Bot turn
+        currentPlayerIndex: 1,
         hasDrawnThisTurn: false,
       },
     },
@@ -682,14 +685,10 @@ test("runOkeyLifecycleReconciler re-evaluates state iteratively with injected tr
   );
 
   const executedSteps: string[] = [];
-
-  const mockExecutor = async (
-    decision: Exclude<OkeyLifecycleDecision, { type: "idle" }>,
-    current: OkeyAuthoritativeSnapshotBundle,
-  ): Promise<OkeyAuthoritativeSnapshotBundle | null> => {
-    executedSteps.push(decision.type);
-
-    if (decision.type === "bot-turn" && decision.step === "draw") {
+  const result = await runAuthoritativeOkeyLifecycle(initialBundle, {
+    now: () => Date.parse("2026-09-02T12:00:00.000Z"),
+    executeTransition: async (decision, current) => {
+      executedSteps.push(decision.type);
       return {
         ...current,
         version: Number(current.version) + 1,
@@ -701,37 +700,14 @@ test("runOkeyLifecycleReconciler re-evaluates state iteratively with injected tr
           },
         },
       };
-    }
-
-    if (decision.type === "bot-turn" && decision.step === "discard") {
-      return {
-        ...current,
-        version: Number(current.version) + 1,
-        turn_deadline_at: "2026-09-02T12:00:30.000Z",
-        state: {
-          ...current.state,
-          roundState: {
-            ...current.state.roundState,
-            currentPlayerIndex: 0, // Moves to human player
-            hasDrawnThisTurn: false,
-          },
-        },
-      };
-    }
-
-    return null;
-  };
-
-  const result = await runOkeyLifecycleReconciler(initialBundle, {
-    transitionExecutor: mockExecutor,
-    now: () => Date.parse("2026-09-02T12:00:00.000Z"),
+    },
   });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.iterations, 2);
-  assert.deepEqual(executedSteps, ["bot-turn", "bot-turn"]);
-  assert.equal(result.finalDecision.type, "idle");
-  assert.equal(Number(result.finalBundle.version), 12);
+  assert.deepEqual(executedSteps, ["bot-turn"]);
+  assert.equal(Number(result.finalBundle.version), 11);
+  assert.equal(result.executedDecisions.length, 1);
+  assert.equal(result.finalDecision.type, "bot-turn");
+  assert.equal(result.reason, "waiting_boundary");
 });
 
 test("reconcileAuthoritativeNextRound starts next round after eligibleAt and emits round action event", async () => {
@@ -801,6 +777,169 @@ test("reconcileAuthoritativeNextRound starts next round after eligibleAt and emi
   assert.deepEqual(committedActionEvents, [
     { type: "round", actorPlayerId: null, payload: { round: 2 } },
   ]);
+});
+
+test("lifecycle commit failure: eliminated turn propagates instead of being swallowed", async () => {
+  const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const state: OkeyAuthoritativeMatchState = {
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      currentPlayerIndex: 1,
+      hasDrawnThisTurn: false,
+      players: baseMatch.roundState.players.map((player, index) =>
+        index === 1 ? { ...player, eliminated: true } : player,
+      ),
+    },
+  };
+
+  const mockClient = {
+    rpc: () => ({
+      single: async () => ({
+        data: null,
+        error: { message: "forced_eliminated_commit_failure" },
+      }),
+    }),
+  };
+
+  await assert.rejects(
+    () => reconcileAuthoritativeEliminatedTurns({
+      client: mockClient,
+      matchId: "test-eliminated-failure",
+      state,
+      version: 30,
+      turnDeadlineAt: null,
+      maxIterations: 1,
+    }),
+    /forced_eliminated_commit_failure/,
+  );
+});
+
+test("lifecycle commit failure: timeout propagates instead of returning executed:false", async () => {
+  const state = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const deadline = "2026-09-02T12:00:30.000Z";
+  const now = Date.parse("2026-09-02T12:00:35.000Z");
+
+  const mockClient = {
+    rpc: () => ({
+      single: async () => ({
+        data: null,
+        error: { message: "forced_timeout_commit_failure" },
+      }),
+    }),
+  };
+
+  await assert.rejects(
+    () => reconcileAuthoritativeTimeoutTurn({
+      client: mockClient,
+      matchId: "test-timeout-failure",
+      state,
+      version: 31,
+      turnDeadlineAt: deadline,
+      now: () => now,
+    }),
+    /forced_timeout_commit_failure/,
+  );
+});
+
+test("lifecycle commit failure: next round propagates instead of returning executed:false", async () => {
+  const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
+  const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const state = settleAuthoritativeOkeyRound({
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      phase: "finished" as const,
+      winnerId: "p1",
+      endReason: "win" as const,
+    },
+  }, roundFinishTime);
+
+  const mockClient = {
+    rpc: () => ({
+      single: async () => ({
+        data: null,
+        error: { message: "forced_next_round_commit_failure" },
+      }),
+    }),
+  };
+
+  await assert.rejects(
+    () => reconcileAuthoritativeNextRound({
+      client: mockClient,
+      matchId: "test-next-round-failure",
+      state,
+      version: 32,
+      now: () => roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS,
+    }),
+    /forced_next_round_commit_failure/,
+  );
+});
+
+test("valid applied:false lifecycle races remain no-op", async () => {
+  const appliedFalseClient = {
+    rpc: () => ({
+      single: async () => ({
+        data: { applied: false },
+        error: null,
+      }),
+    }),
+  };
+
+  const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const eliminatedState: OkeyAuthoritativeMatchState = {
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      currentPlayerIndex: 1,
+      hasDrawnThisTurn: false,
+      players: baseMatch.roundState.players.map((player, index) =>
+        index === 1 ? { ...player, eliminated: true } : player,
+      ),
+    },
+  };
+  const eliminatedResult = await reconcileAuthoritativeEliminatedTurns({
+    client: appliedFalseClient,
+    matchId: "test-eliminated-applied-false",
+    state: eliminatedState,
+    version: 40,
+    turnDeadlineAt: null,
+    maxIterations: 1,
+  });
+  assert.equal(eliminatedResult.executedCount, 0);
+  assert.equal(eliminatedResult.version, 40);
+
+  const timeoutDeadline = "2026-09-02T12:00:30.000Z";
+  const timeoutResult = await reconcileAuthoritativeTimeoutTurn({
+    client: appliedFalseClient,
+    matchId: "test-timeout-applied-false",
+    state: baseMatch,
+    version: 41,
+    turnDeadlineAt: timeoutDeadline,
+    now: () => Date.parse("2026-09-02T12:00:35.000Z"),
+  });
+  assert.equal(timeoutResult.executed, false);
+  assert.equal(timeoutResult.version, 41);
+
+  const roundFinishTime = Date.parse("2026-09-02T12:05:00.000Z");
+  const finishedState = settleAuthoritativeOkeyRound({
+    ...baseMatch,
+    roundState: {
+      ...baseMatch.roundState,
+      phase: "finished" as const,
+      winnerId: "p1",
+      endReason: "win" as const,
+    },
+  }, roundFinishTime);
+  const nextRoundResult = await reconcileAuthoritativeNextRound({
+    client: appliedFalseClient,
+    matchId: "test-next-round-applied-false",
+    state: finishedState,
+    version: 42,
+    now: () => roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS,
+  });
+  assert.equal(nextRoundResult.executed, false);
+  assert.equal(nextRoundResult.version, 42);
 });
 
 test("reconcileAuthoritativeMatchStart creates match state and starts room", async () => {
@@ -975,10 +1114,9 @@ test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions 
   assert.match(edge, /handOffOkeyServerLifecycle/);
 });
 
-test("Server Lifecycle Wake-up: waits full presentation budget (8.5s) until nextRoundEligibleAt before executing Reconciler", async () => {
+test("Server Lifecycle Wake-up: waits full round transition delay (8.5s) until nextRoundEligibleAt before executing Reconciler", async () => {
   const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
-  const budgetDelayMs = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS; // 8,500ms
-  const eligibleAt = new Date(roundFinishTime + budgetDelayMs).toISOString();
+  const eligibleAt = new Date(roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
   let currentTime = roundFinishTime;
   const sleptIntervals: number[] = [];
 
@@ -993,14 +1131,14 @@ test("Server Lifecycle Wake-up: waits full presentation budget (8.5s) until next
     },
   }, roundFinishTime);
 
-  // Step 1: Round finished sets nextRoundEligibleAt to exact budget (now + 8.5s)
+  // Step 1: Round finished sets nextRoundEligibleAt to exact Server transition delay (now + 8.5s)
   assert.equal(settledMatch.nextRoundEligibleAt, eligibleAt);
-  assert.equal(budgetDelayMs, 8_500);
+  assert.equal(OKEY_SERVER_ROUND_TRANSITION_DELAY_MS, 8_500);
 
   // Step 2 & 3: Before 8.5s (during celebration and popup display), server lifecycle remains idle
   const celebrationMidpoint = evaluateOkeyServerLifecycle(
     createTestBundle(settledMatch, 10, null),
-    roundFinishTime + OKEY_ROUND_END_PRESENTATION_BUDGET.CELEBRATION_DURATION_MS - 1_000, // t = 4.0s
+    roundFinishTime + 4_000,
   );
   assert.equal(celebrationMidpoint.type, "idle");
   if (celebrationMidpoint.type === "idle") {
@@ -1009,7 +1147,7 @@ test("Server Lifecycle Wake-up: waits full presentation budget (8.5s) until next
 
   const popupDisplayMidpoint = evaluateOkeyServerLifecycle(
     createTestBundle(settledMatch, 10, null),
-    roundFinishTime + OKEY_ROUND_END_PRESENTATION_BUDGET.CELEBRATION_DURATION_MS + 1_500, // t = 6.5s
+    roundFinishTime + 6_500,
   );
   assert.equal(popupDisplayMidpoint.type, "idle");
   if (popupDisplayMidpoint.type === "idle") {
@@ -1019,7 +1157,7 @@ test("Server Lifecycle Wake-up: waits full presentation budget (8.5s) until next
   // Step 4: At t >= 8.5s, server reaches due-next-round
   const afterBudgetElapsed = evaluateOkeyServerLifecycle(
     createTestBundle(settledMatch, 10, null),
-    roundFinishTime + budgetDelayMs, // t = 8.5s
+    roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS, // t = 8.5s
   );
   assert.equal(afterBudgetElapsed.type, "due-next-round");
 
@@ -1090,8 +1228,7 @@ test("Server Lifecycle Wake-up: waits full presentation budget (8.5s) until next
 
 test("Server Lifecycle Wake-up: retries on transient conflict and round never remains in phase=finished", async () => {
   const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
-  const budgetDelayMs = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS;
-  const eligibleAt = new Date(roundFinishTime + budgetDelayMs).toISOString();
+  const eligibleAt = new Date(roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
   let currentTime = roundFinishTime;
   const sleptIntervals: number[] = [];
 
@@ -1180,8 +1317,7 @@ test("Server Lifecycle Wake-up: retries on transient conflict and round never re
 
 test("Server Lifecycle Wake-up: gracefully recognizes if match was already transitioned by concurrent worker", async () => {
   const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
-  const budgetDelayMs = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS;
-  const eligibleAt = new Date(roundFinishTime + budgetDelayMs).toISOString();
+  const eligibleAt = new Date(roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
   let currentTime = roundFinishTime;
 
   const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
@@ -1195,7 +1331,7 @@ test("Server Lifecycle Wake-up: gracefully recognizes if match was already trans
     },
   }, roundFinishTime);
 
-  const alreadyStartedMatch = startAuthoritativeOkeyNextRound(settledMatch, roundFinishTime + budgetDelayMs);
+  const alreadyStartedMatch = startAuthoritativeOkeyNextRound(settledMatch, roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS);
 
   const mockClient = {
     rpc: (name: string, args: any) => {
@@ -1331,7 +1467,7 @@ test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle wi
       winnerId: "p1",
       endReason: "win",
     },
-  }, nextRoundTime - OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS);
+  }, nextRoundTime - OKEY_SERVER_ROUND_TRANSITION_DELAY_MS);
   const finishedRoundState: OkeyAuthoritativeMatchState = {
     ...settledRoundState,
     nextRoundEligibleAt: eligibleAt,
@@ -1397,3 +1533,4 @@ test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle wi
   assert.equal(schedulerResult.state?.currentRound, 2);
   assert.equal(committedCommands.includes("start-next-round"), true);
 });
+

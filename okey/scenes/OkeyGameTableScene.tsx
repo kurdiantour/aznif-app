@@ -128,9 +128,9 @@ function OkeyGameTableSceneContent({ useController, localPreview = false }: {
     turnWarningToastVisible, setTurnWarningToastVisible,
     dealOrigin, setDealOrigin, profilePlayer, setProfilePlayer, moveTableMeld, removeStagedMeld,
     discardDropPlacement, setDiscardDropPlacement,
-    optimisticDiscardRackTile, setOptimisticDiscardRackTile,
+    optimisticRackTile, setOptimisticRackTile,
     isDiscardDragActive, setIsDiscardDragActive,
-    hoveredMeldTarget, setHoveredMeldTarget, discardDragPoint, setDiscardDragPoint,
+    hoveredMeldTarget, setHoveredMeldTarget,
     pendingDeckDropRef, handleExternalDropPlaced,
   } = useOkeyTablePresentation();
   const { emitFeedback } = useOkeyFeedback();
@@ -254,8 +254,8 @@ const onlineController = useController(
 
   const presentedHumanRackTiles = useOkeyOptimisticRackPresentation(
     humanPlayer.hand,
-    optimisticDiscardRackTile,
-    setOptimisticDiscardRackTile,
+    optimisticRackTile,
+    setOptimisticRackTile,
   );
   const topDiscard = state.discardPile[state.discardPile.length - 1] ?? null;
   const {
@@ -441,7 +441,6 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     setDiscardDropPlacement,
     setIsDiscardDragActive,
     setHoveredMeldTarget,
-    setDiscardDragPoint,
   });
 
   const turnTimerVisible = onlineGameplayReady && state.phase === "playing" && !showRoundResultPopup && !showMatchResultPopup;
@@ -462,8 +461,8 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     launchTileFlight, setTileFlight, setHiddenRackTileIds, setHideDeckTopTile,
     setHideDiscardTopTile, setDiscardPresentationFallback, setPresentedTopDiscard,
     holdDiscardUntilAuthoritative, releaseAuthoritativeDiscardHold,
-    setOptimisticDiscardRackTile, setDiscardDropPlacement, setSelectedTileId,
-    setLocalDragCommittedMeldSignatures, setDiscardDragPoint,
+    setOptimisticRackTile, setDiscardDropPlacement, setSelectedTileId,
+    setLocalDragCommittedMeldSignatures,
   });
   const handleTopOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[0]?.id;
@@ -493,12 +492,6 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   const handleDrawDiscard = useStableEvent(() => startDrawFlight("discard"));
   const handleViewDiscards = useStableEvent(() => setShowDiscardHistory(true));
   const handleDiscardDroppedOnRackStable = useStableEvent(handleDiscardDroppedOnRack);
-  const handleDiscardDragPointChange = useStableEvent((point: { x: number; y: number } | null) => {
-    setDiscardDragPoint(point && isPointInsideRack(point) ? point : null);
-  });
-  const handleDeckDragPointChange = useStableEvent((point: { x: number; y: number } | null) => {
-    setDiscardDragPoint(point && isPointInsideRack(point) ? point : null);
-  });
   const handleDeckDroppedOnRack = useStableEvent(handleDeckDroppedOnRackCommand);
   const handleDeckMeasured = useStableEvent((rect: ScreenRect) => {
     deckTopRectRef.current = rect;
@@ -667,9 +660,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
                 onViewDiscards={handleViewDiscards}
                 onDiscardDroppedOnRack={handleDiscardDroppedOnRackStable}
                 onDeckDroppedOnRack={handleDeckDroppedOnRack}
-                onDeckDragPointChange={handleDeckDragPointChange}
                 onDiscardDragActiveChange={setIsDiscardDragActive}
-                onDiscardDragPointChange={handleDiscardDragPointChange}
                 onDeckMeasured={handleDeckMeasured}
                 onDiscardMeasured={handleDiscardMeasured}
                 hideTopDeckTile={hideDeckTopTile}
@@ -745,7 +736,6 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
           hiddenTileIds={hiddenRackTileIds}
           skipEnterAnimationTileIds={skipEnterAnimationTileIds}
          externalDropPlacement={discardDropPlacement}
-          externalHoverPoint={discardDragPoint}
           eliminated={!!humanPlayer.eliminated}
           onExternalDropPlaced={handleExternalDropPlaced}
 

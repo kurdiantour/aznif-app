@@ -32,13 +32,11 @@ export function useOkeyTablePresentation() {
     point: { x: number; y: number };
     nonce: number;
   } | null>(null);
-  const [optimisticDiscardRackTile, setOptimisticDiscardRackTile] = useState<OkeyTile | null>(null);
+  const [optimisticRackTile, setOptimisticRackTile] = useState<OkeyTile | null>(null);
   const [isDiscardDragActive, setIsDiscardDragActive] = useState(false);
   const [hoveredMeldTarget, setHoveredMeldTarget] = useState<{ playerId: string; meldId: string } | null>(null);
-  const [discardDragPoint, setDiscardDragPoint] = useState<{ x: number; y: number } | null>(null);
   const pendingDeckDropRef = useRef<{
-    point: { x: number; y: number };
-    previousHandTileIds: Set<string>;
+    tileId: string;
   } | null>(null);
 
   const closeKonkanReveal = useCallback(() => {
@@ -73,9 +71,7 @@ export function useOkeyTablePresentation() {
   }, []);
   const handleExternalDropPlaced = useCallback((tileId: string, _targetIndex: number) => {
     setSelectedTileId(tileId);
-    pendingDeckDropRef.current = null;
     setDiscardDropPlacement(null);
-    setDiscardDragPoint(null);
   }, []);
   const resetTablePresentation = useCallback(() => {
     setTableMeldOffsets({});
@@ -84,11 +80,10 @@ export function useOkeyTablePresentation() {
     setDroppedMelds([]);
     setLocalDragCommittedMeldSignatures([]);
     setOpenableRackMelds({ melds: [], score: 0, contiguousGroups: [] });
-    setOptimisticDiscardRackTile(null);
+    setOptimisticRackTile(null);
     setDiscardDropPlacement(null);
     setIsDiscardDragActive(false);
     setHoveredMeldTarget(null);
-    setDiscardDragPoint(null);
     setShowScoreDetails(false);
     setShowDiscardHistory(false);
     setShowFinalTileCelebration(false);
@@ -114,9 +109,9 @@ export function useOkeyTablePresentation() {
     dealOrigin, setDealOrigin,
     profilePlayer, setProfilePlayer,
     discardDropPlacement, setDiscardDropPlacement,
-    optimisticDiscardRackTile, setOptimisticDiscardRackTile,
+    optimisticRackTile, setOptimisticRackTile,
     isDiscardDragActive, setIsDiscardDragActive,
     hoveredMeldTarget, setHoveredMeldTarget,
-    discardDragPoint, setDiscardDragPoint, pendingDeckDropRef, handleExternalDropPlaced,
+    pendingDeckDropRef, handleExternalDropPlaced,
   };
 }

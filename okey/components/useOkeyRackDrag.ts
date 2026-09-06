@@ -65,7 +65,6 @@ type UseOkeyRackDragParams = {
 
   externalDropPlacement?: ExternalDropPlacement | null;
   onExternalDropPlaced?: (tileId: string, targetIndex: number) => void;
-  externalHoverPoint?: { x: number; y: number } | null;
 
   clearReturningJokerForTile: (tileId: string) => void;
 };
@@ -92,7 +91,6 @@ export function useOkeyRackDrag({
   onTileDragPointChange,
   externalDropPlacement,
   onExternalDropPlaced,
-  externalHoverPoint,
   clearReturningJokerForTile,
 }: UseOkeyRackDragParams) {
   const [committedRackSlots, setCommittedRackSlots] = useState<RackSlots>(() =>
@@ -108,8 +106,6 @@ export function useOkeyRackDrag({
   );
   const [draggingTileId, setDraggingTileId] = useState<string | null>(null);
   const [draggingMeld, setDraggingMeld] = useState<DraggingMeld | null>(null);
-  const [externalHoverTarget, setExternalHoverTarget] =
-    useState<InsertionTarget | null>(null);
 
   const draggingMeldRef = useRef<DraggingMeld | null>(null);
   const dragPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -493,24 +489,6 @@ export function useOkeyRackDrag({
     );
   }, [externalDropPlacement, getExternalDropTarget, tiles]);
 
-  useEffect(() => {
-    if (!externalHoverPoint || externalDropPlacement) {
-      setExternalHoverTarget(null);
-      return;
-    }
-
-    setExternalHoverTarget(
-      getExternalDropTarget(
-        "__external_discard_preview__",
-        externalHoverPoint,
-      ),
-    );
-  }, [
-    externalDropPlacement,
-    externalHoverPoint,
-    getExternalDropTarget,
-  ]);
-
   const clearLongPressTimer = useCallback(() => {
     if (!longPressTimerRef.current) return;
     clearTimeout(longPressTimerRef.current);
@@ -822,7 +800,6 @@ export function useOkeyRackDrag({
     draggingMeld,
     dragPosition,
     draggedMeldScale,
-    externalHoverTarget,
     getTileShiftValue,
     getTilePanHandlers,
     dragStartedRef,

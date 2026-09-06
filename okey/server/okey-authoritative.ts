@@ -13,9 +13,16 @@ import {
 } from "../engine/okey-engine.ts";
 
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
-import { OKEY_ROUND_END_PRESENTATION_BUDGET } from "../presentation/okey-presentation-budget.ts";
+import {
+  deriveAuthoritativeOkeyTurnDeadline,
+  getAuthoritativeOkeyTurnContext,
+  type OkeyAuthoritativeTransitionReducers,
+  OKEY_DRAW_PHASE_SECONDS,
+  OKEY_THROW_PHASE_SECONDS,
+} from "../../lib/multiplayer/okey/okey-turn-engine.ts";
 
-export { OKEY_ROUND_END_PRESENTATION_BUDGET };
+export { OKEY_DRAW_PHASE_SECONDS, OKEY_THROW_PHASE_SECONDS };
+import { OKEY_SERVER_ROUND_TRANSITION_DELAY_MS } from "./okey-lifecycle-timing.ts";
 
 import {
   resolveTimeoutTurn,
@@ -41,8 +48,6 @@ import type {
   OkeyTile,
 } from "../types/okey.ts";
 
-export const OKEY_DRAW_PHASE_SECONDS = 15;
-export const OKEY_THROW_PHASE_SECONDS = 30;
 export const OKEY_MAX_ROUNDS = 7;
 const OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD = 2;
 
@@ -152,195 +157,6 @@ lastTimeoutDiscardEvent?:
 roundState: OkeyGameState;
 };
 
-export type OkeyAuthoritativeSnapshotBundle = {
-  version: number | string;
-  turn_deadline_at: string | null;
-  state: OkeyAuthoritativeMatchState;
-  status?: "playing" | "finished" | "waiting";
-};
-
-export type OkeyLifecycleDecision =
-  | {
-      type: "terminal";
-      matchFinished: true;
-      winnerTeamId: OkeyTeamId | null;
-      reason: string | null;
-    }
-  | {
-      type: "eliminated-turn";
-      expectedVersion: number;
-      expectedActorId: string;
-      playerIndex: number;
-    }
-  | {
-      type: "bot-turn";
-      expectedVersion: number;
-      expectedActorId: string;
-      playerIndex: number;
-      step: "draw" | "discard";
-      notBefore: string | null;
-      ready: boolean;
-    }
-  | {
-      type: "expired-human-turn";
-      expectedVersion: number;
-      expectedTurnPlayerId: string;
-      expectedTurnDeadlineAt: string;
-    }
-  | {
-      type: "due-next-round";
-      expectedVersion: number;
-      expectedRound: number;
-      eligibleAt: string;
-    }
-  | {
-      type: "idle";
-      reason:
-        | "waiting_for_human_action"
-        | "round_start_pending"
-        | "next_round_countdown"
-        | "match_finished_settled"
-        | "match_not_playing";
-      turnDeadlineAt?: string | null;
-      eligibleAt?: string | null;
-    };
-
-/**
- * Evaluates the next authoritative server lifecycle action in deterministic priority order:
- * 1. Terminal / Match Finished
- * 2. Eliminated Current Actor
- * 3. Bot Current Actor
- * 4. Expired Human Turn Deadline
- * 5. Due Next Round
- * 6. Idle / Waiting for player action or countdown
- */
-export function evaluateOkeyServerLifecycle(
-  bundle: OkeyAuthoritativeSnapshotBundle,
-  now = Date.now(),
-): OkeyLifecycleDecision {
-  const version = Number(bundle.version);
-  const state = bundle.state;
-  const turnDeadlineAt = bundle.turn_deadline_at;
-
-  // Priority 1: Terminal / Match Finished
-  if (state.matchFinished) {
-    return {
-      type: "terminal",
-      matchFinished: true,
-      winnerTeamId: state.matchWinnerTeamId,
-      reason: state.leaveTerminationReason,
-    };
-  }
-
-  // Active round playing phase
-  if (state.roundState.phase === "playing") {
-    const currentPlayerIndex = state.roundState.currentPlayerIndex;
-    const currentPlayer = state.roundState.players[currentPlayerIndex];
-
-    if (!currentPlayer) {
-      return {
-        type: "idle",
-        reason: "waiting_for_human_action",
-      };
-    }
-
-    // Priority 2: Eliminated Current Actor
-    if (currentPlayer.eliminated) {
-      return {
-        type: "eliminated-turn",
-        expectedVersion: version,
-        expectedActorId: currentPlayer.id,
-        playerIndex: currentPlayerIndex,
-      };
-    }
-
-    // Priority 3: Bot Current Actor
-    if (isOkeyBotControlled(currentPlayer)) {
-      const startPending = isOkeyRoundStartPending(state, now);
-      return {
-        type: "bot-turn",
-        expectedVersion: version,
-        expectedActorId: currentPlayer.id,
-        playerIndex: currentPlayerIndex,
-        step: state.roundState.hasDrawnThisTurn ? "discard" : "draw",
-        notBefore: state.roundStartsAt ?? null,
-        ready: !startPending,
-      };
-    }
-
-    // Round start delay for human player
-    if (isOkeyRoundStartPending(state, now)) {
-      return {
-        type: "idle",
-        reason: "round_start_pending",
-        turnDeadlineAt: state.roundStartsAt,
-      };
-    }
-
-    // Priority 4: Expired Human Turn Deadline
-    if (turnDeadlineAt) {
-      const deadlineMs = Date.parse(turnDeadlineAt);
-      if (Number.isFinite(deadlineMs) && now >= deadlineMs) {
-        return {
-          type: "expired-human-turn",
-          expectedVersion: version,
-          expectedTurnPlayerId: currentPlayer.id,
-          expectedTurnDeadlineAt: turnDeadlineAt,
-        };
-      }
-    }
-
-    return {
-      type: "idle",
-      reason: "waiting_for_human_action",
-      turnDeadlineAt,
-    };
-  }
-
-  // Round finished phase
-  if (state.roundState.phase === "finished") {
-    if (state.pendingForfeitTeamId || state.leaveTerminationReason === "team-forfeit") {
-      return {
-        type: "due-next-round",
-        expectedVersion: version,
-        expectedRound: state.currentRound,
-        eligibleAt: new Date(now).toISOString(),
-      };
-    }
-
-    // Priority 5: Due Next Round
-    const eligibleAt = state.nextRoundEligibleAt;
-    if (eligibleAt) {
-      const eligibleAtMs = Date.parse(eligibleAt);
-      if (Number.isFinite(eligibleAtMs) && now >= eligibleAtMs) {
-        return {
-          type: "due-next-round",
-          expectedVersion: version,
-          expectedRound: state.currentRound,
-          eligibleAt,
-        };
-      }
-      return {
-        type: "idle",
-        reason: "next_round_countdown",
-        eligibleAt,
-      };
-    }
-
-    // Fallback: If round is finished and not match finished without eligibleAt, it is due next round
-    return {
-      type: "due-next-round",
-      expectedVersion: version,
-      expectedRound: state.currentRound,
-      eligibleAt: new Date(now).toISOString(),
-    };
-  }
-
-  return {
-    type: "idle",
-    reason: "match_not_playing",
-  };
-}
 
 function secureRandom(): number {
   const value =
@@ -555,8 +371,7 @@ export function settleAuthoritativeOkeyRound(
   }
 
   const pendingForfeitTeamId = match.pendingForfeitTeamId;
-  const OKEY_NEXT_ROUND_DELAY_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS;
-  const nextRoundEligibleAt = new Date(now + OKEY_NEXT_ROUND_DELAY_MS).toISOString();
+  const nextRoundEligibleAt = new Date(now + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
   const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
     ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"
     : null;
@@ -1529,17 +1344,19 @@ export function getNextOkeyTurnDeadline(
 
   now = Date.now(),
 ): string | null {
-  if (
-    state.phase !== "playing"
-  ) {
+  if (state.phase !== "playing") {
     return null;
   }
 
-  const durationSeconds = state.hasDrawnThisTurn
-    ? OKEY_THROW_PHASE_SECONDS
-    : OKEY_DRAW_PHASE_SECONDS;
+  const context = getAuthoritativeOkeyTurnContext(state);
 
-  return new Date(now + durationSeconds * 1000).toISOString();
+  return deriveAuthoritativeOkeyTurnDeadline({
+    phase: context.phase,
+    // This legacy helper historically derives only from phase. Keep that
+    // public behavior while delegating the actual deadline rule to the Engine.
+    controller: "human",
+    now,
+  });
 }
 
 export function getNextOkeyMatchTurnDeadline(
@@ -1552,23 +1369,22 @@ export function getNextOkeyMatchTurnDeadline(
     return null;
   }
 
-  const player = match.roundState.players[match.roundState.currentPlayerIndex];
+  const context = getAuthoritativeOkeyTurnContext(match.roundState);
 
-  if (
-    !player ||
-    player.eliminated ||
-    isOkeyBotControlled(player)
-  ) {
+  if (context.controller !== "human") {
     return null;
   }
 
   const configuredStartMs = Date.parse(match.roundStartsAt ?? "");
-  const deadlineBaseMs = Number.isFinite(configuredStartMs) ? Math.max(now, configuredStartMs) : now;
+  const deadlineBaseMs = Number.isFinite(configuredStartMs)
+    ? Math.max(now, configuredStartMs)
+    : now;
 
-  return getNextOkeyTurnDeadline(
-    match.roundState,
-    deadlineBaseMs,
-  );
+  return deriveAuthoritativeOkeyTurnDeadline({
+    phase: context.phase,
+    controller: context.controller,
+    now: deadlineBaseMs,
+  });
 }
 
 export function applyAuthoritativeOkeyEliminatedTurn(
@@ -1764,3 +1580,32 @@ export function projectOkeyMatchPublicState(
     turnDeadlineAt,
   );
 }
+
+
+
+/**
+ * The one reducer set consumed by the authoritative turn engine.
+ *
+ * Runtime entry points import this set instead of composing match-state
+ * transitions themselves. The reducers below intentionally reuse the existing
+ * rule functions so gameplay behavior is unchanged while ownership moves into
+ * the central engine boundary.
+ */
+export const OKEY_AUTHORITATIVE_TRANSITION_REDUCERS: OkeyAuthoritativeTransitionReducers<
+  OkeyAuthoritativeMatchState,
+  OkeyAuthoritativeCommand,
+  OkeyGameState
+> = {
+  applyHumanCommand: (state, actorPlayerIndex, command, now) =>
+    applyAuthoritativeOkeyMatchCommand(state, actorPlayerIndex, command, now),
+  applyManualLeave: (state, actorPlayerIndex) =>
+    applyAuthoritativeManualLeave(state, actorPlayerIndex),
+  applyTimeout: (state, deadlineAt, now) =>
+    resolveAuthoritativeMatchDeadline(state, deadlineAt, now),
+  applyEliminatedTurn: (state, expectedActorId) =>
+    applyAuthoritativeOkeyEliminatedTurn(state, expectedActorId),
+  startNextRound: (state, now) =>
+    startAuthoritativeOkeyNextRound(state, now),
+  applyBotRoundState: (state, roundState, now) =>
+    settleAuthoritativeOkeyRound({ ...state, roundState }, now),
+};

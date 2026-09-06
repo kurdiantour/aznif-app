@@ -46,6 +46,7 @@ export function hasInternalOkeyMeldLock(row: OkeyMeld[]) {
     isInternalOkeyMeldLock(row, meldIndex),
   );
 }
+
 function AnimatedSpentTile({
   tile,
   okeyTile,
@@ -68,12 +69,12 @@ function AnimatedSpentTile({
 
     progress.setValue(0);
 
-const animation = Animated.timing(progress, {
-  toValue: 1,
-  duration: 1250,
-  easing: Easing.inOut(Easing.quad),
-  useNativeDriver: true,
-});
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 1250,
+      easing: Easing.inOut(Easing.quad),
+      useNativeDriver: true,
+    });
 
     animation.start(({ finished }) => {
       if (finished) setIsAnimating(false);
@@ -169,6 +170,8 @@ function MeldPreview({
   const meldRef = useRef<View | null>(null);
   const dragStartOffsetRef = useRef(offset);
   const latestOffsetRef = useRef(offset);
+  const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [isDragging, setIsDragging] = useState(false);
   const tileSignature = meld.tiles.map((tile) => tile.id).join("|");
   const previousTileIdsRef = useRef(new Set(meld.tiles.map((tile) => tile.id)));
   const newlyAddedTileIds = new Set(
@@ -184,47 +187,71 @@ function MeldPreview({
 
   const measure = useCallback(() => {
     meldRef.current?.measureInWindow((x, y, width, height) => {
-onMeasured?.(meld.id, {
-  x,
-  y,
-  width,
-  height,
-});
+      onMeasured?.(meld.id, {
+        x,
+        y,
+        width,
+        height,
+      });
     });
   }, [meld.id, onMeasured]);
+
+  const finishDrag = useCallback(
+    (dx: number, dy: number) => {
+      const nextOffset = {
+        x: dragStartOffsetRef.current.x + dx,
+        y: dragStartOffsetRef.current.y + dy,
+      };
+
+      dragOffset.setValue({ x: 0, y: 0 });
+      setIsDragging(false);
+      onOffsetChange?.(meld.id, nextOffset);
+
+      requestAnimationFrame(() => {
+        measure();
+      });
+    },
+    [dragOffset, measure, meld.id, onOffsetChange],
+  );
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, gesture) =>
           Math.abs(gesture.dx) > 3 || Math.abs(gesture.dy) > 3,
         onPanResponderGrant: () => {
           dragStartOffsetRef.current = latestOffsetRef.current;
+          dragOffset.setValue({ x: 0, y: 0 });
+          setIsDragging(true);
         },
         onPanResponderMove: (_, gesture) => {
-          onOffsetChange?.(meld.id, {
-            x: dragStartOffsetRef.current.x + gesture.dx,
-            y: dragStartOffsetRef.current.y + gesture.dy,
+          dragOffset.setValue({
+            x: gesture.dx,
+            y: gesture.dy,
           });
         },
-        onPanResponderRelease: measure,
-        onPanResponderTerminate: measure,
+        onPanResponderRelease: (_, gesture) => {
+          finishDrag(gesture.dx, gesture.dy);
+        },
+        onPanResponderTerminate: (_, gesture) => {
+          finishDrag(gesture.dx, gesture.dy);
+        },
       }),
-    [measure, meld.id, onOffsetChange],
+    [dragOffset, finishDrag],
   );
 
-useEffect(() => {
-  requestAnimationFrame(() => {
-    measure();
-  });
-}, [
-  measure,
-  meld.tiles.length,
-  offset.x,
-  offset.y,
-  tileSignature,
-]);
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      measure();
+    });
+  }, [
+    measure,
+    meld.tiles.length,
+    offset.x,
+    offset.y,
+    tileSignature,
+  ]);
 
   useEffect(() => {
     previousTileIdsRef.current = new Set(meld.tiles.map((tile) => tile.id));
@@ -259,6 +286,8 @@ useEffect(() => {
           transform: [
             { translateX: offset.x },
             { translateY: offset.y },
+            { translateX: dragOffset.x },
+            { translateY: dragOffset.y },
             {
               translateX: entryProgress.interpolate({
                 inputRange: [0, 1],
@@ -278,7 +307,9 @@ useEffect(() => {
               }),
             },
           ],
-          ...(offset.x !== 0 || offset.y !== 0 ? { zIndex: 120, elevation: 120 } : null),
+          ...(isDragging || offset.x !== 0 || offset.y !== 0
+            ? { zIndex: 120, elevation: 120 }
+            : null),
         },
       ]}
       {...(jokerEndpointChoice ? {} : panResponder.panHandlers)}
@@ -315,7 +346,7 @@ useEffect(() => {
           />
         )}
       />
-</Animated.View>
+    </Animated.View>
   );
 }
 
@@ -353,7 +384,7 @@ function computeAreaCenter(position: "top" | "left" | "right" | "bottom", layout
     : usableHeight - (Number(area.bottom || 0));
 
   const centerX = left + width / 2 - usableWidth / 2;
-  const centerY = top - usableHeight / 2; // approximate center using top/bottom anchors
+  const centerY = top - usableHeight / 2;
   return { x: centerX, y: centerY };
 }
 
@@ -386,6 +417,7 @@ function getSpendEntryOrigin(
     arc: 46,
   };
 }
+
 export function OkeyPlayerMeldArea({
   player,
   allPlayers,
@@ -463,7 +495,6 @@ export function OkeyPlayerMeldArea({
             <View
               key={rowIndex}
               style={styles.meldRow}
-
               pointerEvents="box-none"
             >
               {row.map((meld, meldIndex) => (
@@ -500,7 +531,6 @@ export function OkeyPlayerMeldArea({
           ) : null}
         </View>
       ) : null}
-
     </View>
   );
 }
@@ -599,4 +629,3 @@ export function OkeyTableMeldAreas({
 }
 
 export const MemoizedOkeyTableMeldAreas = memo(OkeyTableMeldAreas);
-

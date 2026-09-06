@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck: This Supabase Edge Function depends on Deno and extension-based imports not fully covered by the project TypeScript configuration.
 // Note: "domino_settle_match" is used in processDominoOneVsOneBotTurn
 
 import { reduceTwoVsTwoBotPass, reduceTwoVsTwoPlay } from "../../../domino/modes/two-vs-two/authoritative/domino-two-vs-two-command-reducer.ts";
@@ -25,13 +25,17 @@ import { executeOkeyBotTurn } from "../../../okey/server/okey-bot-executor.ts";
 import { reconcileAuthoritativeServerLifecycleWakeup } from "../../../okey/server/okey-server-reconciler.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
-import { handOffOkeyBotTurn, handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
+import { handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const BOT_WORKER_SECRET = Deno.env.get("BOT_WORKER_SECRET");
 const OKEY_WORKER_SECRET = Deno.env.get("OKEY_WORKER_SECRET");
+
+type EdgeRuntimeLike = {
+  waitUntil?: (task: Promise<unknown>) => void;
+};
 
 const svc = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "", {
   auth: { persistSession: false },
@@ -76,7 +80,7 @@ function openingDouble(state: any) {
 
 function scoreOpponentPips(
   hands: any[][],
-  players: any[],
+  players: Array<{ team_id?: string | null }>,
   winnerTeamId: string,
 ) {
   return hands.reduce((sum, playerHand, index) => {
@@ -178,14 +182,14 @@ serve(async (req) => {
             await svc.removeChannel(channel);
           },
         }).then(async (result: any) => {
-          if (
-            result?.executed === true &&
-            result?.state &&
-            result.state.matchFinished !== true &&
-            Number.isSafeInteger(result.version) &&
-            SUPABASE_URL &&
-            OKEY_WORKER_SECRET
-          ) {
+if (
+  result?.executed === true &&
+  result?.state &&
+  result.state.matchFinished !== true &&
+  Number.isSafeInteger(result.version) &&
+  SUPABASE_URL &&
+  OKEY_WORKER_SECRET
+) {
             await handOffOkeyServerLifecycle({
               supabaseUrl: SUPABASE_URL,
               workerSecret: OKEY_WORKER_SECRET,
@@ -249,15 +253,23 @@ serve(async (req) => {
           version: number;
         }) => {
           if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
-          await handOffOkeyBotTurn({
+
+          const continuation = handOffOkeyServerLifecycle({
             supabaseUrl: SUPABASE_URL,
             workerSecret: OKEY_WORKER_SECRET,
             matchId: continuationInput.matchId,
-            state: continuationInput.state,
-            version: continuationInput.version,
+            expectedVersion: continuationInput.version,
           }).catch((err: any) => {
             console.error("okey_bot_continuation_dispatch_error", err);
           });
+
+          const edgeRuntime = (globalThis as any).EdgeRuntime;
+          if (edgeRuntime?.waitUntil) {
+            edgeRuntime.waitUntil(continuation);
+            return;
+          }
+
+          await continuation;
         },
         dispatchLifecycleWakeup: async (wakeupInput: {
           matchId: string;
@@ -267,7 +279,8 @@ serve(async (req) => {
           turnDeadlineAt?: string;
         }) => {
           if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
-          await handOffOkeyServerLifecycle({
+
+          const lifecycleHandoff = handOffOkeyServerLifecycle({
             supabaseUrl: SUPABASE_URL,
             workerSecret: OKEY_WORKER_SECRET,
             matchId: wakeupInput.matchId,
@@ -275,8 +288,20 @@ serve(async (req) => {
             eligibleAt: wakeupInput.eligibleAt ?? null,
             turnDeadlineAt: wakeupInput.turnDeadlineAt ?? null,
           }).catch((wakeupError: any) => {
-            console.error("Server lifecycle handoff failed for match", wakeupInput.matchId, wakeupError);
+            console.error(
+              "Server lifecycle handoff failed for match",
+              wakeupInput.matchId,
+              wakeupError,
+            );
           });
+
+          const edgeRuntime = (globalThis as any).EdgeRuntime;
+          if (edgeRuntime?.waitUntil) {
+            edgeRuntime.waitUntil(lifecycleHandoff);
+            return;
+          }
+
+          await lifecycleHandoff;
         },
       });
       return json(result, result.ok ? 200 : 500);
@@ -423,7 +448,11 @@ serve(async (req) => {
     const botMove = pickBotMove(hand, state);
     let transition;
     let action = "bot_pass_turn";
-    let payload: any = { reason: "bot_takeover" };
+    let payload: {
+      reason: string;
+      tile?: unknown;
+      branch?: unknown;
+    } = { reason: "bot_takeover" };
 
     if (botMove) {
       const board = state.board ?? createEmptyBoard();
@@ -539,3 +568,4 @@ serve(async (req) => {
     return json({ error: failure.message, failure }, 500);
   }
 });
+

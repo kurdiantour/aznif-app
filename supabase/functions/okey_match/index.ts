@@ -2,9 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import {
-  applyAuthoritativeOkeyMatchCommand,
-  applyAuthoritativeManualLeave,
   deriveOkeyDailyQuestGameplayEvents,
+  OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
   getOkeyMatchTurnDeadlineAfterTransition,
   OkeyCommandError,
   projectOkeyMatchPublicState,
@@ -29,7 +28,7 @@ import { isOkeyBotControlled } from "../../../okey/engine/okey-bot-policy.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 import { handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
 // Authoritative bot turns are handled directly by reconciler and timeout wakeup
-import { executeAuthoritativeOkeyTurn } from "../../../lib/multiplayer/okey/okey-turn-engine.ts";
+import { executeAuthoritativeOkeyTransition, type OkeyAuthoritativeTransition } from "../../../lib/multiplayer/okey/okey-turn-engine.ts";
 
 type OkeyAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -535,42 +534,16 @@ if (action === "manual-leave") {
   }
 
   /*
-   * Snapshot normally only returns state.
+   * Snapshot is strictly read-only. It only returns authoritative state,
+   * missed action events, server time, and the viewer projection.
    *
-   * If a previous finished-state commit succeeded but settlement
-   * temporarily failed, snapshot safely retries the idempotent
-   * settlement.
+   * It never advances Bot / Timeout / Ghost / Next-Round lifecycle and never
+   * retries settlement or performs any other authoritative side effect.
    */
   if (isSnapshot) {
-    let currentState = state;
-    let currentVersion = Number(bundle.version);
-    let currentDeadline = bundle.turn_deadline_at;
-
-    // Snapshot is also a server-side recovery wakeup. It may reconcile an
-    // active turn or an overdue finished round, but the client still never
-    // chooses or applies the lifecycle transition itself.
-    if (!currentState.matchFinished) {
-      const serverReconcile = await reconcileAuthoritativeServerTurns({
-        client: service,
-        matchId,
-        requesterUserId: authData.user.id,
-        state: currentState,
-        version: currentVersion,
-        turnDeadlineAt: currentDeadline,
-        deterministicCommandId,
-        broadcastStateUpdate: async (payload) => {
-          await broadcastStateUpdate(
-            payload.commandId,
-            payload.version,
-            payload.publicProjection,
-            payload.actionEvents,
-          );
-        },
-      });
-      currentState = serverReconcile.state;
-      currentVersion = serverReconcile.version;
-      currentDeadline = serverReconcile.turnDeadlineAt;
-    }
+    const currentState = state;
+    const currentVersion = Number(bundle.version);
+    const currentDeadline = bundle.turn_deadline_at;
 
     const afterVersion = Number(body.afterVersion);
     let actionEvents: OkeyActionEvent[] = [];
@@ -594,24 +567,9 @@ if (action === "manual-leave") {
         createdAt: row.created_at,
       })) as OkeyActionEvent[];
     }
-    let settlement: unknown = null;
-
-    if (currentState.matchFinished) {
-      const result =
-        await settleFinishedState(currentState);
-
-      if (result.error) {
-        console.error(
-          "Okey settlement recovery failed during snapshot",
-          result.error,
-        );
-      } else {
-        settlement = result.settlement;
-      }
-    }
 
     return json({
-      settlement,
+      settlement: null,
       actionEvents,
       projection: projectForViewer(
         currentState,
@@ -719,127 +677,128 @@ if (action === "manual-leave") {
     const actingPlayer =
       workingState.roundState.players[workingState.roundState.currentPlayerIndex] ?? null;
 
-    let nextState: OkeyAuthoritativeMatchState;
     let commandType: string;
     let acceptedCommand: OkeyAuthoritativeCommand | { type: "manual-leave" };
-    let actionEventDrafts: OkeyActionEventDraft[] = [];
+    let transition: OkeyAuthoritativeTransition<
+      OkeyAuthoritativeCommand,
+      OkeyAuthoritativeMatchState["roundState"]
+    >;
 
-    try {
-      if (action === "manual-leave") {
-        nextState = applyAuthoritativeManualLeave(
-          workingState,
-          workingPlayerIndex,
-        );
-        commandType = "manual-leave";
-        acceptedCommand = { type: "manual-leave" };
-      } else {
-        if (
-          workingBundle.turn_deadline_at &&
-          Date.parse(workingBundle.turn_deadline_at) <= Date.now()
-        ) {
-          return json({ error: "turn_deadline_expired" }, 409);
-        }
-
-        const command = parseCommand(body.command);
-        if (!command) {
-          return json({ error: "invalid_command" }, 400);
-        }
-
-        nextState = applyAuthoritativeOkeyMatchCommand(
-          workingState,
-          workingPlayerIndex,
-          command,
-          commandReceivedAtMs,
-        );
-        commandType = command.type;
-        acceptedCommand = command;
+    if (action === "manual-leave") {
+      commandType = "manual-leave";
+      acceptedCommand = { type: "manual-leave" };
+      transition = {
+        type: "manual-leave",
+        actorPlayerIndex: workingPlayerIndex,
+      };
+    } else {
+      if (
+        workingBundle.turn_deadline_at &&
+        Date.parse(workingBundle.turn_deadline_at) <= Date.now()
+      ) {
+        return json({ error: "turn_deadline_expired" }, 409);
       }
-    } catch (error) {
-      if (error instanceof OkeyCommandError) {
-        return json({ error: error.code }, 409);
+
+      const command = parseCommand(body.command);
+      if (!command) {
+        return json({ error: "invalid_command" }, 400);
       }
-      console.error("Okey engine failure", error);
-      return json({ error: "engine_failure" }, 500);
+
+      commandType = command.type;
+      acceptedCommand = command;
+      transition = {
+        type: "human-command",
+        actorPlayerIndex: workingPlayerIndex,
+        command,
+      };
     }
 
     const expectedVersion = action === "manual-leave"
       ? Number(workingBundle.version)
       : (clientExpectedVersion ?? Number(workingBundle.version));
     const nextVersion = expectedVersion + 1;
-    const deadline = getOkeyMatchTurnDeadlineAfterTransition(
-      workingState,
-      nextState,
-      workingBundle.turn_deadline_at,
-    );
-
-    if (acceptedCommand.type === "manual-leave") {
-      actionEventDrafts = [{
-        type: "leave",
-        actorPlayerId: workingState.roundState.players[workingPlayerIndex]?.id ?? null,
-        payload: {},
-      }];
-    } else {
-      actionEventDrafts = createOkeyCommandActionEvents(
-        acceptedCommand,
-        actingPlayer?.id ?? "",
-        workingState.roundState,
-      );
-    }
-
-    const previousTopDiscard =
-      workingState.roundState.discardPile[workingState.roundState.discardPile.length - 1] ?? null;
-    actionEventDrafts = actionEventDrafts.map((event) =>
-      event.type === "draw" && event.payload.source === "discard" && previousTopDiscard
-        ? { ...event, payload: { ...event.payload, tile: previousTopDiscard } }
-        : event
-    );
-
-    const committedTopDiscard =
-      nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
-    actionEventDrafts = actionEventDrafts.map((event) =>
-      event.type === "discard" && committedTopDiscard
-        ? {
-            ...event,
-            payload: {
-              ...event.payload,
-              tileId: committedTopDiscard.id,
-              tile: committedTopDiscard,
-            },
-          }
-        : event
-    );
-
-    const publicProjection = projectOkeyMatchPublicState(
-      nextState,
-      nextVersion,
-      deadline,
-    );
-    const dailyQuestEvents = isTestMatch
-      ? []
-      : deriveOkeyDailyQuestGameplayEvents(
-          workingState,
-          nextState,
-          workingPlayerIndex,
-          acceptedCommand,
-          body.commandId as string,
-        );
+    let dailyQuestEvents: ReturnType<typeof deriveOkeyDailyQuestGameplayEvents> = [];
 
     try {
-      const turnResult = await executeAuthoritativeOkeyTurn({
+      const turnResult = await executeAuthoritativeOkeyTransition({
+        state: workingState,
+        transition,
+        reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
+        transitionNow: commandReceivedAtMs,
         controller: action === "manual-leave" ? "manual-leave" : "human",
         matchId,
         actorPlayerId: authData.user.id,
         commandId: body.commandId as string,
         commandType,
         expectedVersion,
-        intent: acceptedCommand,
-        validate: () => ({
-          state: nextState,
-          projection: publicProjection,
-          deadline,
-          status: nextState.matchFinished ? "finished" as const : "playing" as const,
-          actionEvents: actionEventDrafts,
-        }),
+        prepare: (nextState) => {
+          const deadline = getOkeyMatchTurnDeadlineAfterTransition(
+            workingState,
+            nextState,
+            workingBundle.turn_deadline_at,
+          );
+
+          let actionEventDrafts: OkeyActionEventDraft[];
+          if (acceptedCommand.type === "manual-leave") {
+            actionEventDrafts = [{
+              type: "leave",
+              actorPlayerId: workingState.roundState.players[workingPlayerIndex]?.id ?? null,
+              payload: {},
+            }];
+          } else {
+            actionEventDrafts = createOkeyCommandActionEvents(
+              acceptedCommand,
+              actingPlayer?.id ?? "",
+              workingState.roundState,
+            );
+          }
+
+          const previousTopDiscard =
+            workingState.roundState.discardPile[workingState.roundState.discardPile.length - 1] ?? null;
+          actionEventDrafts = actionEventDrafts.map((event) =>
+            event.type === "draw" && event.payload.source === "discard" && previousTopDiscard
+              ? { ...event, payload: { ...event.payload, tile: previousTopDiscard } }
+              : event
+          );
+
+          const committedTopDiscard =
+            nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
+          actionEventDrafts = actionEventDrafts.map((event) =>
+            event.type === "discard" && committedTopDiscard
+              ? {
+                  ...event,
+                  payload: {
+                    ...event.payload,
+                    tileId: committedTopDiscard.id,
+                    tile: committedTopDiscard,
+                  },
+                }
+              : event
+          );
+
+          const publicProjection = projectOkeyMatchPublicState(
+            nextState,
+            nextVersion,
+            deadline,
+          );
+          dailyQuestEvents = isTestMatch
+            ? []
+            : deriveOkeyDailyQuestGameplayEvents(
+                workingState,
+                nextState,
+                workingPlayerIndex,
+                acceptedCommand,
+                body.commandId as string,
+              );
+
+          return {
+            state: nextState,
+            projection: publicProjection,
+            deadline,
+            status: nextState.matchFinished ? "finished" as const : "playing" as const,
+            actionEvents: actionEventDrafts,
+          };
+        },
         commit: async (prepared) => {
           const { data, error } = await service.rpc(
             "okey_commit_authoritative_action_with_events",
@@ -1003,6 +962,3 @@ if (action === "manual-leave") {
     projection: finalProjection,
   });
 });
-
-
-

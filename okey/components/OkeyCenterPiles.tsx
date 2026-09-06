@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getOkeyTileAccessibilityLabel, OKEY_ACCESSIBILITY } from "@/okey/accessibility/okey-accessibility";
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
@@ -22,9 +22,7 @@ type OkeyCenterPilesProps = {
   onViewDiscards?: () => void;
   onDiscardDroppedOnRack?: (point: { x: number; y: number }) => void;
   onDeckDroppedOnRack?: (point: { x: number; y: number }) => void;
-  onDeckDragPointChange?: (point: { x: number; y: number } | null) => void;
   onDiscardDragActiveChange?: (active: boolean) => void;
-  onDiscardDragPointChange?: (point: { x: number; y: number } | null) => void;
   onDeckMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
   onDiscardMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
   hideTopDeckTile?: boolean;
@@ -45,9 +43,7 @@ export function OkeyCenterPiles({
   onViewDiscards,
   onDiscardDroppedOnRack,
   onDeckDroppedOnRack,
-  onDeckDragPointChange,
   onDiscardDragActiveChange,
-  onDiscardDragPointChange,
   onDeckMeasured,
   onDiscardMeasured,
   hideTopDeckTile,
@@ -63,15 +59,17 @@ export function OkeyCenterPiles({
   const discardTopRef = useRef<View | null>(null);
   const discardDragStartedRef = useRef(false);
   const deckDragStartedRef = useRef(false);
-  const [discardDragPosition, setDiscardDragPosition] = useState<{ x: number; y: number } | null>(null);
-  const [deckDragPosition, setDeckDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const discardDragPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [discardDragActive, setDiscardDragActive] = useState(false);
+  const deckDragPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [deckDragActive, setDeckDragActive] = useState(false);
   const [discardTileSize, setDiscardTileSize] = useState({ width: 38, height: 54 });
   const displayedTopDiscard = hideTopDiscardTile
     ? discardPresentationFallback ?? null
     : topDiscard;
   useEffect(() => {
-    onDiscardDragActiveChange?.(!!discardDragPosition);
-  }, [discardDragPosition, onDiscardDragActiveChange]);
+    onDiscardDragActiveChange?.(discardDragActive);
+  }, [discardDragActive, onDiscardDragActiveChange]);
   const measureRoot = useCallback(() => {
     rootRef.current?.measureInWindow((x, y) => {
       rootOriginRef.current = { x, y };
@@ -87,20 +85,20 @@ export function OkeyCenterPiles({
     });
   }, [onDiscardMeasured]);
   const setDiscardDragPositionFromGesture = useCallback((gesture: { moveX: number; moveY: number }) => {
-    setDiscardDragPosition({
+    discardDragPosition.setValue({
       x: gesture.moveX - rootOriginRef.current.x - discardTileSize.width / 2,
       y: gesture.moveY - rootOriginRef.current.y - discardTileSize.height / 2,
     });
-  }, [discardTileSize.height, discardTileSize.width]);
+  }, [discardDragPosition, discardTileSize.height, discardTileSize.width]);
   const clearDiscardDrag = useCallback(() => {
     discardDragStartedRef.current = false;
-    setDiscardDragPosition(null);
-    onDiscardDragPointChange?.(null);
-  }, [onDiscardDragPointChange]);
+    discardDragPosition.setValue({ x: 0, y: 0 });
+    setDiscardDragActive(false);
+  }, [discardDragPosition]);
   const clearDeckDrag = useCallback(() => {
-    setDeckDragPosition(null);
-    onDeckDragPointChange?.(null);
-  }, [onDeckDragPointChange]);
+    deckDragPosition.setValue({ x: 0, y: 0 });
+    setDeckDragActive(false);
+  }, [deckDragPosition]);
   const deckDragHandlers = useMemo(
     () => PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -114,9 +112,13 @@ export function OkeyCenterPiles({
         });
       },
       onPanResponderMove: (_, gesture) => {
-        if (Math.hypot(gesture.dx, gesture.dy) >= 8) deckDragStartedRef.current = true;
-        onDeckDragPointChange?.({ x: gesture.moveX, y: gesture.moveY });
-        setDeckDragPosition({
+        const distance = Math.hypot(gesture.dx, gesture.dy);
+        if (distance >= 8 && !deckDragStartedRef.current) {
+          deckDragStartedRef.current = true;
+          setDeckDragActive(true);
+        }
+        if (!deckDragStartedRef.current) return;
+        deckDragPosition.setValue({
           x: gesture.moveX - deckOriginRef.current.x - 21,
           y: gesture.moveY - deckOriginRef.current.y - 29,
         });
@@ -124,18 +126,19 @@ export function OkeyCenterPiles({
       onPanResponderRelease: (_, gesture) => {
         if (deckDragStartedRef.current) {
           onDeckDroppedOnRack?.({ x: gesture.moveX, y: gesture.moveY });
+        } else {
+          onDrawDeck();
         }
+
+        deckDragStartedRef.current = false;
         clearDeckDrag();
-        setTimeout(() => {
-          deckDragStartedRef.current = false;
-        }, 0);
       },
       onPanResponderTerminate: () => {
         deckDragStartedRef.current = false;
         clearDeckDrag();
       },
     }),
-    [canDraw, clearDeckDrag, deckCount, onDeckDragPointChange, onDeckDroppedOnRack],
+    [canDraw, clearDeckDrag, deckCount, deckDragPosition, onDeckDroppedOnRack, onDrawDeck],
   );
   const discardDragHandlers = useMemo(
     () => PanResponder.create({
@@ -145,17 +148,17 @@ export function OkeyCenterPiles({
         measureRoot();
         measureDiscardTop();
         discardDragStartedRef.current = false;
-        setDiscardDragPosition(null);
+        discardDragPosition.setValue({ x: 0, y: 0 });
+        setDiscardDragActive(false);
       },
       onPanResponderMove: (_, gesture) => {
         const distance = Math.hypot(gesture.dx, gesture.dy);
         if (canDrawDiscard && !!displayedTopDiscard && distance > 8 && !discardDragStartedRef.current) {
           discardDragStartedRef.current = true;
+          setDiscardDragActive(true);
         }
         if (discardDragStartedRef.current) {
-          const point = { x: gesture.moveX, y: gesture.moveY };
           setDiscardDragPositionFromGesture(gesture);
-          onDiscardDragPointChange?.(point);
         }
       },
       onPanResponderRelease: (_, gesture) => {
@@ -177,10 +180,10 @@ export function OkeyCenterPiles({
         clearDiscardDrag();
       },
     }),
-    [canDrawDiscard, clearDiscardDrag, measureDiscardTop, measureRoot, onDiscardDragPointChange, onDiscardDroppedOnRack, onViewDiscards, setDiscardDragPositionFromGesture, displayedTopDiscard],
+    [canDrawDiscard, clearDiscardDrag, discardDragPosition, measureDiscardTop, measureRoot, onDiscardDroppedOnRack, onViewDiscards, setDiscardDragPositionFromGesture, displayedTopDiscard],
   );
   return (
-    <View style={[styles.centerPiles, layout.centerPiles, (discardDragPosition || deckDragPosition) && styles.activeDiscardDragLayer]}>
+    <View style={[styles.centerPiles, layout.centerPiles, (discardDragActive || deckDragActive) && styles.activeDiscardDragLayer]}>
       <View testID="okey-discard-pile" ref={rootRef} onLayout={measureRoot} style={[styles.discardPileNatural, !displayedTopDiscard && styles.disabled]}>
         <View style={[styles.discardUnderTile, styles.discardUnderLeft]}>
           <OkeyTileBack />
@@ -211,7 +214,7 @@ export function OkeyCenterPiles({
             collapsable={false}
             onLayout={measureDiscardTop}
             {...discardDragHandlers.panHandlers}
-            style={discardDragPosition ? styles.hiddenRackTile : undefined}
+            style={discardDragActive ? styles.hiddenRackTile : undefined}
           >
             <OkeyTileFace
               tile={displayedTopDiscard}
@@ -223,8 +226,8 @@ export function OkeyCenterPiles({
           <View ref={discardTopRef} collapsable={false} onLayout={measureDiscardTop} style={styles.emptyDiscard} />
         )}
         {discardCount > 0 ? <Text style={styles.discardCount}>{discardCount}</Text> : null}
-        {displayedTopDiscard && discardDragPosition ? (
-          <View
+        {displayedTopDiscard && discardDragActive ? (
+          <Animated.View
             pointerEvents="none"
             style={[
               styles.draggedTileOverlay,
@@ -245,7 +248,7 @@ export function OkeyCenterPiles({
               height={discardTileSize.height}
               isWildcard={isOkeyWildcard(displayedTopDiscard, okeyTile)}
             />
-          </View>
+          </Animated.View>
         ) : null}
       </View>
 
@@ -257,13 +260,6 @@ export function OkeyCenterPiles({
         <Pressable
           testID="okey-draw-deck"
           disabled={!canDraw}
-          onPress={() => {
-            if (deckDragStartedRef.current) {
-              deckDragStartedRef.current = false;
-              return;
-            }
-            onDrawDeck();
-          }}
           accessibilityRole="button"
           accessibilityLabel={OKEY_ACCESSIBILITY.drawDeckLabel(deckCount)}
           accessibilityHint={OKEY_ACCESSIBILITY.drawDeckHint}
@@ -285,13 +281,13 @@ export function OkeyCenterPiles({
             ref={index === 8 ? deckTopRef : undefined}
             collapsable={false}
             onLayout={index === 8 ? measureDeckTop : undefined}
-            style={[styles.drawStackLayer, { top: index * 3 }, index === 8 && (hideTopDeckTile || deckDragPosition) ? styles.hiddenRackTile : undefined]}
+            style={[styles.drawStackLayer, { top: index * 3 }, index === 8 && (hideTopDeckTile || deckDragActive) ? styles.hiddenRackTile : undefined]}
           >
             <OkeyTileBack unstyled width={42} height={58} />
           </View>
         ))}
-        {deckDragPosition ? (
-          <View
+        {deckDragActive ? (
+          <Animated.View
             pointerEvents="none"
             style={[
               styles.draggedTileOverlay,
@@ -306,7 +302,7 @@ export function OkeyCenterPiles({
             ]}
           >
             <OkeyTileBack unstyled width={42} height={58} />
-          </View>
+          </Animated.View>
         ) : null}
         {deckCount > 0 ? <Text style={styles.deckCount}>{deckCount}</Text> : null}
         </Pressable>

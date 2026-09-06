@@ -1,5 +1,5 @@
 import { createBotTurnClaim, classifyBotTurnClaim } from "../../lib/multiplayer/core/bot-turn-orchestration.ts";
-import { executeAuthoritativeOkeyTurn, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
+import { executeAuthoritativeOkeyTurn, reduceAuthoritativeOkeyTransition, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
 import { projectSeatOwnership } from "../../lib/multiplayer/core/seat-ownership.ts";
 import { chooseBotDrawSource, prepareBotTurn } from "../engine/okey-bot-engine.ts";
 import { discardTile, drawTile } from "../engine/okey-engine.ts";
@@ -11,7 +11,7 @@ import {
 import {
   getNextOkeyMatchTurnDeadline,
   projectOkeyMatchPublicState,
-  settleAuthoritativeOkeyRound,
+  OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
 } from "./okey-authoritative.ts";
@@ -283,9 +283,14 @@ if (currentState.roundState.phase !== "playing") {
         return completed(`bot_${botStep}_rejected`);
       }
 
-      const nextState = settleAuthoritativeOkeyRound({
-        ...currentState,
-        roundState: nextRoundState,
+      const nextState = reduceAuthoritativeOkeyTransition({
+        state: currentState,
+        transition: {
+          type: "bot-action",
+          roundState: nextRoundState,
+        },
+        reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
+        now: now(),
       });
       const nextVersion = currentVersion + 1;
       const deadline = getNextOkeyMatchTurnDeadline(nextState);

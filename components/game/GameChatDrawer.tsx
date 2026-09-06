@@ -1,6 +1,4 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import type { AvatarId } from "@/constants/avatars";
 import {
   GAME_CHAT_EMOJIS,
   getGameChatMessages,
@@ -35,17 +33,15 @@ type GameChatDrawerProps = {
   onClose: () => void;
 };
 
-function formatMessageTime(value: string) {
-  const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
+function isEmojiOnly(text: string) {
+  const value = text.trim();
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (!value) return false;
+
+  return /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D\s]+$/u.test(
+    value,
+  );
 }
 
 function mergeMessages(
@@ -82,7 +78,7 @@ export default function GameChatDrawer({
 }: GameChatDrawerProps) {
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
@@ -303,15 +299,6 @@ export default function GameChatDrawer({
         />
 
         <View style={styles.content}>
-          {loading ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator
-                color="#f8f3df"
-                size="small"
-              />
-            </View>
-          ) : null}
-
           {showUnavailableMessage ? (
             <Text style={styles.emptyText}>
               گفتوگۆ تەنها لە یارییە سەرهێڵییەکان کار دەکات.
@@ -356,22 +343,6 @@ export default function GameChatDrawer({
                           : styles.otherMessageRow,
                       ]}
                     >
-                      {!isMine ? (
-                        <PlayerAvatar
-                          avatarId={
-                            item.sender_avatar_id as
-                              | AvatarId
-                              | undefined
-                          }
-                          avatarUrl={
-                            item.sender_avatar_url ??
-                            undefined
-                          }
-                          size={28}
-                          style={styles.avatar}
-                        />
-                      ) : null}
-
                       <View
                         style={[
                           styles.bubble,
@@ -380,43 +351,25 @@ export default function GameChatDrawer({
                             : styles.otherBubble,
                         ]}
                       >
-                        <View style={styles.messageMetaRow}>
-                          {!isMine ? (
-                            <Text
-                              numberOfLines={1}
-                              style={styles.senderName}
-                            >
-                              {item.sender_name}
-                            </Text>
-                          ) : null}
-
-                          <Text style={styles.messageTime}>
-                            {formatMessageTime(
-                              item.created_at,
-                            )}
+                        {!isMine ? (
+                          <Text
+                            numberOfLines={1}
+                            style={styles.senderName}
+                          >
+                            {item.sender_name}
                           </Text>
-                        </View>
+                        ) : null}
 
-                        <Text style={styles.messageText}>
+                        <Text
+                          style={[
+                            styles.messageText,
+                            isEmojiOnly(item.body) &&
+                              styles.emojiMessageText,
+                          ]}
+                        >
                           {item.body}
                         </Text>
                       </View>
-
-                      {isMine ? (
-                        <PlayerAvatar
-                          avatarId={
-                            item.sender_avatar_id as
-                              | AvatarId
-                              | undefined
-                          }
-                          avatarUrl={
-                            item.sender_avatar_url ??
-                            undefined
-                          }
-                          size={28}
-                          style={styles.avatar}
-                        />
-                      ) : null}
                     </View>
                   );
                 }}
@@ -463,22 +416,22 @@ export default function GameChatDrawer({
                   </Text>
                 </Pressable>
               ))}
-
-              <View style={styles.quickEmojiRow}>
-                {[...GAME_CHAT_EMOJIS].map((emoji) => (
-                  <Pressable
-                    key={emoji}
-                    style={styles.quickEmojiButton}
-                    onPress={() => sendQuickMessage(emoji)}
-                    disabled={sending || !enabled || !matchId}
-                  >
-                    <Text style={styles.quickEmojiText}>
-                      {emoji}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
             </ScrollView>
+          </View>
+
+          <View style={styles.emojiBar}>
+            {[...GAME_CHAT_EMOJIS].map((emoji) => (
+              <Pressable
+                key={emoji}
+                style={styles.quickEmojiButton}
+                onPress={() => sendQuickMessage(emoji)}
+                disabled={sending || !enabled || !matchId}
+              >
+                <Text style={styles.quickEmojiText}>
+                  {emoji}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
           <View style={styles.composer}>
@@ -578,12 +531,6 @@ const styles = StyleSheet.create({
     paddingTop: 15,
   },
 
-  loadingRow: {
-    minHeight: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   emptyText: {
     marginBottom: 8,
     color: "rgba(248,243,239,0.7)",
@@ -668,25 +615,27 @@ quickMessageButton: {
     textAlign: "center",
   },
 
-  quickEmojiRow: {
+  emojiBar: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
   },
 
   quickEmojiButton: {
     flex: 1,
     minWidth: 0,
-    height: 26,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
 
   quickEmojiText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 24,
+    lineHeight: 30,
     textAlign: "center",
   },
 
@@ -713,11 +662,6 @@ quickMessageButton: {
     justifyContent: "flex-start",
   },
 
-  avatar: {
-    borderWidth: 1,
-    borderColor: "rgba(250,204,21,0.58)",
-  },
-
   bubble: {
     maxWidth: "78%",
     paddingHorizontal: 0,
@@ -728,16 +672,9 @@ quickMessageButton: {
 
   otherBubble: {},
 
-  messageMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 3,
-  },
-
   senderName: {
     flexShrink: 1,
+    marginBottom: 3,
     color: "#f8d774",
     fontSize: 10,
     fontFamily: "SpedaRegular",
@@ -752,13 +689,9 @@ quickMessageButton: {
     writingDirection: "rtl",
   },
 
-  messageTime: {
-    flexShrink: 0,
-    color: "rgba(248,243,223,0.48)",
-    fontSize: 9,
-    lineHeight: 12,
-    fontFamily: "SpedaRegular",
-    textAlign: "left",
+  emojiMessageText: {
+    fontSize: 18,
+    lineHeight: 24,
   },
 
   composer: {
