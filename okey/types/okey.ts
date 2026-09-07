@@ -51,6 +51,7 @@ export type OkeyPlayer = {
   konkanEntryReason: OkeyKonkanEntryReason | null;
   pendingKonkanFromDiscard?: boolean;
   eliminated?: boolean;
+  konkanSpendsExecuted?: number;
 };
 
 export type OkeyDrawSource = "deck" | "discard";
@@ -90,4 +91,6 @@ export type OkeyGameState = {
   endReason: OkeyRoundEndReason | null;
   turnMessage: OkeyTurnMessage;
   hasDrawnThisTurn: boolean;
+  pendingBotTurnAdvanceAt?: string | null;
+  pendingBotTurnAdvancePlayerId?: string | null;
 };

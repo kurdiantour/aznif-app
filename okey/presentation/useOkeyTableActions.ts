@@ -1,11 +1,16 @@
 import { useCallback, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 
 import {
+  getLockedKonkanSetsForPlayer,
   getOkeyOpenAction,
+  hasLockedKonkanSet,
   resolveTableMeldAction,
   type OkeyTableMeldAction,
 } from "@/okey/engine/okey-engine";
-import { getOrderedKonkanRunCandidates } from "@/okey/engine/okey-rack-layout";
+import {
+  findKonkanRackLayoutCandidates,
+  type KonkanRackLayoutCandidate,
+} from "@/okey/engine/okey-rack-layout";
 import type { OkeyGameState, OkeyMeld, OkeyPlayer, OkeyTile } from "@/okey/types/okey";
 
 type RackMeldSelection = {
@@ -25,7 +30,11 @@ export function useOkeyTableActions(input: {
   isHumanTurn: boolean;
   selectedTileId: string | null;
   rackMeldSelection: RackMeldSelection;
-  declareKonkan: (orderedRunTileIds: string[]) => unknown;
+  declareKonkan: (
+    orderedRunTileIds: string[],
+    completionMeldTileIds: string[],
+    discardTileId: string,
+  ) => unknown;
   commitOpenIntent: (melds: OkeyMeld[], score: number) => unknown;
   setSelectedTileId: Dispatch<SetStateAction<string | null>>;
 }) {
@@ -45,19 +54,37 @@ export function useOkeyTableActions(input: {
   const canDraw = isHumanTurn && !humanPlayer.eliminated && !state.hasDrawnThisTurn;
   const canPlayAfterDraw = isHumanTurn && !humanPlayer.eliminated && state.hasDrawnThisTurn;
   const selectedTile = humanPlayer.hand.find((tile) => tile.id === selectedTileId);
+  const humanPlayerIndex = useMemo(
+    () => state.players.findIndex((player) => player.id === humanPlayer.id),
+    [state.players, humanPlayer.id],
+  );
+  const hasLockedSet = useMemo(
+    () => hasLockedKonkanSet(getLockedKonkanSetsForPlayer(state, humanPlayer.id), state.okeyTile),
+    [state, humanPlayer.id],
+  );
+  const konkanCandidates = useMemo(
+    () => humanPlayer.konkan
+      ? findKonkanRackLayoutCandidates(rackMeldSelection.contiguousGroups, state.okeyTile, hasLockedSet)
+      : [],
+    [humanPlayer.konkan, rackMeldSelection.contiguousGroups, state.okeyTile, hasLockedSet],
+  );
   const openAction = useMemo(
     () => getOkeyOpenAction(
       state,
-      state.players.findIndex((player) => player.id === humanPlayer.id),
+      humanPlayerIndex,
       rackMeldSelection.melds,
-      getOrderedKonkanRunCandidates(rackMeldSelection.contiguousGroups),
+      konkanCandidates,
     ),
-    [humanPlayer.id, rackMeldSelection.contiguousGroups, rackMeldSelection.melds, state],
+    [humanPlayerIndex, konkanCandidates, rackMeldSelection.melds, state],
   );
 
   const executeOpenAction = useCallback(() => {
     if (openAction.mode === "declare-konkan") {
-      declareKonkan(openAction.orderedRunTileIds);
+      declareKonkan(
+        openAction.orderedRunTileIds,
+        openAction.completionMeldTileIds,
+        openAction.discardTileId,
+      );
     } else if (openAction.mode === "open-melds") {
       commitOpenIntent(openAction.melds, openAction.score);
     }
@@ -74,10 +101,13 @@ export function useOkeyTableActions(input: {
     executeOpenAction,
     openActionButtonLabel: openAction.mode === "declare-konkan" ? "\u06A9\u06C6\u0646\u06A9\u0627\u0646" : "\u0695\u0627\u062E\u0633\u062A\u0646",
     remainingMeldSlots: openAction.remainingSlots,
-    selectOpenAction: (melds: OkeyMeld[], orderedKonkanRuns: string[][] = []) =>
+    selectOpenAction: (
+      melds: OkeyMeld[],
+      orderedKonkanRuns: KonkanRackLayoutCandidate[] = [],
+    ) =>
       getOkeyOpenAction(
         state,
-        state.players.findIndex((player) => player.id === humanPlayer.id),
+        humanPlayerIndex,
         melds,
         orderedKonkanRuns,
       ),

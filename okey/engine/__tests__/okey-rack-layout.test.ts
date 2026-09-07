@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getOpenableRackLayout, getOrderedKonkanRunCandidates, getRackDisplayScore } from "../okey-rack-layout.ts";
+import {
+  findKonkanRackLayoutCandidates,
+  getOpenableRackLayout,
+  getOrderedKonkanRunCandidates,
+  getRackDisplayScore,
+} from "../okey-rack-layout.ts";
 import type { OkeyTile } from "../../types/okey.ts";
 
 function tile(id: string, color: OkeyTile["color"], value: number): OkeyTile {
@@ -77,4 +82,68 @@ test("keeps displayed and Open scores aligned to arranged complete melds", () =>
 
   assert.equal(getRackDisplayScore(groups, okeyTile), openable.score);
   assert.equal(openable.score, 39);
+});
+
+test("findKonkanRackLayoutCandidates requires contiguous Run 10, contiguous completion meld, and exactly 1 discard", () => {
+  const run10 = Array.from({ length: 10 }, (_, index) => tile(`r-${index + 1}`, "red", index + 1));
+  const meld4 = [
+    tile("b2", "blue", 2),
+    tile("b3", "blue", 3),
+    tile("b4", "blue", 4),
+    tile("b5", "blue", 5),
+  ];
+  const meld3 = meld4.slice(0, 3);
+  const discard = tile("d1", "yellow", 1);
+
+  // 1. Without lock: Run 10 + Meld 4 + Discard 1 -> valid candidate
+  const candidatesNoLock = findKonkanRackLayoutCandidates(
+    [run10, meld4, [discard]],
+    okeyTile,
+    false,
+  );
+  assert.equal(candidatesNoLock.length, 1);
+  assert.deepEqual(candidatesNoLock[0].orderedRunTileIds, run10.map((t) => t.id));
+  assert.deepEqual(candidatesNoLock[0].completionMeldTileIds, meld4.map((t) => t.id));
+  assert.equal(candidatesNoLock[0].discardTileId, discard.id);
+
+  // 2. Without lock: 3-tile meld -> NOT valid
+  const candidatesWithMeld3NoLock = findKonkanRackLayoutCandidates(
+    [run10, meld3, [discard]],
+    okeyTile,
+    false,
+  );
+  assert.equal(candidatesWithMeld3NoLock.length, 0);
+
+  // 3. With lock: 3-tile meld + 1 discard -> valid candidate
+  const candidatesWithLock = findKonkanRackLayoutCandidates(
+    [run10, meld3, [discard]],
+    okeyTile,
+    true,
+  );
+  assert.equal(candidatesWithLock.length, 1);
+  assert.deepEqual(candidatesWithLock[0].orderedRunTileIds, run10.map((t) => t.id));
+  assert.deepEqual(candidatesWithLock[0].completionMeldTileIds, meld3.map((t) => t.id));
+  assert.equal(candidatesWithLock[0].discardTileId, discard.id);
+
+  // 4. Scrambled / broken run across rack gap -> NOT valid
+  const brokenRun = [run10.slice(0, 5), run10.slice(5, 10), meld4, [discard]];
+  assert.equal(findKonkanRackLayoutCandidates(brokenRun, okeyTile, false).length, 0);
+
+  // 5. Scrambled / broken meld -> NOT valid
+  const brokenMeld = [
+    tile("b2", "blue", 2),
+    tile("b4", "blue", 4),
+    tile("b3", "blue", 3),
+    tile("b5", "blue", 5),
+  ];
+  const brokenMeldGroups = [run10, brokenMeld, [discard]];
+  assert.equal(findKonkanRackLayoutCandidates(brokenMeldGroups, okeyTile, false).length, 0);
+
+  // 6. Run 10 and Meld in the same contiguous group -> valid candidate
+  const sameGroup = [[...run10, ...meld4], [discard]];
+  const candidatesSameGroup = findKonkanRackLayoutCandidates(sameGroup, okeyTile, false);
+  assert.equal(candidatesSameGroup.length, 1);
+  assert.deepEqual(candidatesSameGroup[0].orderedRunTileIds, run10.map((t) => t.id));
+  assert.deepEqual(candidatesSameGroup[0].completionMeldTileIds, meld4.map((t) => t.id));
+  assert.equal(candidatesSameGroup[0].discardTileId, discard.id);
 });

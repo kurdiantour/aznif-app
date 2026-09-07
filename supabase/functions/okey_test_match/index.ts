@@ -6,6 +6,7 @@ import {
   projectOkeyMatchPublicState,
   type OkeyServerPlayerIdentity,
 } from "../../../okey/server/okey-authoritative.ts";
+import { handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -41,9 +42,10 @@ serve(async (request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const workerSecret = Deno.env.get("OKEY_WORKER_SECRET");
   const authorization = request.headers.get("Authorization");
 
-  if (!url || !anon || !serviceKey) {
+  if (!url || !anon || !serviceKey || !workerSecret) {
     return json({ error: "server_configuration_incomplete" }, 503);
   }
 
@@ -239,6 +241,14 @@ serve(async (request) => {
   });
 
   await service.removeChannel(channel);
+
+  await handOffOkeyServerLifecycle({
+    supabaseUrl: url,
+    workerSecret,
+    matchId,
+    expectedVersion: 0,
+    turnDeadlineAt: deadline,
+  });
 
   return json(
     {

@@ -1,4 +1,3 @@
-import { isOkeyBotControlled } from "../engine/okey-bot-policy.ts";
 import {
   createAuthoritativeOkeyMatch,
   getNextOkeyMatchTurnDeadline,
@@ -20,8 +19,8 @@ import { executeOkeyBotTurn } from "./okey-bot-executor.ts";
 import {
   evaluateOkeyServerLifecycle,
   executeAuthoritativeOkeyLifecycleDecision,
+  executeAuthoritativeOkeyTransition,
   executeAuthoritativeOkeyTurn,
-  reduceAuthoritativeOkeyTransition,
   runAuthoritativeOkeyLifecycle,
   type OkeyAuthoritativeSnapshotBundle,
   type OkeyLifecycleDecision,
@@ -124,56 +123,49 @@ export async function reconcileAuthoritativeEliminatedTurns(options: {
       break;
     }
 
-    const nextState = reduceAuthoritativeOkeyTransition({
-      state: currentState,
-      transition: {
-        type: "eliminated-turn",
-        expectedActorId: decision.expectedActorId,
-      },
-      reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
-      now: getNow(),
-    });
-    if (nextState === currentState) {
-      break;
-    }
-
-    const drawnAndDiscardedTile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
-    const actionEventDrafts = createForcedDrawDiscardEvents({
-      actorPlayerId: actor.id,
-      source: "deck",
-      tile: drawnAndDiscardedTile,
-      reason: "eliminated",
-    });
-
+    let nextState!: OkeyAuthoritativeMatchState;
+    let deadline!: string | null;
     const nextVersion = currentVersion + 1;
-    const deadline = getNextOkeyMatchTurnDeadline(nextState, getNow());
-    const commandId = await (options.deterministicCommandId
-      ? options.deterministicCommandId(`okey:${options.matchId}:system-eliminated-turn:${currentVersion}:${actor.id}`)
-      : generateOkeyReconcilerCommandId(options.matchId, "system-eliminated-turn", currentVersion, actor.id));
-
-    const publicProjection = projectOkeyMatchPublicState(
-      nextState,
-      nextVersion,
-      deadline,
-    );
+    let commandId!: string;
 
     let committed;
     try {
-      const turnResult = await executeAuthoritativeOkeyTurn({
+      const turnResult = await executeAuthoritativeOkeyTransition({
+        state: currentState,
+        transition: {
+          type: "eliminated-turn",
+          expectedActorId: decision.expectedActorId,
+        },
+        reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
+        transitionNow: getNow(),
         controller: "elimination",
         matchId: options.matchId,
         actorPlayerId: actor.id,
-        commandId,
+        commandId: async () => {
+          commandId = await (options.deterministicCommandId
+            ? options.deterministicCommandId(`okey:${options.matchId}:system-eliminated-turn:${currentVersion}:${actor.id}`)
+            : generateOkeyReconcilerCommandId(options.matchId, "system-eliminated-turn", currentVersion, actor.id));
+          return commandId;
+        },
         commandType: "system-eliminated-turn",
         expectedVersion: currentVersion,
-        intent: decision,
-        validate: () => ({
-          state: nextState,
-          projection: publicProjection,
-          deadline,
-          status: nextState.matchFinished ? "finished" as const : "playing" as const,
-          actionEvents: actionEventDrafts,
-        }),
+        prepare: (reducedState) => {
+          nextState = reducedState;
+          deadline = getNextOkeyMatchTurnDeadline(nextState, getNow());
+          const drawnAndDiscardedTile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
+          return {
+            state: nextState,
+            projection: projectOkeyMatchPublicState(nextState, nextVersion, deadline),
+            deadline,
+            status: nextState.matchFinished ? "finished" as const : "playing" as const,
+            actionEvents: createForcedDrawDiscardEvents({
+              actorPlayerId: actor.id,
+              source: "deck",
+              tile: drawnAndDiscardedTile,
+              reason: "eliminated",
+            }),
+          };
+        },
         commit: async (prepared) => {
           const { data, error } = await options.client.rpc("okey_commit_authoritative_action", {
             p_match_id: options.matchId,
@@ -295,56 +287,49 @@ export async function reconcileAuthoritativeTimeoutTurn(options: {
     };
   }
 
-  const nextState = reduceAuthoritativeOkeyTransition({
-    state: options.state,
-    transition: {
-      type: "timeout",
-      deadlineAt: decision.expectedTurnDeadlineAt,
-    },
-    reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
-    now: getNow(),
-  });
-
-  const event = nextState.lastTimeoutDiscardEvent;
-  const tile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
-  const actorPlayerId = event?.playerId ?? decision.expectedTurnPlayerId;
-  const actionEventDrafts = event?.source === "rack"
-    ? [{ type: "discard" as const, actorPlayerId, payload: { tileId: tile?.id ?? null, tile, reason: "timeout" } }]
-    : createForcedDrawDiscardEvents({
-        actorPlayerId,
-        source: "deck",
-        tile,
-        reason: "timeout",
-      });
-
+  let nextState!: OkeyAuthoritativeMatchState;
+  let deadline!: string | null;
+  let actorPlayerId = decision.expectedTurnPlayerId;
+  let commandId!: string;
   const nextVersion = options.version + 1;
-  const deadline = getNextOkeyMatchTurnDeadline(nextState, getNow());
-  const commandId = await (options.deterministicCommandId
-    ? options.deterministicCommandId(`okey:${options.matchId}:system-timeout:${options.version}:${actorPlayerId}`)
-    : generateOkeyReconcilerCommandId(options.matchId, "system-timeout", options.version, actorPlayerId));
-
-  const publicProjection = projectOkeyMatchPublicState(
-    nextState,
-    nextVersion,
-    deadline,
-  );
 
   try {
-    const turnResult = await executeAuthoritativeOkeyTurn({
+    const turnResult = await executeAuthoritativeOkeyTransition({
+      state: options.state,
+      transition: {
+        type: "timeout",
+        deadlineAt: decision.expectedTurnDeadlineAt,
+      },
+      reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
+      transitionNow: getNow(),
       controller: "timeout",
       matchId: options.matchId,
-      actorPlayerId,
-      commandId,
+      actorPlayerId: () => actorPlayerId,
+      commandId: async () => {
+        commandId = await (options.deterministicCommandId
+          ? options.deterministicCommandId(`okey:${options.matchId}:system-timeout:${options.version}:${actorPlayerId}`)
+          : generateOkeyReconcilerCommandId(options.matchId, "system-timeout", options.version, actorPlayerId));
+        return commandId;
+      },
       commandType: "system-timeout",
       expectedVersion: options.version,
-      intent: decision,
-      validate: () => ({
-        state: nextState,
-        projection: publicProjection,
-        deadline,
-        status: nextState.matchFinished ? "finished" as const : "playing" as const,
-        actionEvents: actionEventDrafts,
-      }),
+      prepare: (reducedState) => {
+        nextState = reducedState;
+        deadline = getNextOkeyMatchTurnDeadline(nextState, getNow());
+        const event = nextState.lastTimeoutDiscardEvent;
+        actorPlayerId = event?.playerId ?? decision.expectedTurnPlayerId;
+        const tile = nextState.roundState.discardPile[nextState.roundState.discardPile.length - 1] ?? null;
+        const actionEventDrafts = event?.source === "rack"
+          ? [{ type: "discard" as const, actorPlayerId, payload: { tileId: tile?.id ?? null, tile, reason: "timeout" } }]
+          : createForcedDrawDiscardEvents({ actorPlayerId, source: "deck", tile, reason: "timeout" });
+        return {
+          state: nextState,
+          projection: projectOkeyMatchPublicState(nextState, nextVersion, deadline),
+          deadline,
+          status: nextState.matchFinished ? "finished" as const : "playing" as const,
+          actionEvents: actionEventDrafts,
+        };
+      },
       commit: async (prepared) => {
         const { data, error } = await options.client.rpc("okey_commit_authoritative_action", {
           p_match_id: options.matchId,
@@ -460,112 +445,136 @@ export async function reconcileAuthoritativeNextRound(options: {
     Boolean(options.state.pendingForfeitTeamId) ||
     options.state.leaveTerminationReason === "team-forfeit";
 
-  const nextState = finishingTeamForfeit
-    ? settleAuthoritativeOkeyRound(options.state)
-    : reduceAuthoritativeOkeyTransition({
-        state: options.state,
-        transition: { type: "next-round" },
-        reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
-        now: getNow(),
-      });
-
+  let nextState!: OkeyAuthoritativeMatchState;
+  let deadline!: string | null;
+  let actorPlayerId!: string;
+  let commandId!: string;
   const nextVersion = options.version + 1;
-  const deadline = getNextOkeyMatchTurnDeadline(nextState, getNow());
   const commandType = finishingTeamForfeit ? "round-end-team-forfeit" : "start-next-round";
-  const actorPlayerId = options.requesterUserId || nextState.roundState.players[nextState.roundState.currentPlayerIndex]?.id || "system";
 
-  const commandId = await (options.deterministicCommandId
-    ? options.deterministicCommandId(`okey:${options.matchId}:${commandType}:${options.version}:${nextState.currentRound}`)
-    : generateOkeyReconcilerCommandId(options.matchId, commandType, options.version, String(nextState.currentRound)));
-
-  const actionEventDrafts = finishingTeamForfeit
-    ? []
-    : [{ type: "round" as const, actorPlayerId: null, payload: { round: nextState.currentRound } }];
-
-  const publicProjection = projectOkeyMatchPublicState(
-    nextState,
-    nextVersion,
-    deadline,
-  );
+  const prepareNextRound = (reducedState: OkeyAuthoritativeMatchState) => {
+    nextState = reducedState;
+    deadline = getNextOkeyMatchTurnDeadline(nextState, getNow());
+    actorPlayerId = options.requesterUserId || nextState.roundState.players[nextState.roundState.currentPlayerIndex]?.id || "system";
+    const actionEventDrafts = finishingTeamForfeit
+      ? []
+      : [{ type: "round" as const, actorPlayerId: null, payload: { round: nextState.currentRound } }];
+    return {
+      state: nextState,
+      projection: projectOkeyMatchPublicState(nextState, nextVersion, deadline),
+      deadline,
+      status: nextState.matchFinished ? ("finished" as const) : ("playing" as const),
+      actionEvents: actionEventDrafts,
+    };
+  };
+  const createCommandId = async () => {
+    commandId = await (options.deterministicCommandId
+      ? options.deterministicCommandId(`okey:${options.matchId}:${commandType}:${options.version}:${nextState.currentRound}`)
+      : generateOkeyReconcilerCommandId(options.matchId, commandType, options.version, String(nextState.currentRound)));
+    return commandId;
+  };
+  const commitNextRound = async (prepared: ReturnType<typeof prepareNextRound>) => {
+    const { data, error } = await options.client
+      .rpc("okey_commit_authoritative_action", {
+        p_match_id: options.matchId,
+        p_user_id: actorPlayerId,
+        p_command_id: commandId,
+        p_expected_version: options.version,
+        p_command_type: commandType,
+        p_state: prepared.state,
+        p_projection: prepared.projection,
+        p_status: prepared.status,
+        p_turn_deadline_at: prepared.deadline,
+        p_action_events: prepared.actionEvents,
+      })
+      .single();
+    if (error && data?.applied !== false) {
+      throw new Error(error.message ?? "okey_next_round_commit_failed");
+    }
+    if (!data) {
+      throw new Error(error?.message ?? "okey_next_round_commit_failed");
+    }
+    return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
+  };
+  const advanceNextRound = async (committed: OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>) => {
+    const advancedState = committed.state ?? nextState;
+    if (advancedState.matchFinished && advancedState.matchWinnerTeamId && options.client?.rpc) {
+      try {
+        await options.client.rpc("okey_settle_match", {
+          p_match_id: options.matchId,
+          p_winner_team_id: advancedState.matchWinnerTeamId,
+        });
+      } catch {
+        // Settle recovery will safely retry idempotently during snapshot if needed
+      }
+    }
+    return {
+      ...committed,
+      state: advancedState,
+      turn_deadline_at: committed.turn_deadline_at ?? deadline,
+      action_events: committed.action_events ?? [],
+    };
+  };
+  const broadcastNextRound = options.broadcastStateUpdate
+    ? async (committed: {
+        version: number;
+        state: OkeyAuthoritativeMatchState;
+        turnDeadlineAt: string | null;
+        actionEvents: OkeyActionEvent[];
+      }) => {
+        try {
+          await options.broadcastStateUpdate!({
+            matchId: options.matchId,
+            commandId,
+            version: committed.version,
+            publicProjection: projectOkeyMatchPublicState(
+              committed.state,
+              committed.version,
+              committed.turnDeadlineAt,
+            ),
+            actionEvents: committed.actionEvents,
+          });
+        } catch (broadcastError) {
+          console.error("Okey next-round broadcast failed", broadcastError);
+        }
+      }
+    : undefined;
 
   try {
-    const turnResult = await executeAuthoritativeOkeyTurn({
-      controller: "next-round",
-      matchId: options.matchId,
-      actorPlayerId,
-      commandId,
-      commandType,
-      expectedVersion: options.version,
-      intent: decision,
-      validate: () => ({
-        state: nextState,
-        projection: publicProjection,
-        deadline,
-        status: nextState.matchFinished ? ("finished" as const) : ("playing" as const),
-        actionEvents: actionEventDrafts,
-      }),
-      commit: async (prepared) => {
-        const { data, error } = await options.client
-          .rpc("okey_commit_authoritative_action", {
-            p_match_id: options.matchId,
-            p_user_id: actorPlayerId,
-            p_command_id: commandId,
-            p_expected_version: options.version,
-            p_command_type: commandType,
-            p_state: prepared.state,
-            p_projection: prepared.projection,
-            p_status: prepared.status,
-            p_turn_deadline_at: prepared.deadline,
-            p_action_events: prepared.actionEvents,
-          })
-          .single();
-        if (error && data?.applied !== false) {
-  throw new Error(error.message ?? "okey_next_round_commit_failed");
-}
-if (!data) {
-  throw new Error(error?.message ?? "okey_next_round_commit_failed");
-}
-        return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
-      },
-      advance: async (committed) => {
-        const advancedState = committed.state ?? nextState;
-        if (advancedState.matchFinished && advancedState.matchWinnerTeamId && options.client?.rpc) {
-          try {
-            await options.client.rpc("okey_settle_match", {
-              p_match_id: options.matchId,
-              p_winner_team_id: advancedState.matchWinnerTeamId,
-            });
-          } catch {
-            // Settle recovery will safely retry idempotently during snapshot if needed
-          }
-        }
-        return {
-          ...committed,
-          state: advancedState,
-          turn_deadline_at: committed.turn_deadline_at ?? deadline,
-          action_events: committed.action_events ?? [],
-        };
-      },
-      broadcast: options.broadcastStateUpdate
-        ? async (committed) => {
-            try {
-              await options.broadcastStateUpdate!({
-                matchId: options.matchId,
-                commandId,
-                version: committed.version,
-                publicProjection: projectOkeyMatchPublicState(
-                  committed.state,
-                  committed.version,
-                  committed.turnDeadlineAt,
-                ),
-                actionEvents: committed.actionEvents,
-              });
-            } catch (broadcastError) {
-              console.error("Okey next-round broadcast failed", broadcastError);
-            }
-          }
-        : undefined,
-    });
+    const turnResult = finishingTeamForfeit
+      ? await (async () => {
+          const prepared = prepareNextRound(settleAuthoritativeOkeyRound(options.state));
+          await createCommandId();
+          return executeAuthoritativeOkeyTurn({
+            controller: "next-round",
+            matchId: options.matchId,
+            actorPlayerId,
+            commandId,
+            commandType,
+            expectedVersion: options.version,
+            intent: decision,
+            validate: () => prepared,
+            commit: commitNextRound,
+            advance: advanceNextRound,
+            broadcast: broadcastNextRound,
+          });
+        })()
+      : await executeAuthoritativeOkeyTransition({
+          state: options.state,
+          transition: { type: "next-round" },
+          reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
+          transitionNow: getNow(),
+          controller: "next-round",
+          matchId: options.matchId,
+          actorPlayerId: () => actorPlayerId,
+          commandId: createCommandId,
+          commandType,
+          expectedVersion: options.version,
+          prepare: prepareNextRound,
+          commit: commitNextRound,
+          advance: advanceNextRound,
+          broadcast: broadcastNextRound,
+        });
 
     const committed = turnResult.committed;
     if (committed.applied === false) {
@@ -825,7 +834,7 @@ export async function reconcileAuthoritativeServerTurns(options: {
 export type OkeyServerLifecycleWakeupOptions = {
   client: any;
   matchId: string;
-  requesterUserId?: string;
+  requesterUserId: string;
   initialState?: OkeyAuthoritativeMatchState;
   initialVersion?: number;
   eligibleAt?: string | null;
@@ -859,7 +868,8 @@ export type OkeyServerLifecycleWakeupResult = {
     | "already_transitioned"
     | "max_duration_exceeded"
     | "fetch_failed"
-    | "not_eligible";
+    | "not_eligible"
+    | "missing_requester_user_id";
 };
 
 /**
@@ -883,7 +893,18 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
   );
   const retryIntervalMs = Math.max(10, options.retryIntervalMs ?? 500);
   const matchId = options.matchId;
-  const requesterUserId = options.requesterUserId ?? "server-lifecycle-wake-up";
+  const requesterUserId = options.requesterUserId;
+
+  if (!requesterUserId) {
+    return {
+      ok: true,
+      executed: false,
+      state: null,
+      version: null,
+      attempts: 0,
+      reason: "missing_requester_user_id",
+    };
+  }
 
   let currentState: OkeyAuthoritativeMatchState | null = options.initialState ?? null;
   let currentVersion: number | null = options.initialVersion !== undefined ? Number(options.initialVersion) : null;
@@ -921,14 +942,23 @@ export async function reconcileAuthoritativeServerLifecycleWakeup(
   }
 
   // Step 1: Wait for eligibleAt (minimum 3 seconds delay)
-  const currentPlayer = currentState?.roundState.players[currentState.roundState.currentPlayerIndex] ?? null;
-  const currentPlayerIsBot = currentPlayer ? isOkeyBotControlled(currentPlayer) : false;
-  const botNotBefore = currentPlayerIsBot ? currentState?.roundStartsAt ?? null : null;
+  const initialLifecycleDecision = currentState && currentVersion !== null
+    ? evaluateOkeyServerLifecycle({
+        state: currentState,
+        version: currentVersion,
+        turn_deadline_at: currentDeadline,
+      }, getNow())
+    : null;
+  const currentPlayerIsBot = initialLifecycleDecision?.type === "bot-turn";
+  const botNotBefore = currentPlayerIsBot ? initialLifecycleDecision.notBefore : null;
   const isTurnTimeoutWakeup = Boolean(
     options.turnDeadlineAt ||
     (!options.eligibleAt && !currentPlayerIsBot && currentDeadline),
   );
-  const isNextRoundWakeup = Boolean(options.eligibleAt || currentState?.roundState.phase === "finished");
+  const isNextRoundWakeup = Boolean(
+    currentState?.roundState.phase === "finished" &&
+    (options.eligibleAt || currentState.nextRoundEligibleAt),
+  );
   const targetDeadline =
     options.eligibleAt ??
     options.turnDeadlineAt ??

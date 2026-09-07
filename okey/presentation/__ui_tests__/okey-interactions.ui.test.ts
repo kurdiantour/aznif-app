@@ -91,6 +91,14 @@ test("rapid double tap discards the same rack tile without waiting for a selecti
   );
 });
 
+test("KonKan hides the normal open button unless declaration is available", () => {
+  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
+
+  expect(scene).toMatch(
+    /canPlayAfterDraw && openAction\.allowed &&\s*\(!humanPlayer\.konkan \|\| openAction\.mode === "declare-konkan"\)/,
+  );
+});
+
 test("an ambiguous Joker spend submits the endpoint selected by its drop position", () => {
   const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
 

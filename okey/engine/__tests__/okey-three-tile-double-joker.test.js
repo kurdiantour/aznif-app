@@ -1,5 +1,5 @@
 const { canDeclareBasicWin } = require("../okey-engine.ts");
-const { getMeldScore, getOrderedMeldScore } = require("../okey-melds.ts");
+const { getMeldScore, getOrderedMeldScore } = require("../okeyengine-melds.ts");
 
 function tile(color, value, copy = 1) {
   return { id: `${color}-${value}-${copy}`, color, value, copy };

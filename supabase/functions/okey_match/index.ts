@@ -103,10 +103,16 @@ function parseCommand(
         : null;
 
     case "declare-konkan":
-      return Array.isArray(command.orderedRunTileIds)
+      return Array.isArray(command.orderedRunTileIds) &&
+          command.orderedRunTileIds.every((id) => typeof id === "string") &&
+          Array.isArray(command.completionMeldTileIds) &&
+          command.completionMeldTileIds.every((id) => typeof id === "string") &&
+          typeof command.discardTileId === "string"
         ? {
             type: "declare-konkan",
-            orderedRunTileIds: command.orderedRunTileIds,
+            orderedRunTileIds: command.orderedRunTileIds as string[],
+            completionMeldTileIds: command.completionMeldTileIds as string[],
+            discardTileId: command.discardTileId,
           }
         : null;
 
@@ -910,9 +916,10 @@ if (action === "manual-leave") {
       workerSecret,
       matchId,
       expectedVersion: finalVersion,
-      eligibleAt: finalState.roundState.phase === "finished"
-        ? finalState.nextRoundEligibleAt
-        : null,
+      eligibleAt: finalState.roundState.pendingBotTurnAdvanceAt ??
+        (finalState.roundState.phase === "finished"
+          ? finalState.nextRoundEligibleAt
+          : null),
       turnDeadlineAt: finalDeadline,
     }).catch((handoffError) => {
       console.error("Okey server lifecycle handoff failed for match", matchId, handoffError);

@@ -84,7 +84,12 @@ export function OkeyKonkanReveal({
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const titleScale = useRef(new Animated.Value(0.7)).current;
+  const onCloseRef = useRef(onClose);
   const onEnteredRef = useRef(onEntered);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     onEnteredRef.current = onEntered;
@@ -140,22 +145,29 @@ export function OkeyKonkanReveal({
       titleEntrance.start();
 
       // Fade out the entire panel after 4.8 seconds
+      let exitAnimation: Animated.CompositeAnimation | null = null;
       const timer = setTimeout(() => {
-        Animated.timing(overlayOpacity, {
+        exitAnimation = Animated.timing(overlayOpacity, {
           toValue: 0,
           duration: 500,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
-        }).start(({ finished }) => {
+        });
+        exitAnimation.start(({ finished }) => {
           if (finished) {
-            onClose();
+            onCloseRef.current();
           }
         });
       }, 4800);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        overlayEntrance.stop();
+        titleEntrance.stop();
+        exitAnimation?.stop();
+      };
     }
-  }, [visible, onClose, overlayOpacity, titleOpacity, titleScale]);
+  }, [visible, overlayOpacity, titleOpacity, titleScale]);
 
   if (!visible) return null;
 

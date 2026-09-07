@@ -157,7 +157,7 @@ export type OkeyLifecycleDecision =
       expectedVersion: number;
       expectedActorId: string;
       playerIndex: number;
-      step: "draw" | "discard";
+      step: "draw" | "discard" | "advance";
       notBefore: string | null;
       ready: boolean;
     }
@@ -223,6 +223,23 @@ export function evaluateOkeyServerLifecycle(
 
     if (!currentPlayer || !context.currentPlayerId) {
       return { type: "idle", reason: "waiting_for_human_action" };
+    }
+
+    const pendingBotAdvanceAt = state.roundState.pendingBotTurnAdvanceAt ?? null;
+    if (
+      pendingBotAdvanceAt &&
+      state.roundState.pendingBotTurnAdvancePlayerId === context.currentPlayerId
+    ) {
+      const eligibleAtMs = Date.parse(pendingBotAdvanceAt);
+      return {
+        type: "bot-turn",
+        expectedVersion: version,
+        expectedActorId: context.currentPlayerId,
+        playerIndex: context.currentPlayerIndex,
+        step: "advance",
+        notBefore: pendingBotAdvanceAt,
+        ready: Number.isFinite(eligibleAtMs) && now >= eligibleAtMs,
+      };
     }
 
     if (context.controller === "ghost") {
@@ -741,8 +758,8 @@ export type OkeyAuthoritativeTransitionExecutionInput<
   prepare: (nextState: TState) => PreparedOkeyTurn<TState, TProjection, TEventDraft>;
   controller: OkeyTurnController;
   matchId: string;
-  actorPlayerId: string;
-  commandId: string;
+  actorPlayerId: string | ((nextState: TState) => string);
+  commandId: string | ((nextState: TState) => Promise<string>);
   commandType: string;
   expectedVersion: number;
   commit: (
@@ -792,15 +809,23 @@ export async function executeAuthoritativeOkeyTransition<
     now: input.transitionNow,
   });
 
+  const prepared = input.prepare(nextState);
+  const actorPlayerId = typeof input.actorPlayerId === "function"
+    ? input.actorPlayerId(nextState)
+    : input.actorPlayerId;
+  const commandId = typeof input.commandId === "function"
+    ? await input.commandId(nextState)
+    : input.commandId;
+
   return executeAuthoritativeOkeyTurn({
     controller: input.controller,
     matchId: input.matchId,
-    actorPlayerId: input.actorPlayerId,
-    commandId: input.commandId,
+    actorPlayerId,
+    commandId,
     commandType: input.commandType,
     expectedVersion: input.expectedVersion,
     intent: input.transition,
-    validate: () => input.prepare(nextState),
+    validate: () => prepared,
     commit: input.commit,
     advance: input.advance,
     broadcast: input.broadcast,

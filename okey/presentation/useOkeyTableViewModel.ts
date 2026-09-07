@@ -17,7 +17,6 @@ function getRelativeSeatMap(localPlayerIndex: number): Record<OkeyRelativeSeat, 
 export function useOkeyTableViewModel(input: {
   state: OkeyGameState;
   currentUserId: string | null;
-  localPreview: boolean;
   onlineProjection: OkeyMatchServerProjection | null;
   presentedTablePlayers: OkeyPlayer[];
   stableOpponentTileCounts: Record<string, number>;
@@ -36,7 +35,7 @@ export function useOkeyTableViewModel(input: {
   showMatchResultPopup: boolean;
   matchFinished: boolean;
 }) {
-  const { state, currentUserId, localPreview, onlineProjection, presentedTablePlayers,
+  const { state, currentUserId, onlineProjection, presentedTablePlayers,
     stableOpponentTileCounts, onlineGameplayReady, turnPlayerIndex, turnPlayerId, turnPhase, turnDeadlineAt,
     turnDurationSeconds, turnTimeLeftMilliseconds, serverClockOffsetMs,
     currentRoundResult, roundResults, matchScores, matchWinnerTeamId, showMatchResultPopup, matchFinished } = input;
@@ -47,18 +46,17 @@ export function useOkeyTableViewModel(input: {
   const isHumanTurn = turnPhase === 'playing' && turnPlayerId === humanPlayer.id;
   const localPlayerIndex = useMemo(() => {
     if (!currentUserId) return null;
-    const players = localPreview ? state.players : onlineProjection?.players;
+    const players = onlineProjection?.players;
     if (!players) return null;
     const index = players.findIndex((player) => player.id === currentUserId);
     return index >= 0 ? index : null;
-  }, [currentUserId, localPreview, onlineProjection?.players, state.players]);
+  }, [currentUserId, onlineProjection?.players]);
   const seatMap = useMemo(() => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex), [localPlayerIndex]);
   const playerForSeat = useCallback((seat: OkeyRelativeSeat) => {
     if (!seatMap) return null;
-    if (localPreview) return state.players[seatMap[seat]] ?? null;
     const projectedPlayer = onlineProjection?.players[seatMap[seat]];
     return projectedPlayer ? state.players.find((player) => player.id === projectedPlayer.id) ?? null : null;
-  }, [localPreview, onlineProjection?.players, seatMap, state.players]);
+  }, [onlineProjection?.players, seatMap, state.players]);
   const opponentSeats = useMemo(() => (["top", "left", "right"] as const).map((side) => {
     const serverIndex = seatMap?.[side] ?? null;
     const player = playerForSeat(side);

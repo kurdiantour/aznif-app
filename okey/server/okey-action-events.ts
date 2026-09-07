@@ -45,12 +45,15 @@ export function createOkeyCommandActionEvents(
       const tileById = new Map(actor?.hand.map((tile) => [tile.id, tile]) ?? []);
       const runTiles = command.orderedRunTileIds.map((tileId) => tileById.get(tileId)).filter((tile): tile is OkeyTile => !!tile);
       const runIds = new Set(command.orderedRunTileIds);
-      const completionMeldTiles = actor?.hand.filter((tile) => !runIds.has(tile.id)) ?? [];
+      const completionMeldTiles = command.completionMeldTileIds
+        .map((id) => tileById.get(id)).filter((tile): tile is OkeyTile => !!tile);
+      const discardTile = tileById.get(command.discardTileId) ?? null;
       return [{ type: "konkan", actorPlayerId, payload: {
         kind: "declare",
         orderedRunTileIds: command.orderedRunTileIds,
         runTiles,
         completionMeldTiles,
+        discardTile,
       } }];
     }
     case "spend-meld":

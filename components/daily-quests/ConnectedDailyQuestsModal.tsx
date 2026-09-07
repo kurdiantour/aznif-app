@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { DailyQuest } from "@/lib/dailyQuests";
+import RewardRain, { type RewardRainEvent } from "@/components/rewards/RewardRain";
 
 type Props = {
   visible: boolean;
@@ -32,10 +33,34 @@ function rewardText(quest: DailyQuest) {
 export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt,
   loading = false, error, claimingId, onClaim, onRetry, onClose }: Props) {
   const [timeLeft, setTimeLeft] = useState(() => countdown(nextResetAt));
+  const [rewardRainEvent, setRewardRainEvent] = useState<RewardRainEvent | null>(null);
+  const rewardRainSequence = useRef(0);
   const safeQuests = Array.isArray(quests) ? quests.filter(Boolean) : [];
 
+  const playRewardRain = useCallback((quest: DailyQuest) => {
+    rewardRainSequence.current += 1;
+    setRewardRainEvent({
+      id: rewardRainSequence.current,
+      type: quest.rewardType,
+      amount: quest.rewardAmount,
+    });
+  }, []);
+
+  const handleClaimReward = useCallback(
+    async (quest: DailyQuest) => {
+      if (!onClaim || claimingId !== null) return;
+
+      await onClaim(quest.instanceId);
+      playRewardRain(quest);
+    },
+    [claimingId, onClaim, playRewardRain],
+  );
+
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setRewardRainEvent(null);
+      return;
+    }
     setTimeLeft(countdown(nextResetAt));
     const interval = setInterval(() => setTimeLeft(countdown(nextResetAt)), 1_000);
     return () => clearInterval(interval);
@@ -72,7 +97,10 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
               const metric = typeof quest.metric === "string" ? quest.metric : "";
               const icon = quest.gameType === "domino" ? "game-controller-outline" : metric.includes("won") ? "trophy-outline" : "dice-outline";
               return (
-                <View key={quest.instanceId || `${quest.title}-${quest.sortOrder}`} style={[styles.card, quest.canClaim && styles.claimableCard]}>
+                <View
+                  key={quest.instanceId || `${quest.title}-${quest.sortOrder}`}
+                  style={[styles.card, quest.canClaim && styles.claimableCard]}
+                >
                   <Text style={styles.questTitle}>{quest.title || "ئەرکی ڕۆژانە"}</Text>
                   <Ionicons name={icon} size={29} color="#ffd45c" style={styles.questIcon} />
                   <View style={styles.track}><View style={[styles.fill, { width }]} /></View>
@@ -80,8 +108,16 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
                   {quest.claimed ? (
                     <View style={styles.claimed}><Ionicons name="checkmark" size={12} color="#fff" /><Text style={styles.claimedText}>وەرگیرا</Text></View>
                   ) : quest.canClaim ? (
-                    <Pressable disabled={claimingId !== null || !onClaim} onPress={() => void onClaim?.(quest.instanceId)} style={styles.claimButton}>
-                      <Text style={styles.claimText}>{claimingId === quest.instanceId ? "چاوەڕێ بکە..." : `وەرگرتن ${rewardText(quest)}`}</Text>
+                    <Pressable
+                      disabled={claimingId !== null || !onClaim}
+                      onPress={() => void handleClaimReward(quest)}
+                      style={styles.claimButton}
+                    >
+                      <Text style={styles.claimText}>
+                        {claimingId === quest.instanceId
+                          ? "چاوەڕێ بکە..."
+                          : `وەرگرتن ${rewardText(quest)}`}
+                      </Text>
                     </Pressable>
                   ) : <Text style={styles.reward}>{rewardText(quest)}</Text>}
                 </View>
@@ -93,6 +129,7 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
           <Text style={styles.timerLabel}>نوێبوونەوەی ئەرکەکان</Text><Text style={styles.timerValue}>{timeLeft}</Text>
         </View>
       </View>
+      <RewardRain event={rewardRainEvent} />
     </View>
   );
 }

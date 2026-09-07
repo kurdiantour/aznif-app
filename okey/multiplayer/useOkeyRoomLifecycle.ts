@@ -3,33 +3,30 @@ import { useRouter } from "expo-router";
 
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import { supabase } from "@/lib/supabase";
-import { LOCAL_OKEY_PREVIEW_PLAYER_ID } from "@/okey/presentation/use-local-okey-preview";
 import { getOkeyRoomStatus, leaveOkeyRoom, subscribeOkeyRoom, type OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
 
-export function useOkeyRoomLifecycle({ matchId, exitRoute, localPreview }: {
+export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
   matchId?: string;
   exitRoute: "/(tabs)/aznif" | "/(tabs)/play";
-  localPreview: boolean;
 }) {
   const router = useRouter();
   const { party } = useGameParty();
   const [room, setRoom] = useState<OkeyRoomSnapshot | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(localPreview ? LOCAL_OKEY_PREVIEW_PLAYER_ID : null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [leavingWaitingRoom, setLeavingWaitingRoom] = useState(false);
 
   useEffect(() => {
-    if (localPreview) return;
     let active = true;
     void supabase.auth.getUser().then(({ data }) => { if (active) setCurrentUserId(data.user?.id ?? null); });
     return () => { active = false; };
-  }, [localPreview]);
+  }, []);
 
   useEffect(() => {
-    if (!localPreview && !matchId) router.replace(exitRoute);
-  }, [exitRoute, localPreview, matchId, router]);
+    if (!matchId) router.replace(exitRoute);
+  }, [exitRoute, matchId, router]);
 
   useEffect(() => {
-    if (localPreview || !matchId) {
+    if (!matchId) {
       const reset = setTimeout(() => setRoom(null), 0);
       return () => clearTimeout(reset);
     }
@@ -38,7 +35,7 @@ export function useOkeyRoomLifecycle({ matchId, exitRoute, localPreview }: {
       .catch((error) => console.warn("Unable to load Okey room status", error));
     const unsubscribe = subscribeOkeyRoom(matchId, (snapshot) => { if (active) setRoom(snapshot); });
     return () => { active = false; unsubscribe(); };
-  }, [localPreview, matchId]);
+  }, [matchId]);
 
   useEffect(() => {
     if (!matchId || !currentUserId || !party || party.leaderId === currentUserId || party.flowStatus !== "idle") return;
@@ -111,9 +108,8 @@ export function useOkeyMatchExitLifecycle({ leaveOnlineMatch, leaving, exitRoute
     }
   }, [exitRoute, leaveOnlineMatch, leaving, router]);
 }
-export function useOkeyGameplayReadiness({ localPreview, projectionReady, room, matchFinished,
+export function useOkeyGameplayReadiness({ projectionReady, room, matchFinished,
   phase, showRoundResult, showMatchResult, matchId }: {
-  localPreview: boolean;
   projectionReady: boolean;
   room: OkeyRoomSnapshot | null;
   matchFinished: boolean;
@@ -122,7 +118,7 @@ export function useOkeyGameplayReadiness({ localPreview, projectionReady, room, 
   showMatchResult: boolean;
   matchId?: string;
 }) {
-  const gameplayReady = localPreview || (
+  const gameplayReady = (
     projectionReady &&
     (room?.status === "playing" || matchFinished) &&
     (phase === "playing" || phase === "finished" || showRoundResult || showMatchResult)

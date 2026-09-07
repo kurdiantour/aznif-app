@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { selectBestMeldPlan, type OkeyMeldCandidate } from "../okey-melds.ts";
+import { selectBestMeldPlan, type OkeyMeldCandidate } from "../okeyengine-melds.ts";
 import type { OkeyMeld, OkeyTile } from "../../types/okey.ts";
 
 function tile(value: number): OkeyTile {

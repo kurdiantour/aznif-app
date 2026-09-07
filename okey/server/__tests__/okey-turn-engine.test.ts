@@ -112,6 +112,63 @@ test("Human runtime enters reduction and commit through one engine transition en
   assert.equal(result.committed.state, 11);
 });
 
+test("authoritative transition resolves next-state metadata after prepare and before commit", async () => {
+  const stages: string[] = [];
+  const result = await executeAuthoritativeOkeyTransition({
+    state: 4,
+    transition: { type: "next-round" },
+    reducers: {
+      applyHumanCommand: (state) => state,
+      applyManualLeave: (state) => state,
+      applyTimeout: (state) => state,
+      applyEliminatedTurn: (state) => state,
+      startNextRound: (state) => {
+        stages.push("reduce");
+        return state + 1;
+      },
+      applyBotRoundState: (state) => state,
+    },
+    controller: "next-round",
+    matchId: "match-1",
+    actorPlayerId: (nextState) => {
+      stages.push(`actor:${nextState}`);
+      return `player-${nextState}`;
+    },
+    commandId: async (nextState) => {
+      stages.push(`command:${nextState}`);
+      return `command-${nextState}`;
+    },
+    commandType: "start-next-round",
+    expectedVersion: 4,
+    prepare: (nextState) => {
+      stages.push(`prepare:${nextState}`);
+      return {
+        state: nextState,
+        projection: nextState,
+        deadline: null,
+        status: "playing",
+        actionEvents: [] as string[],
+      };
+    },
+    commit: async (prepared) => {
+      stages.push(`commit:${prepared.state}`);
+      return { version: 5, state: prepared.state, turn_deadline_at: null, action_events: [] };
+    },
+    broadcast: async ({ commandId }) => {
+      stages.push(`broadcast:${commandId}`);
+    },
+  });
+
+  assert.equal(result.committed.state, 5);
+  assert.deepEqual(stages, [
+    "reduce",
+    "prepare:5",
+    "actor:5",
+    "command:5",
+    "commit:5",
+    "broadcast:command-5",
+  ]);
+});
 test("an uncommitted turn never advances or broadcasts", async () => {
   const effects: string[] = [];
   const result = await executeAuthoritativeOkeyTurn({
@@ -261,11 +318,17 @@ test("runtime controllers no longer compose authoritative next state directly", 
   assert.doesNotMatch(match, /applyAuthoritativeOkeyMatchCommand\(/);
   assert.doesNotMatch(match, /applyAuthoritativeManualLeave\(/);
 
-  assert.match(reconciler, /reduceAuthoritativeOkeyTransition/);
+  assert.equal((reconciler.match(/executeAuthoritativeOkeyTransition\(\{/g) ?? []).length, 3);
+  assert.equal((reconciler.match(/executeAuthoritativeOkeyTurn\(\{/g) ?? []).length, 1);
+  assert.doesNotMatch(reconciler, /reduceAuthoritativeOkeyTransition/);
+  assert.match(reconciler, /finishingTeamForfeit[\s\S]*?executeAuthoritativeOkeyTurn\(\{/);
   assert.doesNotMatch(reconciler, /applyAuthoritativeOkeyEliminatedTurn\(/);
   assert.doesNotMatch(reconciler, /resolveAuthoritativeMatchDeadline\(/);
   assert.doesNotMatch(reconciler, /startAuthoritativeOkeyNextRound\(/);
 
+  assert.equal((bot.match(/executeAuthoritativeOkeyTransition\(\{/g) ?? []).length, 1);
+  assert.doesNotMatch(bot, /executeAuthoritativeOkeyTurn/);
+  assert.doesNotMatch(bot, /reduceAuthoritativeOkeyTransition/);
   assert.match(bot, /type: "bot-action"/);
   assert.doesNotMatch(bot, /settleAuthoritativeOkeyRound\(\{\s*\.\.\.currentState/);
 });

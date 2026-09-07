@@ -1,21 +1,22 @@
 import {
-  canDeclareKonkanOpen,
-  canLockKonkanSet,
-  declareKonkanOpen,
   discardTile,
   drawTile,
-  findKonkanDeclarationForPlayer,
-  findBestMeldPlan,
-  getRequiredOpenScore,
-  isOkeyWildcard,
-  lockKonkanSet,
   openPlayerMelds,
   playEliminatedTurn,
+} from "./okey-engine.ts";
+import {
+  canLockKonkanSet,
+  lockKonkanSet,
   resolveTableMeldAction,
   spendTileOnBestMeld,
-} from "./okey-engine.ts";
-import { getOkeyScoreValue } from "./okey-melds.ts";
-import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+} from "./okeyengine-konkan.ts";
+import {
+  findBestMeldPlan,
+  getEffectiveTile,
+  getOkeyScoreValue,
+  getRequiredOpenScore,
+  isOkeyWildcard,
+} from "./okeyengine-melds.ts";import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
 import type {
   OkeyDrawSource,
   OkeyGameState,
@@ -54,13 +55,9 @@ type HandEvaluation = {
   penalty: number;
 };
 
-function effectiveTile(tile: OkeyTile, okeyTile: OkeyTile) {
-  return tile.isFakeJoker ? { color: okeyTile.color, value: okeyTile.value } : tile;
-}
-
 function tilePenalty(tile: OkeyTile, okeyTile: OkeyTile) {
   if (isOkeyWildcard(tile, okeyTile)) return 40;
-  return getOkeyScoreValue(effectiveTile(tile, okeyTile).value);
+  return getOkeyScoreValue(getEffectiveTile(tile, okeyTile).value);
 }
 
 function countPartialPotential(hand: OkeyTile[], okeyTile: OkeyTile) {
@@ -68,11 +65,11 @@ function countPartialPotential(hand: OkeyTile[], okeyTile: OkeyTile) {
   for (let leftIndex = 0; leftIndex < hand.length; leftIndex += 1) {
     const left = hand[leftIndex];
     if (isOkeyWildcard(left, okeyTile)) continue;
-    const effectiveLeft = effectiveTile(left, okeyTile);
+    const effectiveLeft = getEffectiveTile(left, okeyTile);
     for (let rightIndex = leftIndex + 1; rightIndex < hand.length; rightIndex += 1) {
       const right = hand[rightIndex];
       if (isOkeyWildcard(right, okeyTile)) continue;
-      const effectiveRight = effectiveTile(right, okeyTile);
+      const effectiveRight = getEffectiveTile(right, okeyTile);
       if (effectiveLeft.value === effectiveRight.value && effectiveLeft.color !== effectiveRight.color) potential += 5;
       if (effectiveLeft.color === effectiveRight.color) {
         const distance = Math.abs(effectiveLeft.value - effectiveRight.value);
@@ -108,10 +105,10 @@ function bestPostDiscardValue(hand: OkeyTile[], okeyTile: OkeyTile) {
 
 function tileSupportsStructure(hand: OkeyTile[], candidate: OkeyTile, okeyTile: OkeyTile) {
   if (isOkeyWildcard(candidate, okeyTile)) return true;
-  const effectiveCandidate = effectiveTile(candidate, okeyTile);
+  const effectiveCandidate = getEffectiveTile(candidate, okeyTile);
   return hand.some((tile) => {
     if (isOkeyWildcard(tile, okeyTile)) return true;
-    const effective = effectiveTile(tile, okeyTile);
+    const effective = getEffectiveTile(tile, okeyTile);
     if (effective.value === effectiveCandidate.value && effective.color !== effectiveCandidate.color) return true;
     if (effective.color !== effectiveCandidate.color) return false;
     const distance = Math.abs(effective.value - effectiveCandidate.value);
@@ -340,7 +337,7 @@ function discardDanger(state: OkeyGameState, tile: OkeyTile) {
   const nextPlayerIndex = order[(order.indexOf(state.currentPlayerIndex) + 1) % order.length];
   const nextPlayer = state.players[nextPlayerIndex];
   if (!nextPlayer || nextPlayer.eliminated) return 0;
-  const effective = effectiveTile(tile, state.okeyTile);
+  const effective = getEffectiveTile(tile, state.okeyTile);
   let danger = nextPlayer.opened ? getOkeyScoreValue(effective.value) * 0.35 : 0;
   if (nextPlayer.hand.length <= 4) danger += 9;
   if (isOkeyWildcard(tile, state.okeyTile)) danger += 100;
@@ -403,12 +400,6 @@ export function prepareBotTurn(
 
   let declaredKonkan = false;
   let konkanRunTileIds: string[] = [];
-  const openingKonkanRun = findKonkanDeclarationForPlayer(current, current.currentPlayerIndex);
-  if (openingKonkanRun && canDeclareKonkanOpen(current, current.currentPlayerIndex, openingKonkanRun)) {
-    current = declareKonkanOpen(current, current.currentPlayerIndex, openingKonkanRun);
-    declaredKonkan = true;
-    konkanRunTileIds = openingKonkanRun;
-  }
   if (current.phase !== "playing") {
     return { state: current, discardTileId: null, decision: { ...emptyDecision, drawSource, declaredKonkan, konkanRunTileIds } };
   }
@@ -421,12 +412,6 @@ export function prepareBotTurn(
   current = spent.state;
   current = tryLockUsefulKonkanSet(current);
 
-  const finishingKonkanRun = findKonkanDeclarationForPlayer(current, current.currentPlayerIndex);
-  if (finishingKonkanRun && canDeclareKonkanOpen(current, current.currentPlayerIndex, finishingKonkanRun)) {
-    current = declareKonkanOpen(current, current.currentPlayerIndex, finishingKonkanRun);
-    declaredKonkan = true;
-    konkanRunTileIds = finishingKonkanRun;
-  }
   if (current.phase !== "playing") {
     return {
       state: current,

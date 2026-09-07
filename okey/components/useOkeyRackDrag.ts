@@ -20,20 +20,21 @@ import {
   GROUP_LONG_PRESS_MS,
   ROW_ORDER,
   ROW_SNAP_PADDING_RATIO,
-  SLOT_TARGET_HYSTERESIS_RATIO,
   cloneSlots,
   getBestMeldIncludingSlot,
   getExternalDropTargetForPoint,
+  getFlatIndexForSlot,
   getGroupInsertionTargetForPoint,
-  getInsertionTargetForPoint,
   getInitialRackSlots,
+  getInsertionTargetForPoint,
   getRowTilesFromSlots,
   getTileOrigin,
+  moveTileIntoSlot,
+  moveTilesIntoSlot,
   syncSlotsWithTiles,
   type DragOrigin,
   type DraggingMeld,
   type ExternalDropPlacement,
-  type InsertionTarget,
   type RackRow,
   type RackRowLayout,
   type RackSlots,
@@ -41,6 +42,12 @@ import {
 import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 
 type ViewportRect = { x: number; y: number; width: number; height: number };
+
+function rackSlotsEqual(left: RackSlots, right: RackSlots) {
+  return ROW_ORDER.every((row) =>
+    left[row].every((tileId, index) => tileId === right[row][index]),
+  );
+}
 
 type UseOkeyRackDragParams = {
   tiles: OkeyTile[];
@@ -112,14 +119,12 @@ export function useOkeyRackDrag({
   const draggedMeldScale = useRef(new Animated.Value(1)).current;
   const dragTouchOffsetRef = useRef({ x: 0, y: 0 });
   const latestDragPointRef = useRef({ x: 0, y: 0 });
-  const insertionTargetRef = useRef<InsertionTarget | null>(null);
   const dragStartedRef = useRef(false);
   const dragStartSlotsRef = useRef<RackSlots | null>(null);
+  const dragPreviewSlotsRef = useRef<RackSlots | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wildcardLongPressHandledRef = useRef(false);
   const consumedExternalDropNonceRef = useRef<number | null>(null);
-  const neighborShiftKeyRef = useRef<string | null>(null);
-  const pendingNeighborResetAfterCommitRef = useRef(false);
   const tileShiftValuesRef = useRef<Record<string, Animated.ValueXY>>({});
   const tilePanHandlersRef = useRef<Record<string, any>>({});
   const rackInteractionLockedRef = useRef(rackInteractionLocked);
@@ -149,6 +154,11 @@ export function useOkeyRackDrag({
   useEffect(() => {
     committedRackSlotsRef.current = committedRackSlots;
   }, [committedRackSlots]);
+
+  const commitRackSlots = useCallback((nextSlots: RackSlots) => {
+    committedRackSlotsRef.current = nextSlots;
+    setCommittedRackSlots(nextSlots);
+  }, []);
 
   useEffect(() => {
     rackInteractionLockedRef.current = rackInteractionLocked;
@@ -200,12 +210,6 @@ export function useOkeyRackDrag({
   ]);
 
   useEffect(() => {
-    setCommittedRackSlots((current) =>
-      syncSlotsWithTiles(current, tiles),
-    );
-  }, [tiles]);
-
-  useEffect(() => {
     draggedMeldScale.stopAnimation();
 
     if (!draggingMeld) {
@@ -223,93 +227,55 @@ export function useOkeyRackDrag({
     }).start();
   }, [draggedMeldScale, draggingMeld]);
 
-  const clearInsertionTarget = useCallback(() => {
-    insertionTargetRef.current = null;
-  }, []);
-
   const getTileShiftValue = useCallback((tileId: string) => {
     const existing = tileShiftValuesRef.current[tileId];
     if (existing) return existing;
 
+    // Rack ordering is committed only on drop. Stable rack tiles do not move
+    // during hover, so this transform intentionally stays at zero.
     const value = new Animated.ValueXY({ x: 0, y: 0 });
     tileShiftValuesRef.current[tileId] = value;
     return value;
   }, []);
 
   const resetNeighborShifts = useCallback(() => {
-    neighborShiftKeyRef.current = null;
-
     for (const value of Object.values(tileShiftValuesRef.current)) {
       value.stopAnimation();
       value.setValue({ x: 0, y: 0 });
     }
   }, []);
 
-  // Keep transformed neighbors in their final visual positions until the slot
-  // state has committed. Resetting before commit creates the one-frame tick.
-  useLayoutEffect(() => {
-    if (!pendingNeighborResetAfterCommitRef.current) return;
-    pendingNeighborResetAfterCommitRef.current = false;
-    resetNeighborShifts();
-  }, [committedRackSlots, resetNeighborShifts]);
-
-  const updateNeighborShifts = useCallback(
-    (target: InsertionTarget | null, draggedTileIds: string[]) => {
-      const sourceSlots = dragStartSlotsRef.current;
-
-      if (!target || !sourceSlots) {
-        resetNeighborShifts();
-        return;
-      }
-
-      const shiftKey = `${target.row}:${target.slotIndex}:${draggedTileIds.join(",")}`;
-      if (neighborShiftKeyRef.current === shiftKey) return;
-      neighborShiftKeyRef.current = shiftKey;
-
-      const draggedSet = new Set(draggedTileIds);
-      const nextPositions = new Map<
-        string,
-        { row: RackRow; slotIndex: number }
-      >();
-
+  const applyRackPreview = useCallback(
+    (originalSlots: RackSlots, previewSlots: RackSlots, draggedTileIds: Set<string>) => {
       for (const row of ROW_ORDER) {
-        target.nextSlots[row].forEach((tileId, slotIndex) => {
-          if (tileId) nextPositions.set(tileId, { row, slotIndex });
-        });
-      }
+        for (let slotIndex = 0; slotIndex < originalSlots[row].length; slotIndex += 1) {
+          const tileId = originalSlots[row][slotIndex];
+          if (!tileId || draggedTileIds.has(tileId)) continue;
 
-      for (const row of ROW_ORDER) {
-        sourceSlots[row].forEach((tileId, slotIndex) => {
-          if (!tileId) return;
+          const previewOrigin = getTileOrigin(previewSlots, tileId);
+          if (!previewOrigin) continue;
+
+          const fromLayout = rowLayoutsRef.current[row];
+          const toLayout = rowLayoutsRef.current[previewOrigin.row];
+          if (!fromLayout || !toLayout) continue;
+
+          const fromBottomInset = row === "bottom" ? rackTileHeightRef.current * 0.44 : 0;
+          const toBottomInset = previewOrigin.row === "bottom" ? rackTileHeightRef.current * 0.44 : 0;
+          const fromTop =
+            fromLayout.y + fromLayout.height - rackTileHeightRef.current - fromBottomInset;
+          const toTop =
+            toLayout.y + toLayout.height - rackTileHeightRef.current - toBottomInset;
 
           const value = getTileShiftValue(tileId);
           value.stopAnimation();
-
-          if (draggedSet.has(tileId)) {
-            value.setValue({ x: 0, y: 0 });
-            return;
-          }
-
-          const next = nextPositions.get(tileId);
-          if (!next) {
-            value.setValue({ x: 0, y: 0 });
-            return;
-          }
-
-          const sourceRowLayout = rowLayoutsRef.current[row];
-          const targetRowLayout = rowLayoutsRef.current[next.row];
-
           value.setValue({
-            x: (next.slotIndex - slotIndex) * rackTileStrideRef.current,
-            y:
-              sourceRowLayout && targetRowLayout
-                ? targetRowLayout.y - sourceRowLayout.y
-                : 0,
+            x: (previewOrigin.slotIndex - slotIndex) * rackTileStrideRef.current,
+            y: toTop - fromTop,
           });
-        });
+        }
       }
     },
-    [getTileShiftValue, resetNeighborShifts, rowLayoutsRef],
+    [getTileShiftValue, rowLayoutsRef],
   );
 
   const scheduleDragPointChange = useCallback(
@@ -345,13 +311,20 @@ export function useOkeyRackDrag({
   );
 
   const getTouchPoint = (
-    _event: GestureResponderEvent,
+    event: GestureResponderEvent,
     gesture: PanResponderGestureState,
     useStartPoint = false,
-  ) => ({
-    x: useStartPoint ? gesture.x0 : gesture.moveX,
-    y: useStartPoint ? gesture.y0 : gesture.moveY,
-  });
+  ) => {
+    if (useStartPoint) {
+      return { x: gesture.x0, y: gesture.y0 };
+    }
+
+    const { pageX, pageY } = event.nativeEvent;
+    return {
+      x: Number.isFinite(pageX) ? pageX : gesture.moveX,
+      y: Number.isFinite(pageY) ? pageY : gesture.moveY,
+    };
+  };
 
   const setDragPositionFromTouch = useCallback(
     (moveX: number, moveY: number) => {
@@ -391,12 +364,25 @@ export function useOkeyRackDrag({
         return;
       }
 
-      dragPosition.stopAnimation();
-      dragPosition.setValue({
+      const bottomInset =
+        origin.row === "bottom" ? rackTileHeightRef.current * 0.44 : 0;
+      const targetPosition = {
         x: origin.slotIndex * rackTileStrideRef.current,
-        y: rowLayout.y,
+        y:
+          rowLayout.y +
+          rowLayout.height -
+          rackTileHeightRef.current -
+          bottomInset,
+      };
+
+      dragPosition.stopAnimation();
+      Animated.timing(dragPosition, {
+        toValue: targetPosition,
+        duration: 90,
+        useNativeDriver: true,
+      }).start(() => {
+        onDone();
       });
-      onDone();
     },
     [dragPosition, rowLayoutsRef],
   );
@@ -418,9 +404,7 @@ export function useOkeyRackDrag({
         rackTileHeight: rackTileHeightRef.current,
         rackTileStride: rackTileStrideRef.current,
         dragTouchOffsetX: dragTouchOffsetRef.current.x,
-        activeTarget: insertionTargetRef.current,
         rowSnapPaddingRatio: ROW_SNAP_PADDING_RATIO,
-        slotTargetHysteresisRatio: SLOT_TARGET_HYSTERESIS_RATIO,
       }),
     [rowLayoutsRef, viewportOriginRef],
   );
@@ -443,19 +427,17 @@ export function useOkeyRackDrag({
         rackTileStride: rackTileStrideRef.current,
         touchedTileIndex:
           draggingMeldRef.current?.touchedTileIndex ?? 0,
-        activeTarget: insertionTargetRef.current,
         rowSnapPaddingRatio: ROW_SNAP_PADDING_RATIO,
-        slotTargetHysteresisRatio: SLOT_TARGET_HYSTERESIS_RATIO,
       }),
     [rowLayoutsRef, viewportOriginRef],
   );
 
   const getExternalDropTarget = useCallback(
-    (tileId: string, point: { x: number; y: number }) =>
+    (tileId: string, point: { x: number; y: number }, committedSlots: RackSlots) =>
       getExternalDropTargetForPoint({
         tileId,
         point,
-        committedSlots: committedRackSlotsRef.current,
+        committedSlots,
         viewport: viewportOriginRef.current,
         rowLayouts: rowLayoutsRef.current,
         rackTileWidth: rackTileWidthRef.current,
@@ -467,27 +449,53 @@ export function useOkeyRackDrag({
   );
 
   useLayoutEffect(() => {
-    if (
-      !externalDropPlacement ||
-      consumedExternalDropNonceRef.current === externalDropPlacement.nonce
-    ) {
-      return;
+    if (dragStartedRef.current || dragStartSlotsRef.current) return;
+
+    const pendingExternalPlacement =
+      externalDropPlacement &&
+      consumedExternalDropNonceRef.current !== externalDropPlacement.nonce &&
+      tiles.some((tile) => tile.id === externalDropPlacement.tileId);
+
+    if (pendingExternalPlacement) return;
+
+    const synchronizedSlots = syncSlotsWithTiles(
+      committedRackSlotsRef.current,
+      tiles,
+    );
+
+    if (!rackSlotsEqual(synchronizedSlots, committedRackSlotsRef.current)) {
+      commitRackSlots(synchronizedSlots);
     }
+  }, [commitRackSlots, externalDropPlacement, tiles]);
+
+  useLayoutEffect(() => {
+    if (!externalDropPlacement) return;
+    if (dragStartedRef.current || dragStartSlotsRef.current) return;
+    if (consumedExternalDropNonceRef.current === externalDropPlacement.nonce) return;
     if (!tiles.some((tile) => tile.id === externalDropPlacement.tileId)) return;
 
     const target = getExternalDropTarget(
       externalDropPlacement.tileId,
       externalDropPlacement.point,
+      committedRackSlotsRef.current,
     );
     if (!target) return;
 
+    const placement = moveTileIntoSlot(
+      committedRackSlotsRef.current,
+      externalDropPlacement.tileId,
+      target.row,
+      target.slotIndex,
+    );
+    if (!placement) return;
+
     consumedExternalDropNonceRef.current = externalDropPlacement.nonce;
-    setCommittedRackSlots(target.nextSlots);
+    commitRackSlots(placement.slots);
     onExternalDropPlacedRef.current?.(
       externalDropPlacement.tileId,
-      target.flatIndex,
+      getFlatIndexForSlot(placement.slots, placement.row, placement.slotIndex),
     );
-  }, [externalDropPlacement, getExternalDropTarget, tiles]);
+  }, [commitRackSlots, externalDropPlacement, getExternalDropTarget, tiles]);
 
   const clearLongPressTimer = useCallback(() => {
     if (!longPressTimerRef.current) return;
@@ -538,28 +546,23 @@ export function useOkeyRackDrag({
         );
         setDraggingMeld(meld);
         setDraggingTileId(null);
-        clearInsertionTarget();
       }, GROUP_LONG_PRESS_MS);
     },
     [
       clearLongPressTimer,
-      clearInsertionTarget,
       setDragPositionFromTouch,
     ],
   );
 
-  const clearDragState = useCallback(
-    (preserveNeighborShifts = false) => {
+  const clearDragState = useCallback(() => {
       draggingMeldRef.current = null;
       setDraggingTileId(null);
       setDraggingMeld(null);
-      clearInsertionTarget();
       dragStartedRef.current = false;
       dragStartSlotsRef.current = null;
+      dragPreviewSlotsRef.current = null;
 
-      if (!preserveNeighborShifts) {
-        resetNeighborShifts();
-      }
+      resetNeighborShifts();
 
       cancelScheduledDragPointChange();
       onTileDragPointChangeRef.current?.(null, null);
@@ -567,7 +570,6 @@ export function useOkeyRackDrag({
     [
       cancelScheduledDragPointChange,
       resetNeighborShifts,
-      clearInsertionTarget,
     ],
   );
 
@@ -597,12 +599,12 @@ export function useOkeyRackDrag({
           draggingMeldRef.current = null;
           setDraggingTileId(null);
           setDraggingMeld(null);
-          clearInsertionTarget();
           resetNeighborShifts();
 
           dragStartSlotsRef.current = cloneSlots(
             committedRackSlotsRef.current,
           );
+          dragPreviewSlotsRef.current = null;
 
           const startPoint = getTouchPoint(event, gesture, true);
           latestDragPointRef.current = startPoint;
@@ -644,35 +646,60 @@ export function useOkeyRackDrag({
           const point = getTouchPoint(event, gesture);
           setDragPositionFromTouch(point.x, point.y);
 
-          const currentDraggingMeld = draggingMeldRef.current;
-          const sourceSlots =
-            dragStartSlotsRef.current ??
-            committedRackSlotsRef.current;
+          const originalSlots =
+            dragStartSlotsRef.current ?? committedRackSlotsRef.current;
 
-          const target = currentDraggingMeld
-            ? getGroupInsertionTarget(
-                currentDraggingMeld.tileIds,
-                { moveX: point.x, moveY: point.y },
-                sourceSlots,
-              )
-            : getInsertionTarget(
-                tileId,
-                { moveX: point.x, moveY: point.y },
-                sourceSlots,
+          if (draggingMeldRef.current) {
+            const currentDraggingMeld = draggingMeldRef.current;
+            const target = getGroupInsertionTarget(
+              currentDraggingMeld.tileIds,
+              { moveX: point.x, moveY: point.y },
+              originalSlots,
+            );
+            const placement = target
+              ? moveTilesIntoSlot(
+                  originalSlots,
+                  currentDraggingMeld.tileIds,
+                  target.row,
+                  target.slotIndex,
+                )
+              : null;
+
+            dragPreviewSlotsRef.current = placement?.slots ?? null;
+            if (placement) {
+              applyRackPreview(
+                originalSlots,
+                placement.slots,
+                new Set(currentDraggingMeld.tileIds),
               );
-
-          // Ref only: no React state update on every move frame.
-          insertionTargetRef.current = target;
-          updateNeighborShifts(
-            target,
-            currentDraggingMeld?.tileIds ?? [tileId],
-          );
-
-          if (target) {
+            } else {
+              resetNeighborShifts();
+            }
             scheduleDragPointChange(null, null);
-          } else if (!currentDraggingMeld) {
+          } else {
+            const target = getInsertionTarget(
+              tileId,
+              { moveX: point.x, moveY: point.y },
+              originalSlots,
+            );
+            const placement = target
+              ? moveTileIntoSlot(
+                  originalSlots,
+                  tileId,
+                  target.row,
+                  target.slotIndex,
+                )
+              : null;
+
+            dragPreviewSlotsRef.current = placement?.slots ?? null;
+            if (placement) {
+              applyRackPreview(originalSlots, placement.slots, new Set([tileId]));
+            } else {
+              resetNeighborShifts();
+            }
             scheduleDragPointChange(tileId, point);
           }
+
         },
 
         onPanResponderRelease: (event, gesture) => {
@@ -681,30 +708,36 @@ export function useOkeyRackDrag({
           const moved = dragStartedRef.current;
           const currentDraggingMeld = draggingMeldRef.current;
           const point = getTouchPoint(event, gesture);
-          const sourceSlots =
+          const originalSlots =
             dragStartSlotsRef.current ?? committedRackSlotsRef.current;
 
-          const target = currentDraggingMeld
-            ? getGroupInsertionTarget(
-                currentDraggingMeld.tileIds,
-                { moveX: point.x, moveY: point.y },
-                sourceSlots,
-              )
-            : getInsertionTarget(
-                tileId,
-                { moveX: point.x, moveY: point.y },
-                sourceSlots,
-              );
-
-          const originalSlots = dragStartSlotsRef.current;
-
           if (currentDraggingMeld && moved) {
-            if (target) {
-              // LOCAL RACK REORDER:
-              // Group movement inside the rack stays entirely inside the rack.
-              pendingNeighborResetAfterCommitRef.current = true;
-              setCommittedRackSlots(target.nextSlots);
-              clearDragState(true);
+            const target = getGroupInsertionTarget(
+              currentDraggingMeld.tileIds,
+              { moveX: point.x, moveY: point.y },
+              originalSlots,
+            );
+            const placement = dragPreviewSlotsRef.current
+              ? {
+                  slots: dragPreviewSlotsRef.current,
+                  row: target?.row ?? getTileOrigin(
+                    dragPreviewSlotsRef.current,
+                    currentDraggingMeld.tileIds[0],
+                  )?.row ?? "bottom",
+                  slotIndex: target?.slotIndex ?? 0,
+                }
+              : target
+                ? moveTilesIntoSlot(
+                    originalSlots,
+                    currentDraggingMeld.tileIds,
+                    target.row,
+                    target.slotIndex,
+                  )
+                : null;
+
+            if (placement) {
+              commitRackSlots(placement.slots);
+              clearDragState();
               return;
             }
 
@@ -714,13 +747,11 @@ export function useOkeyRackDrag({
                 point,
               ) ?? false;
 
-            if (!dropped && originalSlots) {
+            if (!dropped) {
               snapDragBack(
                 currentDraggingMeld.tileIds,
                 originalSlots,
-                () => {
-                  clearDragState();
-                },
+                clearDragState,
               );
               return;
             }
@@ -741,30 +772,41 @@ export function useOkeyRackDrag({
             return;
           }
 
-          if (!target) {
-            const dropped =
-              onDropTileRef.current?.(tileId, point) ?? false;
+          const target = getInsertionTarget(
+            tileId,
+            { moveX: point.x, moveY: point.y },
+            originalSlots,
+          );
+          const placement = dragPreviewSlotsRef.current
+            ? {
+                slots: dragPreviewSlotsRef.current,
+                row: target?.row ?? getTileOrigin(dragPreviewSlotsRef.current, tileId)?.row ?? "bottom",
+                slotIndex: target?.slotIndex ?? getTileOrigin(dragPreviewSlotsRef.current, tileId)?.slotIndex ?? 0,
+              }
+            : target
+              ? moveTileIntoSlot(
+                  originalSlots,
+                  tileId,
+                  target.row,
+                  target.slotIndex,
+                )
+              : null;
 
-            if (!dropped && originalSlots) {
-              snapDragBack([tileId], originalSlots, () => {
-                clearDragState();
-              });
-              return;
-            }
-
+          if (placement) {
+            commitRackSlots(placement.slots);
             clearDragState();
             return;
           }
 
-          // No landing animation. Commit while neighbors keep their final
-          // transforms; useLayoutEffect removes those transforms atomically.
-          // LOCAL RACK REORDER:
-          // Reordering tiles inside the player's own rack is purely cosmetic UI state.
-          // Do not notify the parent/game state here; that feedback loop can cause
-          // extra renders and makes the rack feel less physical.
-          pendingNeighborResetAfterCommitRef.current = true;
-          setCommittedRackSlots(target.nextSlots);
-          clearDragState(true);
+          const dropped =
+            onDropTileRef.current?.(tileId, point) ?? false;
+
+          if (!dropped) {
+            snapDragBack([tileId], originalSlots, clearDragState);
+            return;
+          }
+
+          clearDragState();
         },
 
         onPanResponderTerminate: () => {
@@ -777,18 +819,18 @@ export function useOkeyRackDrag({
       return panHandlers;
     },
     [
+      applyRackPreview,
       clearDragState,
       clearLongPressTimer,
+      commitRackSlots,
       clearReturningJokerForTile,
-      getGroupInsertionTarget,
-      getInsertionTarget,
       resetNeighborShifts,
       scheduleDragPointChange,
-      clearInsertionTarget,
       setDragPositionFromTouch,
       snapDragBack,
       startMeldLongPressTimer,
-      updateNeighborShifts,
+      getInsertionTarget,
+      getGroupInsertionTarget,
     ],
   );
 

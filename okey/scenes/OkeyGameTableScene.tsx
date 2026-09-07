@@ -31,7 +31,6 @@ import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyMeldDropOrchestrati
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import { useOkeyTableGeometry } from "@/okey/layout/useOkeyTableGeometry";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
-import { useLocalOkeyPreviewGame } from "@/okey/presentation/use-local-okey-preview";
 import { useOkeyGameplayReadiness, useOkeyMatchExitLifecycle, useOkeyRoomLifecycle } from "@/okey/multiplayer/useOkeyRoomLifecycle";
 import {
   type ScreenRect,
@@ -63,15 +62,7 @@ function useStableEvent<Args extends unknown[], Result>(handler: (...args: Args)
 export default function OkeyGameTableScene() {
   return (
     <OkeyResponsiveLayoutProvider>
-      <OkeyGameTableSceneContent useController={useOkeyMultiplayerGame} />
-    </OkeyResponsiveLayoutProvider>
-  );
-}
-
-export function OkeyLocalPreviewGameTableScene() {
-  return (
-    <OkeyResponsiveLayoutProvider>
-      <OkeyGameTableSceneContent useController={useLocalOkeyPreviewGame} localPreview />
+      <OkeyGameTableSceneContent />
     </OkeyResponsiveLayoutProvider>
   );
 }
@@ -84,12 +75,7 @@ function getRouteParam(
     : value;
 }
 
-type OkeyController = ReturnType<typeof useOkeyMultiplayerGame>;
-
-function OkeyGameTableSceneContent({ useController, localPreview = false }: {
-  useController: (matchId?: string, currentUserId?: string | null) => OkeyController;
-  localPreview?: boolean;
-}) {
+function OkeyGameTableSceneContent() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     matchId?: string | string[];
@@ -114,7 +100,7 @@ function OkeyGameTableSceneContent({ useController, localPreview = false }: {
     canCancelWaiting,
     leavingWaitingRoom,
     cancelWaiting: handleCancelWaiting,
-  } = useOkeyRoomLifecycle({ matchId: onlineMatchId, exitRoute, localPreview });
+  } = useOkeyRoomLifecycle({ matchId: onlineMatchId, exitRoute });
   const {
     konkanRevealData, setKonkanRevealData, showKonkanReveal,
     completeKonkanRevealEntrance, resetPresentationOverlays, finishKonkanReveal,
@@ -131,11 +117,11 @@ function OkeyGameTableSceneContent({ useController, localPreview = false }: {
     optimisticRackTile, setOptimisticRackTile,
     isDiscardDragActive, setIsDiscardDragActive,
     hoveredMeldTarget, setHoveredMeldTarget,
-    pendingDeckDropRef, handleExternalDropPlaced,
+    pendingDrawRef, handleExternalDropPlaced,
   } = useOkeyTablePresentation();
   const { emitFeedback } = useOkeyFeedback();
   const responsiveLayout = useOkeyResponsiveLayout();
-const onlineController = useController(
+const onlineController = useOkeyMultiplayerGame(
     activeOnlineMatchId,
     currentUserId,
   );
@@ -191,7 +177,7 @@ const onlineController = useController(
     gameplayReady: onlineGameplayReady,
     startTransitionPending: initialStartTransitionPending,
   } = useOkeyGameplayReadiness({
-    localPreview, projectionReady: onlineProjection !== null, room: onlineRoom,
+    projectionReady: onlineProjection !== null, room: onlineRoom,
     matchFinished, phase: state.phase, showRoundResult: showRoundResultPopup,
     showMatchResult: showMatchResultPopup, matchId: onlineMatchId,
   });
@@ -243,7 +229,7 @@ const onlineController = useController(
     displayRoundResults, playerNamesById, displayCurrentRoundScoreDetails, viewerWon,
     matchSettlementRewards, shouldRenderMatchResultPopup,
   } = useOkeyTableViewModel({
-    state, currentUserId, localPreview, onlineProjection, presentedTablePlayers,
+    state, currentUserId, onlineProjection, presentedTablePlayers,
     stableOpponentTileCounts, onlineGameplayReady,
     turnPlayerIndex: turnView.playerIndex, turnPlayerId: turnView.playerId,
     turnPhase: turnView.phase, turnDeadlineAt: turnView.deadlineAt,
@@ -258,6 +244,9 @@ const onlineController = useController(
     setOptimisticRackTile,
   );
   const topDiscard = state.discardPile[state.discardPile.length - 1] ?? null;
+  const drawPending = pendingDrawRef.current !== null;
+  const presentedDeckCount = Math.max(0, state.deck.length - (pendingDrawRef.current?.source === "deck" ? 1 : 0));
+  const presentedDiscardCount = Math.max(0, state.discardPile.length - (pendingDrawRef.current?.source === "discard" ? 1 : 0));
   const {
     screenRef, deckTopRectRef, discardTopRectRef,
     opponentSeatRectsRef, rackRectRef, rackTileRectsRef, drawLandingRectRef,
@@ -370,6 +359,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   const completeActivePresentation = useOkeyTileFlightCompletion({
     tileFlight,
     topDiscard,
+    pendingDrawRef,
     setPresentedTopDiscard,
     activePresentationRef,
     setTileFlight,
@@ -435,7 +425,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     topDiscard,
     resetRuntime: resetPresentationRuntime,
     resetTablePresentation,
-    pendingDeckDropRef,
+    pendingDrawRef,
     hoveredMeldTargetRef,
     meldDropRectsRef,
     setDiscardDropPlacement,
@@ -454,7 +444,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   } = useOkeyPlayerTileFlightCommands({
     state, humanPlayer, topDiscard, canDraw, canDiscardTile, droppedMelds, tileFlight,
     deckTopRectRef, discardTopRectRef, drawLandingRectRef, rackTileRectsRef,
-    pendingDeckDropRef, awaitingDiscardRemovalTileIdRef, isPointInsideRack,
+    pendingDrawRef, awaitingDiscardRemovalTileIdRef, isPointInsideRack,
     isPointInsideDiscardPile, toLocalRect, draw, discard, commitOpenIntent,
     selectOpenAction, dropTileOnTableMeld,
     emitInvalid: (key) => emitFeedback("invalid", key),
@@ -648,11 +638,12 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
             </View>
             {onlineGameplayReady ? (
               <MemoizedOkeyCenterPiles
-                deckCount={state.deck.length}
+                deckCount={presentedDeckCount}
                 topDiscard={presentedTopDiscard}
-                discardCount={state.discardPile.length}
-                canDraw={canDraw}
-                canDrawDiscard={canDrawDiscard}
+                discardUnderlayTile={state.discardPile[state.discardPile.length - 2] ?? null}
+                discardCount={presentedDiscardCount}
+                canDraw={canDraw && !drawPending}
+                canDrawDiscard={canDrawDiscard && !drawPending}
                 indicatorTile={state.indicatorTile}
                 okeyTile={state.okeyTile}
                 onDrawDeck={handleDrawDeck}
@@ -691,7 +682,8 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
           onClose={() => setShowDiscardHistory(false)}
         />
         <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
-             {canPlayAfterDraw && openAction.allowed ? (
+             {canPlayAfterDraw && openAction.allowed &&
+             (!humanPlayer.konkan || openAction.mode === "declare-konkan") ? (
             <Pressable
               style={styles.openSetsButton}
               onPress={executeOpenAction}

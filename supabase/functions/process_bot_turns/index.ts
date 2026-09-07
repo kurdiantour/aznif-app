@@ -155,12 +155,21 @@ serve(async (req) => {
           .from("match_seats")
           .select("user_id")
           .eq("match_id", match_id)
+          .is("membership_released_at", null)
           .order("player_index", { ascending: true })
           .limit(1)
           .maybeSingle();
         if (seatError) throw seatError;
 
-        const requesterUserId = seat?.user_id ?? "server-lifecycle-worker";
+        const requesterUserId = seat?.user_id ?? null;
+
+        if (!requesterUserId) {
+          return json({
+            ok: true,
+            processed: false,
+            reason: "match_has_no_seats",
+          });
+        }
         const edgeRuntime = (globalThis as any).EdgeRuntime;
         const lifecyclePromise = reconcileAuthoritativeServerLifecycleWakeup({
           client: svc,
@@ -195,9 +204,10 @@ if (
               workerSecret: OKEY_WORKER_SECRET,
               matchId: match_id,
               expectedVersion: Number(result.version),
-              eligibleAt: result.state.roundState?.phase === "finished"
-                ? result.state.nextRoundEligibleAt ?? null
-                : null,
+              eligibleAt: result.state.roundState?.pendingBotTurnAdvanceAt ??
+                (result.state.roundState?.phase === "finished"
+                  ? result.state.nextRoundEligibleAt ?? null
+                  : null),
             });
           }
           return result;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canLockKonkanSet, canSpendTileOnMeld, createInitialOkeyGame, lockKonkanSet, spendTileOnMeld } from "../okey-engine.ts";
-import { getMeldScore } from "../okey-melds.ts";
+import { getMeldScore } from "../okeyengine-melds.ts";
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
 
 const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
@@ -95,7 +95,11 @@ test("Spend/Lock is limited to once per KonKan player", () => {
         ? { ...player, opened: true as const, melds: [secondTarget] }
         : player),
   };
-  assert.equal(canLockKonkanSet(next, 0, secondTile.id, next.players[2].id, secondTarget.id), false);
+  assert.equal(canLockKonkanSet(next, 0, secondTile.id, next.players[2].id, secondTarget.id), true);
+  const burned = lockKonkanSet(next, 0, secondTile.id, next.players[2].id, secondTarget.id);
+  assert.equal(burned.players[0].eliminated, true);
+  assert.notEqual(burned.currentPlayerIndex, 0);
+  assert.equal(burned.hasDrawnThisTurn, false);
 });
 
 test("an ordinary KonKan Spend consumes the Lock", () => {

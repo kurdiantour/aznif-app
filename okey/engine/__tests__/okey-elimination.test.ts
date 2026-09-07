@@ -6,11 +6,16 @@ import {
   canSpendTileOnMeld,
   createInitialOkeyGame,
   drawTile,
+  getOkeyOpenAction,
   getRoundResultScoreDetails,
+  hasPlayerExecutedKonkanSpend,
+  lockKonkanSet,
   movePlayerHandTile,
   openPlayerMelds,
   playEliminatedTurn,
+  spendTileOnMeld,
 } from "../okey-engine.ts";
+import { applyAuthoritativeOkeyCommand } from "../../server/okey-authoritative.ts";
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
 
 function tile(value: number, id = `tile-${value}`): OkeyTile {
@@ -152,4 +157,254 @@ test("an eliminated player receives 100 only when their team loses the round", (
     (entry) => entry.playerId === state.players[0].id,
   );
   assert.equal(wonDetail?.points, 0);
+});
+
+test("KonKan player: 1st spend is allowed and tracks spend count", () => {
+  const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
+  const base = createInitialOkeyGame(0);
+  const spendTile: OkeyTile = { id: "spend-1", color: "red", value: 6, copy: 1 };
+  const targetTiles: OkeyTile[] = [
+    { id: "target-1", color: "red", value: 3, copy: 1 },
+    { id: "target-2", color: "red", value: 4, copy: 1 },
+    { id: "target-3", color: "red", value: 5, copy: 1 },
+  ];
+  const targetMeld: OkeyMeld = {
+    id: "target-run",
+    ownerId: base.players[1].id,
+    kind: "run",
+    tiles: targetTiles,
+    score: 12,
+  };
+
+  const state: OkeyGameState = {
+    ...base,
+    currentPlayerIndex: 0,
+    hasDrawnThisTurn: true,
+    okeyTile,
+    players: base.players.map((p, i) => {
+      if (i === 0) return { ...p, hand: [spendTile, { id: "other", color: "black", value: 1, copy: 1 }], konkan: true, konkanSpendsExecuted: 0 };
+      if (i === 1) return { ...p, opened: true, melds: [targetMeld] };
+      return p;
+    }),
+  };
+
+  assert.equal(hasPlayerExecutedKonkanSpend(state, state.players[0].id), false);
+  const result = spendTileOnMeld(state, 0, "spend-1", state.players[1].id, "target-run");
+
+  assert.notEqual(result.players[0].eliminated, true);
+  assert.equal(result.players[0].konkanSpendsExecuted, 1);
+  assert.equal(hasPlayerExecutedKonkanSpend(result, result.players[0].id), true);
+  assert.equal(result.players[1].melds[0].tiles.length, 4);
+  assert.equal(result.currentPlayerIndex, 0); // Turn has not ended yet, player can still discard
+});
+
+test("KonKan player: 2nd spend via spendTileOnMeld immediately eliminates player mid-turn", () => {
+  const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
+  const base = createInitialOkeyGame(0);
+  const secondSpendTile: OkeyTile = { id: "spend-2", color: "black", value: 6, copy: 1 };
+  const targetTiles: OkeyTile[] = [
+    { id: "t-1", color: "black", value: 3, copy: 1 },
+    { id: "t-2", color: "black", value: 4, copy: 1 },
+    { id: "t-3", color: "black", value: 5, copy: 1 },
+  ];
+  const targetMeld: OkeyMeld = {
+    id: "target-run-2",
+    ownerId: base.players[1].id,
+    kind: "run",
+    tiles: targetTiles,
+    score: 12,
+  };
+
+  const state: OkeyGameState = {
+    ...base,
+    currentPlayerIndex: 0,
+    hasDrawnThisTurn: true,
+    okeyTile,
+    players: base.players.map((p, i) => {
+      if (i === 0) return {
+        ...p,
+        hand: [secondSpendTile, { id: "discard-candidate", color: "yellow", value: 10, copy: 1 }],
+        konkan: true,
+        konkanSpendsExecuted: 1, // Already executed 1 spend
+      };
+      if (i === 1) return { ...p, opened: true, melds: [targetMeld] };
+      return p;
+    }),
+  };
+
+  assert.equal(hasPlayerExecutedKonkanSpend(state, state.players[0].id), true);
+  const result = spendTileOnMeld(state, 0, "spend-2", state.players[1].id, "target-run-2");
+
+  // Immediate mid-turn elimination
+  assert.equal(result.players[0].eliminated, true);
+  // Spend tile did NOT stay on table; still in player's hand
+  assert.deepEqual(result.players[0].hand.map((t) => t.id).sort(), ["discard-candidate", "spend-2"]);
+  // Target meld remains unchanged on the table
+  assert.equal(result.players[1].melds[0].tiles.length, 3);
+  // Turn advanced immediately to the next counter-clockwise player
+  assert.notEqual(result.currentPlayerIndex, 0);
+  assert.equal(result.hasDrawnThisTurn, false);
+});
+
+test("Joker replacement after a real KonKan spend does not eliminate or consume another spend", () => {
+  const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
+  const base = createInitialOkeyGame(0);
+  const realTile: OkeyTile = { id: "real-tile", color: "red", value: 4, copy: 1 };
+  const targetTiles: OkeyTile[] = [
+    { id: "t-1", color: "red", value: 3, copy: 1 },
+    { id: "joker-in-meld", color: "blue", value: 13, copy: 1 }, // Wildcard okey tile
+    { id: "t-3", color: "red", value: 5, copy: 1 },
+  ];
+  const targetMeld: OkeyMeld = {
+    id: "joker-run",
+    ownerId: base.players[1].id,
+    kind: "run",
+    tiles: targetTiles,
+    score: 12,
+  };
+
+  const state: OkeyGameState = {
+    ...base,
+    currentPlayerIndex: 0,
+    hasDrawnThisTurn: true,
+    okeyTile,
+    players: base.players.map((p, i) => {
+      if (i === 0) return {
+        ...p,
+        hand: [realTile],
+        konkan: true,
+        konkanSpendsExecuted: 1,
+      };
+      if (i === 1) return { ...p, opened: true, melds: [targetMeld] };
+      return p;
+    }),
+  };
+
+  const result = spendTileOnMeld(state, 0, "real-tile", state.players[1].id, "joker-run");
+
+  assert.notEqual(result.players[0].eliminated, true);
+  assert.equal(result.players[0].konkanSpendsExecuted, 1);
+  assert.equal(result.players[0].hand.some((tile) => tile.id === "joker-in-meld"), true);
+  const replacementOnTable = result.players[1].melds[0].tiles.find((tile) => tile.id === "real-tile");
+  assert.ok(replacementOnTable);
+  assert.equal(replacementOnTable.spentByPlayerId, undefined);
+  assert.equal(result.currentPlayerIndex, 0);
+  assert.equal(result.hasDrawnThisTurn, true);
+});
+
+test("KonKan player: 1st Normal Meld/Open attempt immediately eliminates player mid-turn", () => {
+  const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
+  const base = createInitialOkeyGame(0);
+
+  // Hand with high score melds (>101)
+  const meld1Tiles: OkeyTile[] = [
+    { id: "r11", color: "red", value: 11, copy: 1 },
+    { id: "r12", color: "red", value: 12, copy: 1 },
+    { id: "r13", color: "red", value: 13, copy: 1 },
+  ];
+  const meld2Tiles: OkeyTile[] = [
+    { id: "b11", color: "black", value: 11, copy: 1 },
+    { id: "b12", color: "black", value: 12, copy: 1 },
+    { id: "b13", color: "black", value: 13, copy: 1 },
+  ];
+  const meld3Tiles: OkeyTile[] = [
+    { id: "y11", color: "yellow", value: 11, copy: 1 },
+    { id: "y12", color: "yellow", value: 12, copy: 1 },
+    { id: "y13", color: "yellow", value: 13, copy: 1 },
+  ];
+  const allHandTiles = [...meld1Tiles, ...meld2Tiles, ...meld3Tiles];
+
+  const candidateMelds: OkeyMeld[] = [
+    { id: "m1", ownerId: base.players[0].id, kind: "run", tiles: meld1Tiles, score: 36 },
+    { id: "m2", ownerId: base.players[0].id, kind: "run", tiles: meld2Tiles, score: 36 },
+    { id: "m3", ownerId: base.players[0].id, kind: "run", tiles: meld3Tiles, score: 36 },
+  ];
+
+  const state: OkeyGameState = {
+    ...base,
+    currentPlayerIndex: 0,
+    hasDrawnThisTurn: true,
+    okeyTile,
+    players: base.players.map((p, i) => {
+      if (i === 0) return {
+        ...p,
+        hand: allHandTiles,
+        konkan: true,
+        konkanSpendsExecuted: 0,
+      };
+      return p;
+    }),
+  };
+
+  // UI check: open action is NOT blocked
+  const openAction = getOkeyOpenAction(state, 0, candidateMelds, []);
+  assert.equal(openAction.allowed, true);
+  assert.equal(openAction.mode, "open-melds");
+
+  // Attempt to open normal melds
+  const result = openPlayerMelds(state, 0, candidateMelds, 108);
+
+  assert.equal(result.players[0].eliminated, true);
+  assert.notEqual(result.currentPlayerIndex, 0);
+  assert.equal(result.hasDrawnThisTurn, false);
+});
+
+test("KonKan player: open-and-discard via authoritative command eliminates player cleanly mid-turn", () => {
+  const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
+  const base = createInitialOkeyGame(0);
+
+  const meld1Tiles: OkeyTile[] = [
+    { id: "r11", color: "red", value: 11, copy: 1 },
+    { id: "r12", color: "red", value: 12, copy: 1 },
+    { id: "r13", color: "red", value: 13, copy: 1 },
+  ];
+  const meld2Tiles: OkeyTile[] = [
+    { id: "b11", color: "black", value: 11, copy: 1 },
+    { id: "b12", color: "black", value: 12, copy: 1 },
+    { id: "b13", color: "black", value: 13, copy: 1 },
+  ];
+  const meld3Tiles: OkeyTile[] = [
+    { id: "y11", color: "yellow", value: 11, copy: 1 },
+    { id: "y12", color: "yellow", value: 12, copy: 1 },
+    { id: "y13", color: "yellow", value: 13, copy: 1 },
+  ];
+  const discardTile: OkeyTile = { id: "extra-discard", color: "red", value: 1, copy: 1 };
+  const allHandTiles = [...meld1Tiles, ...meld2Tiles, ...meld3Tiles, discardTile];
+
+  const candidateMelds: OkeyMeld[] = [
+    { id: "m1", ownerId: base.players[0].id, kind: "run", tiles: meld1Tiles, score: 36 },
+    { id: "m2", ownerId: base.players[0].id, kind: "run", tiles: meld2Tiles, score: 36 },
+    { id: "m3", ownerId: base.players[0].id, kind: "run", tiles: meld3Tiles, score: 36 },
+  ];
+
+  const state: OkeyGameState = {
+    ...base,
+    currentPlayerIndex: 0,
+    hasDrawnThisTurn: true,
+    okeyTile,
+    players: base.players.map((p, i) => {
+      if (i === 0) return {
+        ...p,
+        hand: allHandTiles,
+        konkan: true,
+      };
+      return p;
+    }),
+  };
+
+  const result = applyAuthoritativeOkeyCommand(state, 0, {
+    type: "open-and-discard",
+    tileId: "extra-discard",
+    melds: candidateMelds,
+    score: 108,
+  });
+
+  // Player eliminated
+  assert.equal(result.players[0].eliminated, true);
+  // Hand tiles remain in hand, extra-discard was not discarded to discard pile
+  assert.equal(result.players[0].hand.length, 10);
+  assert.equal(result.discardPile.some((t) => t.id === "extra-discard"), false);
+  // Turn advanced immediately
+  assert.notEqual(result.currentPlayerIndex, 0);
+  assert.equal(result.hasDrawnThisTurn, false);
 });

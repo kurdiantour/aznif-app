@@ -1,8 +1,8 @@
 import { createBotTurnClaim, classifyBotTurnClaim } from "../../lib/multiplayer/core/bot-turn-orchestration.ts";
-import { executeAuthoritativeOkeyTurn, reduceAuthoritativeOkeyTransition, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
+import { evaluateOkeyServerLifecycle, executeAuthoritativeOkeyTransition, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
 import { projectSeatOwnership } from "../../lib/multiplayer/core/seat-ownership.ts";
 import { chooseBotDrawSource, prepareBotTurn } from "../engine/okey-bot-engine.ts";
-import { discardTile, drawTile } from "../engine/okey-engine.ts";
+import { completeDeferredBotTurnAdvance, discardTile, drawTile } from "../engine/okey-engine.ts";
 import {
   createBotPostDrawActionEvents,
   type OkeyActionEvent,
@@ -15,6 +15,7 @@ import {
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
 } from "./okey-authoritative.ts";
+import { OKEY_SERVER_BOT_DISCARD_HANDOFF_DELAY_MS } from "./okey-lifecycle-timing.ts";
 
 type OkeyAuthoritativeBundle = {
   version: number | string;
@@ -29,8 +30,8 @@ export type OkeyBotExecutorResult = {
   ok: boolean;
   processed: boolean;
   reason?: string;
-  step?: "draw" | "discard";
-  steps?: ("draw" | "discard")[];
+  step?: "draw" | "discard" | "advance";
+  steps?: ("draw" | "discard" | "advance")[];
   finalVersion?: number;
   error?: string;
 };
@@ -120,8 +121,6 @@ export async function executeOkeyBotTurn(
 ): Promise<OkeyBotExecutorResult> {
   const { client } = dependencies;
   const now = dependencies.now ?? Date.now;
-  const wait = dependencies.wait ?? ((milliseconds) =>
-    new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds)));
 
   try {
     const { data: bundleRaw, error: bundleError } = await client
@@ -152,11 +151,23 @@ export async function executeOkeyBotTurn(
     const isTestMatch = runtimeMatch.is_test === true;
 
     let currentState = bundle.state;
-    const roundStartsAtMs = Date.parse(currentState.roundStartsAt ?? "");
-    const roundStartWaitMs = Number.isFinite(roundStartsAtMs)
-      ? Math.max(0, roundStartsAtMs - now())
-      : 0;
-    if (roundStartWaitMs > 0) await wait(roundStartWaitMs);
+    const pacingDecision = evaluateOkeyServerLifecycle({
+      state: currentState,
+      version: bundle.version,
+      turn_deadline_at: bundle.turn_deadline_at,
+    }, now());
+    const botTransitionNotBefore = pacingDecision.type === "bot-turn"
+      ? pacingDecision.notBefore
+      : null;
+    if (pacingDecision.type === "bot-turn" && !pacingDecision.ready) {
+      return {
+        ok: true,
+        processed: false,
+        reason: botTransitionNotBefore
+          ? "bot_transition_not_eligible"
+          : "bot_transition_invalid_eligibility",
+      };
+    }
     if (currentState.matchFinished) {
       return { ok: true, processed: false, reason: "match_finished" };
     }
@@ -169,7 +180,7 @@ export async function executeOkeyBotTurn(
       return { ok: true, processed: false, reason: "stale_bot_turn" };
     }
 
-    const steps: ("draw" | "discard")[] = [];
+    const steps: ("draw" | "discard" | "advance")[] = [];
     const completed = (reason: string): OkeyBotExecutorResult => steps.length > 0
       ? {
           ok: true,
@@ -231,12 +242,22 @@ if (currentState.roundState.phase !== "playing") {
 
       if (!currentPlayer) return completed("turn_player_not_found");
 
-      const botStep = currentState.roundState.hasDrawnThisTurn ? "discard" : "draw";
+      const botStep: "draw" | "discard" | "advance" =
+        currentState.roundState.pendingBotTurnAdvanceAt ? "advance" :
+        currentState.roundState.hasDrawnThisTurn ? "discard" : "draw";
       const botOptions = { difficulty: currentPlayer.botDifficulty ?? "normal" } as const;
       let actionEventDrafts: OkeyActionEventDraft[];
       let nextRoundState;
+      let deferredAdvanceAt: string | null = null;
 
-      if (botStep === "draw") {
+      if (botStep === "advance") {
+        nextRoundState = completeDeferredBotTurnAdvance(
+          currentState.roundState,
+          currentPlayer.id,
+          now(),
+        );
+        actionEventDrafts = [];
+      } else if (botStep === "draw") {
         const source = chooseBotDrawSource(currentState.roundState, botOptions);
         nextRoundState = drawTile(currentState.roundState, source);
         actionEventDrafts = [{
@@ -251,8 +272,13 @@ if (currentState.roundState.phase !== "playing") {
         }];
       } else {
         const prepared = prepareBotTurn(currentState.roundState, botOptions);
+        deferredAdvanceAt = new Date(
+          now() + OKEY_SERVER_BOT_DISCARD_HANDOFF_DELAY_MS,
+        ).toISOString();
         nextRoundState = prepared.discardTileId
-          ? discardTile(prepared.state, prepared.discardTileId)
+          ? discardTile(prepared.state, prepared.discardTileId, {
+              deferTurnAdvanceUntil: deferredAdvanceAt,
+            })
           : prepared.state;
         const discardedTile = prepared.discardTileId
           ? prepared.state.players[currentPlayerIndex]?.hand.find(
@@ -283,40 +309,40 @@ if (currentState.roundState.phase !== "playing") {
         return completed(`bot_${botStep}_rejected`);
       }
 
-      const nextState = reduceAuthoritativeOkeyTransition({
+      let nextState!: OkeyAuthoritativeMatchState;
+      let deadline!: string | null;
+      const nextVersion = currentVersion + 1;
+      let commandId!: string;
+      const turnResult = await executeAuthoritativeOkeyTransition({
         state: currentState,
         transition: {
           type: "bot-action",
           roundState: nextRoundState,
         },
         reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
-        now: now(),
-      });
-      const nextVersion = currentVersion + 1;
-      const deadline = getNextOkeyMatchTurnDeadline(nextState);
-      const commandId = await dependencies.deterministicCommandId(
-        `okey:${input.matchId}:system-bot-${botStep}:${currentVersion}`,
-      );
-      const publicProjection = projectOkeyMatchPublicState(
-        nextState,
-        nextVersion,
-        deadline,
-      );
-      const turnResult = await executeAuthoritativeOkeyTurn({
+        transitionNow: now(),
         controller: "bot",
         matchId: input.matchId,
         actorPlayerId: currentPlayer.id,
-        commandId,
+        commandId: async () => {
+          commandId = await dependencies.deterministicCommandId(
+            `okey:${input.matchId}:system-bot-${botStep}:${currentVersion}`,
+          );
+          return commandId;
+        },
         commandType: `system-bot-${botStep}`,
         expectedVersion: currentVersion,
-        intent: botStep,
-        validate: () => ({
-          state: nextState,
-          projection: publicProjection,
-          deadline,
-          status: nextState.matchFinished ? "finished" as const : "playing" as const,
-          actionEvents: actionEventDrafts,
-        }),
+        prepare: (reducedState) => {
+          nextState = reducedState;
+          deadline = getNextOkeyMatchTurnDeadline(nextState);
+          return {
+            state: nextState,
+            projection: projectOkeyMatchPublicState(nextState, nextVersion, deadline),
+            deadline,
+            status: nextState.matchFinished ? "finished" as const : "playing" as const,
+            actionEvents: actionEventDrafts,
+          };
+        },
         commit: async (prepared) => {
           const { data, error } = await client.rpc("okey_commit_authoritative_action", {
             p_match_id: input.matchId,
@@ -407,8 +433,20 @@ if (currentState.roundState.phase !== "playing") {
         return completed("round_finished");
       }
 
+      const pendingAdvanceAt = currentState.roundState.pendingBotTurnAdvanceAt ?? null;
       const nextClaim = getOkeyBotTurnClaim(currentState, currentVersion);
-      if (nextClaim && dependencies.dispatchContinuation) {
+      if (pendingAdvanceAt && dependencies.dispatchLifecycleWakeup) {
+        try {
+          await dependencies.dispatchLifecycleWakeup({
+            matchId: input.matchId,
+            state: currentState,
+            version: currentVersion,
+            eligibleAt: pendingAdvanceAt,
+          });
+        } catch (wakeupError) {
+          console.error(`Okey bot advance wakeup dispatch failed for ${input.matchId}`, wakeupError);
+        }
+      } else if (nextClaim && dependencies.dispatchContinuation) {
         try {
           await dependencies.dispatchContinuation({
             matchId: input.matchId,

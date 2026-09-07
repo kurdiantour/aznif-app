@@ -209,6 +209,12 @@ test(
       calls.commits[0].p_command_type,
       "system-bot-discard",
     );
+    assert.equal(
+      calls.commits[0].p_state.roundState.currentPlayerIndex,
+      state.roundState.currentPlayerIndex,
+    );
+    assert.ok(calls.commits[0].p_state.roundState.pendingBotTurnAdvanceAt);
+    assert.equal(calls.commits[0].p_turn_deadline_at, null);
   },
 );
 

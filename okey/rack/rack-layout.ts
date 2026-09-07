@@ -1,7 +1,6 @@
-import { isOkeyWildcard } from "@/okey/engine/okey-engine";
-import { getOrderedMeldScore } from "@/okey/engine/okey-melds";
-import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 import { RACK_ROW_CAPACITY, RACK_TILE_GAP } from "@/okey/components/okeyStyles";
+import { getMeldKind, getOrderedMeldScore } from "@/okey/engine/okeyengine-melds";
+import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 export type RackRow = "top" | "bottom";
 export type RackSlot = string | null;
 export type RackSlots = Record<RackRow, RackSlot[]>;
@@ -11,7 +10,6 @@ export type InsertionTarget = {
   row: RackRow;
   slotIndex: number;
   flatIndex: number;
-  nextSlots: RackSlots;
 };
 export type DraggingMeld = OkeyMeld & { tileIds: string[]; touchedTileIndex: number };
 export type ExternalDropPlacement = { tileId: string; point: { x: number; y: number }; nonce: number };
@@ -23,7 +21,6 @@ export const GROUP_LONG_PRESS_MS = 150;
 export const GROUP_LONG_PRESS_MOVE_TOLERANCE = 24;
 export const DRAG_ACTIVATION_DISTANCE = 2;
 export const ROW_SNAP_PADDING_RATIO = 0.45;
-export const SLOT_TARGET_HYSTERESIS_RATIO = 0.35;
 export const RACK_TILE_ENTER_MS = 620;
 export const RACK_DEAL_BATCH_STAGGER_MS = 420;
 export const INITIAL_BOTTOM_TILE_COUNT = RACK_ROW_CAPACITY;
@@ -67,21 +64,13 @@ export function getBestMeldIncludingSlot(
   return {
     id: `human-drag-${row}-${best.from}-${best.to}`,
     ownerId: "human",
-    kind: getRackMeldKind(best.tiles, okeyTile),
+    kind: getMeldKind(best.tiles, okeyTile),
     tiles: best.tiles,
     score: best.score,
     tileIds: best.tiles.map((tile) => tile.id),
     touchedTileIndex: slotIndex - best.from,
   };
 }
-export function getRackMeldKind(tiles: OkeyTile[], okeyTile: OkeyTile): OkeyMeld["kind"] {
-  const regularTiles = tiles.filter((tile) => !isOkeyWildcard(tile, okeyTile));
-  if (regularTiles.length > 1 && regularTiles.every((tile) => tile.value === regularTiles[0].value)) {
-    return "set";
-  }
-  return "run";
-}
-
 export function createEmptySlots(): RackSlots {
   return {
     top: Array.from<RackSlot>({ length: RACK_ROW_CAPACITY }).fill(null),
@@ -103,15 +92,12 @@ export function getDefaultSlotForTileIndex(index: number): DragOrigin | null {
 }
 
 export function getFirstDefaultEmptySlot(slots: RackSlots): DragOrigin | null {
-  for (let slotIndex = 0; slotIndex < RACK_ROW_CAPACITY; slotIndex += 1) {
-    if (slots.top[slotIndex] === null) {
-      return { row: "top", slotIndex };
-    }
-  }
-
-  for (let slotIndex = 0; slotIndex < RACK_ROW_CAPACITY; slotIndex += 1) {
-    if (slots.bottom[slotIndex] === null) {
-      return { row: "bottom", slotIndex };
+  // Match the initial rack order: fill the bottom row first, then the top.
+  for (const row of ROW_ORDER) {
+    for (let slotIndex = 0; slotIndex < RACK_ROW_CAPACITY; slotIndex += 1) {
+      if (slots[row][slotIndex] === null) {
+        return { row, slotIndex };
+      }
     }
   }
 
@@ -142,15 +128,15 @@ export function syncSlotsWithTiles(current: RackSlots, tiles: OkeyTile[]): RackS
     });
   }
 
-for (const tile of tiles) {
-  if (knownIds.has(tile.id)) continue;
+  for (const tile of tiles) {
+    if (knownIds.has(tile.id)) continue;
 
-  const emptySlot = getFirstDefaultEmptySlot(next);
-  if (!emptySlot) break;
+    const emptySlot = getFirstDefaultEmptySlot(next);
+    if (!emptySlot) break;
 
-  next[emptySlot.row][emptySlot.slotIndex] = tile.id;
-  knownIds.add(tile.id);
-}
+    next[emptySlot.row][emptySlot.slotIndex] = tile.id;
+    knownIds.add(tile.id);
+  }
 
   return next;
 }
@@ -200,9 +186,7 @@ export function getInsertionTargetForPoint(args: {
   rackTileHeight: number;
   rackTileStride: number;
   dragTouchOffsetX: number;
-  activeTarget: InsertionTarget | null;
   rowSnapPaddingRatio: number;
-  slotTargetHysteresisRatio: number;
 }): InsertionTarget | null {
   const {
     tileId,
@@ -215,9 +199,7 @@ export function getInsertionTargetForPoint(args: {
     rackTileHeight,
     rackTileStride,
     dragTouchOffsetX,
-    activeTarget,
     rowSnapPaddingRatio,
-    slotTargetHysteresisRatio,
   } = args;
 
   if (viewport.width <= 0 || viewport.height <= 0) return null;
@@ -249,40 +231,18 @@ export function getInsertionTargetForPoint(args: {
   const rawSlotIndex = Math.round(
     (draggedTileCenterX - firstSlotCenterX) / rackTileStride,
   );
-  let slotIndex = Math.max(
+  const slotIndex = Math.max(
     0,
     Math.min(RACK_ROW_CAPACITY - 1, rawSlotIndex),
   );
 
-  if (activeTarget?.row === targetRow) {
-    const activeCenterX =
-      firstSlotCenterX + activeTarget.slotIndex * rackTileStride;
 
-    if (
-      Math.abs(draggedTileCenterX - activeCenterX) <=
-      rackTileStride * slotTargetHysteresisRatio
-    ) {
-      slotIndex = activeTarget.slotIndex;
-    }
-  }
-
-  const moveTarget = moveTileIntoSlot(
-    sourceSlots,
-    tileId,
-    targetRow,
-    slotIndex,
-  );
-  if (!moveTarget) return null;
+  if (!getTileOrigin(sourceSlots, tileId)) return null;
 
   return {
-    row: moveTarget.row,
-    slotIndex: moveTarget.slotIndex,
-    flatIndex: getFlatIndexForSlot(
-      moveTarget.slots,
-      moveTarget.row,
-      moveTarget.slotIndex,
-    ),
-    nextSlots: moveTarget.slots,
+    row: targetRow,
+    slotIndex,
+    flatIndex: getFlatIndexForSlot(sourceSlots, targetRow, slotIndex),
   };
 }
 
@@ -297,9 +257,7 @@ export function getGroupInsertionTargetForPoint(args: {
   rackTileHeight: number;
   rackTileStride: number;
   touchedTileIndex: number;
-  activeTarget: InsertionTarget | null;
   rowSnapPaddingRatio: number;
-  slotTargetHysteresisRatio: number;
 }): InsertionTarget | null {
   const {
     tileIds,
@@ -312,9 +270,7 @@ export function getGroupInsertionTargetForPoint(args: {
     rackTileHeight,
     rackTileStride,
     touchedTileIndex,
-    activeTarget,
     rowSnapPaddingRatio,
-    slotTargetHysteresisRatio,
   } = args;
 
   if (viewport.width <= 0 || viewport.height <= 0 || tileIds.length === 0) {
@@ -344,41 +300,18 @@ export function getGroupInsertionTargetForPoint(args: {
     (insertionX + rackTileWidth / 2) / rackTileStride,
   );
 
-  let slotIndex = Math.max(
+  const slotIndex = Math.max(
     0,
     Math.min(RACK_ROW_CAPACITY - tileIds.length, rawSlotIndex),
   );
 
-  if (activeTarget?.row === targetRow) {
-    const activeTouchedCenterX =
-      (activeTarget.slotIndex + touchedTileIndex) * rackTileStride +
-      rackTileWidth / 2;
 
-    if (
-      Math.abs(localX - activeTouchedCenterX) <=
-      rackTileStride * slotTargetHysteresisRatio
-    ) {
-      slotIndex = activeTarget.slotIndex;
-    }
-  }
-
-  const moveTarget = moveTilesIntoSlot(
-    sourceSlots,
-    tileIds,
-    targetRow,
-    slotIndex,
-  );
-  if (!moveTarget) return null;
+  if (tileIds.some((tileId) => !getTileOrigin(sourceSlots, tileId))) return null;
 
   return {
-    row: moveTarget.row,
-    slotIndex: moveTarget.slotIndex,
-    flatIndex: getFlatIndexForSlot(
-      moveTarget.slots,
-      moveTarget.row,
-      moveTarget.slotIndex,
-    ),
-    nextSlots: moveTarget.slots,
+    row: targetRow,
+    slotIndex,
+    flatIndex: getFlatIndexForSlot(sourceSlots, targetRow, slotIndex),
   };
 }
 
@@ -394,7 +327,6 @@ export function getExternalDropTargetForPoint(args: {
   rowSnapPaddingRatio: number;
 }): InsertionTarget | null {
   const {
-    tileId,
     point,
     committedSlots,
     viewport,
@@ -415,9 +347,7 @@ export function getExternalDropTargetForPoint(args: {
     rackTileHeight,
     rowSnapPaddingRatio,
   );
-  const measuredRows = ROW_ORDER.filter(
-    (row) => rowLayouts[row] !== null,
-  );
+  const measuredRows = ROW_ORDER.filter((row) => rowLayouts[row] !== null);
   const targetRow =
     snappedRow ??
     measuredRows.sort((left, right) => {
@@ -430,7 +360,7 @@ export function getExternalDropTargetForPoint(args: {
     })[0];
   if (!targetRow) return null;
 
-  const desiredSlotIndex = Math.max(
+  const slotIndex = Math.max(
     0,
     Math.min(
       RACK_ROW_CAPACITY - 1,
@@ -438,47 +368,10 @@ export function getExternalDropTargetForPoint(args: {
     ),
   );
 
-  const nextSlots = cloneSlots(committedSlots);
-  for (const row of ROW_ORDER) {
-    const originIndex = nextSlots[row].findIndex(
-      (entry) => entry === tileId,
-    );
-    if (originIndex >= 0) nextSlots[row][originIndex] = null;
-  }
-
-  const rowSlots = nextSlots[targetRow];
-  let slotIndex = desiredSlotIndex;
-
-  if (rowSlots[slotIndex] !== null) {
-    let right = slotIndex + 1;
-    while (right < RACK_ROW_CAPACITY && rowSlots[right] !== null) right += 1;
-
-    let left = slotIndex - 1;
-    while (left >= 0 && rowSlots[left] !== null) left -= 1;
-
-    if (
-      right < RACK_ROW_CAPACITY &&
-      (left < 0 || right - slotIndex <= slotIndex - left)
-    ) {
-      for (let index = right; index > slotIndex; index -= 1) {
-        rowSlots[index] = rowSlots[index - 1];
-      }
-    } else if (left >= 0) {
-      for (let index = left; index < slotIndex; index += 1) {
-        rowSlots[index] = rowSlots[index + 1];
-      }
-    } else {
-      return null;
-    }
-  }
-
-  rowSlots[slotIndex] = tileId;
-
   return {
     row: targetRow,
     slotIndex,
-    flatIndex: getFlatIndexForSlot(nextSlots, targetRow, slotIndex),
-    nextSlots,
+    flatIndex: getFlatIndexForSlot(committedSlots, targetRow, slotIndex),
   };
 }
 
@@ -522,13 +415,48 @@ export function openRackGap(rowSlots: RackSlot[], slotIndex: number) {
   return false;
 }
 
-export function moveTileIntoSlot(slots: RackSlots, tileId: string, targetRow: RackRow, slotIndex: number): { slots: RackSlots; row: RackRow; slotIndex: number } | null {
+export function moveTileIntoSlot(
+  slots: RackSlots,
+  tileId: string,
+  targetRow: RackRow,
+  slotIndex: number,
+): { slots: RackSlots; row: RackRow; slotIndex: number } | null {
   if (slotIndex < 0 || slotIndex >= RACK_ROW_CAPACITY) return null;
 
   const nextSlots = cloneSlots(slots);
-  for (const row of ROW_ORDER) {
-    const originIndex = nextSlots[row].findIndex((entry) => entry === tileId);
-    if (originIndex >= 0) nextSlots[row][originIndex] = null;
+  const origin = getTileOrigin(nextSlots, tileId);
+
+  if (origin?.row === targetRow) {
+    const rowSlots = nextSlots[targetRow];
+    const fromIndex = origin.slotIndex;
+
+    if (fromIndex === slotIndex) {
+      return { slots: nextSlots, row: targetRow, slotIndex };
+    }
+
+    rowSlots[fromIndex] = null;
+
+    if (rowSlots[slotIndex] === null) {
+      rowSlots[slotIndex] = tileId;
+      return { slots: nextSlots, row: targetRow, slotIndex };
+    }
+
+    if (fromIndex < slotIndex) {
+      for (let index = fromIndex; index < slotIndex; index += 1) {
+        rowSlots[index] = rowSlots[index + 1];
+      }
+    } else {
+      for (let index = fromIndex; index > slotIndex; index -= 1) {
+        rowSlots[index] = rowSlots[index - 1];
+      }
+    }
+
+    rowSlots[slotIndex] = tileId;
+    return { slots: nextSlots, row: targetRow, slotIndex };
+  }
+
+  if (origin) {
+    nextSlots[origin.row][origin.slotIndex] = null;
   }
 
   const rowSlots = nextSlots[targetRow];

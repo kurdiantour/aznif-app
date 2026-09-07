@@ -23,6 +23,8 @@ export type OkeyCommittedTransition = {
   actionEvents: OkeyActionEvent[];
 };
 
+const MAX_DELIVERED_ACTION_EVENT_KEYS = 512;
+
 function createCommandId(): string {
   if (
     typeof globalThis.crypto?.randomUUID === "function"
@@ -650,6 +652,12 @@ export class SupabaseOkeyMatchAdapter
       const key = `${event.version}:${event.sequence}:${event.type}:${event.actorPlayerId}`;
       if (this.deliveredActionEventKeys.has(key)) continue;
       this.deliveredActionEventKeys.add(key);
+      if (this.deliveredActionEventKeys.size > MAX_DELIVERED_ACTION_EVENT_KEYS) {
+        const oldestKey = this.deliveredActionEventKeys.values().next().value;
+        if (oldestKey !== undefined) {
+          this.deliveredActionEventKeys.delete(oldestKey);
+        }
+      }
       this.actionEventVersion = Math.max(this.actionEventVersion ?? 0, event.version);
       for (const listener of this.actionEventListeners) listener(event);
     }

@@ -16,34 +16,13 @@ import {
   type DailyGiftCardStatus,
   type DailyGiftClaimResult,
 } from "@/lib/dailyGift";
-
-import Svg, { Rect, Path, Circle } from "react-native-svg";
-
-function SpecialChestIcon({ size = 32 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <Rect x="4" y="14" width="24" height="13" rx="2" fill="#5c3c24" stroke="#ffd45c" strokeWidth="1.5" />
-      <Path d="M4 14C4 8.5 7 5 16 5C25 5 28 8.5 28 14H4Z" fill="#7a4f30" stroke="#ffd45c" strokeWidth="1.5" />
-      <Rect x="8" y="5" width="2" height="22" fill="#ffd45c" opacity="0.8" />
-      <Rect x="22" y="5" width="2" height="22" fill="#ffd45c" opacity="0.8" />
-      <Rect x="4" y="13" width="24" height="2" fill="#ffd45c" opacity="0.9" />
-      <Rect x="13" y="11" width="6" height="7" rx="1" fill="#f8d675" stroke="#b8860b" strokeWidth="1" />
-      <Circle cx="16" cy="14" r="1" fill="#14121d" />
-      <Path d="M15.5 14L15 17H17L16.5 14H15.5Z" fill="#14121d" />
-    </Svg>
-  );
-}
-
-function GoldCoinIcon({ size = 32 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <Circle cx="16" cy="16" r="13" fill="#b8860b" stroke="#ffd45c" strokeWidth="1.5" />
-      <Circle cx="16" cy="16" r="10" fill="#ffd45c" />
-      <Path d="M9 16C9 12.134 12.134 9 16 9" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
-      <Path d="M16 11L17.2 13.8L20.2 14.1L17.9 16.1L18.6 19L16 17.5L13.4 19L14.1 16.1L11.8 14.1L14.8 13.8L16 11Z" fill="#b8860b" />
-    </Svg>
-  );
-}
+import RewardRain, {
+  GoldCoinIcon,
+  RewardCurrencyIcon,
+  SpecialChestIcon,
+  type RewardRainEvent,
+  type RewardRainType,
+} from "@/components/rewards/RewardRain";
 
 type Props = {
   visible: boolean;
@@ -58,45 +37,59 @@ type GiftDay = {
   day: string;
   icon: string;
   reward: string;
+  rewardType: RewardRainType;
+  rewardAmount: number;
   status: "done" | "current" | "lock";
 };
 
 const days: GiftDay[] = [
-  { day: "یەکەم", icon: "gold_coin", reward: "500 سکه", status: "done" },
+  { day: "یەکەم", icon: "gold_coin", reward: "500 سکه", rewardType: "coin", rewardAmount: 500, status: "done" },
   {
     day: "دووەم",
     icon: "gold_coin",
     reward: "1,000 سکه",
+    rewardType: "coin",
+    rewardAmount: 1_000,
     status: "current",
   },
   {
     day: "سێیەم",
     icon: "\u{1F48E}",
     reward: "30 گەوهەر",
+    rewardType: "gem",
+    rewardAmount: 30,
     status: "lock",
   },
   {
     day: "چوارەم",
     icon: "gold_coin",
     reward: "1,500 سکه",
+    rewardType: "coin",
+    rewardAmount: 1_500,
     status: "lock",
   },
   {
     day: "پێنجەم",
     icon: "\u{1F48E}",
     reward: "70 گەوهەر",
+    rewardType: "gem",
+    rewardAmount: 70,
     status: "lock",
   },
   {
     day: "شەشەم",
     icon: "\u2728",
     reward: "1 ئەزنیف",
+    rewardType: "mc",
+    rewardAmount: 1,
     status: "lock",
   },
   {
     day: "حەفتەم",
     icon: "special_chest",
     reward: "سندووقی تایبەت",
+    rewardType: "special_chest",
+    rewardAmount: 1,
     status: "lock",
   },
 ];
@@ -162,6 +155,8 @@ export default function DailyGiftModal({
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
   const feedbackHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rewardPlayer = useAudioPlayer(REWARD_SOUND);
+  const [rewardRainEvent, setRewardRainEvent] = useState<RewardRainEvent | null>(null);
+  const rewardRainSequence = useRef(0);
 
   const progress = useRef(
     new Animated.Value(visible ? 1 : 0),
@@ -218,6 +213,20 @@ useEffect(
 
   const [chestOpening, setChestOpening] = useState(false);
 
+  const playRewardRain = useCallback((type: RewardRainType, amount: number) => {
+    rewardRainSequence.current += 1;
+    setRewardRainEvent({
+      id: rewardRainSequence.current,
+      type,
+      amount,
+    });
+
+    void rewardPlayer
+      .seekTo(0, 0, 0)
+      .then(() => rewardPlayer.play())
+      .catch(() => undefined);
+  }, [rewardPlayer]);
+
   const handleClaim = useCallback(async () => {
     if (!onClaim || claiming || chestOpening) return;
     const result = await onClaim();
@@ -249,14 +258,19 @@ useEffect(
         }
       }, 1500);
     } else {
-      const message = formatClaimReward(result);
-      if (message) showClaimFeedback(message);
+      if (result.rewardType && typeof result.rewardAmount === "number") {
+        playRewardRain(result.rewardType, result.rewardAmount);
+      } else {
+        const message = formatClaimReward(result);
+        if (message) showClaimFeedback(message);
+      }
     }
-  }, [claiming, onClaim, showClaimFeedback, chestOpening]);
+  }, [claiming, onClaim, showClaimFeedback, chestOpening, playRewardRain]);
 
   const close = useCallback(() => {
     if (closing.current) return;
 
+    setRewardRainEvent(null);
     closing.current = true;
 
     Animated.timing(progress, {
@@ -283,6 +297,7 @@ useEffect(
     }
 
     closing.current = false;
+    setRewardRainEvent(null);
     setMounted(true);
 
     progress.stopAnimation();
@@ -407,13 +422,14 @@ useEffect(
 
             const isLocked =
               item.status === "lock";
+            const isPressable = isCurrent;
 
             return (
               <Pressable
                 key={item.day}
-                accessibilityRole={isCurrent ? "button" : undefined}
-                disabled={!isCurrent || claiming || !onClaim}
-                onPress={isCurrent ? handleClaim : undefined}
+                accessibilityRole={isPressable ? "button" : undefined}
+                disabled={!isPressable || claiming || chestOpening}
+                onPress={isCurrent && onClaim ? handleClaim : undefined}
                 style={[
                   styles.card,
                   isCurrent && styles.activeCard,
@@ -431,14 +447,15 @@ useEffect(
                 <View
                   style={[
                     styles.rewardIcon,
-                    isCurrent &&
-                      styles.activeRewardIcon,
+                    isCurrent && styles.activeRewardIcon,
                   ]}
                 >
                   {item.icon === "special_chest" ? (
                     <SpecialChestIcon size={34} />
                   ) : item.icon === "gold_coin" ? (
                     <GoldCoinIcon size={30} />
+                  ) : item.rewardType === "gem" || item.rewardType === "mc" ? (
+                    <RewardCurrencyIcon type={item.rewardType} size={31} />
                   ) : item.icon.includes("-") ? (
                     <Ionicons name={item.icon as any} size={28} color="#f8d675" />
                   ) : (
@@ -522,6 +539,8 @@ useEffect(
           </Animated.View>
         ) : null}
       </Animated.View>
+
+      <RewardRain event={rewardRainEvent} />
     </Animated.View>
   );
 }
@@ -816,3 +835,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+

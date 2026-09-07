@@ -679,6 +679,8 @@ export type OkeyAuthoritativeCommand =
   | {
       type: "declare-konkan";
       orderedRunTileIds: string[];
+      completionMeldTileIds: string[];
+      discardTileId: string;
     }
   | {
       type: "spend-meld";
@@ -840,8 +842,12 @@ export function applyAuthoritativeOkeyCommand(
 
     case "open-and-discard": {
       const opened = openPlayerMelds(state, actorPlayerIndex, command.melds, command.score);
-      next = opened === state ? state : discardTile(opened, command.tileId);
-      if (next === opened) next = state;
+      if (opened.players[actorPlayerIndex]?.eliminated) {
+        next = opened;
+      } else {
+        next = opened === state ? state : discardTile(opened, command.tileId);
+        if (next === opened) next = state;
+      }
       break;
     }
 
@@ -850,6 +856,8 @@ export function applyAuthoritativeOkeyCommand(
         state,
         actorPlayerIndex,
         command.orderedRunTileIds,
+        command.completionMeldTileIds,
+        command.discardTileId,
       );
       break;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canSpendTileOnMeld, createInitialOkeyGame, spendTileOnMeld } from "../okey-engine.ts";
-import { getMeldScore } from "../okey-melds.ts";
+import { canSpendTileOnMeld, createInitialOkeyGame, resolveTableMeldAction, spendTileOnMeld } from "../okey-engine.ts";
+import { getMeldScore } from "../okeyengine-melds.ts";
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
 
 const okeyTile: OkeyTile = { id: "okey-reference", color: "blue", value: 13, copy: 1 };
@@ -34,6 +34,12 @@ for (const targetIndex of [1, 2, 3]) {
     const target = meld(`run-${targetIndex}`, "placeholder", "run", [tile(`red-3-${targetIndex}`, "red", 3), realJoker(`joker-${targetIndex}`), tile(`red-5-${targetIndex}`, "red", 5)]);
     const state = replacementState(targetIndex, target, replacement);
     const owner = state.players[targetIndex];
+    const spendTarget = meld(`spend-run-${targetIndex}`, owner.id, "run", [
+      tile(`yellow-2-${targetIndex}`, "yellow", 2),
+      tile(`yellow-3-${targetIndex}`, "yellow", 3),
+      tile(`yellow-4-${targetIndex}`, "yellow", 4),
+    ]);
+    owner.melds = [...owner.melds, spendTarget];
     assert.equal(canSpendTileOnMeld(state, 0, replacement.id, owner.id, target.id), true);
     const result = spendTileOnMeld(state, 0, replacement.id, owner.id, target.id);
     const actor = result.players[0];
@@ -41,8 +47,15 @@ for (const targetIndex of [1, 2, 3]) {
     assert.equal(actor.scoreOpened, 0);
     assert.equal(actor.konkan, true);
     assert.equal(actor.konkanEntryReason, "joker-replacement");
+    assert.equal(actor.konkanSpendsExecuted, 0);
     assert.ok(actor.hand.some((entry) => entry.id === `joker-${targetIndex}` && entry.jokerOrigin === "stolen"));
     assert.equal(result.players[targetIndex].melds[0].tiles[1].id, replacement.id);
+    assert.equal(result.players[targetIndex].melds[0].tiles[1].spentByPlayerId, undefined);
+
+    const afterFirstRealSpend = spendTileOnMeld(result, 0, "filler", owner.id, spendTarget.id, "start");
+    assert.notEqual(afterFirstRealSpend.players[0].eliminated, true);
+    assert.equal(afterFirstRealSpend.players[0].konkanSpendsExecuted, 1);
+    assert.equal(afterFirstRealSpend.players[targetIndex].melds[1].tiles[0].spentByPlayerId, afterFirstRealSpend.players[0].id);
   });
 }
 
@@ -66,6 +79,31 @@ test("replacement works for valid three- and four-tile sets", () => {
     const state = replacementState(1, target, replacement);
     assert.equal(canSpendTileOnMeld(state, 0, replacement.id, state.players[1].id, target.id), true);
   }
+});
+
+test("KonKan prioritizes Joker replacement over locking an addable tile onto the same set", () => {
+  const replacement = tile("black-7", "black", 7);
+  const target = meld("konkan-set", "placeholder", "set", [
+    tile("red-7", "red", 7),
+    tile("yellow-7", "yellow", 7),
+    realJoker("set-joker"),
+  ]);
+  const state = replacementState(1, target, replacement);
+  state.players[0] = { ...state.players[0], konkan: true, konkanEntryReason: "forced-table-add" };
+
+  const action = resolveTableMeldAction(
+    state,
+    0,
+    replacement.id,
+    state.players[1].id,
+    target.id,
+  );
+
+  assert.equal(action?.type, "spend");
+  const result = spendTileOnMeld(state, 0, replacement.id, state.players[1].id, target.id);
+  assert.equal(result.players[1].melds[0].tiles.length, 3);
+  assert.equal(result.players[1].melds[0].tiles[2].id, replacement.id);
+  assert.ok(result.players[0].hand.some((entry) => entry.id === "set-joker" && entry.jokerOrigin === "stolen"));
 });
 
 test("a real joker can be replaced and stolen from a locked meld", () => {

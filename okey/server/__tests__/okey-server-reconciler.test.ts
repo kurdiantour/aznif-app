@@ -132,6 +132,46 @@ test("Priority 3: Bot current actor takes precedence over turn deadline expirati
   }
 });
 
+test("Bot pacing eligibility is owned by the authoritative lifecycle decision", () => {
+  const beforeStart = Date.parse("2026-09-02T12:00:00.000Z");
+  const roundStartsAt = "2026-09-02T12:00:05.000Z";
+  const bundle = createTestBundle({
+    roundStartsAt,
+    roundState: {
+      ...createAuthoritativeOkeyMatch(mockPlayers, 0).roundState,
+      currentPlayerIndex: 1,
+      hasDrawnThisTurn: false,
+    },
+  }, 12, null);
+
+  const waitingDecision = evaluateOkeyServerLifecycle(bundle, beforeStart);
+  assert.equal(waitingDecision.type, "bot-turn");
+  if (waitingDecision.type === "bot-turn") {
+    assert.equal(waitingDecision.notBefore, roundStartsAt);
+    assert.equal(waitingDecision.ready, false);
+  }
+
+  const readyDecision = evaluateOkeyServerLifecycle(bundle, Date.parse(roundStartsAt));
+  assert.equal(readyDecision.type, "bot-turn");
+  if (readyDecision.type === "bot-turn") {
+    assert.equal(readyDecision.notBefore, roundStartsAt);
+    assert.equal(readyDecision.ready, true);
+  }
+});
+
+test("Bot Executor and Reconciler consume authoritative pacing without reading roundStartsAt", () => {
+  const engine = readFileSync("lib/multiplayer/okey/okey-turn-engine.ts", "utf8");
+  const executor = readFileSync("okey/server/okey-bot-executor.ts", "utf8");
+  const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
+
+  assert.match(engine, /notBefore: state\.roundStartsAt \?\? null/);
+  assert.match(engine, /ready: !startPending/);
+  assert.match(executor, /evaluateOkeyServerLifecycle\(/);
+  assert.match(executor, /pacingDecision\.notBefore/);
+  assert.doesNotMatch(executor, /currentState\.roundStartsAt/);
+  assert.match(reconciler, /initialLifecycleDecision\.notBefore/);
+  assert.doesNotMatch(reconciler, /currentState\??\.roundStartsAt/);
+});
 test("Priority 4: Expired human turn deadline is triggered when time is past deadline", () => {
   const now = Date.parse("2026-09-02T12:00:40.000Z");
   const deadline = "2026-09-02T12:00:30.000Z";
@@ -1064,14 +1104,15 @@ test("reconcileAuthoritativeServerTurns commits Next Round only and hands starti
     now: () => Date.parse("2026-09-02T12:00:16.000Z"),
   });
 
-  // Next Round may immediately perform the starting dealer Bot's one required
-  // discard, but it must stop after that single Bot transition.
+  // The dealer Bot discard is committed, but turn ownership remains with that
+  // Bot until the persisted handoff eligibility boundary is consumed.
   assert.equal(result.executedNextRoundCount, 1);
   assert.equal(result.botProcessed, true);
   assert.equal(result.state.currentRound, 2);
   assert.equal(result.state.roundState.phase, "playing");
   assert.deepEqual(committedCommands, ["start-next-round", "system-bot-discard"]);
-  assert.equal(result.state.roundState.currentPlayerIndex, 2); // Human p3 owns the next turn
+  assert.equal(result.state.roundState.currentPlayerIndex, 1);
+  assert.ok(result.state.roundState.pendingBotTurnAdvanceAt);
 });
 
 test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions have single Server owners and zero client triggers", () => {
@@ -1516,6 +1557,7 @@ test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle wi
   const schedulerResult = await reconcileAuthoritativeServerScheduler({
     client: mockClient,
     matchId: "test-autonomous-scheduler-zero-clients",
+    requesterUserId: "11111111-1111-4111-8111-111111111111",
     now: () => currentTime,
     sleep: async (ms: number) => {
       sleptIntervals.push(ms);
@@ -1532,5 +1574,34 @@ test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle wi
   assert.equal(schedulerResult.state?.roundState.phase, "playing");
   assert.equal(schedulerResult.state?.currentRound, 2);
   assert.equal(committedCommands.includes("start-next-round"), true);
+});
+
+test("Server Lifecycle Wake-up: missing requester exits before any RPC", async () => {
+  let rpcCalls = 0;
+
+  const mockClient = {
+    rpc: () => {
+      rpcCalls += 1;
+      return {
+        single: async () => ({
+          data: null,
+          error: null,
+        }),
+      };
+    },
+  };
+
+  const result = await reconcileAuthoritativeServerLifecycleWakeup({
+    client: mockClient,
+    matchId: "test-missing-requester-user-id",
+  } as any);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.executed, false);
+  assert.equal(result.state, null);
+  assert.equal(result.version, null);
+  assert.equal(result.attempts, 0);
+  assert.equal(result.reason, "missing_requester_user_id");
+  assert.equal(rpcCalls, 0);
 });
 

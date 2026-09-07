@@ -676,3 +676,68 @@ test("open-and-discard rolls back the entire command when discard fails after a 
   assert.equal(state.players[actorPlayerIndex].hand.length, setTiles.length + 1);
   assert.notEqual(state.discardPile.at(-1)?.id, tileConsumedByOpen);
 });
+
+test("authoritative KonKan requires explicit rack declaration and ordinary discard cannot win", () => {
+  const base = createInitialOkeyGame(0);
+  const okeyTile = { id: "okey-ref", color: "blue" as const, value: 13, copy: 1 as const };
+  const runTiles = Array.from({ length: 10 }, (_, index) => ({
+    id: `run-${index + 1}`, color: "red" as const, value: index + 1, copy: 1 as const,
+  }));
+  const completionTiles = [2, 3, 4, 5].map((value) => ({
+    id: `completion-${value}`, color: "yellow" as const, value, copy: 1 as const,
+  }));
+  const finalDiscard = { id: "final-discard", color: "black" as const, value: 12, copy: 1 as const };
+  const hand = [...runTiles, ...completionTiles, finalDiscard];
+  const actorIndex = base.currentPlayerIndex;
+  const prepared = {
+    ...base,
+    okeyTile,
+    players: base.players.map((player, index) => index === actorIndex
+      ? { ...player, konkan: true, konkanEntryReason: "discard-pick" as const, hand }
+      : player),
+  };
+
+  const discarded = applyAuthoritativeOkeyCommand(prepared, actorIndex, {
+    type: "discard",
+    tileId: finalDiscard.id,
+  });
+  assert.equal(discarded.phase, "playing");
+  assert.equal(discarded.winnerId, null);
+
+  const entering = {
+    ...prepared,
+    players: prepared.players.map((player, index) => index === actorIndex
+      ? { ...player, konkan: false, konkanEntryReason: null, pendingKonkanFromDiscard: true }
+      : player),
+  };
+  const enteredByDiscard = applyAuthoritativeOkeyCommand(entering, actorIndex, {
+    type: "discard",
+    tileId: finalDiscard.id,
+  });
+  assert.equal(enteredByDiscard.phase, "playing");
+  assert.equal(enteredByDiscard.winnerId, null);
+  assert.equal(enteredByDiscard.players[actorIndex].konkan, true);
+
+  assert.throws(
+    () => applyAuthoritativeOkeyCommand(prepared, actorIndex, {
+      type: "declare-konkan",
+      orderedRunTileIds: runTiles.map((tile) => tile.id),
+    } as never),
+    (error) => error instanceof OkeyCommandError && error.code === "command_rejected",
+  );
+
+  const declared = applyAuthoritativeOkeyCommand(prepared, actorIndex, {
+    type: "declare-konkan",
+    orderedRunTileIds: runTiles.map((tile) => tile.id),
+    completionMeldTileIds: completionTiles.map((tile) => tile.id),
+    discardTileId: finalDiscard.id,
+  });
+  assert.equal(declared.phase, "finished");
+  assert.equal(declared.winnerId, prepared.players[actorIndex].id);
+  assert.equal(declared.discardPile.at(-1)?.id, finalDiscard.id);
+});
+
+test("runtime parser preserves the complete authoritative KonKan declaration", () => {
+  const edge = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
+  assert.match(edge, /case "declare-konkan"[\s\S]*completionMeldTileIds: command\.completionMeldTileIds as string\[\][\s\S]*discardTileId: command\.discardTileId/);
+});

@@ -60,7 +60,20 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   const discard = useCallback((tileId: string) => dispatch({ type: "discard", tileId }), [dispatch]);
   const commitOpenIntent = useCallback((melds: OkeyMeld[], score: number, tileId?: string) => dispatch(tileId
     ? { type: "open-and-discard", melds, score, tileId } : { type: "open-melds", melds, score }), [dispatch]);
-  const declareKonkan = useCallback((orderedRunTileIds: string[]) => dispatch({ type: "declare-konkan", orderedRunTileIds }), [dispatch]);
+  const declareKonkan = useCallback(
+    (
+      orderedRunTileIds: string[],
+      completionMeldTileIds: string[],
+      discardTileId: string,
+    ) =>
+      dispatch({
+        type: "declare-konkan",
+        orderedRunTileIds,
+        completionMeldTileIds,
+        discardTileId,
+      }),
+    [dispatch],
+  );
   const spendTileOnTableMeld = useCallback((tileId: string, targetPlayerId: string, targetMeldId: string, runEnd?: "start" | "end") =>
     dispatch({ type: "spend-meld", tileId, targetPlayerId, targetMeldId, ...(runEnd ? { runEnd } : {}) }), [dispatch]);
   const lockKonkanSetOnTable = useCallback((tileId: string, targetPlayerId: string, targetMeldId: string, runEnd?: "start" | "end") =>

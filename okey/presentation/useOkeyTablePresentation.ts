@@ -35,8 +35,9 @@ export function useOkeyTablePresentation() {
   const [optimisticRackTile, setOptimisticRackTile] = useState<OkeyTile | null>(null);
   const [isDiscardDragActive, setIsDiscardDragActive] = useState(false);
   const [hoveredMeldTarget, setHoveredMeldTarget] = useState<{ playerId: string; meldId: string } | null>(null);
-  const pendingDeckDropRef = useRef<{
+  const pendingDrawRef = useRef<{
     tileId: string;
+    source: "deck" | "discard";
   } | null>(null);
 
   const closeKonkanReveal = useCallback(() => {
@@ -112,6 +113,6 @@ export function useOkeyTablePresentation() {
     optimisticRackTile, setOptimisticRackTile,
     isDiscardDragActive, setIsDiscardDragActive,
     hoveredMeldTarget, setHoveredMeldTarget,
-    pendingDeckDropRef, handleExternalDropPlaced,
+    pendingDrawRef, handleExternalDropPlaced,
   };
 }
