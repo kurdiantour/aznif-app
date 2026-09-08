@@ -1,8 +1,7 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect, router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,7 +9,6 @@ import {
   Text,
   useWindowDimensions,
   View,
-  type ImageSourcePropType,
 } from "react-native";
 
 import { BottomNav } from "@/components/lobby/BottomNav";
@@ -20,11 +18,7 @@ import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
-import {
-  consumePendingLeaderboardConsent,
-  hasPendingLeaderboardConsent,
-  setCurrentLeaderboardVisibility,
-} from "@/lib/leaderboardVisibility";
+import { DOMINO_ENTRY_FEES } from "@/constants/domino-economy";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 
@@ -35,9 +29,9 @@ type FunCardProps = {
   title: string;
   subtitle: string;
   entry: number;
-  image?: ImageSourcePropType;
-  gradientColors?: readonly [string, string];
-  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
+  gradientColors: readonly [string, string];
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  iconRepeat?: 1 | 2;
   isTablet: boolean;
   disabled: boolean;
   loading: boolean;
@@ -48,9 +42,9 @@ function FunCard({
   title,
   subtitle,
   entry,
-  image,
   gradientColors,
   icon,
+  iconRepeat = 1,
   isTablet,
   disabled,
   loading,
@@ -67,40 +61,25 @@ function FunCard({
         pressed && !disabled && styles.cardPressed,
       ]}
     >
-      {image ? (
-        <Image
-          source={image}
-          style={styles.cardImage}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={0}
-        />
-      ) : (
-        <LinearGradient
-          colors={gradientColors || ["#1d1145", "#3b1676"]}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
+      <LinearGradient
+        colors={gradientColors}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View style={styles.cardShade} />
 
       {icon && (
         <View style={[styles.iconShell, isTablet && styles.iconShellTablet]}>
-          <MaterialCommunityIcons
-            name={icon}
-            size={isTablet ? 38 : 30}
-            color="#fff7d6"
-          />
+          {Array.from({ length: iconRepeat }, (_, index) => (
+            <MaterialCommunityIcons
+              key={`${icon}-${index}`}
+              name={icon}
+              size={iconRepeat === 2 ? (isTablet ? 28 : 22) : (isTablet ? 38 : 30)}
+              color={icon.startsWith("account-") ? "#ffffff" : "#fff7d6"}
+            />
+          ))}
         </View>
       )}
-
-      <LinearGradient
-        colors={[
-          "rgba(0,0,0,0.04)",
-          "rgba(0,0,0,0.22)",
-          "rgba(0,0,0,0.94)",
-        ]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
 
       {loading ? (
         <View style={styles.loadingOverlay}>
@@ -167,7 +146,7 @@ function FunCard({
               isTablet && styles.entryAmountTablet,
             ]}
           >
-            {entry.toLocaleString("en-US")}
+            {entry.toLocaleString("en-US")} Coin
           </Text>
 
           <View
@@ -182,14 +161,12 @@ function FunCard({
           style={[
             styles.entryBox,
             isTablet && styles.entryBoxTablet,
-            { backgroundColor: "rgba(99,102,241,0.24)", borderColor: "rgba(99,102,241,0.45)" }
           ]}
         >
           <Text
             style={[
               styles.entryCurrency,
               isTablet && styles.entryCurrencyTablet,
-              { color: "#a5b4fc", fontFamily: "SpedaBold" }
             ]}
           >
             ڕاهێنان
@@ -215,105 +192,20 @@ export default function DominoFunScreen() {
   const [searchingMode, setSearchingMode] =
     useState<GameMode | null>(null);
 
-  const [
-    showLeaderboardConsent,
-    setShowLeaderboardConsent,
-  ] = useState(false);
-
-  const [
-    isSavingLeaderboardConsent,
-    setIsSavingLeaderboardConsent,
-  ] = useState(false);
-
   const [error, setError] =
     useState<string | null>(null);
-  useEffect(() => {
-    let mounted = true;
-
-    async function checkPendingConsent() {
-      if (!profile) {
-        if (mounted) {
-          setShowLeaderboardConsent(false);
-        }
-
-        return;
-      }
-
-      try {
-        const pendingConsent =
-          await hasPendingLeaderboardConsent();
-
-        if (mounted) {
-          setShowLeaderboardConsent(pendingConsent);
-        }
-      } catch (reason) {
-        console.warn(
-          "Failed to check leaderboard consent:",
-          reason,
-        );
-
-        if (mounted) {
-          setShowLeaderboardConsent(false);
-        }
-      }
-    }
-
-    void checkPendingConsent();
-
-    return () => {
-      mounted = false;
-    };
-  }, [profile]);
-
-  const saveLeaderboardConsent = async (
-    value: boolean,
-  ) => {
-    if (isSavingLeaderboardConsent) {
-      return;
-    }
-
-    setIsSavingLeaderboardConsent(true);
-
-    try {
-      await setCurrentLeaderboardVisibility(value);
-      await consumePendingLeaderboardConsent();
-
-      setShowLeaderboardConsent(false);
-    } catch (reason) {
-      console.warn(
-        "Failed to save leaderboard consent:",
-        reason,
-      );
-    } finally {
-      setIsSavingLeaderboardConsent(false);
-    }
-  };
 
   const getMatchmakingError = (
     reason: unknown,
-  ) => {
+  ): string | null => {
     const message =
       reason instanceof Error
         ? reason.message
         : typeof (reason as { message?: unknown })?.message === "string"
           ? String((reason as { message: string }).message)
-        : "Unable to start matchmaking.";
+          : "";
 
     const normalized = message.toLowerCase();
-
-    if (
-      normalized.includes("authentication") ||
-      normalized.includes("jwt")
-    ) {
-      return "تکایە دووبارە بچۆرە ژوورەوە.";
-    }
-
-    if (
-      normalized.includes("insufficient") ||
-      normalized.includes("balance")
-    ) {
-      return "Coinی پێویستت بۆ ئەم یارییە نییە.";
-    }
 
     if (
       normalized.includes("network") ||
@@ -322,7 +214,7 @@ export default function DominoFunScreen() {
       return "پەیوەندی ئینتەرنێت هەڵەی تێدایە.";
     }
 
-    return "نەتوانرا گەڕان بۆ یاری دەست پێ بکات.";
+    return null;
   };
 
   const startPublicMatch = async (
@@ -342,7 +234,7 @@ export default function DominoFunScreen() {
     setError(null);
 
     try {
-      const entryFee = mode === "1v1" ? 500 : 3500;
+      const entryFee = DOMINO_ENTRY_FEES.fun[mode];
       const { data: result, error: rpcError } = await supabase.rpc(
         "find_domino_match",
         { p_mode: mode, p_currency: "fun", p_entry_fee: entryFee },
@@ -366,7 +258,7 @@ export default function DominoFunScreen() {
           room_id: result.room_id ?? "",
           matchType,
           playMode: "fun",
-          entryFee: String(mode === "1v1" ? 500 : 3500),
+          entryFee: String(entryFee),
           game: "domino",
         },
       });
@@ -397,7 +289,7 @@ export default function DominoFunScreen() {
           />
         </View>
 
-        <BottomNav />
+      <BottomNav />
       </View>
     );
   }
@@ -443,14 +335,16 @@ export default function DominoFunScreen() {
             />
 
             <FunCard
-              title="پێکدادان"
+              title="یاری دوو کەسی"
               subtitle="یاریی دوو کەسی، توانای خۆت بسەلمێنە"
-              entry={500}
-              image={require(
-                "@/assets/images/mode-select/1vs1.webp"
-              )}
+              entry={DOMINO_ENTRY_FEES.fun["1v1"]}
+              gradientColors={[
+                "rgba(180,117,24,0.96)",
+                "rgba(71,42,10,0.94)",
+              ]}
+              icon="account-multiple-outline"
               isTablet={isTablet}
-              disabled={isSearching || (coinBalance !== null && coinBalance < 500)}
+              disabled={isSearching || (coinBalance !== null && coinBalance < DOMINO_ENTRY_FEES.fun["1v1"])}
               loading={searchingMode === "1v1"}
               onPress={() => {
                 void startPublicMatch(
@@ -461,14 +355,17 @@ export default function DominoFunScreen() {
             />
 
             <FunCard
-              title="هاوپەیمان"
+              title="یاری چوار کەسی"
               subtitle="یاریی چوار کەسی، لەگەڵ هاوپەیمانەکەت"
-              entry={3500}
-              image={require(
-                "@/assets/images/mode-select/2vs2.webp"
-              )}
+              entry={DOMINO_ENTRY_FEES.fun["2v2"]}
+              gradientColors={[
+                "rgba(30,64,175,0.96)",
+                "rgba(15,23,42,0.96)",
+              ]}
+              icon="account-multiple-outline"
+              iconRepeat={2}
               isTablet={isTablet}
-              disabled={isSearching || (coinBalance !== null && coinBalance < 3500)}
+              disabled={isSearching || (coinBalance !== null && coinBalance < DOMINO_ENTRY_FEES.fun["2v2"])}
               loading={searchingMode === "2v2"}
               onPress={() => {
                 void startPublicMatch(
@@ -478,103 +375,23 @@ export default function DominoFunScreen() {
               }}
             />
           </View>
-
-          {error ? (
-            <Text
-              style={[
-                styles.errorText,
-                isTablet && styles.errorTextTablet,
-              ]}
-            >
-              {error}
-            </Text>
-          ) : null}
         </View>
       </View>
 
-      <BottomNav />
+      {error ? (
+        <View pointerEvents="none" style={styles.toast}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color="#fca5a5"
+          />
 
-      {showLeaderboardConsent ? (
-        <View
-          style={styles.consentBackdrop}
-          pointerEvents="auto"
-        >
-          <View
-            style={[
-              styles.consentDialog,
-              isTablet &&
-                styles.consentDialogTablet,
-            ]}
-          >
-            <Text
-              style={[
-                styles.consentText,
-                isTablet &&
-                  styles.consentTextTablet,
-              ]}
-            >
-              ڕازیت بە نیشاندانی ناو، پلە و خاڵەکانت
-              لە خشتەی پێشبڕکێ؟
-            </Text>
-
-            <View style={styles.consentActions}>
-              <Pressable
-                disabled={
-                  isSavingLeaderboardConsent
-                }
-                onPress={() => {
-                  void saveLeaderboardConsent(true);
-                }}
-                style={({ pressed }) => [
-                  styles.consentButton,
-                  styles.consentPrimaryButton,
-                  pressed &&
-                    !isSavingLeaderboardConsent &&
-                    styles.cardPressed,
-                ]}
-              >
-                {isSavingLeaderboardConsent ? (
-                  <ActivityIndicator
-                    color="#ffffff"
-                  />
-                ) : (
-                  <Text
-                    style={
-                      styles.consentPrimaryButtonText
-                    }
-                  >
-                    ڕازیم
-                  </Text>
-                )}
-              </Pressable>
-
-              <Pressable
-                disabled={
-                  isSavingLeaderboardConsent
-                }
-                onPress={() => {
-                  void saveLeaderboardConsent(false);
-                }}
-                style={({ pressed }) => [
-                  styles.consentButton,
-                  styles.consentSecondaryButton,
-                  pressed &&
-                    !isSavingLeaderboardConsent &&
-                    styles.cardPressed,
-                ]}
-              >
-                <Text
-                  style={
-                    styles.consentSecondaryButtonText
-                  }
-                >
-                  نەخێر
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+          <Text style={styles.toastText}>{error}</Text>
         </View>
       ) : null}
+
+      <BottomNav />
+
     </View>
   );
 }
@@ -623,11 +440,13 @@ const styles = StyleSheet.create({
   card: {
     width: 200,
     height: 250,
-    overflow: "hidden",
     borderRadius: 14,
-    borderWidth: 1.2,
-    borderColor: "rgba(180,120,255,0.42)",
-    backgroundColor: "rgba(17,24,39,0.82)",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    padding: 14,
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   cardTablet: {
@@ -635,27 +454,34 @@ const styles = StyleSheet.create({
     height: 300,
     borderRadius: 18,
     borderWidth: 1.4,
+    padding: 22,
+  },
+
+  cardShade: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(2,6,23,0.24)",
   },
 
   iconShell: {
     width: 58,
     height: 58,
+    marginTop: 8,
     borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 2,
     alignSelf: "center",
-    position: "absolute",
-    top: 24,
   },
 
   iconShellTablet: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    top: 36,
+    width: 78,
+    height: 78,
+    marginTop: 16,
+    borderRadius: 20,
   },
 
   cardDisabled: {
@@ -667,39 +493,27 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
 
-  cardImage: {
-    width: "100%",
-    height: "100%",
-  },
-
   cardInfo: {
-    position: "absolute",
-    left: 15,
-    right: 15,
-    bottom: 56,
+    width: "100%",
     alignItems: "center",
   },
 
-  cardInfoTablet: {
-    left: 22,
-    right: 22,
-    bottom: 78,
-  },
+  cardInfoTablet: {},
 
   cardTitle: {
     color: "#ffffff",
-    fontSize: 17,
+    fontSize: 14,
     fontFamily: "SpedaBold",
     textAlign: "center",
   },
 
   cardTitleTablet: {
-    fontSize: 25,
+    fontSize: 20,
   },
 
   cardSubtitle: {
-    marginTop: 5,
-    color: "#f3f4f6",
+    marginTop: 8,
+    color: "rgba(255,255,255,0.78)",
     fontSize: 11,
     lineHeight: 17,
     fontFamily: "SpedaBold",
@@ -707,32 +521,27 @@ const styles = StyleSheet.create({
   },
 
   cardSubtitleTablet: {
-    marginTop: 9,
-    fontSize: 16,
-    lineHeight: 25,
+    marginTop: 12,
+    fontSize: 15,
+    lineHeight: 23,
   },
 
   entryBox: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 10,
-    height: 32,
+    width: "100%",
+    minHeight: 34,
     borderRadius: 9,
+    paddingHorizontal: 8,
     backgroundColor: "rgba(2,6,23,0.38)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 5,
   },
 
   entryBoxTablet: {
-    left: 16,
-    right: 16,
-    bottom: 16,
-    height: 46,
+    minHeight: 46,
     borderRadius: 12,
     gap: 8,
   },
@@ -750,7 +559,8 @@ const styles = StyleSheet.create({
   entryAmount: {
     color: "#ffffff",
     fontSize: 11,
-    fontFamily: "SpedaBold",
+    fontFamily: "Roboto",
+    fontWeight: "700",
   },
 
   entryAmountTablet: {
@@ -790,102 +600,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  errorText: {
-    marginTop: 12,
-    paddingHorizontal: 14,
-    color: "#fca5a5",
-    fontSize: 12,
-    lineHeight: 19,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
-
-  errorTextTablet: {
-    marginTop: 18,
-    fontSize: 16,
-    lineHeight: 25,
-  },
-
-  consentBackdrop: {
+  toast: {
     position: "absolute",
-    top: -14,
-    right: 0,
-    bottom: -18,
-    left: 0,
-    zIndex: 1000,
-    elevation: 1000,
-    paddingHorizontal: 22,
+    bottom: 90,
+    alignSelf: "center",
+    zIndex: 100,
+    elevation: 20,
+    maxWidth: "90%",
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(248,113,113,0.35)",
+    backgroundColor: "rgba(20,18,29,0.96)",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.64)",
+    gap: 8,
   },
 
-  consentDialog: {
-    width: "100%",
-    maxWidth: 360,
-    padding: 18,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(248,215,116,0.34)",
-    backgroundColor: "#0b1024",
-  },
-
-  consentDialogTablet: {
-    maxWidth: 520,
-    padding: 28,
-    borderRadius: 16,
-  },
-
-  consentText: {
-    color: "#ffffff",
-    fontSize: 16,
-    lineHeight: 28,
-    fontFamily: "SpedaBold",
+  toastText: {
+    color: "#f1e1e1",
+    fontSize: 12,
+    lineHeight: 19,
     textAlign: "center",
+    fontFamily: "SpedaBold",
     writingDirection: "rtl",
   },
 
-  consentTextTablet: {
-    fontSize: 21,
-    lineHeight: 34,
-  },
-
-  consentActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-  },
-
-  consentButton: {
-    flex: 1,
-    minHeight: 46,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  consentPrimaryButton: {
-    backgroundColor: "#2563eb",
-  },
-
-  consentSecondaryButton: {
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.32)",
-    backgroundColor: "rgba(15,23,42,0.9)",
-  },
-
-  consentPrimaryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
-
-  consentSecondaryButtonText: {
-    color: "#e5e7eb",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
 });

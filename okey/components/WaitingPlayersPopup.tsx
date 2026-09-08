@@ -11,6 +11,7 @@ import {
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
+import { formatCurrencyAmount } from "@/lib/aznif-display";
 
 type Props = {
   visible: boolean;
@@ -81,7 +82,7 @@ export default function WaitingPlayersPopup({
 
             <Text style={styles.entryFeeText}>
               تێچووی یاری:{" "}
-              {entryFee.toLocaleString()}{" "}
+              <Text style={styles.entryFeeAmount}>{formatCurrencyAmount(entryFee, currency === "aznif" ? "aznif" : "Coin")}</Text>{" "}
               {currency === "aznif"
                 ? "ئەزنیف"
                 : "سکە"}
@@ -243,6 +244,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
+  entryFeeAmount: { fontFamily: "RobotoMedium" },
   entryFeeText: {
     color: "rgba(255,247,218,0.82)",
     fontSize: 13,

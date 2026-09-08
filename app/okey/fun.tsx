@@ -27,7 +27,6 @@ import {
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
-import { releaseTakenOverOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
 import {
   matchmakeOkeyRoom,
   type OkeyRoomSnapshot,
@@ -40,6 +39,7 @@ type OkeyTable = {
   minPoints: number;
   accent: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  available: boolean;
 };
 
 const OKEY_LOBBY_CARD_WIDTH = 200;
@@ -53,6 +53,7 @@ const FUN_TABLES: OkeyTable[] = [
     minPoints: 0,
     accent: "#22c55e",
     icon: "shield-half-full",
+    available: true,
   },
   {
     id: "bronze",
@@ -61,22 +62,25 @@ const FUN_TABLES: OkeyTable[] = [
     minPoints: 250,
     accent: "#c47a38",
     icon: "shield-outline",
+    available: true,
   },
   {
     id: "silver",
-    subtitle: "مێزی هاوسەنگ",
-    entry: 15_000,
-    minPoints: 650,
+    subtitle: "بەم زووانە",
+    entry: 7_000,
+    minPoints: 500,
     accent: "#94a3b8",
-    icon: "shield-star-outline",
+    icon: "lock-outline",
+    available: false,
   },
   {
     id: "gold",
-    subtitle: "مێزی شارەزا",
-    entry: 25_000,
-    minPoints: 1_100,
+    subtitle: "بەم زووانە",
+    entry: 9_000,
+    minPoints: 700,
     accent: "#f5c542",
-    icon: "crown-outline",
+    icon: "lock-outline",
+    available: false,
   },
 ];
 
@@ -108,6 +112,7 @@ function TableCard({
   const meetsPointRequirement = points >= table.minPoints;
 
   const disabled =
+    !table.available ||
     !meetsPointRequirement ||
     !affordable ||
     joining ||
@@ -236,7 +241,7 @@ export default function OkeyFunScreen() {
 
   const handleJoinTable = useCallback(
     async (table: OkeyTable) => {
-      if (joiningTableId) {
+      if (joiningTableId || !table.available) {
         return;
       }
 
@@ -250,8 +255,6 @@ export default function OkeyFunScreen() {
       setJoiningTableId(table.id);
 
       try {
-        await releaseTakenOverOkeyMemberships();
-
         const room =
           await matchmakeOkeyRoom(table.id);
 
@@ -456,7 +459,8 @@ const styles = StyleSheet.create({
   },
 
   metaPill: {
-    marginTop: 7,
+    position: "absolute",
+    bottom: 52,
     height: 23,
     borderRadius: 999,
     backgroundColor:

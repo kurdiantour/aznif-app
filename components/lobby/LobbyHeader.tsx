@@ -1,4 +1,4 @@
-import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import { AvatarProgressRing } from "@/components/player/AvatarProgressRing";
 import {
   ENABLE_GOLD_PURCHASES,
   ENABLE_SHOP_FEATURES,
@@ -103,11 +103,11 @@ export function LobbyHeader() {
             style={[styles.userBox, isCompact && { width: 140 }]}
             onPress={() => router.push(profile ? "/profile" : "/login")}
           >
-            <PlayerAvatar
+            <AvatarProgressRing
               avatarId={profile?.avatarId}
               avatarUrl={profile?.avatarUrl}
+              points={profile?.points}
               size={50}
-              style={styles.avatar}
             />
 
             <View style={styles.userText}>

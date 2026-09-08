@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   timerNumber: {
     color: "#ffffff",
     fontSize: 22,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "center",
   },
 

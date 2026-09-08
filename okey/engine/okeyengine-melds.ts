@@ -352,6 +352,7 @@ export function validateOpenPlayerMelds(
   state: OkeyGameState,
   playerIndex: number,
   melds: OkeyMeld[],
+  options: { enforceRequiredScore?: boolean } = {},
 ): { melds: OkeyMeld[]; score: number; openedTileIds: Set<string> } | null {
   if (
     state.phase !== "playing" ||
@@ -369,9 +370,10 @@ export function validateOpenPlayerMelds(
   const openedTileIdList = normalized.melds.flatMap((meld) => meld.tiles.map((tile) => tile.id));
   const openedTileIds = new Set(openedTileIdList);
   if (openedTileIds.size !== openedTileIdList.length || openedTileIdList.some((id) => !handTileIds.has(id))) return null;
+  if (player.hand.length - openedTileIds.size < 1) return null;
 
   const requiredOpenScore = player.opened ? 0 : getRequiredOpenScore(state, playerIndex);
-  return normalized.score >= requiredOpenScore
+  return options.enforceRequiredScore === false || normalized.score >= requiredOpenScore
     ? { ...normalized, openedTileIds }
     : null;
 }

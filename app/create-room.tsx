@@ -19,6 +19,7 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
+import { formatAznif } from "@/lib/aznif-display";
 import { supabase } from "@/lib/supabase";
 
 const PRIVATE_ROOM_BET_AMOUNT = 10;
@@ -71,15 +72,8 @@ export default function CreateRoomScreen() {
       return "ئەم ژوورە چیتر بەردەست نییە.";
     }
 
-    if (
-      normalized.includes("authentication") ||
-      normalized.includes("jwt")
-    ) {
-      return "تکایە دووبارە بچۆرە ژوورەوە.";
-    }
-
     if (normalized.includes("insufficient")) {
-      return `هەردوو یاریزان پێویستیان بە لانیکەم ${PRIVATE_ROOM_BET_AMOUNT} ئەزنیف هەیە.`;
+      return `هەردوو یاریزان پێویستیان بە لانیکەم ${formatAznif(PRIVATE_ROOM_BET_AMOUNT)} ئەزنیف هەیە.`;
     }
 
     return message;
@@ -202,7 +196,7 @@ export default function CreateRoomScreen() {
             "ئەم ژوورە چیتر بەردەست نییە.",
 
           insufficient_aznif:
-            "هەردوو یاریزان پێویستیان بە لانیکەم ١٠ ئەزنیف هەیە.",
+            `هەردوو یاریزان پێویستیان بە لانیکەم ${formatAznif(PRIVATE_ROOM_BET_AMOUNT)} ئەزنیف هەیە.`,
 
           already_in_paid_room:
             "لە ئێستادا لە ژوورێکی پارەدار دایت.",
@@ -338,9 +332,7 @@ export default function CreateRoomScreen() {
               >
                 بەشداری: (
                 {" "}
-                {PRIVATE_ROOM_BET_AMOUNT.toLocaleString(
-                  "en-US",
-                )}
+                {formatAznif(PRIVATE_ROOM_BET_AMOUNT)}
                 {" "}
                 ) ئەزنیف
               </Text>

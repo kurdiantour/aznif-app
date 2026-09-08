@@ -3,30 +3,51 @@ const { withAppDelegate } = require("expo/config-plugins");
 const ROOT_CONTROLLER_CLASS = `
 
 private final class GameSystemGesturesRootViewController: UIViewController {
-  private func homeIndicatorController(from controller: UIViewController) -> UIViewController {
+  private weak var lastPolicyController: UIViewController?
+  private var lastDefersBottomEdge = false
+
+  private func activeController(from controller: UIViewController) -> UIViewController {
     if let presented = controller.presentedViewController, !presented.isBeingDismissed {
-      return homeIndicatorController(from: presented)
-    }
-    if let child = controller.childForHomeIndicatorAutoHidden {
-      return homeIndicatorController(from: child)
+      return activeController(from: presented)
     }
     if let navigationController = controller as? UINavigationController,
        let visible = navigationController.visibleViewController {
-      return homeIndicatorController(from: visible)
+      return activeController(from: visible)
     }
     if let tabController = controller as? UITabBarController,
        let selected = tabController.selectedViewController {
-      return homeIndicatorController(from: selected)
+      return activeController(from: selected)
+    }
+    if let delegated = controller.childForHomeIndicatorAutoHidden,
+       delegated !== controller {
+      return activeController(from: delegated)
     }
     if let visibleChild = controller.children.reversed().first(where: { $0.viewIfLoaded?.window != nil }) {
-      return homeIndicatorController(from: visibleChild)
+      return activeController(from: visibleChild)
     }
     return controller
   }
 
+  private var activeContentController: UIViewController? {
+    if let presented = presentedViewController, !presented.isBeingDismissed {
+      return activeController(from: presented)
+    }
+    guard let visibleChild = children.reversed().first(where: { $0.viewIfLoaded?.window != nil }) else {
+      return nil
+    }
+    return activeController(from: visibleChild)
+  }
+
   private var gameScreenPrefersHiddenHomeIndicator: Bool {
-    let controller = homeIndicatorController(from: self)
-    return controller !== self && controller.prefersHomeIndicatorAutoHidden
+    activeContentController?.prefersHomeIndicatorAutoHidden ?? false
+  }
+
+  override var childForHomeIndicatorAutoHidden: UIViewController? {
+    activeContentController
+  }
+
+  override var childForScreenEdgesDeferringSystemGestures: UIViewController? {
+    gameScreenPrefersHiddenHomeIndicator ? nil : activeContentController
   }
 
   override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
@@ -35,6 +56,23 @@ private final class GameSystemGesturesRootViewController: UIViewController {
 
   override func setNeedsUpdateOfHomeIndicatorAutoHidden() {
     super.setNeedsUpdateOfHomeIndicatorAutoHidden()
+    setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+  }
+
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    let controller = activeContentController
+    let defersBottomEdge = controller?.prefersHomeIndicatorAutoHidden ?? false
+    if controller !== lastPolicyController || defersBottomEdge != lastDefersBottomEdge {
+      lastPolicyController = controller
+      lastDefersBottomEdge = defersBottomEdge
+      setNeedsUpdateOfHomeIndicatorAutoHidden()
+    }
+  }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    setNeedsUpdateOfHomeIndicatorAutoHidden()
     setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
   }
 }

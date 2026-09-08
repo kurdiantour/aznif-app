@@ -402,6 +402,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     canPlayAfterDraw,
     remainingMeldSlots,
     humanOpened: humanPlayer.opened,
+    humanHandCount: humanPlayer.hand.length,
     droppedMelds,
     hoveredTargetRef: hoveredMeldTargetRef,
     findMeldTarget: findMeldDropTarget,
@@ -416,6 +417,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     lockKonkan: lockKonkanSetOnTable,
     spendTile: spendTileOnTableMeld,
     commitOpenIntent,
+    selectOpenAction,
     emitFeedback,
   });
   useOkeyPresentationResetLifecycle({
@@ -552,13 +554,11 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   onCancel={handleCancelWaiting}
 />
 
-{!showMatchMenu ? (
-  <View style={finishRevealStyles.topRightActions}>
-    <Pressable style={finishRevealStyles.topRightActionButton} onPress={openMatchMenu}>
-      <Ionicons name="menu-outline" size={22} color="#f8f3df" />
-    </Pressable>
+<View style={finishRevealStyles.topRightActions}>
+  <Pressable style={finishRevealStyles.topRightActionButton} onPress={openMatchMenu}>
+    <Ionicons name="menu-outline" size={22} color="#f8f3df" />
+  </Pressable>
 </View>
-) : null}
 
 
 <View style={[styles.tableArea, isDiscardDragActive && styles.activeDiscardDragTableLayer]}>
@@ -783,7 +783,6 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
         currentUserId={currentUserId}
         playerIdBySeat={playerIdBySeat}
         enabled={!!onlineMatchId && !!currentUserId && onlineGameplayReady}
-        triggerVisible={!showMatchMenu}
       /><MatchMenuDrawer
   visible={showMatchMenu}
   players={seatOrderedPlayers}
@@ -852,7 +851,7 @@ const finishRevealStyles = StyleSheet.create({
   topRightActions: {
     position: "absolute",
     top: 18,
-    right: 68,
+    right: 18,
     zIndex: 900,
     elevation: 900,
     flexDirection: "row",

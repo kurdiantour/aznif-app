@@ -228,8 +228,6 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
         return { targetPlayerIndex, meldIndex, tiles: replaced.tiles, score: replaced.score, delta, releasedTile: replaced.releasedTile };
       }
 
-      if (meld.locked) continue;
-
       const added = getMeldWithTileAdded(meld, tile, state.okeyTile, meld.kind === "run" ? runEnd : undefined);
       if (!added) continue;
 
@@ -288,8 +286,6 @@ function findSpecificSpendTarget(
       releasedTile: replaced.releasedTile,
     };
   }
-
-  if (meld.locked) return null;
 
   const added = getMeldWithTileAdded(meld, tile, state.okeyTile, runEnd);
   if (!added) return null;

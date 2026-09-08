@@ -1,3 +1,4 @@
+import { formatAznif } from "@/lib/aznif-display";
 import { getCurrentUserId, getTransactions } from "@/lib/wallet";
 import { WalletTransaction } from "@/types/wallet";
 import { useRouter } from "expo-router";
@@ -63,7 +64,10 @@ export default function WalletHistoryScreen() {
     const signedAmount = item.signed_amount ?? (isOutgoing ? -item.amount : item.amount);
     const sign = signedAmount < 0 ? "-" : "+";
     const currencyLabel = item.currency === "Gem" ? "گەوهەر" : item.currency;
-    const amountText = `${sign}${item.amount.toFixed(item.currency === "Gem" ? 0 : 2)} ${currencyLabel}`;
+    const displayedAmount = item.currency === "MC"
+      ? formatAznif(item.amount)
+      : item.amount.toFixed(item.currency === "Gem" ? 0 : 2);
+    const amountText = `${sign}${displayedAmount} ${currencyLabel}`;
 
     return (
       <View style={styles.transactionCard}>

@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   resultPointsText: {
     color: "#facc15",
     fontSize: 30,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textShadowColor: "rgba(250, 204, 21, 0.55)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,

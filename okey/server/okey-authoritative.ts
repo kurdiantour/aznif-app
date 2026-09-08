@@ -841,7 +841,7 @@ export function applyAuthoritativeOkeyCommand(
       break;
 
     case "open-and-discard": {
-      const opened = openPlayerMelds(state, actorPlayerIndex, command.melds, command.score);
+      const opened = openPlayerMelds(state, actorPlayerIndex, command.melds, command.score, { finalDiscard: true });
       if (opened.players[actorPlayerIndex]?.eliminated) {
         next = opened;
       } else {

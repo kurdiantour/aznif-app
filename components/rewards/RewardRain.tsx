@@ -9,6 +9,8 @@ import {
 } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
+import { formatCurrencyAmount } from "@/lib/aznif-display";
+
 export type RewardRainType = "coin" | "gem" | "mc" | "special_chest";
 
 export type RewardRainEvent = {
@@ -204,7 +206,7 @@ export default function RewardRain({ event }: Props) {
         <Text style={styles.amountText}>
           {event.type === "special_chest"
             ? rewardLabel(event.type)
-            : `+${event.amount.toLocaleString("en-US")} ${rewardLabel(event.type)}`}
+            : `+${formatCurrencyAmount(event.amount, event.type === "mc" ? "mc" : event.type)} ${rewardLabel(event.type)}`}
         </Text>
       </Animated.View>
     </View>
@@ -239,7 +241,7 @@ const styles = StyleSheet.create({
   amountText: {
     color: "#fff6d8",
     fontSize: 20,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "center",
   },
 });

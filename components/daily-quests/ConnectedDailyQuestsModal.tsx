@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { formatCurrencyAmount } from "@/lib/aznif-display";
 import type { DailyQuest } from "@/lib/dailyQuests";
 import RewardRain, { type RewardRainEvent } from "@/components/rewards/RewardRain";
 
@@ -27,7 +28,7 @@ function countdown(resetAt?: string | null) {
 function rewardText(quest: DailyQuest) {
   const amount = Number.isFinite(quest.rewardAmount) ? quest.rewardAmount : 0;
   const unit = quest.rewardType === "coin" ? "سکە" : quest.rewardType === "gem" ? "گەوهەر" : "ئەزنیف";
-  return `+${amount.toLocaleString()} ${unit}`;
+  return `+${formatCurrencyAmount(amount, quest.rewardType)} ${unit}`;
 }
 
 export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt,
@@ -96,6 +97,9 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
               const width = `${Math.min(100, progress / target * 100)}%` as `${number}%`;
               const metric = typeof quest.metric === "string" ? quest.metric : "";
               const icon = quest.gameType === "domino" ? "game-controller-outline" : metric.includes("won") ? "trophy-outline" : "dice-outline";
+              const reward = rewardText(quest);
+              const rewardNumber = reward.match(/^[+\d,.]+/)?.[0] ?? "";
+              const rewardUnit = reward.slice(rewardNumber.length);
               return (
                 <View
                   key={quest.instanceId || `${quest.title}-${quest.sortOrder}`}
@@ -116,10 +120,10 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
                       <Text style={styles.claimText}>
                         {claimingId === quest.instanceId
                           ? "چاوەڕێ بکە..."
-                          : `وەرگرتن ${rewardText(quest)}`}
+                          : <>وەرگرتن <Text style={styles.rewardAmount}>{rewardNumber}</Text>{rewardUnit}</>}
                       </Text>
                     </Pressable>
-                  ) : <Text style={styles.reward}>{rewardText(quest)}</Text>}
+                  ) : <Text style={styles.reward}><Text style={styles.rewardAmount}>{rewardNumber}</Text>{rewardUnit}</Text>}
                 </View>
               );
             })}
@@ -148,8 +152,9 @@ const styles = StyleSheet.create({
   card: { width: 190, height: 178, marginHorizontal: 5, padding: 12, alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: "#34303e", backgroundColor: "#201d29" },
   claimableCard: { borderColor: "#d8ae45" }, questTitle: { color: "#d9d3df", fontSize: 12, fontFamily: "SpedaBold", textAlign: "center" },
   questIcon: { marginVertical: 12 }, track: { width: "100%", height: 5, overflow: "hidden", borderRadius: 3, backgroundColor: "#34303e" }, fill: { height: "100%", backgroundColor: "#ffd45c" },
-  progress: { marginTop: 7, color: "#f6d77d", fontSize: 10, fontFamily: "SpedaBold" }, reward: { marginTop: "auto", color: "#f6d77d", fontSize: 11, fontFamily: "SpedaBold" },
+  progress: { marginTop: 7, color: "#f6d77d", fontSize: 10, fontFamily: "RobotoMedium" }, reward: { marginTop: "auto", color: "#f6d77d", fontSize: 11, fontFamily: "SpedaBold" },
+  rewardAmount: { fontFamily: "RobotoMedium" },
   claimButton: { marginTop: "auto", borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: "#d39c23" }, claimText: { color: "#251b09", fontSize: 10, fontFamily: "SpedaBold" },
   claimed: { marginTop: "auto", flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "#277d59" }, claimedText: { color: "#fff", fontSize: 9, fontFamily: "SpedaBold" },
-  timer: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 }, timerLabel: { color: "#aaa2b5", fontSize: 12, fontFamily: "SpedaRegular" }, timerValue: { color: "#f8d675", fontSize: 13, fontFamily: "SpedaBold", fontVariant: ["tabular-nums"] },
+  timer: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 }, timerLabel: { color: "#aaa2b5", fontSize: 12, fontFamily: "SpedaRegular" }, timerValue: { color: "#f8d675", fontSize: 13, fontFamily: "RobotoMedium", fontVariant: ["tabular-nums"] },
 });

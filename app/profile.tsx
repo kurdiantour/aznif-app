@@ -1,5 +1,5 @@
 import { AvatarPickerModal } from "@/components/player/AvatarPickerModal";
-import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import { AvatarProgressRing } from "@/components/player/AvatarProgressRing";
 import type { AvatarId } from "@/constants/avatars";
 import { getCurrentLeaderboardRank, useProfile } from "@/lib/profile";
 import {
@@ -223,11 +223,13 @@ export default function ProfileScreen() {
         <View style={[styles.contentRow, !isWideLayout && styles.contentStack]}>
           <View style={styles.profileCard}>
             <View style={styles.avatarRing}>
-              <PlayerAvatar
+              <AvatarProgressRing
                 avatarId={avatarId}
                 avatarUrl={currentProfile.avatarUrl}
-                size={70}
-                style={styles.avatar}
+                points={points}
+                size={82}
+                strokeWidth={3}
+                gap={3}
               />
 
               <Pressable
@@ -297,11 +299,20 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.nextLevelRow}>
                 <Ionicons name="trending-up-outline" size={16} color="#f8d774" />
-                <Text style={styles.nextLevelText}>
-                  {level >= MAX_LEVEL
-                    ? "گەیشتوویت بە بەرزترین پلە"
-                    : `${pointsToNextLevel.toLocaleString()} Points ماوە بۆ ${nextRankTitle}`}
-                </Text>
+                {level >= MAX_LEVEL ? (
+                  <Text style={styles.nextLevelText}>
+                    گەیشتوویت بە بەرزترین پلە
+                  </Text>
+                ) : (
+                  <View style={styles.nextLevelContent}>
+                    <Text style={styles.nextLevelEnglish}>
+                      {`${pointsToNextLevel.toLocaleString()} Points`}
+                    </Text>
+                    <Text style={styles.nextLevelKurdish}>
+                      {`ماوە بۆ ئاستی ${nextRankTitle}`}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -462,10 +473,6 @@ const styles = StyleSheet.create({
   avatarRing: {
     width: 82,
     height: 82,
-    borderRadius: 41,
-    borderWidth: 2,
-    borderColor: "#f8d774",
-    backgroundColor: "rgba(248, 215, 116, 0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -546,7 +553,7 @@ const styles = StyleSheet.create({
   points: {
     color: "#ffffff",
     fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     writingDirection: "rtl",
   },
   levelPill: {
@@ -564,7 +571,7 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
   progressTrack: {
-    height: 8,
+    height: 4,
     borderRadius: 99,
     backgroundColor: "#020617",
     overflow: "hidden",
@@ -595,6 +602,24 @@ const styles = StyleSheet.create({
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
+  },
+  nextLevelContent: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  nextLevelEnglish: {
+    color: "#f8d774",
+    fontSize: 12,
+    fontFamily: "RobotoMedium",
+  },
+  nextLevelKurdish: {
+    color: "#f8d774",
+    fontSize: 12,
+    fontFamily: "SpedaBold",
+    writingDirection: "rtl",
+    textAlign: "right",
   },
   statsGrid: {
     flexDirection: "row",

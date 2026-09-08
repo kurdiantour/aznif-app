@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-import { ConsentModal } from "@/components/leaderboard/ConsentModal";
+import { formatAznif } from "@/lib/aznif-display";
 import { useWallet } from "@/lib/wallet-context";
 
 type GameCardProps = {
@@ -106,7 +106,7 @@ export default function AznifPlayScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const { aznifBalance } = useWallet();
-  const balanceText = aznifBalance !== null ? aznifBalance.toLocaleString("en-US") : "0";
+  const balanceText = aznifBalance !== null ? formatAznif(aznifBalance) : "0";
 
   const isTablet = Math.min(width, height) >= 600;
 
@@ -116,7 +116,7 @@ export default function AznifPlayScreen() {
         <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
           <GameCard
             isTablet={isTablet}
-            title="ئەزنیف"
+            title="دۆمینۆ"
             subtitle="توانای خۆت بسەلمێنە"
             icon="grid-outline"
             image={require("@/assets/images/okey/lobby/dominoaznifcard.png")}
@@ -149,8 +149,6 @@ export default function AznifPlayScreen() {
             </Text>
           </View>
         </View>
-
-        <ConsentModal />
       </View>
     </View>
   );
@@ -352,7 +350,7 @@ const styles = StyleSheet.create({
   freeValue: {
     color: "#ffd674",
     fontSize: 20,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "center",
     width: "100%",
   },

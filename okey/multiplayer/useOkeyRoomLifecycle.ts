@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import { supabase } from "@/lib/supabase";
-import { getOkeyRoomStatus, leaveOkeyRoom, subscribeOkeyRoom, type OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
+import { getOkeyRoomStatus, leaveOkeyRoom, subscribeOkeyRoom, subscribeOkeyWaitingRoomHeartbeat, type OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
 
 export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
   matchId?: string;
@@ -36,6 +36,17 @@ export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
     const unsubscribe = subscribeOkeyRoom(matchId, (snapshot) => { if (active) setRoom(snapshot); });
     return () => { active = false; unsubscribe(); };
   }, [matchId]);
+
+  useEffect(() => {
+    if (!matchId || room?.status !== "waiting") return;
+    let active = true;
+    const unsubscribe = subscribeOkeyWaitingRoomHeartbeat(
+      matchId,
+      (snapshot) => { if (active) setRoom(snapshot); },
+      (error) => console.warn("Unable to heartbeat Okey waiting room", error),
+    );
+    return () => { active = false; unsubscribe(); };
+  }, [matchId, room?.status]);
 
   useEffect(() => {
     if (!matchId || !currentUserId || !party || party.leaderId === currentUserId || party.flowStatus !== "idle") return;

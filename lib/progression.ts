@@ -17,6 +17,18 @@ export function calculateLevelFromPoints(points?: number | null) {
   return Math.min(MAX_LEVEL, Math.floor(safePoints / POINTS_PER_LEVEL) + 1);
 }
 
+export function calculateLevelProgress(points?: number | null): number {
+  const safePoints = Math.max(points ?? 0, 0);
+  const level = calculateLevelFromPoints(safePoints);
+
+  if (level >= MAX_LEVEL) {
+    return 1;
+  }
+
+  const pointsInCurrentLevel = safePoints % POINTS_PER_LEVEL;
+  return pointsInCurrentLevel / POINTS_PER_LEVEL;
+}
+
 export function getRankTitleFromLevel(level?: number | null) {
   const parsedLevel = Number(level ?? 1);
   const safeLevel = Number.isFinite(parsedLevel)

@@ -179,13 +179,6 @@ export default function SettingsScreen() {
 
           <View style={[styles.contentRow, !isWideLayout && styles.contentStack]}>
             <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionIcon}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color="#f8d774" />
-                </View>
-                <Text style={styles.sectionTitle}>هەژمار</Text>
-              </View>
-
               <SettingRow
                 icon="key-outline"
                 label="ڕێکخستنەوەی وشەی نهێنی"
@@ -206,13 +199,6 @@ export default function SettingsScreen() {
             </View>
 
             <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionIcon}>
-                  <Ionicons name="options-outline" size={18} color="#f8d774" />
-                </View>
-                <Text style={styles.sectionTitle}>گشتی</Text>
-              </View>
-
               <SettingSwitch
                 icon="volume-high-outline"
                 label="دەنگەکان"

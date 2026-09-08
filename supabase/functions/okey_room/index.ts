@@ -10,6 +10,7 @@ type TableEconomy = {
   entryFee: number;
   currency: OkeyCurrency;
   minPoints?: number;
+  available?: boolean;
 };
 
 type OkeyRoomMember = {
@@ -66,30 +67,36 @@ const TABLE_ECONOMY: Record<string, TableEconomy> = {
     minPoints: 250,
   },
   silver: {
-    entryFee: 15_000,
+    entryFee: 7_000,
     currency: "fun",
-    minPoints: 650,
+    minPoints: 500,
+    available: false,
   },
   gold: {
-    entryFee: 25_000,
+    entryFee: 9_000,
     currency: "fun",
-    minPoints: 1_100,
+    minPoints: 700,
+    available: false,
   },
   "aznif-low": {
-    entryFee: 10,
+    entryFee: 3,
     currency: "aznif",
+    available: true,
   },
   "aznif-mid": {
-    entryFee: 25,
+    entryFee: 7,
     currency: "aznif",
+    available: true,
   },
   "aznif-high": {
-    entryFee: 40,
+    entryFee: 10,
     currency: "aznif",
+    available: false,
   },
   "aznif-elite": {
-    entryFee: 60,
+    entryFee: 15,
     currency: "aznif",
+    available: false,
   },
 };
 
@@ -248,6 +255,13 @@ serve(async (req) => {
       },
       400,
     );
+  }
+
+  if (
+    action === "matchmake" &&
+    TABLE_ECONOMY[String(body.tableId)]?.available === false
+  ) {
+    return json({ error: "table_coming_soon" }, 403);
   }
 
   if (

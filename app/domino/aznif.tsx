@@ -17,6 +17,8 @@ import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
+import { DOMINO_ENTRY_FEES } from "@/constants/domino-economy";
+import { formatAznif } from "@/lib/aznif-display";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { useWallet } from "@/lib/wallet-context";
@@ -34,11 +36,11 @@ type AznifCardConfig = {
 
 const AZNIF_CARDS: AznifCardConfig[] = [
   {
-    id: "aznif-5",
-    amount: 5,
+    id: "aznif-1v1",
+    amount: DOMINO_ENTRY_FEES.aznif["1v1"],
     mode: "1v1",
     title: "پێکدادان",
-    description: "بەشداری بە 5 ئەزنیف و یاریکردنی دوو کەسی.",
+    description: `بەشداری بە ${formatAznif(DOMINO_ENTRY_FEES.aznif["1v1"])} ئەزنیف و یاریکردنی دوو کەسی. پێکدادان`,
     icon: "shield-outline",
     colors: [
       "rgba(180,117,24,0.96)",
@@ -47,40 +49,14 @@ const AZNIF_CARDS: AznifCardConfig[] = [
     enabled: true,
   },
   {
-    id: "aznif-10",
-    amount: 10,
-    mode: "1v1",
-    title: "پێکدادان",
-    description: "بەشداری بە 10 ئەزنیف و یاریکردنی دوو کەسی.",
-    icon: "shield-star-outline",
-    colors: [
-      "rgba(126,47,194,0.96)",
-      "rgba(53,19,91,0.94)",
-    ],
-    enabled: true,
-  },
-  {
-    id: "aznif-15",
-    amount: 15,
+    id: "aznif-2v2",
+    amount: DOMINO_ENTRY_FEES.aznif["2v2"],
     mode: "2v2",
     title: "هاوپەیمان",
-    description: "بەشداری بە 15 ئەزنیف و یاریکردنی چوار کەسی.",
+    description: "بەشداری ئەزنیف و یاریکردنی چوار کەسی. هاوپەیمان",
     icon: "crown-outline",
     colors: [
       "rgba(30,64,175,0.96)",
-      "rgba(15,23,42,0.96)",
-    ],
-    enabled: true,
-  },
-  {
-    id: "aznif-20",
-    amount: 20,
-    mode: "2v2",
-    title: "هاوپەیمان",
-    description: "بەشداری بە 20 ئەزنیف و یاریکردنی چوار کەسی.",
-    icon: "diamond-stone",
-    colors: [
-      "rgba(15,118,110,0.96)",
       "rgba(15,23,42,0.96)",
     ],
     enabled: true,
@@ -215,15 +191,9 @@ function AznifCard({
               isTablet && styles.entryAmountTablet,
             ]}
           >
-            {config.amount.toLocaleString("en-US")} ئەزنیف
+            ( {formatAznif(config.amount)} ) ئەزنیف
           </Text>
         </View>
-      ) : null}
-
-      {!isComingSoon && !hasEnoughBalance ? (
-        <Text style={styles.balanceWarning}>
-          ئەزنیفی پێویستت نییە
-        </Text>
       ) : null}
     </Pressable>
   );
@@ -238,42 +208,6 @@ export default function DominoAznifScreen() {
   const { aznifBalance: walletBalance } = useWallet();
   const [activeCardId, setActiveCardId] =
     useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const getMatchError = (reason: unknown) => {
-    const message =
-      reason instanceof Error
-        ? reason.message
-        : typeof (reason as { message?: unknown })?.message === "string"
-          ? String((reason as { message: string }).message)
-        : "Unable to start Aznif matchmaking.";
-
-    const normalized = message.toLowerCase();
-
-    if (
-      normalized.includes("insufficient") ||
-      normalized.includes("balance")
-    ) {
-      return "ئەزنیفی پێویستت بۆ ئەم یارییە نییە.";
-    }
-
-    if (
-      normalized.includes("already") &&
-      normalized.includes("room")
-    ) {
-      return "لە ئێستادا لە ژوورێکی تردایت.";
-    }
-
-    if (
-      normalized.includes("authentication") ||
-      normalized.includes("jwt")
-    ) {
-      return "تکایە دووبارە بچۆرە ژوورەوە.";
-    }
-
-    return "نەتوانرا گەڕان بۆ یاری دەست پێ بکات.";
-  };
-
   const startPublicAznifMatch = async (
     config: AznifCardConfig,
   ) => {
@@ -291,8 +225,6 @@ export default function DominoAznifScreen() {
     }
 
     setActiveCardId(config.id);
-    setError(null);
-
     try {
       const { data: result, error: rpcError } =
         await supabase.rpc(
@@ -336,7 +268,6 @@ export default function DominoAznifScreen() {
       );
 
       setActiveCardId(null);
-      setError(getMatchError(reason));
     }
   };
 
@@ -356,7 +287,7 @@ export default function DominoAznifScreen() {
           />
         </View>
 
-        <BottomNav />
+      <BottomNav />
       </View>
     );
   }
@@ -396,17 +327,6 @@ export default function DominoAznifScreen() {
               />
             ))}
           </View>
-
-          {error ? (
-            <Text
-              style={[
-                styles.errorText,
-                isTablet && styles.errorTextTablet,
-              ]}
-            >
-              {error}
-            </Text>
-          ) : null}
         </View>
       </View>
 
@@ -615,28 +535,5 @@ entryAmountTablet: {
   fontSize: 16,
 },
 
-  balanceWarning: {
-    position: "absolute",
-    bottom: 5,
-    color: "#fecaca",
-    fontSize: 8,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
 
-  errorText: {
-    marginTop: 12,
-    paddingHorizontal: 14,
-    color: "#fca5a5",
-    fontSize: 12,
-    lineHeight: 19,
-    textAlign: "center",
-    fontFamily: "SpedaBold",
-  },
-
-  errorTextTablet: {
-    marginTop: 18,
-    fontSize: 16,
-    lineHeight: 25,
-  },
 });

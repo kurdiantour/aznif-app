@@ -1,3 +1,4 @@
+import { formatAznif } from "@/lib/aznif-display";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId, getTransactions } from "@/lib/wallet";
 import { WalletTransaction } from "@/types/wallet";
@@ -92,7 +93,7 @@ export function TransfersPanel() {
           numberOfLines={1}
         >
           {isOutgoing ? "-" : "+"}
-          {item.amount.toFixed(2)} ئەزنیف
+          {formatAznif(item.amount)} ئەزنیف
         </Text>
       </View>
     );

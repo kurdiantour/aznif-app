@@ -10,7 +10,6 @@ import {
   View,
 } from "react-native";
 
-import { ConsentModal } from "@/components/leaderboard/ConsentModal";
 
 type GameCardProps = {
   title: string;
@@ -154,7 +153,7 @@ export default function PlayScreen() {
         <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
           <GameCard
             isTablet={isTablet}
-            title="ئەزنیف"
+            title="دۆمینۆ"
             subtitle="توانای خۆت بسەلمێنە"
             icon="grid-outline"
             image={require("@/assets/images/lobby/aznif-card-v3.png")}
@@ -191,7 +190,6 @@ export default function PlayScreen() {
           />
         </View>
 
-        <ConsentModal />
       </View>
     </View>
   );

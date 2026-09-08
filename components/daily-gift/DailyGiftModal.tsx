@@ -16,6 +16,7 @@ import {
   type DailyGiftCardStatus,
   type DailyGiftClaimResult,
 } from "@/lib/dailyGift";
+import { formatAznif } from "@/lib/aznif-display";
 import RewardRain, {
   GoldCoinIcon,
   RewardCurrencyIcon,
@@ -79,7 +80,7 @@ const days: GiftDay[] = [
   {
     day: "شەشەم",
     icon: "\u2728",
-    reward: "1 ئەزنیف",
+    reward: `${formatAznif(1)} ئەزنیف`,
     rewardType: "mc",
     rewardAmount: 1,
     status: "lock",
@@ -112,7 +113,7 @@ function formatClaimReward(result: DailyGiftClaimResult) {
     special_chest: "سندووقی تایبەت",
   } as const;
 
-  return `+${result.rewardAmount.toLocaleString("en-US")} ${labels[result.rewardType]}`;
+  return `+${result.rewardType === "mc" ? formatAznif(result.rewardAmount) : result.rewardAmount.toLocaleString("en-US")} ${labels[result.rewardType]}`;
 }
 
 function getTimeUntilTomorrow(nextResetAt?: string) {
@@ -247,7 +248,7 @@ useEffect(
             rewards.push(`+${openResult.awardedGems.toLocaleString("en-US")} گەوهەر`);
           }
           if (openResult.awardedMc > 0) {
-            rewards.push(`+${openResult.awardedMc.toLocaleString("en-US")} ئەزنیف`);
+            rewards.push(`+${formatAznif(openResult.awardedMc)} ئەزنیف`);
           }
           showClaimFeedback(rewards.join("\n"));
         } catch (err) {
@@ -417,6 +418,8 @@ useEffect(
               ...configuredItem,
               status: statuses?.[index] ?? configuredItem.status,
             };
+            const rewardNumber = item.reward.match(/^[+\d,.]+/)?.[0] ?? "";
+            const rewardLabel = item.reward.slice(rewardNumber.length);
             const isCurrent =
               item.status === "current";
 
@@ -470,7 +473,7 @@ useEffect(
                       styles.lockedReward,
                   ]}
                 >
-                  {item.reward}
+                  {rewardNumber ? <><Text style={styles.rewardAmount}>{rewardNumber}</Text>{rewardLabel}</> : item.reward}
                 </Text>
 
                 {item.status === "done" ? (
@@ -726,6 +729,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.08 }],
   },
 
+  rewardAmount: { fontFamily: "RobotoMedium" },
+
   reward: {
     color: "#f6d77d",
     fontSize: 12,
@@ -810,7 +815,7 @@ const styles = StyleSheet.create({
   timerValue: {
     color: "#f8d675",
     fontSize: 13,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     fontVariant: ["tabular-nums"],
   },
 

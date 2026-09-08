@@ -24,7 +24,7 @@ export type OkeyFeedbackPreferences = {
 
 export const DEFAULT_OKEY_FEEDBACK_PREFERENCES: OkeyFeedbackPreferences = {
   soundEnabled: true,
-  hapticsEnabled: true,
+  hapticsEnabled: false,
 };
 
 export const OKEY_FEEDBACK_PREFERENCES_KEY = "okey-feedback-preferences-v1";
@@ -37,7 +37,7 @@ function normalizePreferences(value: unknown): OkeyFeedbackPreferences {
   const candidate = value as Partial<OkeyFeedbackPreferences>;
   return {
     soundEnabled: typeof candidate.soundEnabled === "boolean" ? candidate.soundEnabled : true,
-    hapticsEnabled: typeof candidate.hapticsEnabled === "boolean" ? candidate.hapticsEnabled : true,
+    hapticsEnabled: typeof candidate.hapticsEnabled === "boolean" ? candidate.hapticsEnabled : false,
   };
 }
 
@@ -490,4 +490,3 @@ export function useOkeyGameFeedback({
     state,
   ]);
 }
-

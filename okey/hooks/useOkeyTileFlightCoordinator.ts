@@ -15,6 +15,7 @@ import {
   type TileFlight,
 } from "@/okey/presentation/okey-game-presentation";
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "@/okey/types/okey";
+import { getOkeyRackDiscardAction } from "@/okey/engine/okey-engine";
 import type { OkeyOpenAction, OkeyTableMeldAction } from "@/okey/engine/okey-engine";
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import type { SupabaseOkeyMatchAdapter, OkeyCommittedTransition } from "@/okey/adapters/supabase-okey-match-adapter";
@@ -990,8 +991,9 @@ export function useOkeyPlayerTileFlightCommands(input: {
   const commitDiscardFromRack = useCallback((tileId: string) => {
     if (!canDiscardTile) return false;
     if (!humanPlayer.opened && droppedMelds.length > 0) {
-      const action = selectOpenAction(droppedMelds);
-      if (!action.allowed || action.mode !== "open-melds") { emitInvalid(`staged-open-discard:${tileId}:${Date.now()}`); return false; }
+      const playerIndex = state.players.findIndex((player) => player.id === humanPlayer.id);
+      const action = getOkeyRackDiscardAction(state, playerIndex, droppedMelds, tileId);
+      if (action.type !== "open-and-discard") { emitInvalid(`staged-open-discard:${tileId}:${Date.now()}`); return false; }
       awaitingDiscardRemovalTileIdRef.current = tileId;
       setSelectedTileId(null);
       setHiddenRackTileIds([tileId]);
@@ -1011,7 +1013,7 @@ export function useOkeyPlayerTileFlightCommands(input: {
     setHideDiscardTopTile(false);
     void discard(tileId).then((accepted) => { if (!accepted) rollbackDiscardPresentation(tileId); });
     return true;
-  }, [awaitingDiscardRemovalTileIdRef, canDiscardTile, commitOpenIntent, discard, droppedMelds, emitInvalid, humanPlayer.opened, rollbackDiscardPresentation, selectOpenAction, setHiddenRackTileIds, setHideDiscardTopTile, setLocalDragCommittedMeldSignatures, setSelectedTileId]);
+  }, [awaitingDiscardRemovalTileIdRef, canDiscardTile, commitOpenIntent, discard, droppedMelds, emitInvalid, humanPlayer.id, humanPlayer.opened, rollbackDiscardPresentation, selectOpenAction, setHiddenRackTileIds, setHideDiscardTopTile, setLocalDragCommittedMeldSignatures, setSelectedTileId, state]);
 
   const handleDrawSourceDroppedOnRack = useCallback((
     source: "deck" | "discard",
@@ -1194,6 +1196,7 @@ export function useOkeyMeldDropOrchestration(input: {
   canPlayAfterDraw: boolean;
   remainingMeldSlots: number;
   humanOpened: boolean;
+  humanHandCount: number;
   droppedMelds: OkeyMeld[];
   hoveredTargetRef: MutableRefObject<MeldDropRect | null>;
   findMeldTarget: (point: { x: number; y: number }, isValid: (rect: MeldDropRect) => boolean) => MeldDropRect | null;
@@ -1208,14 +1211,16 @@ export function useOkeyMeldDropOrchestration(input: {
   lockKonkan: (tileId: string, playerId: string, meldId: string, runEnd?: "start" | "end") => Promise<boolean>;
   spendTile: (tileId: string, playerId: string, meldId: string, runEnd?: "start" | "end") => Promise<boolean>;
   commitOpenIntent: (melds: OkeyMeld[], score: number, tileId?: string) => Promise<boolean>;
+  selectOpenAction: (melds: OkeyMeld[]) => OkeyOpenAction;
   emitFeedback: (event: "invalid" | "rack-move", key: string) => void;
 }) {
   const {
-    canPlayAfterDraw, remainingMeldSlots, humanOpened, droppedMelds, hoveredTargetRef,
+    canPlayAfterDraw, remainingMeldSlots, humanOpened, humanHandCount, droppedMelds, hoveredTargetRef,
     findMeldTarget, isInsideHumanMeldZone, selectTableMeldAction, awaitingTileIdRef,
     setHiddenTileIds, setSelectedTileId, setHoveredTarget, setDroppedMelds,
-    setCommittedSignatures, lockKonkan, spendTile, commitOpenIntent, emitFeedback,
+    setCommittedSignatures, lockKonkan, spendTile, commitOpenIntent, selectOpenAction, emitFeedback,
   } = input;
+  const pendingAutomaticOpenRef = useRef<string | null>(null);
   const submitTableMeldAction = useOkeyTableMeldCommandPresentation({
     awaitingTileIdRef, setHiddenTileIds, setSelectedTileId, lockKonkan, spendTile,
   });
@@ -1239,6 +1244,7 @@ export function useOkeyMeldDropOrchestration(input: {
     if (!canPlayAfterDraw || !isInsideHumanMeldZone(point) || remainingMeldSlots <= 0) {
       emitFeedback("invalid", `meld-drop:${meld.id}:${Date.now()}`); return false;
     }
+    if (!humanOpened && pendingAutomaticOpenRef.current) return false;
     if (humanOpened) {
       const signature = meld.tiles.map((tile) => tile.id).sort().join("|");
       setCommittedSignatures((current) => current.includes(signature) ? current : [...current, signature]);
@@ -1254,12 +1260,33 @@ export function useOkeyMeldDropOrchestration(input: {
     }
     const existingIds = new Set(droppedMelds.flatMap((entry) => entry.tiles.map((tile) => tile.id)));
     if (meld.tiles.some((tile) => existingIds.has(tile.id))) return false;
-    setDroppedMelds([...droppedMelds, { ...meld, id: `human-drop-${Date.now()}-${droppedMelds.length}` }]);
+    const nextDroppedMelds = [...droppedMelds, { ...meld, id: `human-drop-${Date.now()}-${droppedMelds.length}` }];
+    const stagedTileCount = new Set(nextDroppedMelds.flatMap((entry) => entry.tiles.map((tile) => tile.id))).size;
+    if (humanHandCount - stagedTileCount < 1) {
+      emitFeedback("invalid", `meld-drop-no-discard:${meld.id}:${Date.now()}`);
+      return false;
+    }
+    setDroppedMelds(nextDroppedMelds);
     setSelectedTileId(null);
     emitFeedback("rack-move", `meld-drop:${meld.id}:${Date.now()}`);
+
+    const automaticOpen = selectOpenAction(nextDroppedMelds);
+    if (automaticOpen.allowed && automaticOpen.mode === "open-melds") {
+      const signatures = automaticOpen.melds.map((entry) =>
+        entry.tiles.map((tile) => tile.id).sort().join("|"));
+      const openingSignature = signatures.slice().sort().join("::");
+      pendingAutomaticOpenRef.current = openingSignature;
+      setCommittedSignatures((current) => [...new Set([...current, ...signatures])]);
+      void commitOpenIntent(automaticOpen.melds, automaticOpen.score).then((accepted) => {
+        if (pendingAutomaticOpenRef.current === openingSignature) {
+          pendingAutomaticOpenRef.current = null;
+        }
+        if (!accepted) {
+          setCommittedSignatures((current) => current.filter((entry) => !signatures.includes(entry)));
+        }
+      });
+    }
     return true;
-  }, [canPlayAfterDraw, commitOpenIntent, droppedMelds, emitFeedback, humanOpened, isInsideHumanMeldZone, remainingMeldSlots, setCommittedSignatures, setDroppedMelds, setSelectedTileId]);
+  }, [canPlayAfterDraw, commitOpenIntent, droppedMelds, emitFeedback, humanHandCount, humanOpened, isInsideHumanMeldZone, remainingMeldSlots, selectOpenAction, setCommittedSignatures, setDroppedMelds, setSelectedTileId]);
   return { getClosestValidMeldDropTarget, updateTileDragMeldTarget, dropTileOnTableMeld, handleDropMeldGroup };
 }
-
-

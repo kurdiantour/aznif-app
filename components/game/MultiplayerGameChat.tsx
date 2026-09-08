@@ -1,6 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 import GameChatBubble, { type GameChatBubbleSeat } from "@/components/game/GameChatBubble";
 import GameChatDrawer from "@/components/game/GameChatDrawer";
@@ -25,6 +32,7 @@ export default function MultiplayerGameChat({
   playerIdBySeat,
   enabled,
   triggerVisible = true,
+  triggerStyle,
 }: {
   gameType: GameChatType;
   matchId?: string;
@@ -33,6 +41,7 @@ export default function MultiplayerGameChat({
   playerIdBySeat: Partial<Record<GameChatBubbleSeat, string>>;
   enabled: boolean;
   triggerVisible?: boolean;
+  triggerStyle?: StyleProp<ViewStyle>;
 }) {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [reactions, setReactions] = useState<SeatReactions>({});
@@ -105,11 +114,14 @@ export default function MultiplayerGameChat({
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {triggerVisible ? (
-        <Pressable style={styles.trigger} onPress={() => {
-          drawerVisibleRef.current = true;
-          setUnreadCount(0);
-          setDrawerVisible(true);
-        }}>
+        <Pressable
+          style={[styles.trigger, triggerStyle]}
+          onPress={() => {
+            drawerVisibleRef.current = true;
+            setUnreadCount(0);
+            setDrawerVisible(true);
+          }}
+        >
           <Ionicons name="chatbubble-ellipses-outline" size={22} color="#f8f3df" />
           {unreadCount > 0 ? (
             <View style={styles.unreadBadge}><Text style={styles.unreadText}>{unreadCount > 9 ? "9+" : unreadCount}</Text></View>
@@ -151,7 +163,7 @@ const styles = StyleSheet.create({
   trigger: {
     position: "absolute",
     top: 18,
-    right: 18,
+    right: 68,
     zIndex: 900,
     elevation: 900,
     width: 42,

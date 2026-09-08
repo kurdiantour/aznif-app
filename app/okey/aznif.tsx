@@ -25,9 +25,9 @@ import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
+import { formatAznif } from "@/lib/aznif-display";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
-import { releaseTakenOverOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
 import {
   matchmakeOkeyRoom,
   type OkeyRoomSnapshot,
@@ -37,9 +37,9 @@ type OkeyTable = {
   id: string;
   subtitle: string;
   entry: number;
-  minPoints: number;
   accent: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  available: boolean;
 };
 
 const OKEY_LOBBY_CARD_WIDTH = 200;
@@ -49,39 +49,39 @@ const AZNIF_TABLES: OkeyTable[] = [
   {
     id: "aznif-low",
     subtitle: "ئەزنیفی کەم",
-    entry: 10,
-    minPoints: 0,
+    entry: 3,
     accent: "#c47a38",
     icon: "shield-outline",
+    available: true,
   },
   {
     id: "aznif-mid",
     subtitle: "ئەزنیفی مامناوەند",
-    entry: 25,
-    minPoints: 0,
+    entry: 7,
     accent: "#94a3b8",
     icon: "shield-star-outline",
+    available: true,
   },
   {
     id: "aznif-high",
-    subtitle: "ئەزنیفی بەرز",
-    entry: 40,
-    minPoints: 0,
+    subtitle: "بەم زووانە",
+    entry: 10,
     accent: "#f5c542",
-    icon: "crown-outline",
+    icon: "lock-outline",
+    available: false,
   },
   {
     id: "aznif-elite",
-    subtitle: "مێزی پلەبەرز",
-    entry: 60,
-    minPoints: 0,
+    subtitle: "بەم زووانە",
+    entry: 15,
     accent: "#67e8f9",
-    icon: "diamond-stone",
+    icon: "lock-outline",
+    available: false,
   },
 ];
 
 function formatAmount(value: number) {
-  return value.toLocaleString();
+  return formatAznif(value);
 }
 
 type TableCardProps = {
@@ -105,6 +105,7 @@ function TableCard({
   const affordable = balance === null || balance >= table.entry;
 
   const disabled =
+    !table.available ||
     !affordable ||
     joining ||
     disabledByOtherJoin;
@@ -116,7 +117,7 @@ function TableCard({
       style={({ pressed }) => [
         styles.tableCard,
         isTablet && styles.tableCardTablet,
-        !affordable && styles.tableCardLocked,
+        (!table.available || !affordable) && styles.tableCardLocked,
         joining && styles.tableCardJoining,
         pressed && !disabled && styles.pressed,
       ]}
@@ -160,7 +161,7 @@ function TableCard({
   </Text>
 
   <Text style={styles.entryAmount}>
-    {formatAmount(table.entry)} ئەزنیف
+    ( {formatAmount(table.entry)} ) ئەزنیف
   </Text>
 </View>
     </Pressable>
@@ -214,7 +215,7 @@ export default function OkeyAznifScreen() {
 
   const handleJoinTable = useCallback(
     async (table: OkeyTable) => {
-      if (joiningTableId) {
+      if (joiningTableId || !table.available) {
         return;
       }
 
@@ -222,8 +223,6 @@ export default function OkeyAznifScreen() {
       setJoiningTableId(table.id);
 
       try {
-        await releaseTakenOverOkeyMemberships();
-
         const room =
           await matchmakeOkeyRoom(table.id);
 

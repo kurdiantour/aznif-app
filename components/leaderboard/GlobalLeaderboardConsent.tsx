@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -15,11 +15,10 @@ import {
 } from "@/lib/leaderboardVisibility";
 import { useProfile } from "@/lib/profile";
 
-export function ConsentModal() {
-  const {
-    profile,
-    loading: profileLoading,
-  } = useProfile();
+export function GlobalLeaderboardConsent() {
+  const { profile } = useProfile();
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
 
   const [visible, setVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -28,10 +27,6 @@ export function ConsentModal() {
     let isMounted = true;
 
     async function checkPendingConsent() {
-      if (profileLoading) {
-        return;
-      }
-
       if (!profile) {
         if (isMounted) {
           setVisible(false);
@@ -64,7 +59,7 @@ export function ConsentModal() {
     return () => {
       isMounted = false;
     };
-  }, [profile, profileLoading]);
+  }, [profile]);
 
   const saveConsent = async (
     value: boolean,
@@ -90,93 +85,92 @@ export function ConsentModal() {
     }
   };
 
-  if (
-    profileLoading ||
-    !profile ||
-    !visible
-  ) {
+  if (!profile || !visible) {
     return null;
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      hardwareAccelerated
-      onRequestClose={() => {
-      }}
+    <View
+      style={styles.backdrop}
+      pointerEvents="auto"
     >
-      <View style={styles.backdrop}>
-        <View style={styles.dialog}>
-          <Text style={styles.title}>
-            ڕەزامەندی خشتەی پێشبڕکێ
-          </Text>
+      <View
+        style={[
+          styles.dialog,
+          isTablet && styles.dialogTablet,
+        ]}
+      >
+        <Text
+          style={[
+            styles.description,
+            isTablet && styles.descriptionTablet,
+          ]}
+        >
+          ڕازیت بە نیشاندانی ناو، پلە و خاڵەکانت
+          لە خشتەی پێشبڕکێ؟
+        </Text>
 
-          <Text style={styles.description}>
-            ڕازیت بە نیشاندانی ناو، پلە و خاڵەکانت لە
-            خشتەی پێشبڕکێ؟
-          </Text>
-
-          <View style={styles.actions}>
-            <Pressable
-              disabled={isSaving}
-              onPress={() => {
-                void saveConsent(true);
-              }}
-              style={({ pressed }) => [
-                styles.button,
-                styles.acceptButton,
-                isSaving && styles.buttonDisabled,
-                pressed &&
-                  !isSaving &&
-                  styles.buttonPressed,
-              ]}
-            >
-              {isSaving ? (
-                <ActivityIndicator
-                  color="#ffffff"
-                />
-              ) : (
-                <Text style={styles.acceptButtonText}>
-                  ڕازیم
-                </Text>
-              )}
-            </Pressable>
-
-            <Pressable
-              disabled={isSaving}
-              onPress={() => {
-                void saveConsent(false);
-              }}
-              style={({ pressed }) => [
-                styles.button,
-                styles.rejectButton,
-                isSaving && styles.buttonDisabled,
-                pressed &&
-                  !isSaving &&
-                  styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.rejectButtonText}>
-                نەخێر
+        <View style={styles.actions}>
+          <Pressable
+            disabled={isSaving}
+            onPress={() => {
+              void saveConsent(true);
+            }}
+            style={({ pressed }) => [
+              styles.button,
+              styles.acceptButton,
+              pressed &&
+                !isSaving &&
+                styles.buttonPressed,
+            ]}
+          >
+            {isSaving ? (
+              <ActivityIndicator
+                color="#ffffff"
+              />
+            ) : (
+              <Text style={styles.acceptButtonText}>
+                ڕازیم
               </Text>
-            </Pressable>
-          </View>
+            )}
+          </Pressable>
+
+          <Pressable
+            disabled={isSaving}
+            onPress={() => {
+              void saveConsent(false);
+            }}
+            style={({ pressed }) => [
+              styles.button,
+              styles.rejectButton,
+              pressed &&
+                !isSaving &&
+                styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.rejectButtonText}>
+              نەخێر
+            </Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
+    position: "absolute",
+    top: -14,
+    right: 0,
+    bottom: -18,
+    left: 0,
+    zIndex: 1000,
+    elevation: 1000,
     paddingHorizontal: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.72)",
+    backgroundColor: "rgba(0,0,0,0.64)",
   },
 
   dialog: {
@@ -189,29 +183,30 @@ const styles = StyleSheet.create({
     backgroundColor: "#0b1024",
   },
 
-  title: {
-    color: "#f8d774",
-    fontSize: 17,
-    lineHeight: 27,
+  dialogTablet: {
+    maxWidth: 520,
+    padding: 28,
+    borderRadius: 16,
+  },
+
+  description: {
+    color: "#ffffff",
+    fontSize: 16,
+    lineHeight: 28,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
   },
 
-  description: {
-    marginTop: 8,
-    color: "#ffffff",
-    fontSize: 15,
-    lineHeight: 27,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    writingDirection: "rtl",
+  descriptionTablet: {
+    fontSize: 21,
+    lineHeight: 34,
   },
 
   actions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 20,
+    marginTop: 18,
   },
 
   button: {
@@ -230,7 +225,7 @@ const styles = StyleSheet.create({
   rejectButton: {
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.32)",
-    backgroundColor: "rgba(15,23,42,0.94)",
+    backgroundColor: "rgba(15,23,42,0.9)",
   },
 
   acceptButtonText: {
@@ -238,7 +233,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "SpedaBold",
     textAlign: "center",
-    writingDirection: "rtl",
   },
 
   rejectButtonText: {
@@ -246,11 +240,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "SpedaBold",
     textAlign: "center",
-    writingDirection: "rtl",
-  },
-
-  buttonDisabled: {
-    opacity: 0.62,
   },
 
   buttonPressed: {

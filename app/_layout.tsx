@@ -5,7 +5,7 @@ import { appFontAssets, applyAppFontDefaults } from "@/lib/fonts";
 import "@/lib/rtl";
 import "@/lib/urlPolyfill";
 import { useFonts } from "expo-font";
-import * as NavigationBar from "expo-navigation-bar";
+import { NavigationBar } from "expo-navigation-bar";
 import { Stack } from "expo-router";
 import {
   StatusBar,
@@ -17,30 +17,26 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { WalletProvider } from '@/lib/wallet-context';
 
-async function applyImmersiveFullscreen() {
+function applyImmersiveFullscreen() {
   if (Platform.OS !== "android") return;
 
   setStatusBarHidden(true, "none");
 
-  try {
-    await NavigationBar.setStyle("dark");
-    await NavigationBar.setVisibilityAsync("hidden");
-  } catch (error) {
-    console.warn("Unable to enable immersive fullscreen mode", error);
-  }
+  NavigationBar.setStyle("dark");
+  NavigationBar.setHidden(true);
 }
 
 export default function Layout() {
   const [fontsLoaded] = useFonts(appFontAssets);
 
   useEffect(() => {
-    void applyImmersiveFullscreen();
+    applyImmersiveFullscreen();
 
     const appStateSubscription = AppState.addEventListener(
       "change",
       (state) => {
         if (state === "active") {
-          void applyImmersiveFullscreen();
+          applyImmersiveFullscreen();
         }
       },
     );
@@ -66,6 +62,7 @@ export default function Layout() {
               hidden
               style="light"
             />
+            <NavigationBar hidden style="dark" />
             <Stack
               screenOptions={{
                 headerShown: false,

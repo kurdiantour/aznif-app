@@ -6,6 +6,7 @@ import {
   View,
 } from "react-native";
 
+import { formatAznif } from "@/lib/aznif-display";
 import type {
   MatchReward,
   TeamId,
@@ -48,7 +49,7 @@ export default function GameOverPopup({
     reward?.currency === "aznif";
 
   const formatDelta = (value: number) =>
-    `${value > 0 ? "+" : ""}${value.toLocaleString()}`;
+    `${value > 0 ? "+" : ""}${isAznifMatch ? formatAznif(value) : value.toLocaleString()}`;
 
   const rewardValueStyle = (value: number) => {
     if (value > 0) {

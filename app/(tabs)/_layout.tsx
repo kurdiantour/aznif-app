@@ -6,6 +6,7 @@ import {
   SendChipPopup,
   SendChipPopupContext,
 } from "@/components/friends/send-chip-popup";
+import { GlobalLeaderboardConsent } from "@/components/leaderboard/GlobalLeaderboardConsent";
 import { BottomNav } from "@/components/lobby/BottomNav";
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
 import {
@@ -83,6 +84,8 @@ export default function TabsLayout() {
           </View>
 
           <BottomNav requireAuth={!profile} />
+
+          <GlobalLeaderboardConsent />
 
           {ENABLE_SHOP_FEATURES ? (
             <>

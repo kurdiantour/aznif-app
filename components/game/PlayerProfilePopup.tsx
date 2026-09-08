@@ -1,5 +1,6 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
+import { formatAznif } from "@/lib/aznif-display";
 import { sendFriendRequest } from "@/lib/friends";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
@@ -99,7 +100,7 @@ export default function PlayerProfilePopup({
               <>
                 <Text style={styles.level}>{getRankTitleFromPoints(profile?.points)}</Text>
                 <View style={styles.stats}>
-                  <View style={styles.statBox}><Text style={styles.statValue}>{balances?.mc ?? 0}</Text><Text style={styles.statLabel}>ئەزنیف</Text></View>
+                  <View style={styles.statBox}><Text style={styles.statValue}>{formatAznif(balances?.mc ?? 0)}</Text><Text style={styles.statLabel}>ئەزنیف</Text></View>
                   <View style={styles.statBox}><Text style={styles.statValue}>{balances?.gem ?? 0}</Text><Text style={styles.statLabel}>گەوهەر</Text></View>
                   <View style={styles.statBox}><Text style={styles.statValue}>{profile?.points ?? 0}</Text><Text style={styles.statLabel}>خاڵ</Text></View>
                 </View>
@@ -149,26 +150,24 @@ const styles = StyleSheet.create({
     elevation: 24,
   },
   avatar: {
-    borderWidth: 3,
-    borderColor: "#a855f7",
   },
   name: {
     marginTop: 14,
     color: "#ffffff",
     fontSize: 20,
-    fontFamily: "SpedaBold",
+    fontFamily: "RobotoMedium",
     textAlign: "center",
   },
   loader: { marginTop: 18 },
   level: { marginTop: 2, color: "#e9d5ff", fontSize: 12, fontFamily: "SpedaBold" },
   stats: { width: "100%", flexDirection: "row", gap: 7, marginTop: 14 },
   statBox: { flex: 1, minHeight: 46, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.07)" },
-  statValue: { color: "#facc15", fontSize: 13, fontFamily: "SpedaRegular" },
+  statValue: { color: "#facc15", fontSize: 13, fontFamily: "RobotoMedium" },
   statLabel: { marginTop: 1, color: "#e9d5ff", fontSize: 8, fontFamily: "SpedaBold" },
   gameStats: { width: "100%", marginTop: 12, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.055)" },
   gameStatRow: { minHeight: 27, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
   gameStatLabel: { color: "rgba(255,255,255,0.72)", fontSize: 11, fontFamily: "SpedaBold" },
-  gameStatValue: { color: "#ffffff", fontSize: 13, fontFamily: "SpedaRegular" },
+  gameStatValue: { color: "#ffffff", fontSize: 13, fontFamily: "RobotoMedium" },
   friendButton: { marginTop: 18, minWidth: 170, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "#7c3aed" },
   friendButtonDisabled: { backgroundColor: "rgba(124,58,237,0.35)" },
   friendButtonText: { color: "#fff", fontSize: 12, fontFamily: "SpedaBold" },

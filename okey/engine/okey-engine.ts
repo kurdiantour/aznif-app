@@ -337,12 +337,15 @@ export function getOkeyRackDiscardAction(
   const candidateMelds = melds.filter(
     (meld) => meld.tiles.every((tile) => tile.id !== discardTileId),
   );
-  return validateOpenPlayerMelds(state, playerIndex, candidateMelds)
+  const validation = validateOpenPlayerMelds(state, playerIndex, candidateMelds, {
+    enforceRequiredScore: false,
+  });
+  return validation
     ? {
         type: "open-and-discard",
         tileId: discardTileId,
-        melds: candidateMelds,
-        score: candidateMelds.reduce((total, meld) => total + meld.score, 0),
+        melds: validation.melds,
+        score: validation.score,
       }
     : { type: "discard", tileId: discardTileId };
 }
@@ -352,11 +355,18 @@ export function openPlayerMelds(
   playerIndex: number,
   melds: OkeyMeld[],
   score: number,
+  options: { finalDiscard?: boolean } = {},
 ): OkeyGameState {
   const player = state.players[playerIndex];
   if (!player || player.eliminated) return state;
-  const validation = validateOpenPlayerMelds(state, playerIndex, melds);
+  const validation = validateOpenPlayerMelds(state, playerIndex, melds, {
+    enforceRequiredScore: !options.finalDiscard,
+  });
   if (!validation) return state;
+
+  if (options.finalDiscard && !player.opened && validation.score < getRequiredOpenScore(state, playerIndex)) {
+    return eliminateKonkanPlayerMidTurn(state, playerIndex, "normal-meld");
+  }
 
   if (player.konkan) {
     return eliminateKonkanPlayerMidTurn(state, playerIndex, "normal-meld");

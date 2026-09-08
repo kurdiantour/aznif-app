@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/constants/avatars";
+import { formatCurrencyAmount } from "@/lib/aznif-display";
 
 type WaitingPlayer = { playerIndex: number; avatarId?: AvatarId };
 
@@ -43,7 +44,7 @@ export default function DominoWaitingPlayersPopup({
               {currency === "aznif" ? "\u2728" : "\u{1FA99}"}
             </Text>
             <Text style={styles.entryFeeText}>
-              تێچووی یاری: {entryFee.toLocaleString()} {currency === "aznif" ? "ئەزنیف" : "سکە"}
+              تێچووی یاری: <Text style={styles.entryFeeAmount}>{formatCurrencyAmount(entryFee, currency === "aznif" ? "aznif" : "Coin")}</Text> {currency === "aznif" ? "ئەزنیف" : "سکە"}
             </Text>
           </View>
 
@@ -123,6 +124,7 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   entryFee: { marginBottom: 10, flexDirection: "column", alignItems: "center", gap: 6 },
+  entryFeeAmount: { fontFamily: "RobotoMedium" },
   entryFeeText: { color: "rgba(255,247,218,0.82)", fontSize: 13, fontFamily: "SpedaRegular" },
   title: { color: "#f8d774", fontSize: 20, fontFamily: "SpedaBold", textAlign: "center" },
   players: { marginTop: 20, flexDirection: "row", gap: 12 },

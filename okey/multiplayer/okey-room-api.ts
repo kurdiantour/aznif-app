@@ -135,6 +135,74 @@ export function leaveOkeyRoom(
   });
 }
 
+export function subscribeOkeyWaitingRoomHeartbeat(
+  matchId: string,
+  listener: (room: OkeyRoomSnapshot) => void,
+  onError?: (error: Error) => void,
+) {
+  let active = true;
+  let heartbeatInFlight = false;
+
+  const reportError = (error: unknown) => {
+    if (!active || !onError) {
+      return;
+    }
+
+    onError(
+      error instanceof Error
+        ? error
+        : new Error("okey_waiting_room_heartbeat_failed"),
+    );
+  };
+
+  const heartbeat = async () => {
+    if (
+      !active ||
+      heartbeatInFlight ||
+      AppState.currentState !== "active"
+    ) {
+      return;
+    }
+
+    heartbeatInFlight = true;
+
+    try {
+      const room = await heartbeatOkeyRoom(matchId);
+
+      if (active) {
+        listener(room);
+      }
+    } catch (error) {
+      reportError(error);
+    } finally {
+      heartbeatInFlight = false;
+    }
+  };
+
+  void heartbeat();
+
+  const heartbeatTimer = setInterval(
+    () => void heartbeat(),
+    60_000,
+  );
+
+  const appStateSubscription =
+    AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") {
+          void heartbeat();
+        }
+      },
+    );
+
+  return () => {
+    active = false;
+    clearInterval(heartbeatTimer);
+    appStateSubscription.remove();
+  };
+}
+
 export function subscribeOkeyRoom(
   matchId: string,
   listener: (room: OkeyRoomSnapshot) => void,
@@ -281,53 +349,8 @@ export function subscribeOkeyRoom(
       }
     });
 
-  let heartbeatInFlight = false;
-
-  const heartbeat = async () => {
-    if (
-      !active ||
-      heartbeatInFlight ||
-      AppState.currentState !== "active"
-    ) {
-      return;
-    }
-
-    heartbeatInFlight = true;
-
-    try {
-      const room = await heartbeatOkeyRoom(matchId);
-
-      if (active) {
-        deliver(room);
-      }
-    } catch (error) {
-      reportError(error);
-    } finally {
-      heartbeatInFlight = false;
-    }
-  };
-
-  void heartbeat();
-
-  const heartbeatTimer = setInterval(
-    () => void heartbeat(),
-    60_000,
-  );
-
-  const appStateSubscription =
-    AppState.addEventListener(
-      "change",
-      (state) => {
-        if (state === "active") {
-          void heartbeat();
-        }
-      },
-    );
-
   return () => {
     active = false;
-    clearInterval(heartbeatTimer);
-    appStateSubscription.remove();
     clearCountdownStartTimer();
     void supabase.removeChannel(channel);
   };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createInitialOkeyGame, openPlayerMelds } from "../okey-engine.ts";
+import { createInitialOkeyGame, getOkeyOpenAction, openPlayerMelds } from "../okey-engine.ts";
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
 
 function tile(value: number, id = `red-${value}`): OkeyTile {
@@ -36,6 +36,34 @@ test("openPlayerMelds ignores caller scores and recomputes every meld", () => {
   assert.equal(result.players[0].melds[0].score, 12);
 });
 
+test("normal meld is rejected when it would leave no tile to discard", () => {
+  const meldTiles = [tile(3), tile(4), tile(5)];
+  const state = openState(meldTiles);
+  const submitted = run(meldTiles);
+
+  assert.equal(openPlayerMelds(state, 0, [submitted], submitted.score), state);
+  assert.deepEqual(getOkeyOpenAction(state, 0, [submitted], []), {
+    allowed: false,
+    mode: null,
+    requiredScore: 0,
+    remainingSlots: 7,
+  });
+});
+
+test("normal three-tile meld remains legal when one tile is left to discard", () => {
+  const meldTiles = [tile(3), tile(4), tile(5)];
+  const remainder = tile(10, "remainder");
+  const state = openState([...meldTiles, remainder]);
+  const submitted = run(meldTiles);
+
+  const action = getOkeyOpenAction(state, 0, [submitted], []);
+  assert.equal(action.allowed, true);
+  assert.equal(action.mode, "open-melds");
+
+  const result = openPlayerMelds(state, 0, [submitted], submitted.score);
+  assert.notEqual(result, state);
+  assert.deepEqual(result.players[0].hand.map((entry) => entry.id), [remainder.id]);
+});
 test("openPlayerMelds rejects duplicate, foreign, and un-splittable inputs", () => {
   const tiles = [tile(3), tile(4), tile(5), tile(10, "remainder")];
   const state = openState(tiles);

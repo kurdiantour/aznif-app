@@ -19,6 +19,11 @@ export function useOkeyTablePresentation() {
     contiguousGroups: OkeyTile[][];
   }>({ melds: [], score: 0, contiguousGroups: [] });
   const [droppedMelds, setDroppedMelds] = useState<OkeyMeld[]>([]);
+  const [pendingNormalMeld, setPendingNormalMeld] = useState<{
+    meld: OkeyMeld;
+    signature: string;
+    tileIds: string[];
+  } | null>(null);
   const [localDragCommittedMeldSignatures, setLocalDragCommittedMeldSignatures] = useState<string[]>([]);
   const [tableMeldOffsets, setTableMeldOffsets] = useState<Record<string, MeldOffset>>({});
   const [showScoreDetails, setShowScoreDetails] = useState(false);
@@ -79,6 +84,7 @@ export function useOkeyTablePresentation() {
     setSelectedTileId(null);
     setRackSetScore(0);
     setDroppedMelds([]);
+    setPendingNormalMeld(null);
     setLocalDragCommittedMeldSignatures([]);
     setOpenableRackMelds({ melds: [], score: 0, contiguousGroups: [] });
     setOptimisticRackTile(null);
@@ -101,6 +107,7 @@ export function useOkeyTablePresentation() {
     rackSetScore, setRackSetScore,
     openableRackMelds, setOpenableRackMelds,
     droppedMelds, setDroppedMelds, removeStagedMeld,
+    pendingNormalMeld, setPendingNormalMeld,
     localDragCommittedMeldSignatures, setLocalDragCommittedMeldSignatures,
     tableMeldOffsets, setTableMeldOffsets, moveTableMeld,
     showScoreDetails, setShowScoreDetails,

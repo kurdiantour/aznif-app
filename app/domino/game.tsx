@@ -904,43 +904,40 @@ useEffect(() => {
             </View>
           )}
 
-          {!showMatchMenu ? (
-            <View style={styles.topRightActions}>
-<Pressable
-                accessibilityLabel="Open game settings"
-                style={styles.topRightActionButton}
-                onPress={openMatchMenu}
-              >
-                <Ionicons name="menu-outline" size={22} color="#f8f3df" />
-              </Pressable>
-            </View>
-          ) : null}
- <View style={styles.bottomHudRow}>
-  <MiniScoreBoard
-    teamAName={miniScoreTeamAName}
-    teamAScore={miniScoreTeamAScore}
-    teamBName={miniScoreTeamBName}
-    teamBScore={miniScoreTeamBScore}
-    onPress={() => setShowScorePopup(true)}
-  />
-</View>
+          <View style={styles.topRightActions}>
+            <Pressable
+              accessibilityLabel="Open game settings"
+              style={styles.topRightActionButton}
+              onPress={openMatchMenu}
+            >
+              <Ionicons name="menu-outline" size={22} color="#f8f3df" />
+            </Pressable>
+          </View>
 
+          <View style={styles.bottomHudRow}>
+            <MiniScoreBoard
+              teamAName={miniScoreTeamAName}
+              teamAScore={miniScoreTeamAScore}
+              teamBName={miniScoreTeamBName}
+              teamBScore={miniScoreTeamBScore}
+              onPress={() => setShowScorePopup(true)}
+            />
+          </View>
 
-<DrawPilePrompt
-  visible={game.canDrawTile || shouldShowPassPrompt}
-  gameMode={gameMode}
-  boneyardCount={game.boneyardCount}
-  onDraw={handleDrawTile}
-  onPass={shouldShowPassPrompt ? handlePassTurn : undefined}
-  passCountdown={shouldShowPassPrompt ? passCountdown : undefined}
-  drawCountdown={
-    gameMode === "1v1" && game.canDrawTile
-      ? (game as any).drawTimeLeft
-      : undefined
-  }
-  passing={isPassingTurn}
-/>
-
+          <DrawPilePrompt
+            visible={game.canDrawTile || shouldShowPassPrompt}
+            gameMode={gameMode}
+            boneyardCount={game.boneyardCount}
+            onDraw={handleDrawTile}
+            onPass={shouldShowPassPrompt ? handlePassTurn : undefined}
+            passCountdown={shouldShowPassPrompt ? passCountdown : undefined}
+            drawCountdown={
+              gameMode === "1v1" && game.canDrawTile
+                ? (game as any).drawTimeLeft
+                : undefined
+            }
+            passing={isPassingTurn}
+          />
 
           <View style={styles.bottomArea}>
             <PlayerHand
@@ -1029,7 +1026,6 @@ useEffect(() => {
     right: rightPlayer?.id,
   }}
   enabled={!isLocalGame && !!roomId}
-  triggerVisible={!showMatchMenu}
 /><MatchMenuDrawer
   visible={showMatchMenu}
   players={game.players}
@@ -1185,8 +1181,9 @@ const styles = StyleSheet.create({
   topRightActions: {
     position: "absolute",
     top: 18,
-    right: 68,
-    zIndex: 90,
+    right: 18,
+    zIndex: 900,
+    elevation: 900,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
