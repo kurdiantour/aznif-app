@@ -10,7 +10,10 @@ export const RACK_TILE_MIN_STRIDE = 18;
 export const RACK_TILE_SIDE_PADDING = 0;
 
 export const styles = StyleSheet.create({
-  screen: { flex: 1, position: "relative", marginHorizontal: -24, marginTop: -56, marginBottom: -12, paddingHorizontal: 10, paddingTop: 4, paddingBottom: 8 },
+screen: {
+  flex: 1,
+  position: "relative",
+},
   tableArea: { flex: 1, paddingTop: 0 },
   activeDiscardDragTableLayer: { zIndex: 10000, elevation: 10000 },
 tableSurface: {

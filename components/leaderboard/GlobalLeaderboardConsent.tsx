@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
 
   dialog: {
     width: "100%",
-    maxWidth: 360,
+    maxWidth: 390,
     padding: 18,
     borderRadius: 10,
     borderWidth: 1,
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
 
   description: {
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 14,
     lineHeight: 28,
     fontFamily: "SpedaBold",
     textAlign: "center",
@@ -205,7 +205,6 @@ const styles = StyleSheet.create({
 
   actions: {
     flexDirection: "row",
-    gap: 10,
     marginTop: 18,
   },
 
@@ -219,10 +218,12 @@ const styles = StyleSheet.create({
   },
 
   acceptButton: {
+    marginRight: 10,
     backgroundColor: "#2563eb",
   },
 
   rejectButton: {
+    marginLeft: 10,
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.32)",
     backgroundColor: "rgba(15,23,42,0.9)",

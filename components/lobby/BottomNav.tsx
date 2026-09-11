@@ -312,3 +312,4 @@ const styles = StyleSheet.create({
       "rgba(255,255,255,0.52)",
   },
 });
+

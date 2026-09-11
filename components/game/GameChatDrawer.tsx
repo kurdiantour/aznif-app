@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
+  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -80,20 +81,24 @@ export default function GameChatDrawer({
   const [draft, setDraft] = useState("");
   const [, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [cooldownActive, setCooldownActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   const inputRef = useRef<TextInput | null>(null);
   const listRef = useRef<FlatList<GameChatMessage> | null>(null);
+  const cooldownUntilRef = useRef(0);
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canSend = useMemo(
     () =>
       enabled &&
       !!matchId &&
       draft.trim().length > 0 &&
-      !sending,
-    [draft, enabled, matchId, sending],
+      !sending &&
+      !cooldownActive,
+    [cooldownActive, draft, enabled, matchId, sending],
   );
 
   const showUnavailableMessage = !enabled;
@@ -117,6 +122,10 @@ export default function GameChatDrawer({
       showSubscription.remove();
       hideSubscription.remove();
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
   }, []);
 
   function dismissKeyboardOnly() {
@@ -232,7 +241,13 @@ export default function GameChatDrawer({
     text: string,
     clearDraft: boolean,
   ) {
-    if (!enabled || !matchId || !text || sending) {
+    if (
+      !enabled ||
+      !matchId ||
+      !text ||
+      sending ||
+      Date.now() < cooldownUntilRef.current
+    ) {
       return;
     }
 
@@ -251,11 +266,21 @@ export default function GameChatDrawer({
         mergeMessages(current, sentMessage),
       );
 
+      cooldownUntilRef.current = Date.now() + 3000;
+      setCooldownActive(true);
+      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+      cooldownTimerRef.current = setTimeout(() => {
+        cooldownUntilRef.current = 0;
+        setCooldownActive(false);
+        cooldownTimerRef.current = null;
+      }, 3000);
+
       if (clearDraft) {
         setDraft("");
       }
 
       Keyboard.dismiss();
+      onClose();
     } catch (err) {
       console.warn(
         "Failed to send game chat message",
@@ -277,7 +302,7 @@ export default function GameChatDrawer({
   }
 
   return (
-    <View style={styles.overlay}>
+    <KeyboardAvoidingView behavior="height" style={styles.overlay}>
       <Pressable
         accessibilityLabel="داخستنی گفتوگۆی یاری"
         style={styles.backdrop}
@@ -407,6 +432,7 @@ export default function GameChatDrawer({
                   }
                   disabled={
                     sending ||
+                    cooldownActive ||
                     !enabled ||
                     !matchId
                   }
@@ -425,7 +451,7 @@ export default function GameChatDrawer({
                 key={emoji}
                 style={styles.quickEmojiButton}
                 onPress={() => sendQuickMessage(emoji)}
-                disabled={sending || !enabled || !matchId}
+                disabled={sending || cooldownActive || !enabled || !matchId}
               >
                 <Text style={styles.quickEmojiText}>
                   {emoji}
@@ -474,8 +500,6 @@ export default function GameChatDrawer({
               textAlign="right"
               multiline
               blurOnSubmit={false}
-              submitBehavior="submit"
-              onSubmitEditing={sendMessage}
               editable={
                 enabled &&
                 !!matchId &&
@@ -486,7 +510,7 @@ export default function GameChatDrawer({
           </View>
         </View>
       </Pressable>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

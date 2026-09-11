@@ -12,6 +12,7 @@ import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   ImageBackground,
@@ -27,6 +28,9 @@ import {
 
 const SAVED_EMAIL_KEY = "domino_saved_email";
 const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
 
 function isRecentlyCreatedUser(
   createdAt?: string,
@@ -48,7 +52,8 @@ function isRecentlyCreatedUser(
 export default function LoginScreen() {
   const router = useRouter();
   const { refreshProfile, session, authLoading } = useProfile();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -150,7 +155,22 @@ export default function LoginScreen() {
   }
 
   const isSignup = mode === "signup";
-  const isWideLayout = width >= 720;
+  const availableWidth = Math.max(width - insets.left - insets.right, 0);
+  const availableHeight = Math.max(height - insets.top - insets.bottom, 0);
+  const isHorizontalLayout = availableWidth > availableHeight;
+  const edgeSpacing = clamp(
+    Math.min(availableWidth * 0.025, availableHeight * 0.04),
+    8,
+    24,
+  );
+  const panelPadding = clamp(availableHeight * 0.025, 8, 18);
+  const sectionGap = clamp(availableHeight * 0.025, 7, 14);
+  const fieldGap = clamp(availableHeight * 0.018, 6, 11);
+  const controlHeight = clamp(availableHeight * 0.1, 40, 52);
+  const panelWidth = Math.min(
+    Math.max(availableWidth - edgeSpacing * 2, 0),
+    isHorizontalLayout ? 760 : 430,
+  );
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
@@ -205,15 +225,29 @@ export default function LoginScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.keyboardView}
         >
-          <View style={styles.fixedContent}>
-            <View
-              style={[styles.panel, isWideLayout && styles.panelWide]}
-            >
-              <View style={[styles.contentRow, !isWideLayout && styles.contentStack]}>
+          <View
+            style={[
+              styles.fixedContent,
+              {
+                paddingLeft: insets.left + edgeSpacing,
+                paddingRight: insets.right + edgeSpacing,
+                paddingTop: insets.top + edgeSpacing,
+                paddingBottom: insets.bottom + edgeSpacing,
+              },
+            ]}
+          >
+            <View style={[styles.panel, { width: panelWidth, padding: panelPadding }]}>
+              <View
+                style={[
+                  styles.contentRow,
+                  { gap: sectionGap },
+                  !isHorizontalLayout && styles.contentStack,
+                ]}
+              >
                 <View style={styles.formColumn}>
-                  <View style={styles.modeSwitch}>
+                  <View style={[styles.modeSwitch, { gap: fieldGap, marginBottom: fieldGap }]}>
                     <Pressable
-                      style={[styles.modeButton, !isSignup && styles.modeActive]}
+                      style={[styles.modeButton, { minHeight: controlHeight }, !isSignup && styles.modeActive]}
                       onPress={() => selectMode("signin")}
                       disabled={isLoading}
                     >
@@ -227,7 +261,7 @@ export default function LoginScreen() {
                       </Text>
                     </Pressable>
                     <Pressable
-                      style={[styles.modeButton, isSignup && styles.modeActive]}
+                      style={[styles.modeButton, { minHeight: controlHeight }, isSignup && styles.modeActive]}
                       onPress={() => selectMode("signup")}
                       disabled={isLoading}
                     >
@@ -242,9 +276,9 @@ export default function LoginScreen() {
                     </Pressable>
                   </View>
 
-                  <View style={styles.form}>
+                  <View style={[styles.form, { gap: fieldGap }]}>
                     {isSignup ? (
-                      <View style={styles.inputWrap}>
+                      <View style={[styles.inputWrap, { minHeight: controlHeight }]}>
                         <Ionicons name="person-outline" size={18} color="#9ca3af" />
                         <TextInput
                           placeholder="ناوی بەکارهێنەر"
@@ -261,7 +295,7 @@ export default function LoginScreen() {
                       </View>
                     ) : null}
 
-                    <View style={styles.inputWrap}>
+                    <View style={[styles.inputWrap, { minHeight: controlHeight }]}>
                       <Ionicons name="mail-outline" size={18} color="#9ca3af" />
                       <TextInput
                         placeholder="ئیمەیڵ"
@@ -279,7 +313,7 @@ export default function LoginScreen() {
                       />
                     </View>
 
-                    <View style={styles.inputWrap}>
+                    <View style={[styles.inputWrap, { minHeight: controlHeight }]}>
                       <Ionicons
                         name="lock-closed-outline"
                         size={18}
@@ -319,7 +353,7 @@ export default function LoginScreen() {
                     {message ? <Text style={styles.messageText}>{message}</Text> : null}
 
                     <Pressable
-                      style={[styles.primaryButton, isLoading && styles.disabled]}
+                      style={[styles.primaryButton, { minHeight: controlHeight }, isLoading && styles.disabled]}
                       onPress={() => handleAuth(mode)}
                       disabled={isLoading}
                     >
@@ -365,7 +399,7 @@ export default function LoginScreen() {
                 </View>
 
                 <View style={styles.guestColumn}>
-                  <View style={styles.authChoiceRow}>
+                  <View style={[styles.authChoiceRow, { gap: fieldGap }]}>
                     <View style={styles.authChoiceCard}>
                       <View style={[styles.guestIcon, styles.googleIcon]}>
                         <FontAwesome name="google" size={21} color="#ffffff" />
@@ -375,7 +409,7 @@ export default function LoginScreen() {
                         بە هەژماری <Text style={styles.googleInlineText}>Gmail</Text> بچۆ ژوورەوە.
                       </Text>
                       <Pressable
-                        style={[styles.guestButton, styles.googleButton, isLoading && styles.disabled]}
+                        style={[styles.guestButton, { minHeight: controlHeight }, styles.googleButton, isLoading && styles.disabled]}
                         onPress={() => void handleGoogleSignIn()}
                         disabled={isLoading}
                       >
@@ -392,7 +426,7 @@ export default function LoginScreen() {
                         بەبێ هەژمار بچۆ ناو یاری.
                       </Text>
                       <Pressable
-                        style={[styles.guestButton, isLoading && styles.disabled]}
+                        style={[styles.guestButton, { minHeight: controlHeight }, isLoading && styles.disabled]}
                         onPress={() => router.replace("/(tabs)/play")}
                         disabled={isLoading}
                       >
@@ -425,8 +459,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
   },
   loadingScreen: {
     flex: 1,
@@ -435,16 +467,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#020617",
   },
   panel: {
-    width: "100%",
-    maxWidth: 390,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
     backgroundColor: "rgba(4, 10, 25, 0.86)",
-    padding: 12,
-  },
-  panelWide: {
-    maxWidth: 760,
   },
   contentRow: {
     flexDirection: "row-reverse",
@@ -605,7 +631,7 @@ rtlInput: {
   },
   primaryButtonText: {
     color: "#ffffff",
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
@@ -617,7 +643,7 @@ rtlInput: {
   },
   textButtonLabel: {
     color: "#93c5fd",
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",

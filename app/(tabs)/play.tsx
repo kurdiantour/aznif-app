@@ -153,7 +153,7 @@ export default function PlayScreen() {
         <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
           <GameCard
             isTablet={isTablet}
-            title="دۆمینۆ"
+            title="ئەزنیف"
             subtitle="توانای خۆت بسەلمێنە"
             icon="grid-outline"
             image={require("@/assets/images/lobby/aznif-card-v3.png")}
@@ -406,3 +406,4 @@ const styles = StyleSheet.create({
     marginTop: -22,
   },
 });
+

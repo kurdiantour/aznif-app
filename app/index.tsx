@@ -50,7 +50,14 @@ export default function IndexScreen() {
   }, []);
 
   useEffect(() => {
-    if (!minimumDurationElapsed || authLoading || authError) return;
+    if (!minimumDurationElapsed) return;
+
+    if (authError) {
+      router.replace("/login");
+      return;
+    }
+
+    if (authLoading) return;
 
     router.replace(session ? "/(tabs)/play" : "/login");
   }, [authError, authLoading, minimumDurationElapsed, router, session]);

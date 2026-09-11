@@ -19,8 +19,8 @@ import {
 } from "@/lib/gameChat";
 import { supabase } from "@/lib/supabase";
 
-type SeatReaction = { id: string; emoji: string };
-type SeatReactions = Partial<Record<GameChatBubbleSeat, SeatReaction>>;
+type SeatMessage = { id: string; body: string; isEmoji: boolean };
+type SeatMessages = Partial<Record<GameChatBubbleSeat, SeatMessage>>;
 
 const SEATS: readonly GameChatBubbleSeat[] = ["bottom", "right", "top", "left"];
 
@@ -33,6 +33,9 @@ export default function MultiplayerGameChat({
   enabled,
   triggerVisible = true,
   triggerStyle,
+  topSeatRect,
+  leftSeatRect,
+  rightSeatRect,
 }: {
   gameType: GameChatType;
   matchId?: string;
@@ -42,11 +45,25 @@ export default function MultiplayerGameChat({
   enabled: boolean;
   triggerVisible?: boolean;
   triggerStyle?: StyleProp<ViewStyle>;
+  topSeatRect?: { x: number; y: number; width: number; height: number } | null;
+  leftSeatRect?: { x: number; y: number; width: number; height: number } | null;
+  rightSeatRect?: { x: number; y: number; width: number; height: number } | null;
 }) {
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [reactions, setReactions] = useState<SeatReactions>({});
+  const [seatMessages, setSeatMessages] = useState<SeatMessages>({});
   const [unreadCount, setUnreadCount] = useState(0);
   const drawerVisibleRef = useRef(false);
+  const chatLayerRef = useRef<View | null>(null);
+  const [chatLayerOrigin, setChatLayerOrigin] = useState<{ x: number; y: number } | null>(null);
+  const measureChatLayer = useCallback(() => {
+    chatLayerRef.current?.measureInWindow((x, y) => {
+      setChatLayerOrigin((current) =>
+        current?.x === x && current.y === y ? current : { x, y },
+      );
+    });
+  }, []);
+  const usesMeasuredSeatAnchors = topSeatRect !== undefined;
+  const seatRects = { top: topSeatRect, left: leftSeatRect, right: rightSeatRect } as const;
 
   const bottomPlayerId = playerIdBySeat.bottom;
   const rightPlayerId = playerIdBySeat.right;
@@ -62,8 +79,8 @@ export default function MultiplayerGameChat({
     return result;
   }, [bottomPlayerId, leftPlayerId, rightPlayerId, topPlayerId]);
 
-  const clearReaction = useCallback((seat: GameChatBubbleSeat, messageId: string) => {
-    setReactions((current) => {
+  const clearSeatMessage = useCallback((seat: GameChatBubbleSeat, messageId: string) => {
+    setSeatMessages((current) => {
       if (current[seat]?.id !== messageId) return current;
       const next = { ...current };
       delete next[seat];
@@ -73,7 +90,7 @@ export default function MultiplayerGameChat({
 
   useEffect(() => {
     if (!matchId || !enabled) {
-      const reset = setTimeout(() => setReactions({}), 0);
+      const reset = setTimeout(() => setSeatMessages({}), 0);
       return () => clearTimeout(reset);
     }
 
@@ -91,8 +108,7 @@ export default function MultiplayerGameChat({
           const message = payload.new as GameChatMessage;
           if (
             message.game_type !== gameType ||
-            (mode !== null && message.mode !== mode) ||
-            !GAME_CHAT_EMOJIS.has(message.body.trim())
+            (mode !== null && message.mode !== mode)
           ) return;
 
           if (message.sender_user_id !== currentUserId && !drawerVisibleRef.current) {
@@ -100,9 +116,10 @@ export default function MultiplayerGameChat({
           }
           const seat = seatByPlayerId.get(message.sender_user_id);
           if (!seat) return;
-          setReactions((current) => ({
+          const body = message.body.trim();
+          setSeatMessages((current) => ({
             ...current,
-            [seat]: { id: message.id, emoji: message.body.trim() },
+            [seat]: { id: message.id, body, isEmoji: GAME_CHAT_EMOJIS.has(body) },
           }));
         },
       )
@@ -112,7 +129,13 @@ export default function MultiplayerGameChat({
   }, [currentUserId, enabled, gameType, matchId, mode, seatByPlayerId]);
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+    <View
+      ref={chatLayerRef}
+      collapsable={false}
+      onLayout={measureChatLayer}
+      pointerEvents="box-none"
+      style={[StyleSheet.absoluteFill, drawerVisible && styles.drawerOpenLayer]}
+    >
       {triggerVisible ? (
         <Pressable
           style={[styles.trigger, triggerStyle]}
@@ -130,15 +153,30 @@ export default function MultiplayerGameChat({
       ) : null}
 
       {SEATS.map((seat) => {
-        const reaction = reactions[seat];
-        return reaction ? (
+        const seatMessage = seatMessages[seat];
+        const displayedMessage = seatMessage?.body;
+        const measuredSeatRect = seat === "bottom" ? undefined : seatRects[seat];
+        const seatAnchorReady =
+          seat === "bottom" ||
+          !usesMeasuredSeatAnchors ||
+          (!!measuredSeatRect && !!chatLayerOrigin);
+        return displayedMessage && seatAnchorReady ? (
           <GameChatBubble
-            key={`${seat}:${reaction.id}`}
+            key={`${seat}:${seatMessage?.id ?? "preview"}`}
             seat={seat}
-            message={reaction.emoji}
-            messageId={reaction.id}
-            isEmoji
-            onComplete={() => clearReaction(seat, reaction.id)}
+            message={displayedMessage}
+            messageId={seatMessage?.id ?? `preview-chat-${seat}`}
+            isEmoji={seatMessage?.isEmoji ?? false}
+            seatAnchorRect={
+              measuredSeatRect && chatLayerOrigin
+                ? {
+                    ...measuredSeatRect,
+                    x: measuredSeatRect.x - chatLayerOrigin.x,
+                    y: measuredSeatRect.y - chatLayerOrigin.y,
+                  }
+                : undefined
+            }
+            onComplete={seatMessage ? () => clearSeatMessage(seat, seatMessage.id) : undefined}
           />
         ) : null;
       })}
@@ -160,6 +198,10 @@ export default function MultiplayerGameChat({
 }
 
 const styles = StyleSheet.create({
+  drawerOpenLayer: {
+    zIndex: 20000,
+    elevation: 20000,
+  },
   trigger: {
     position: "absolute",
     top: 18,

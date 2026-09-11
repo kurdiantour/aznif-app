@@ -302,3 +302,4 @@ export const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
 });
+

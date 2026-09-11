@@ -14,9 +14,14 @@ import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 type Props = {
   children: ReactNode;
   tableId?: TableId;
+  contentPadding?: boolean;
 };
 
-export default function TableBackground({ children, tableId }: Props) {
+export default function TableBackground({
+  children,
+  tableId,
+  contentPadding = true,
+}: Props) {
   const [activeTableId, setActiveTableId] = useState<TableId | null>(
     tableId ?? getPreloadedTableId(),
   );
@@ -77,7 +82,15 @@ export default function TableBackground({ children, tableId }: Props) {
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.loadingBackground]} />
       )}
-      <View style={styles.overlay}>{children}</View>
+
+      <View
+        style={[
+          styles.overlay,
+          !contentPadding && styles.overlayNoPadding,
+        ]}
+      >
+        {children}
+      </View>
     </View>
   );
 }
@@ -101,5 +114,11 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
 
     justifyContent: "space-between",
+  },
+
+  overlayNoPadding: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
 });

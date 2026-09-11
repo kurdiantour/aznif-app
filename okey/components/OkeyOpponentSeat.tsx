@@ -6,7 +6,6 @@ import { useOkeyResponsiveLayout } from "../layout/OkeyResponsiveLayoutProvider"
 import { OkeyTileBack } from "./OkeyTileFace";
 import { OkeyTurnTimerBar } from "./OkeyTurnTimerBar";
 
-
 export function OkeyOpponentSeat({
   playerId,
   name,
@@ -31,27 +30,37 @@ export function OkeyOpponentSeat({
   serverClockOffsetMs: number;
   turnDurationSeconds: number | null;
   turnTimerPhase?: "draw" | "throw";
-  onMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void;
+  onMeasured?: (rect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
   onPress?: () => void;
 }) {
   const layout = useOkeyResponsiveLayout();
   const seatRef = useRef<View | null>(null);
-  const targetBackCount = count > 0 ? Math.min(7, Math.max(1, count)) : 0;
+
+  const targetBackCount =
+    count > 0 ? Math.min(7, Math.max(1, count)) : 0;
+
   const measureSeat = () => {
     seatRef.current?.measureInWindow((x, y, width, height) => {
-      const rect = { x, y, width, height };
-      onMeasured?.(rect);
+      onMeasured?.({
+        x,
+        y,
+        width,
+        height,
+      });
     });
   };
 
-  // PRESENTATION CONTRACT (tested): a waiting placeholder can become a real
-  // player without a layout change. This re-measure keeps playerId → screen
-  // rect mapping valid for every opponent flight; do not remove without full
-  // multiplayer animation coverage.
-  // Re-measure after a waiting seat receives its real player identity.
   useEffect(() => {
     const frame = requestAnimationFrame(measureSeat);
-    return () => cancelAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
   }, [playerId]);
 
   return (
@@ -62,8 +71,13 @@ export function OkeyOpponentSeat({
       accessibilityRole="button"
       accessibilityLabel={`کردنەوەی پڕۆفایلی ${name}`}
       accessibilityHint="دوو جار لێبدە بۆ بینینی پڕۆفایل."
-      accessibilityState={{ disabled: !onPress, selected: active }}
-      accessibilityValue={{ text: `${count} بەرد` }}
+      accessibilityState={{
+        disabled: !onPress,
+        selected: active,
+      }}
+      accessibilityValue={{
+        text: `${count} بەرد`,
+      }}
       onPress={onPress}
       disabled={!onPress}
       style={[
@@ -79,22 +93,42 @@ export function OkeyOpponentSeat({
           active={active}
           deadlineAt={turnDeadlineAt}
           serverClockOffsetMs={serverClockOffsetMs}
-          remainingMilliseconds={turnTimeLeftMilliseconds}
-          durationSeconds={turnDurationSeconds}
+          remainingMilliseconds={
+            turnTimeLeftMilliseconds
+          }
+          durationSeconds={
+            turnDurationSeconds
+          }
           phase={turnTimerPhase}
           orientation="horizontal"
           reverse={side !== "left"}
-          style={side === "top" ? styles.opponentTimerTop : side === "left" ? styles.opponentTimerLeft : styles.opponentTimerRight}
+          style={
+            side === "top"
+              ? styles.opponentTimerTop
+              : side === "left"
+                ? styles.opponentTimerLeft
+                : styles.opponentTimerRight
+          }
         />
-        {Array.from({ length: targetBackCount }).map((_, index) => (
-          <OkeyTileBack key={index} small />
+
+        {Array.from({
+          length: targetBackCount,
+        }).map((_, index) => (
+          <OkeyTileBack
+            key={index}
+            small
+          />
         ))}
       </View>
+
       <View style={styles.namePlate}>
-        <Text style={styles.nameText} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
+        <Text style={styles.nameText} numberOfLines={1} ellipsizeMode="tail">
+          {name}
+        </Text>
       </View>
     </Pressable>
   );
 }
 
-export const MemoizedOkeyOpponentSeat = memo(OkeyOpponentSeat);
+export const MemoizedOkeyOpponentSeat =
+  memo(OkeyOpponentSeat);

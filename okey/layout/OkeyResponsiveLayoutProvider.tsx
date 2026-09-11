@@ -136,10 +136,6 @@ export function createOkeyResponsiveLayout({
     usableHeight,
 
     screen: {
-      marginLeft: -34,
-      marginRight: -34,
-      marginTop: -60,
-      marginBottom: -20,
       paddingLeft: safe.left + edge,
       paddingRight: safe.right + edge,
       paddingTop: safe.top + edge,
@@ -172,55 +168,55 @@ export function createOkeyResponsiveLayout({
       },
     },
 
-meldAreas: {
-  top: {
-    position: "absolute",
-    left: 100,
-    top: 70,
-    width: clamp(
-      usableWidth / 2 - 70 - edge,
-      80,
-      150,
-    ),
-    minHeight: 54,
-  },
+    meldAreas: {
+      top: {
+        position: "absolute",
+        left: 100,
+        top: 70,
+        width: clamp(
+          usableWidth / 2 - 70 - edge,
+          80,
+          150,
+        ),
+        minHeight: 54,
+      },
 
-  left: {
-    position: "absolute",
-    left: 100,
-    bottom: 130,
-    width: clamp(
-      usableWidth / 2 - 70 - edge,
-      80,
-      150,
-    ),
-    minHeight: 54,
-  },
+      left: {
+        position: "absolute",
+        left: 100,
+        bottom: 130,
+        width: clamp(
+          usableWidth / 2 - 70 - edge,
+          80,
+          150,
+        ),
+        minHeight: 54,
+      },
 
-  right: {
-    position: "absolute",
-    right: 100,
-    top: 70,
-    width: clamp(
-      usableWidth / 2 - 70 - edge,
-      80,
-      150,
-    ),
-    minHeight: 54,
-  },
+      right: {
+        position: "absolute",
+        right: 100,
+        top: 70,
+        width: clamp(
+          usableWidth / 2 - 70 - edge,
+          80,
+          150,
+        ),
+        minHeight: 54,
+      },
 
-  bottom: {
-    position: "absolute",
-    right: 100,
-    bottom: 130,
-    width: clamp(
-      usableWidth / 2 - edge * 2,
-      80,
-      150,
-    ),
-    minHeight: 54,
-  },
-},
+      bottom: {
+        position: "absolute",
+        right: 100,
+        bottom: 130,
+        width: clamp(
+          usableWidth / 2 - edge * 2,
+          80,
+          150,
+        ),
+        minHeight: 54,
+      },
+    },
 
     centerPiles: {
       top: centerPilesTop,

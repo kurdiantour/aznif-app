@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, } from "react-native";
 
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
@@ -255,6 +255,9 @@ const onlineController = useOkeyMultiplayerGame(
     isInsideRack: isPointInsideRack, isInsideDiscardPile: isPointInsideDiscardPile,
     isInsideHumanMeldZone, registerMeldDropRect, findMeldDropTarget,
   } = useOkeyTableGeometry();
+  const [topSeatRect, setTopSeatRect] = useState<ScreenRect | null>(null);
+  const [leftSeatRect, setLeftSeatRect] = useState<ScreenRect | null>(null);
+  const [rightSeatRect, setRightSeatRect] = useState<ScreenRect | null>(null);
 
 
 
@@ -459,16 +462,26 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   const handleTopOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[0]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
+    setTopSeatRect((current) =>
+      current?.x === rect.x &&
+      current.y === rect.y &&
+      current.width === rect.width &&
+      current.height === rect.height
+        ? current
+        : rect,
+    );
     retryQueuedOpponentFlight();
   });
   const handleLeftOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[1]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
+    setLeftSeatRect(rect);
     retryQueuedOpponentFlight();
   });
   const handleRightOpponentMeasured = useStableEvent((rect: ScreenRect) => {
     const playerId = opponentSeats[2]?.id;
     if (playerId) opponentSeatRectsRef.current[playerId] = rect;
+    setRightSeatRect(rect);
     retryQueuedOpponentFlight();
   });
   const handleMeldMeasured = useStableEvent(registerMeldDropRect);
@@ -532,7 +545,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
 
   
   return (
-<TableBackground>
+<TableBackground contentPadding={false}>
   <View
     ref={screenRef}
     onLayout={measureScreen}
@@ -783,7 +796,11 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
         currentUserId={currentUserId}
         playerIdBySeat={playerIdBySeat}
         enabled={!!onlineMatchId && !!currentUserId && onlineGameplayReady}
-      /><MatchMenuDrawer
+        topSeatRect={topSeatRect}
+        leftSeatRect={leftSeatRect}
+        rightSeatRect={rightSeatRect}
+      />
+      <MatchMenuDrawer
   visible={showMatchMenu}
   players={seatOrderedPlayers}
   humanPlayer={humanPlayer}
