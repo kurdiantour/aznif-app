@@ -1,481 +1,105 @@
-import { createBotTurnClaim, classifyBotTurnClaim } from "../../lib/multiplayer/core/bot-turn-orchestration.ts";
-import { evaluateOkeyServerLifecycle, executeAuthoritativeOkeyTransition, type OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
-import { projectSeatOwnership } from "../../lib/multiplayer/core/seat-ownership.ts";
 import { chooseBotDrawSource, prepareBotTurn } from "../engine/okey-bot-engine.ts";
 import { completeDeferredBotTurnAdvance, discardTile, drawTile } from "../engine/okey-engine.ts";
+import type { OkeyGameState } from "../types/okey.ts";
 import {
   createBotPostDrawActionEvents,
-  type OkeyActionEvent,
   type OkeyActionEventDraft,
 } from "./okey-action-events.ts";
-import {
-  getNextOkeyMatchTurnDeadline,
-  projectOkeyMatchPublicState,
-  OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
-  type OkeyAuthoritativeMatchState,
-  type OkeyMatchServerProjection,
-} from "./okey-authoritative.ts";
-import { OKEY_SERVER_BOT_DISCARD_HANDOFF_DELAY_MS } from "./okey-lifecycle-timing.ts";
 
-type OkeyAuthoritativeBundle = {
-  version: number | string;
-  status: "playing" | "finished";
-  turn_deadline_at: string | null;
-  player_index: number;
-  state: OkeyAuthoritativeMatchState;
-  command_applied: boolean;
+export type OkeyBotIntent = {
+  step: "draw" | "discard" | "advance";
+  actorPlayerId: string;
+  roundState: OkeyGameState;
+  actionEvents: OkeyActionEventDraft[];
 };
 
-export type OkeyBotExecutorResult = {
-  ok: boolean;
-  processed: boolean;
-  reason?: string;
-  step?: "draw" | "discard" | "advance";
-  steps?: ("draw" | "discard" | "advance")[];
-  finalVersion?: number;
-  error?: string;
-};
-
-export type OkeyBotExecutorInput = {
-  matchId: string;
-  requesterUserId: string;
-  expectedVersion: number;
+/**
+ * Pure Bot policy/intent provider.
+ *
+ * It receives an already-authorized lifecycle decision and chooses the next
+ * Bot transition. It performs no lifecycle evaluation, persistence, network
+ * I/O, settlement, broadcast, or continuation dispatch.
+ */
+export function selectOkeyBotIntent(input: {
+  state: OkeyGameState;
   expectedActorId: string;
-};
+  step: OkeyBotIntent["step"];
+  now?: number;
+}): OkeyBotIntent | null {
+  const now = input.now ?? Date.now();
+  const currentPlayerIndex = input.state.currentPlayerIndex;
+  const currentPlayer = input.state.players[currentPlayerIndex];
+  if (
+    input.state.phase !== "playing" ||
+    !currentPlayer ||
+    currentPlayer.id !== input.expectedActorId
+  ) return null;
 
-export type OkeyBotExecutorDependencies = {
-  client: any;
-  deterministicCommandId: (source: string) => Promise<string>;
-  now?: () => number;
-  wait?: (milliseconds: number) => Promise<void>;
-  broadcastStateUpdate?: (input: {
-    matchId: string;
-    commandId: string;
-    version: number;
-    publicProjection: OkeyMatchServerProjection;
-    actionEvents: OkeyActionEvent[];
-  }) => Promise<void>;
-  dispatchContinuation?: (input: {
-    matchId: string;
-    state: OkeyAuthoritativeMatchState;
-    version: number;
-  }) => Promise<boolean | void>;
-  dispatchLifecycleWakeup?: (input: {
-    matchId: string;
-    state: OkeyAuthoritativeMatchState;
-    version: number;
-    eligibleAt?: string;
-    turnDeadlineAt?: string;
-  }) => Promise<void>;
-};
-
-const MAX_BOT_TRANSITIONS_PER_INVOCATION = 1;
-
-function getOkeyBotTurnClaim(
-  state: OkeyAuthoritativeMatchState,
-  version: number,
-) {
-  const playerIndex = state.roundState.currentPlayerIndex;
-  const player = state.roundState.players[playerIndex];
-  return createBotTurnClaim({
-    version,
-    actorId: player?.id,
-    ownership: player
-      ? projectSeatOwnership({
-          seatId: String(playerIndex),
-          ownerPlayerId: player.id,
-          controlledByBot: player.controlledByBot === true,
-        })
-      : null,
-  });
-}
-
-async function defaultBroadcast(
-  client: any,
-  input: {
-    matchId: string;
-    commandId: string;
-    version: number;
-    publicProjection: OkeyMatchServerProjection;
-    actionEvents: OkeyActionEvent[];
-  },
-) {
-  const channel = client.channel(`okey-match:${input.matchId}`);
-  await channel.send({
-    type: "broadcast",
-    event: "state_update",
-    payload: {
-      matchId: input.matchId,
-      commandId: input.commandId,
-      version: input.version,
-      publicProjection: input.publicProjection,
-      actionEvents: input.actionEvents,
-    },
-  });
-  await client.removeChannel(channel);
-}
-
-export async function executeOkeyBotTurn(
-  input: OkeyBotExecutorInput,
-  dependencies: OkeyBotExecutorDependencies,
-): Promise<OkeyBotExecutorResult> {
-  const { client } = dependencies;
-  const now = dependencies.now ?? Date.now;
-
-  try {
-    const { data: bundleRaw, error: bundleError } = await client
-      .rpc("okey_get_authoritative_bundle", {
-        p_match_id: input.matchId,
-        p_user_id: input.requesterUserId,
-        p_command_id: null,
-      })
-      .single();
-
-    const bundle = bundleRaw as OkeyAuthoritativeBundle | null;
-    if (bundleError || !bundle) {
-      return { ok: true, processed: false, reason: "match_not_found_or_forbidden" };
-    }
-    if (bundle.status !== "playing") {
-      return { ok: true, processed: false, reason: "match_not_playing" };
-    }
-
-    const { data: runtimeMatch, error: runtimeMatchError } = await client
-      .schema("okey")
-      .from("matches")
-      .select("is_test")
-      .eq("id", input.matchId)
-      .maybeSingle();
-    if (runtimeMatchError || !runtimeMatch) {
-      throw new Error("okey_match_runtime_lookup_failed");
-    }
-    const isTestMatch = runtimeMatch.is_test === true;
-
-    let currentState = bundle.state;
-    const pacingDecision = evaluateOkeyServerLifecycle({
-      state: currentState,
-      version: bundle.version,
-      turn_deadline_at: bundle.turn_deadline_at,
-    }, now());
-    const botTransitionNotBefore = pacingDecision.type === "bot-turn"
-      ? pacingDecision.notBefore
-      : null;
-    if (pacingDecision.type === "bot-turn" && !pacingDecision.ready) {
-      return {
-        ok: true,
-        processed: false,
-        reason: botTransitionNotBefore
-          ? "bot_transition_not_eligible"
-          : "bot_transition_invalid_eligibility",
-      };
-    }
-    if (currentState.matchFinished) {
-      return { ok: true, processed: false, reason: "match_finished" };
-    }
-
-    let currentVersion = Number(bundle.version);
-    if (!Number.isSafeInteger(currentVersion) || currentVersion < 0) {
-      return { ok: true, processed: false, reason: "invalid_version" };
-    }
-    if (currentVersion !== input.expectedVersion) {
-      return { ok: true, processed: false, reason: "stale_bot_turn" };
-    }
-
-    const steps: ("draw" | "discard" | "advance")[] = [];
-    const completed = (reason: string): OkeyBotExecutorResult => steps.length > 0
-      ? {
-          ok: true,
-          processed: true,
-          step: steps[0],
-          steps,
-          finalVersion: currentVersion,
-          reason,
-        }
-      : { ok: true, processed: false, reason };
-
-    while (steps.length < MAX_BOT_TRANSITIONS_PER_INVOCATION) {
-      if (currentState.matchFinished) return completed("match_finished");
-if (currentState.roundState.phase !== "playing") {
-  return completed("round_finished");
-}
-
-      const currentPlayerIndex = currentState.roundState.currentPlayerIndex;
-      const currentPlayer = currentState.roundState.players[currentPlayerIndex];
-      const ownership = currentPlayer
-        ? projectSeatOwnership({
-            seatId: String(currentPlayerIndex),
-            ownerPlayerId: currentPlayer.id,
-            controlledByBot: currentPlayer.controlledByBot === true,
-          })
-        : null;
-
-      if (steps.length === 0) {
-        if (currentPlayer?.id !== input.expectedActorId) {
-          return { ok: true, processed: false, reason: "stale_bot_turn" };
-        }
-        const observedClaim = createBotTurnClaim({
-          version: input.expectedVersion,
-          actorId: input.expectedActorId,
-          ownership: ownership?.ownerPlayerId === input.expectedActorId ? ownership : null,
-        });
-        if (!observedClaim) {
-          return {
-            ok: true,
-            processed: false,
-            reason: ownership?.controller === "bot" ? "stale_bot_turn" : "current_player_is_human",
-          };
-        }
-        const disposition = classifyBotTurnClaim({
-          claim: observedClaim,
-          currentVersion,
-          currentActorId: currentPlayer.id,
-          currentOwnership: ownership,
-        });
-        if (disposition === "already_processed" || disposition === "stale") {
-          return { ok: true, processed: false, reason: "stale_bot_turn" };
-        }
-        if (disposition === "human_controlled") {
-          return { ok: true, processed: false, reason: "current_player_is_human" };
-        }
-      } else if (!currentPlayer || ownership?.controller !== "bot") {
-        return completed("human_turn");
-      }
-
-      if (!currentPlayer) return completed("turn_player_not_found");
-
-      const botStep: "draw" | "discard" | "advance" =
-        currentState.roundState.pendingBotTurnAdvanceAt ? "advance" :
-        currentState.roundState.hasDrawnThisTurn ? "discard" : "draw";
-      const botOptions = { difficulty: currentPlayer.botDifficulty ?? "normal" } as const;
-      let actionEventDrafts: OkeyActionEventDraft[];
-      let nextRoundState;
-      let deferredAdvanceAt: string | null = null;
-
-      if (botStep === "advance") {
-        nextRoundState = completeDeferredBotTurnAdvance(
-          currentState.roundState,
-          currentPlayer.id,
-          now(),
-        );
-        actionEventDrafts = [];
-      } else if (botStep === "draw") {
-        const source = chooseBotDrawSource(currentState.roundState, botOptions);
-        nextRoundState = drawTile(currentState.roundState, source);
-        actionEventDrafts = [{
-          type: "draw",
-          actorPlayerId: currentPlayer.id,
-          payload: {
-            source,
-            ...(source === "discard"
-              ? { tile: currentState.roundState.discardPile.at(-1) ?? null }
-              : {}),
-          },
-        }];
-      } else {
-        const prepared = prepareBotTurn(currentState.roundState, botOptions);
-        deferredAdvanceAt = new Date(
-          now() + OKEY_SERVER_BOT_DISCARD_HANDOFF_DELAY_MS,
-        ).toISOString();
-        nextRoundState = prepared.discardTileId
-          ? discardTile(prepared.state, prepared.discardTileId, {
-              deferTurnAdvanceUntil: deferredAdvanceAt,
-            })
-          : prepared.state;
-        const discardedTile = prepared.discardTileId
-          ? prepared.state.players[currentPlayerIndex]?.hand.find(
-              (tile) => tile.id === prepared.discardTileId,
-            ) ?? null
-          : null;
-        const konkanRunIds = new Set(prepared.decision.konkanRunTileIds);
-        const konkanActorHand = prepared.state.players[currentPlayerIndex]?.hand ?? [];
-        actionEventDrafts = createBotPostDrawActionEvents({
-          actorPlayerId: currentPlayer.id,
-          openedMelds: prepared.decision.opened
-            ? prepared.state.players[currentPlayerIndex]?.melds
-            : undefined,
-          openedScore: prepared.state.players[currentPlayerIndex]?.scoreOpened,
-          spentTileIds: prepared.decision.spentTileIds,
-          declaredKonkan: prepared.decision.declaredKonkan,
-          discardedTile,
-          konkanRunTiles: prepared.decision.konkanRunTileIds
-            .map((tileId) => konkanActorHand.find((tile) => tile.id === tileId))
-            .filter((tile): tile is NonNullable<typeof tile> => !!tile),
-          konkanCompletionMeldTiles: prepared.decision.declaredKonkan
-            ? konkanActorHand.filter((tile) => !konkanRunIds.has(tile.id))
-            : [],
-        });
-      }
-
-      if (nextRoundState === currentState.roundState) {
-        return completed(`bot_${botStep}_rejected`);
-      }
-
-      let nextState!: OkeyAuthoritativeMatchState;
-      let deadline!: string | null;
-      const nextVersion = currentVersion + 1;
-      let commandId!: string;
-      const turnResult = await executeAuthoritativeOkeyTransition({
-        state: currentState,
-        transition: {
-          type: "bot-action",
-          roundState: nextRoundState,
-        },
-        reducers: OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
-        transitionNow: now(),
-        controller: "bot",
-        matchId: input.matchId,
-        actorPlayerId: currentPlayer.id,
-        commandId: async () => {
-          commandId = await dependencies.deterministicCommandId(
-            `okey:${input.matchId}:system-bot-${botStep}:${currentVersion}`,
-          );
-          return commandId;
-        },
-        commandType: `system-bot-${botStep}`,
-        expectedVersion: currentVersion,
-        prepare: (reducedState) => {
-          nextState = reducedState;
-          deadline = getNextOkeyMatchTurnDeadline(nextState);
-          return {
-            state: nextState,
-            projection: projectOkeyMatchPublicState(nextState, nextVersion, deadline),
-            deadline,
-            status: nextState.matchFinished ? "finished" as const : "playing" as const,
-            actionEvents: actionEventDrafts,
-          };
-        },
-        commit: async (prepared) => {
-          const { data, error } = await client.rpc("okey_commit_authoritative_action", {
-            p_match_id: input.matchId,
-            p_user_id: currentPlayer.id,
-            p_command_id: commandId,
-            p_expected_version: currentVersion,
-            p_command_type: `system-bot-${botStep}`,
-            p_state: prepared.state,
-            p_projection: prepared.projection,
-            p_status: prepared.status,
-            p_turn_deadline_at: prepared.deadline,
-            p_action_events: prepared.actionEvents,
-          }).single();
-          if (error || !data) {
-            if (error?.message?.includes("version_conflict")) return { applied: false, version: currentVersion, state: currentState, turn_deadline_at: bundle.turn_deadline_at, action_events: [], rejectionReason: "stale_bot_controller" };
-            throw new Error(error?.message ?? "okey_bot_commit_failed");
-          }
-          return data as OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
-        },
-        advance: async (committed) => ({ ...committed, state: committed.state ?? nextState, turn_deadline_at: committed.turn_deadline_at ?? deadline, action_events: committed.action_events ?? [] }),
-        broadcast: async (committed) => {
-          const payload = {
-            matchId: input.matchId,
-            commandId,
-            version: committed.version,
-            publicProjection: projectOkeyMatchPublicState(
-              committed.state,
-              committed.version,
-              committed.turnDeadlineAt,
-            ),
-            actionEvents: committed.actionEvents,
-          };
-          try {
-            await (dependencies.broadcastStateUpdate
-              ? dependencies.broadcastStateUpdate(payload)
-              : defaultBroadcast(client, payload));
-          } catch (broadcastError) {
-            console.error(`Okey bot broadcast failed for ${input.matchId}`, broadcastError);
-          }
-        },
-      });
-      const commit = turnResult.committed;
-      if (commit.applied === false) return completed(commit.rejectionReason ?? "already_processed");
-      const committedVersion = Number(commit.version);
-      if (!Number.isSafeInteger(committedVersion) || committedVersion !== nextVersion) {
-        throw new Error("okey_bot_commit_version_mismatch");
-      }
-      const committedDeadline = commit.turn_deadline_at ?? deadline;
-      const committedState = commit.state ?? nextState;
-
-      steps.push(botStep);
-      currentState = committedState;
-      currentVersion = committedVersion;
-
-      if (currentState.matchFinished) {
-        const winnerTeamId = currentState.matchWinnerTeamId;
-        if (!winnerTeamId && currentState.leaveTerminationReason !== "no-humans") {
-          throw new Error("finished_match_missing_winner_team");
-        }
-        const { error: settlementError } = isTestMatch
-          ? await client.schema("okey").from("matches").update({
-              settlement_at: new Date(now()).toISOString(),
-              settlement: { type: "test", economyApplied: false, winnerTeamId },
-            }).eq("id", input.matchId).eq("is_test", true).is("settlement_at", null)
-          : await client.rpc("okey_settle_match", {
-              p_match_id: input.matchId,
-              p_winner_team_id: winnerTeamId,
-            });
-        if (settlementError) {
-          throw new Error(`okey_bot_settlement_failed: ${settlementError.message}`);
-        }
-        return completed("match_finished");
-      }
-
-      if (currentState.roundState.phase === "finished") {
-        if (currentState.nextRoundEligibleAt && dependencies.dispatchLifecycleWakeup) {
-          try {
-            await dependencies.dispatchLifecycleWakeup({
-              matchId: input.matchId,
-              state: currentState,
-              version: currentVersion,
-              eligibleAt: currentState.nextRoundEligibleAt,
-            });
-          } catch (wakeupError) {
-            console.error(`Okey bot lifecycle wakeup dispatch failed for ${input.matchId}`, wakeupError);
-          }
-        }
-        return completed("round_finished");
-      }
-
-      const pendingAdvanceAt = currentState.roundState.pendingBotTurnAdvanceAt ?? null;
-      const nextClaim = getOkeyBotTurnClaim(currentState, currentVersion);
-      if (pendingAdvanceAt && dependencies.dispatchLifecycleWakeup) {
-        try {
-          await dependencies.dispatchLifecycleWakeup({
-            matchId: input.matchId,
-            state: currentState,
-            version: currentVersion,
-            eligibleAt: pendingAdvanceAt,
-          });
-        } catch (wakeupError) {
-          console.error(`Okey bot advance wakeup dispatch failed for ${input.matchId}`, wakeupError);
-        }
-      } else if (nextClaim && dependencies.dispatchContinuation) {
-        try {
-          await dependencies.dispatchContinuation({
-            matchId: input.matchId,
-            state: currentState,
-            version: currentVersion,
-          });
-        } catch (continuationError) {
-          console.error(`Okey bot continuation dispatch failed for ${input.matchId}`, continuationError);
-        }
-      } else if (!nextClaim && committedDeadline && dependencies.dispatchLifecycleWakeup) {
-        try {
-          await dependencies.dispatchLifecycleWakeup({
-            matchId: input.matchId,
-            state: currentState,
-            version: currentVersion,
-            turnDeadlineAt: committedDeadline,
-          });
-        } catch (wakeupError) {
-          console.error(`Okey bot human-timeout wakeup dispatch failed for ${input.matchId}`, wakeupError);
-        }
-      }
-    }
-
-    return completed("transition_committed");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`process_bot_turns Okey failed for ${input.matchId}`, error);
-    return { ok: false, processed: false, error: message };
+  if (input.step === "advance") {
+    const roundState = completeDeferredBotTurnAdvance(
+      input.state,
+      currentPlayer.id,
+      now,
+    );
+    return roundState === input.state
+      ? null
+      : { step: "advance", actorPlayerId: currentPlayer.id, roundState, actionEvents: [] };
   }
+
+  const botOptions = { difficulty: currentPlayer.botDifficulty ?? "normal" } as const;
+  if (input.step === "draw") {
+    const source = chooseBotDrawSource(input.state, botOptions);
+    const roundState = drawTile(input.state, source);
+    if (roundState === input.state) return null;
+    return {
+      step: "draw",
+      actorPlayerId: currentPlayer.id,
+      roundState,
+      actionEvents: [{
+        type: "draw",
+        actorPlayerId: currentPlayer.id,
+        payload: {
+          source,
+          ...(source === "discard"
+            ? { tile: input.state.discardPile.at(-1) ?? null }
+            : {}),
+        },
+      }],
+    };
+  }
+
+  const prepared = prepareBotTurn(input.state, botOptions);
+  const roundState = prepared.discardTileId
+    ? discardTile(prepared.state, prepared.discardTileId)
+    : prepared.state;
+  if (roundState === input.state) return null;
+
+  const discardedTile = prepared.discardTileId
+    ? prepared.state.players[currentPlayerIndex]?.hand.find(
+        (tile) => tile.id === prepared.discardTileId,
+      ) ?? null
+    : null;
+  const konkanRunIds = new Set(prepared.decision.konkanRunTileIds);
+  const konkanActorHand = prepared.state.players[currentPlayerIndex]?.hand ?? [];
+  return {
+    step: "discard",
+    actorPlayerId: currentPlayer.id,
+    roundState,
+    actionEvents: createBotPostDrawActionEvents({
+      actorPlayerId: currentPlayer.id,
+      openedMelds: prepared.decision.opened
+        ? prepared.state.players[currentPlayerIndex]?.melds
+        : undefined,
+      openedScore: prepared.state.players[currentPlayerIndex]?.scoreOpened,
+      spentTileIds: prepared.decision.spentTileIds,
+      declaredKonkan: prepared.decision.declaredKonkan,
+      discardedTile,
+      konkanRunTiles: prepared.decision.konkanRunTileIds
+        .map((tileId) => konkanActorHand.find((tile) => tile.id === tileId))
+        .filter((tile): tile is NonNullable<typeof tile> => !!tile),
+      konkanCompletionMeldTiles: prepared.decision.declaredKonkan
+        ? konkanActorHand.filter((tile) => !konkanRunIds.has(tile.id))
+        : [],
+    }),
+  };
 }
-
-

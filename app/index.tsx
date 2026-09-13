@@ -1,6 +1,6 @@
 import { useProfile } from "@/lib/profile";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 
 const MIN_SPLASH_DURATION = 5000;
@@ -22,7 +22,7 @@ const KEYFRAMES = [
 export default function IndexScreen() {
   const router = useRouter();
   const { session, authLoading, authError } = useProfile();
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
   const [minimumDurationElapsed, setMinimumDurationElapsed] = useState(false);
 
   useEffect(() => {

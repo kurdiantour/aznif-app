@@ -9,7 +9,6 @@ import {
   type OkeyAuthoritativeMatchState,
   type OkeyServerPlayerIdentity,
 } from "../okey-authoritative.ts";
-import { OKEY_SERVER_ROUND_TRANSITION_DELAY_MS } from "../okey-lifecycle-timing.ts";
 
 import {
   runAuthoritativeOkeyLifecycle,
@@ -159,17 +158,16 @@ test("Bot pacing eligibility is owned by the authoritative lifecycle decision", 
   }
 });
 
-test("Bot Executor and Reconciler consume authoritative pacing without reading roundStartsAt", () => {
+test("Bot intent provider does not own pacing and Reconciler consumes authoritative pacing", () => {
   const engine = readFileSync("lib/multiplayer/okey/okey-turn-engine.ts", "utf8");
   const executor = readFileSync("okey/server/okey-bot-executor.ts", "utf8");
   const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
 
   assert.match(engine, /notBefore: state\.roundStartsAt \?\? null/);
   assert.match(engine, /ready: !startPending/);
-  assert.match(executor, /evaluateOkeyServerLifecycle\(/);
-  assert.match(executor, /pacingDecision\.notBefore/);
+  assert.doesNotMatch(executor, /evaluateOkeyServerLifecycle\(|notBefore/);
   assert.doesNotMatch(executor, /currentState\.roundStartsAt/);
-  assert.match(reconciler, /initialLifecycleDecision\.notBefore/);
+  assert.match(reconciler, /decision\.type === "bot-turn"[\s\S]*!decision\.ready/);
   assert.doesNotMatch(reconciler, /currentState\??\.roundStartsAt/);
 });
 test("Priority 4: Expired human turn deadline is triggered when time is past deadline", () => {
@@ -910,7 +908,7 @@ test("lifecycle commit failure: next round propagates instead of returning execu
       matchId: "test-next-round-failure",
       state,
       version: 32,
-      now: () => roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS,
+      now: () => roundFinishTime,
     }),
     /forced_next_round_commit_failure/,
   );
@@ -976,7 +974,7 @@ test("valid applied:false lifecycle races remain no-op", async () => {
     matchId: "test-next-round-applied-false",
     state: finishedState,
     version: 42,
-    now: () => roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS,
+    now: () => roundFinishTime,
   });
   assert.equal(nextRoundResult.executed, false);
   assert.equal(nextRoundResult.version, 42);
@@ -1104,26 +1102,28 @@ test("reconcileAuthoritativeServerTurns commits Next Round only and hands starti
     now: () => Date.parse("2026-09-02T12:00:16.000Z"),
   });
 
-  // The dealer Bot discard is committed, but turn ownership remains with that
-  // Bot until the persisted handoff eligibility boundary is consumed.
+  // Starting the round is the sole transition in this invocation.
   assert.equal(result.executedNextRoundCount, 1);
-  assert.equal(result.botProcessed, true);
+  assert.equal(result.botProcessed, false);
   assert.equal(result.state.currentRound, 2);
   assert.equal(result.state.roundState.phase, "playing");
-  assert.deepEqual(committedCommands, ["start-next-round", "system-bot-discard"]);
+  assert.deepEqual(committedCommands, ["start-next-round"]);
   assert.equal(result.state.roundState.currentPlayerIndex, 1);
-  assert.ok(result.state.roundState.pendingBotTurnAdvanceAt);
+  assert.equal(result.state.roundState.pendingBotTurnAdvanceAt ?? null, null);
 });
 
 test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions have single Server owners and zero client triggers", () => {
   const edge = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
+  const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
   const adapter = readFileSync("okey/adapters/supabase-okey-match-adapter.ts", "utf8");
   const hook = readFileSync("okey/hooks/useOkeyMultiplayerGame.ts", "utf8");
   const matchInterface = readFileSync("okey/adapters/okey-match-adapter.ts", "utf8");
   const matchAdapter = readFileSync("okey/adapters/okey-multiplayer-adapter.ts", "utf8");
 
   // Server owns reconciliation:
-  assert.match(edge, /reconcileAuthoritativeServerTurns/);
+  assert.match(edge, /reconcileAuthoritativeHumanCommand/);
+  assert.doesNotMatch(edge, /reconcileAuthoritativeServerTurns/);
+  assert.match(reconciler, /reconcileAuthoritativeServerTurns/);
 
   // Client triggers and adapter methods are completely removed (Server is single owner):
   assert.doesNotMatch(hook, /eliminatedClaimRef/);
@@ -1152,12 +1152,12 @@ test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions 
   assert.doesNotMatch(edge, /action === "play-eliminated"/);
   assert.doesNotMatch(edge, /action === "resolve-timeout"/);
   assert.doesNotMatch(edge, /action === "start-next-round"/);
-  assert.match(edge, /handOffOkeyServerLifecycle/);
+  assert.match(edge, /scheduleAznifGameLifecycle/);
 });
 
-test("Server Lifecycle Wake-up: waits full round transition delay (8.5s) until nextRoundEligibleAt before executing Reconciler", async () => {
+test("Server Lifecycle Wake-up: round completion is immediately eligible by game rule", async () => {
   const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
-  const eligibleAt = new Date(roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
+  const eligibleAt = new Date(roundFinishTime).toISOString();
   let currentTime = roundFinishTime;
   const sleptIntervals: number[] = [];
 
@@ -1172,33 +1172,12 @@ test("Server Lifecycle Wake-up: waits full round transition delay (8.5s) until n
     },
   }, roundFinishTime);
 
-  // Step 1: Round finished sets nextRoundEligibleAt to exact Server transition delay (now + 8.5s)
+  // The official transition instant is the committed round-finish instant.
   assert.equal(settledMatch.nextRoundEligibleAt, eligibleAt);
-  assert.equal(OKEY_SERVER_ROUND_TRANSITION_DELAY_MS, 8_500);
-
-  // Step 2 & 3: Before 8.5s (during celebration and popup display), server lifecycle remains idle
-  const celebrationMidpoint = evaluateOkeyServerLifecycle(
-    createTestBundle(settledMatch, 10, null),
-    roundFinishTime + 4_000,
-  );
-  assert.equal(celebrationMidpoint.type, "idle");
-  if (celebrationMidpoint.type === "idle") {
-    assert.equal(celebrationMidpoint.reason, "next_round_countdown");
-  }
-
-  const popupDisplayMidpoint = evaluateOkeyServerLifecycle(
-    createTestBundle(settledMatch, 10, null),
-    roundFinishTime + 6_500,
-  );
-  assert.equal(popupDisplayMidpoint.type, "idle");
-  if (popupDisplayMidpoint.type === "idle") {
-    assert.equal(popupDisplayMidpoint.reason, "next_round_countdown");
-  }
-
-  // Step 4: At t >= 8.5s, server reaches due-next-round
+  // Presentation may still be running, but it has no lifecycle authority.
   const afterBudgetElapsed = evaluateOkeyServerLifecycle(
     createTestBundle(settledMatch, 10, null),
-    roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS, // t = 8.5s
+    roundFinishTime,
   );
   assert.equal(afterBudgetElapsed.type, "due-next-round");
 
@@ -1229,7 +1208,7 @@ test("Server Lifecycle Wake-up: waits full round transition delay (8.5s) until n
               applied: true,
               version: 11,
               state: nextState,
-              turn_deadline_at: "2026-09-02T12:00:38.500Z",
+              turn_deadline_at: "2026-09-02T12:00:30.000Z",
               action_events: [{ type: "round", payload: { round: 2 } }],
             },
             error: null,
@@ -1244,33 +1223,25 @@ test("Server Lifecycle Wake-up: waits full round transition delay (8.5s) until n
     client: mockClient,
     matchId: "test-wakeup-delay",
     requesterUserId: "p1",
-    initialState: settledMatch,
     initialVersion: 10,
     eligibleAt,
     now: () => currentTime,
-    sleep: async (ms: number) => {
-      sleptIntervals.push(ms);
-      currentTime += ms;
-    },
-    maxRetryDurationMs: 14_000,
-    retryIntervalMs: 500,
   });
 
-  // Must have waited exactly 8,500 ms before executing the transition
-  assert.deepEqual(sleptIntervals, [8_500]);
+  // No sleep is needed before the official transition.
+  assert.deepEqual(sleptIntervals, []);
   assert.equal(wakeupResult.ok, true);
   assert.equal(wakeupResult.executed, true);
   assert.equal(wakeupResult.reason, "next_round_started");
   assert.equal(wakeupResult.state?.roundState.phase, "playing");
-  assert.equal(wakeupResult.state?.currentRound, 2);
   assert.equal(serverCommitted, true);
   assert.equal(reconcileAttempts, 1);
 });
 
-test("Server Lifecycle Wake-up: retries on transient conflict and round never remains in phase=finished", async () => {
+test("Server Lifecycle Wake-up: performs no retry after a one-shot commit conflict", async () => {
   const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
-  const eligibleAt = new Date(roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
-  let currentTime = roundFinishTime;
+  const eligibleAt = new Date(roundFinishTime).toISOString();
+  let currentTime = Date.parse(eligibleAt);
   const sleptIntervals: number[] = [];
 
   const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
@@ -1334,31 +1305,23 @@ test("Server Lifecycle Wake-up: retries on transient conflict and round never re
     client: mockClient,
     matchId: "test-wakeup-retry",
     requesterUserId: "p1",
-    initialState: settledMatch,
     initialVersion: 10,
     eligibleAt,
     now: () => currentTime,
-    sleep: async (ms: number) => {
-      sleptIntervals.push(ms);
-      currentTime += ms;
-    },
-    maxRetryDurationMs: 14_000,
-    retryIntervalMs: 500,
   });
 
-  // Slept 8500ms initially + 500ms after attempt 1 + 500ms after attempt 2 = 9500ms
-  assert.deepEqual(sleptIntervals, [8_500, 500, 500]);
+  // The executor neither sleeps nor retries a conflicted transition.
+  assert.deepEqual(sleptIntervals, []);
   assert.equal(wakeupResult.ok, true);
-  assert.equal(wakeupResult.executed, true);
-  assert.equal(wakeupResult.reason, "next_round_started");
-  assert.equal(wakeupResult.state?.roundState.phase, "playing");
-  assert.equal(wakeupResult.state?.currentRound, 2);
-  assert.equal(attemptCount, 3);
+  assert.equal(wakeupResult.executed, false);
+  assert.equal(wakeupResult.reason, "already_transitioned");
+  assert.equal(wakeupResult.state?.roundState.phase, "finished");
+  assert.equal(attemptCount, 1);
 });
 
 test("Server Lifecycle Wake-up: gracefully recognizes if match was already transitioned by concurrent worker", async () => {
   const roundFinishTime = Date.parse("2026-09-02T12:00:00.000Z");
-  const eligibleAt = new Date(roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
+  const eligibleAt = new Date(roundFinishTime).toISOString();
   let currentTime = roundFinishTime;
 
   const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
@@ -1372,7 +1335,7 @@ test("Server Lifecycle Wake-up: gracefully recognizes if match was already trans
     },
   }, roundFinishTime);
 
-  const alreadyStartedMatch = startAuthoritativeOkeyNextRound(settledMatch, roundFinishTime + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS);
+  const alreadyStartedMatch = startAuthoritativeOkeyNextRound(settledMatch, roundFinishTime);
 
   const mockClient = {
     rpc: (name: string, args: any) => {
@@ -1381,7 +1344,7 @@ test("Server Lifecycle Wake-up: gracefully recognizes if match was already trans
           single: async () => ({
             data: {
               version: 11,
-              turn_deadline_at: "2026-09-02T12:00:38.500Z",
+              turn_deadline_at: "2026-09-02T12:00:30.000Z",
               state: alreadyStartedMatch,
             },
             error: null,
@@ -1396,15 +1359,9 @@ test("Server Lifecycle Wake-up: gracefully recognizes if match was already trans
     client: mockClient,
     matchId: "test-wakeup-concurrent",
     requesterUserId: "p1",
-    initialState: settledMatch,
     initialVersion: 10,
     eligibleAt,
     now: () => currentTime,
-    sleep: async (ms: number) => {
-      currentTime += ms;
-    },
-    maxRetryDurationMs: 14_000,
-    retryIntervalMs: 500,
   });
 
   assert.equal(wakeupResult.ok, true);
@@ -1412,10 +1369,10 @@ test("Server Lifecycle Wake-up: gracefully recognizes if match was already trans
   assert.equal(wakeupResult.reason, "already_transitioned");
 });
 
-test("Server Lifecycle Wake-up: sleeps until turnDeadlineAt, executes timeout, and converts human to bot takeover", async () => {
+test("Server Lifecycle Wake-up: executes one timeout transition when already due", async () => {
   const turnStartTime = Date.parse("2026-09-02T12:00:00.000Z");
   const turnDeadlineAt = new Date(turnStartTime + 15_000).toISOString();
-  let currentTime = turnStartTime;
+  let currentTime = Date.parse(turnDeadlineAt);
   const sleptIntervals: number[] = [];
 
   const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
@@ -1471,20 +1428,13 @@ test("Server Lifecycle Wake-up: sleeps until turnDeadlineAt, executes timeout, a
     client: mockClient,
     matchId: "test-wakeup-turn-timeout",
     requesterUserId: "p1",
-    initialState: currentState,
     initialVersion: 5,
     turnDeadlineAt,
     now: () => currentTime,
-    sleep: async (ms: number) => {
-      sleptIntervals.push(ms);
-      currentTime += ms;
-    },
-    maxRetryDurationMs: 8_000,
-    retryIntervalMs: 500,
   });
 
   // Must sleep exactly 15,000 ms to reach turnDeadlineAt
-  assert.deepEqual(sleptIntervals, [15_000]);
+  assert.deepEqual(sleptIntervals, []);
   assert.equal(wakeupResult.ok, true);
   assert.equal(wakeupResult.executed, true);
   assert.equal(wakeupResult.reason, "timeout_executed");
@@ -1496,7 +1446,7 @@ test("Server Lifecycle Wake-up: sleeps until turnDeadlineAt, executes timeout, a
 test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle with 0 active clients", async () => {
   const nextRoundTime = Date.parse("2026-09-02T12:00:10.000Z");
   const eligibleAt = new Date(nextRoundTime).toISOString();
-  let currentTime = Date.parse("2026-09-02T12:00:05.000Z");
+  let currentTime = Date.parse(eligibleAt);
   const sleptIntervals: number[] = [];
 
   const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
@@ -1508,7 +1458,7 @@ test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle wi
       winnerId: "p1",
       endReason: "win",
     },
-  }, nextRoundTime - OKEY_SERVER_ROUND_TRANSITION_DELAY_MS);
+  }, nextRoundTime);
   const finishedRoundState: OkeyAuthoritativeMatchState = {
     ...settledRoundState,
     nextRoundEligibleAt: eligibleAt,
@@ -1559,15 +1509,10 @@ test("reconcileAuthoritativeServerScheduler: runs autonomously from DB bundle wi
     matchId: "test-autonomous-scheduler-zero-clients",
     requesterUserId: "11111111-1111-4111-8111-111111111111",
     now: () => currentTime,
-    sleep: async (ms: number) => {
-      sleptIntervals.push(ms);
-      currentTime += ms;
-    },
-    maxRetryDurationMs: 8_000,
   });
 
   // Slept 5,000 ms to reach eligibleAt
-  assert.deepEqual(sleptIntervals, [5_000]);
+  assert.deepEqual(sleptIntervals, []);
   assert.equal(schedulerResult.ok, true);
   assert.equal(schedulerResult.executed, true);
   assert.equal(schedulerResult.reason, "next_round_started");

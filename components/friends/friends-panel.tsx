@@ -199,6 +199,7 @@ export function FriendsPanel({
   useEffect(() => {
     let mounted = true;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     refresh()
       .catch((err) => {
@@ -321,6 +322,7 @@ export function FriendsPanel({
   useEffect(() => {
     if (transferSuccessSignal === 0) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     handleTransferSuccess();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, transferSuccessSignal]);

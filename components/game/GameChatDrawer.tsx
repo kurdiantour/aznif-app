@@ -34,7 +34,6 @@ type GameChatDrawerProps = {
   onClose: () => void;
 };
 
-
 function isEmojiOnly(text: string) {
   const value = text.trim();
 
@@ -67,6 +66,10 @@ const QUICK_CHAT_MESSAGES = [
   "باشە ئاگام لێیە برام",
   "ئاگام لێ نەبوو ببۆرە",
 ];
+
+function getCurrentTimestamp() {
+  return new Date().getTime();
+}
 
 export default function GameChatDrawer({
   visible,
@@ -124,9 +127,14 @@ export default function GameChatDrawer({
     };
   }, []);
 
-  useEffect(() => () => {
-    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+      }
+    },
+    [],
+  );
 
   function dismissKeyboardOnly() {
     inputRef.current?.blur();
@@ -246,7 +254,7 @@ export default function GameChatDrawer({
       !matchId ||
       !text ||
       sending ||
-      Date.now() < cooldownUntilRef.current
+      getCurrentTimestamp() < cooldownUntilRef.current
     ) {
       return;
     }
@@ -266,9 +274,15 @@ export default function GameChatDrawer({
         mergeMessages(current, sentMessage),
       );
 
-      cooldownUntilRef.current = Date.now() + 3000;
+      cooldownUntilRef.current =
+        getCurrentTimestamp() + 3000;
+
       setCooldownActive(true);
-      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+      }
+
       cooldownTimerRef.current = setTimeout(() => {
         cooldownUntilRef.current = 0;
         setCooldownActive(false);
@@ -302,7 +316,10 @@ export default function GameChatDrawer({
   }
 
   return (
-    <KeyboardAvoidingView behavior="height" style={styles.overlay}>
+    <KeyboardAvoidingView
+      behavior="height"
+      style={styles.overlay}
+    >
       <Pressable
         accessibilityLabel="داخستنی گفتوگۆی یاری"
         style={styles.backdrop}
@@ -401,19 +418,19 @@ export default function GameChatDrawer({
               />
             </View>
 
-<LinearGradient
-  colors={[
-    "rgba(255,255,255,0)",
-    "rgba(255,255,255,0.10)",
-    "rgba(255,255,255,0.24)",
-    "rgba(255,255,255,0.10)",
-    "rgba(255,255,255,0)",
-  ]}
-  locations={[0, 0.25, 0.5, 0.75, 1]}
-  start={{ x: 0.5, y: 0 }}
-  end={{ x: 0.5, y: 1 }}
-  style={styles.verticalDivider}
-/>
+            <LinearGradient
+              colors={[
+                "rgba(255,255,255,0)",
+                "rgba(255,255,255,0.10)",
+                "rgba(255,255,255,0.24)",
+                "rgba(255,255,255,0.10)",
+                "rgba(255,255,255,0)",
+              ]}
+              locations={[0, 0.25, 0.5, 0.75, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.verticalDivider}
+            />
 
             <ScrollView
               style={styles.quickMessages}
@@ -450,8 +467,15 @@ export default function GameChatDrawer({
               <Pressable
                 key={emoji}
                 style={styles.quickEmojiButton}
-                onPress={() => sendQuickMessage(emoji)}
-                disabled={sending || cooldownActive || !enabled || !matchId}
+                onPress={() =>
+                  sendQuickMessage(emoji)
+                }
+                disabled={
+                  sending ||
+                  cooldownActive ||
+                  !enabled ||
+                  !matchId
+                }
               >
                 <Text style={styles.quickEmojiText}>
                   {emoji}
@@ -584,12 +608,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-verticalDivider: {
-  width: 2,
-  height: "80%",
-  alignSelf: "center",
-  marginHorizontal: 10,
-},
+  verticalDivider: {
+    width: 2,
+    height: "80%",
+    alignSelf: "center",
+    marginHorizontal: 10,
+  },
 
   dividerFadeTop: {
     width: 1,
@@ -610,26 +634,26 @@ verticalDivider: {
     backgroundColor: "rgba(255,255,255,0.08)",
   },
 
-quickMessages: {
-  width: 150,
-  flexGrow: 0,
-  height: "100%",
-},
+  quickMessages: {
+    width: 150,
+    flexGrow: 0,
+    height: "100%",
+  },
 
   quickMessagesContent: {
     paddingBottom: 20,
   },
 
-quickMessageButton: {
-  width: "100%",
-  minHeight: 30,
-  justifyContent: "center",
+  quickMessageButton: {
+    width: "100%",
+    minHeight: 30,
+    justifyContent: "center",
 
-  marginBottom: 6,
-  paddingHorizontal: 8,
+    marginBottom: 6,
+    paddingHorizontal: 8,
 
-  backgroundColor: "rgba(255,255,255,0.045)",
-},
+    backgroundColor: "rgba(255,255,255,0.045)",
+  },
 
   quickMessageText: {
     color: "#f8f3df",

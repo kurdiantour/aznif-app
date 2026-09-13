@@ -153,15 +153,13 @@ export default function DailyGiftModal({
     getTimeUntilTomorrow(nextResetAt)
   );
   const [claimFeedback, setClaimFeedback] = useState<string | null>(null);
-  const feedbackOpacity = useRef(new Animated.Value(0)).current;
+  const [feedbackOpacity] = useState(() => new Animated.Value(0));
   const feedbackHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rewardPlayer = useAudioPlayer(REWARD_SOUND);
   const [rewardRainEvent, setRewardRainEvent] = useState<RewardRainEvent | null>(null);
   const rewardRainSequence = useRef(0);
 
-  const progress = useRef(
-    new Animated.Value(visible ? 1 : 0),
-  ).current;
+  const [progress] = useState(() => new Animated.Value(visible ? 1 : 0));
 
   const closing = useRef(false);
 
@@ -298,6 +296,7 @@ useEffect(
     }
 
     closing.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRewardRainEvent(null);
     setMounted(true);
 
@@ -315,6 +314,7 @@ useEffect(
   useEffect(() => {
     if (!mounted || !visible) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeLeft(getTimeUntilTomorrow(nextResetAt));
 
     const interval = setInterval(() => {

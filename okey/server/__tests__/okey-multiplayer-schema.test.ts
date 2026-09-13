@@ -19,6 +19,7 @@ const settlementSql = normalizeSql(
 );
 const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 const matchFunction = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
+const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
 
 test("current multiplayer room authority remains Okey scoped", () => {
   assert.match(roomSql, /okey\.matches/);
@@ -73,11 +74,13 @@ test("manual-left seats are excluded from winner money and Fun rewards", () => {
 });
 
 test("finished match response exposes the persisted reward for the requesting player", () => {
-  assert.match(matchFunction, /\.from\("fun_match_rewards"\)/);
-  assert.match(matchFunction, /\.eq\("match_id", matchId\)/);
-  assert.match(matchFunction, /\.eq\("user_id", authData\.user\.id\)/);
-  assert.match(matchFunction, /pointDelta: Number\(rewardRow\.point_delta/);
-  assert.match(matchFunction, /gemDelta: Number\(rewardRow\.gem_delta/);
+  assert.match(matchFunction, /reconcileAuthoritativeHumanCommand\(/);
+  assert.doesNotMatch(matchFunction, /settleAuthoritativeOkeyMatchForViewer\(/);
+  assert.match(reconciler, /\.from\("fun_match_rewards"\)/);
+  assert.match(reconciler, /\.eq\("match_id", input\.matchId\)/);
+  assert.match(reconciler, /\.eq\("user_id", input\.actorUserId\)/);
+  assert.match(reconciler, /pointDelta: Number\(rewardRow\.point_delta/);
+  assert.match(reconciler, /gemDelta: Number\(rewardRow\.gem_delta/);
 });
 
 test("zero-human settlement closes without prize or refund", () => {

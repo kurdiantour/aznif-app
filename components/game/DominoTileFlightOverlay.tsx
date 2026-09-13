@@ -1,12 +1,12 @@
 import DominoTile from "@/components/game/DominoTile";
 import type { DominoTileFlight } from "@/domino/shared/presentation/domino-tile-flight";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";
 
 const FLIGHT_DURATION_MS = 700;
 
 export default function DominoTileFlightOverlay({ flight, onDone }: { flight: DominoTileFlight; onDone: () => void }) {
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     progress.setValue(0);

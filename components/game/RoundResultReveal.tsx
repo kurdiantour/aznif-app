@@ -1,5 +1,5 @@
 import type { Player, RoundResult } from "@/domino/types/domino-game";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Animated,
   Easing,

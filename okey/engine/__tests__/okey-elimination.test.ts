@@ -312,7 +312,18 @@ test("KonKan player: 1st Normal Meld/Open attempt immediately eliminates player 
     { id: "y12", color: "yellow", value: 12, copy: 1 },
     { id: "y13", color: "yellow", value: 13, copy: 1 },
   ];
-  const allHandTiles = [...meld1Tiles, ...meld2Tiles, ...meld3Tiles];
+  const discardTile: OkeyTile = {
+    id: "normal-open-discard",
+    color: "blue",
+    value: 1,
+    copy: 1,
+  };
+  const allHandTiles = [
+    ...meld1Tiles,
+    ...meld2Tiles,
+    ...meld3Tiles,
+    discardTile,
+  ];
 
   const candidateMelds: OkeyMeld[] = [
     { id: "m1", ownerId: base.players[0].id, kind: "run", tiles: meld1Tiles, score: 36 },

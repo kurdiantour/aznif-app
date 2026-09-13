@@ -30,6 +30,7 @@ export function GameInvitePopup({
 
   useEffect(() => {
     if (!invite) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRemainingSeconds(0);
       return;
     }

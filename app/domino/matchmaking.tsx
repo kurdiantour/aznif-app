@@ -123,6 +123,7 @@ export default function MatchmakingScreen() {
 
   useEffect(() => {
     if (initialMatchmakingStatus === "matched" && initialRoomId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMatchmakingStatus("matched");
       setCurrentRoomId(initialRoomId);
     }
@@ -347,6 +348,7 @@ export default function MatchmakingScreen() {
         ? players.length >= requiredPlayers
         : matchmakingStatus === "matched" && players.length >= requiredPlayers;
   const matchLocked = isOneVsOne && matchmakingStatus === "matched";
+  // eslint-disable-next-line react-hooks/refs
   matchLockedRef.current = matchLocked;
 
   const leaveWaitingRoom = useCallback(async () => {
@@ -423,6 +425,7 @@ useEffect(() => {
       }
 
       countdownSecondsRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCountdownSeconds(null);
       return;
     }

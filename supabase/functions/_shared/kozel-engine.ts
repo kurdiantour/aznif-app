@@ -444,7 +444,7 @@ export function applyMove(
   tile: DominoTileData,
   branch: KozelBranch | undefined,
   spinnerValue: number | null,
-  isOpeningRound: boolean,
+  _isOpeningRound: boolean,
 ): ApplyMoveResult {
   const isOpeningMove = !board.centerTile;
   const nextSpinnerValue =

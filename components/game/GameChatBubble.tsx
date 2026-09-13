@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   StyleSheet,
@@ -34,8 +34,9 @@ export default function GameChatBubble({
   seatAnchorRect,
   onComplete,
 }: GameChatBubbleProps) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.92)).current;
+  const [opacity] = useState(() => new Animated.Value(0));
+  const [scale] = useState(() => new Animated.Value(0.92));
+
   const onCompleteRef = useRef(onComplete);
 
   useEffect(() => {
@@ -43,7 +44,6 @@ export default function GameChatBubble({
   }, [onComplete]);
 
   useEffect(() => {
-
     opacity.setValue(0);
     scale.setValue(isEmoji ? 0.72 : 0.92);
 
@@ -66,7 +66,9 @@ export default function GameChatBubble({
       ]),
 
       Animated.delay(
-        totalDisplayDuration - enterDuration - exitDuration,
+        totalDisplayDuration -
+          enterDuration -
+          exitDuration,
       ),
 
       Animated.parallel([

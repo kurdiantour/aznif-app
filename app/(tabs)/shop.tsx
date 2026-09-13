@@ -5,35 +5,67 @@ import {
   type ShopCategory,
 } from "@/constants/shop";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import { FullWindowOverlay } from "react-native-screens";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Redirect } from "expo-router";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Image as ReactNativeImage,
+  type ImageSourcePropType,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { getMyShopState, purchaseOrEquipShopItem } from "@/lib/shop";
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 import { useWallet } from "@/lib/wallet-context";
 import { ShopPopupContext } from "@/components/shop/InsufficientGemsPopup";
 
-function ItemPreview({ item }: { item: MockShopItem }) {
+function ItemPreview({
+  item,
+  onTablePreviewPress,
+}: {
+  item: MockShopItem;
+  onTablePreviewPress: (source: ImageSourcePropType) => void;
+}) {
   const { category } = item;
 
   if (category === "tables") {
+    const { width, height } = ReactNativeImage.resolveAssetSource(
+      item.images.shopPreview,
+    );
+
     return (
-      <Image
-        source={item.images.shopPreview}
-        style={styles.preview}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        transition={0}
-      />
+      <Pressable
+        onPress={() => onTablePreviewPress(item.images.shopPreview)}
+        accessibilityRole="imagebutton"
+        accessibilityLabel="پیشاندانی وێنە بە قەبارەی تەواو"
+        style={[
+          styles.preview,
+          styles.tablePreview,
+          { aspectRatio: width / height },
+        ]}
+      >
+        <ExpoImage
+          source={item.images.shopPreview}
+          style={styles.tablePreviewImage}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          transition={0}
+        />
+      </Pressable>
     );
   }
 
   if (category === "domino-skins" && item.previewImage) {
     return (
-      <Image
+      <ExpoImage
         source={item.previewImage}
         style={styles.preview}
         contentFit="cover"
@@ -101,6 +133,8 @@ function ShopContent() {
     Partial<Record<ShopCategory, string>>
   >({});
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
+  const [fullscreenPreview, setFullscreenPreview] =
+    useState<ImageSourcePropType | null>(null);
   const { showInsufficientGems, showPurchaseConfirmation } =
     useContext(ShopPopupContext);
   const items = useMemo(
@@ -115,6 +149,7 @@ function ShopContent() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshShopState().catch((error) =>
       console.warn("Unable to load Shop state", error),
     );
@@ -179,8 +214,14 @@ function ShopContent() {
           })}
         </View>
 
-        <View style={styles.content}>
-          <View style={styles.grid}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={[
+            styles.grid,
+            category === "tables" && styles.tableGrid,
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
             {items.map((item) => {
               const isEquipped = equipped[item.category] === item.id;
               const isOwned = ownedItemIds.has(item.id);
@@ -188,9 +229,17 @@ function ShopContent() {
                 <Pressable
                   key={item.id}
                   disabled={busyItemId !== null}
-                  onPress={() => handleItemAction(item)}
+                  onPress={
+                    item.category === "tables"
+                      ? undefined
+                      : () => handleItemAction(item)
+                  }
                   accessibilityLabel={isOwned ? "ئایتمی کڕدراو" : "ئایتمی شۆپ"}
-                  style={[styles.card, isEquipped && styles.cardEquipped]}
+                  style={[
+                    styles.card,
+                    item.category === "tables" && styles.tableCard,
+                    isEquipped && styles.cardEquipped,
+                  ]}
                 >
                   <View style={styles.cardTopRow}>
                     <View style={styles.priceBadge}>
@@ -201,20 +250,98 @@ function ShopContent() {
                           : item.price.toLocaleString()}
                       </Text>
                     </View>
-                    {isEquipped ? (
+                    {item.category === "tables" ? (
+                      <Pressable
+                        disabled={busyItemId !== null || isEquipped}
+                        onPress={() => handleItemAction(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          isEquipped
+                            ? "بەکارهاتووە"
+                            : isOwned
+                              ? "کڕدراوە"
+                              : "بیکڕە"
+                        }
+                        style={[
+                          styles.tableAction,
+                          !isOwned && styles.tableActionBuy,
+                          isOwned && !isEquipped && styles.tableActionOwned,
+                          isEquipped && styles.tableActionEquipped,
+                        ]}
+                      >
+                        {isEquipped ? (
+                          <Ionicons name="checkmark" size={13} color="#74f1a8" />
+                        ) : null}
+                        <Text style={styles.tableActionLabel}>
+                          {isEquipped ? "بەکارهاتووە" : isOwned ? "کڕدراوە" : "بیکڕە"}
+                        </Text>
+                      </Pressable>
+                    ) : isEquipped ? (
                       <View style={styles.equippedBadge}>
                         <Ionicons name="checkmark" size={13} color="#74f1a8" />
                         <Text style={styles.equippedLabel}>بەکارهاتووە</Text>
                       </View>
                     ) : null}
                   </View>
-                  <ItemPreview item={item} />
+                  <ItemPreview
+                    item={item}
+                    onTablePreviewPress={setFullscreenPreview}
+                  />
                 </Pressable>
               );
             })}
-          </View>
-        </View>
+        </ScrollView>
       </View>
+
+      {fullscreenPreview ? (
+        Platform.OS === "ios" ? (
+          <FullWindowOverlay unstable_accessibilityContainerViewIsModal>
+            <View style={styles.fullscreenPreview}>
+              <ExpoImage
+                source={fullscreenPreview}
+                style={styles.fullscreenPreviewImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={0}
+              />
+              <Pressable
+                onPress={() => setFullscreenPreview(null)}
+                accessibilityRole="button"
+                accessibilityLabel="داخستن"
+                hitSlop={12}
+                style={styles.fullscreenCloseButton}
+              >
+                <Ionicons name="close" size={34} color="#f8d774" />
+              </Pressable>
+            </View>
+          </FullWindowOverlay>
+        ) : (
+          <Modal
+            visible
+            animationType="fade"
+            onRequestClose={() => setFullscreenPreview(null)}
+          >
+            <View style={styles.fullscreenPreview}>
+              <ExpoImage
+                source={fullscreenPreview}
+                style={styles.fullscreenPreviewImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={0}
+              />
+              <Pressable
+                onPress={() => setFullscreenPreview(null)}
+                accessibilityRole="button"
+                accessibilityLabel="داخستن"
+                hitSlop={12}
+                style={styles.fullscreenCloseButton}
+              >
+                <Ionicons name="close" size={34} color="#f8d774" />
+              </Pressable>
+            </View>
+          </Modal>
+        )
+      ) : null}
 
     </View>
   );
@@ -251,7 +378,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(7,9,19,0.58)",
   },
   walletText: { color: "#fff", fontSize: 12, fontFamily: "RobotoMedium" },
-  body: { flex: 1, flexDirection: "row", gap: 12, paddingBottom: 82 },
+  body: { flex: 1, flexDirection: "row", gap: 12 },
   sidebar: { width: 150, gap: 10, paddingTop: 2 },
   sidebarItem: {
     height: 36,
@@ -272,8 +399,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   categoryTextActive: { color: "#fff" },
-  content: { flex: 1 },
+  content: { flex: 1, marginBottom: 63 },
   grid: { flexDirection: "row", gap: 8 },
+  tableGrid: { flexWrap: "wrap" },
   card: {
     width: "31.3%",
     minHeight: 205,
@@ -284,6 +412,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(180,120,255,0.42)",
     backgroundColor: "rgba(17,24,39,0.82)",
   },
+  tableCard: { width: "48.7%", minHeight: 0 },
   cardEquipped: { borderColor: "rgba(110,231,183,0.82)" },
   cardTopRow: {
     minHeight: 30,
@@ -304,6 +433,34 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(7,9,19,0.76)",
   },
   priceText: { color: "#f7d979", fontSize: 10, fontFamily: "RobotoMedium" },
+  tableAction: {
+    minWidth: 72,
+    minHeight: 28,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  tableActionBuy: {
+    borderColor: "rgba(248,215,116,0.72)",
+    backgroundColor: "rgba(120,77,18,0.38)",
+  },
+  tableActionOwned: {
+    borderColor: "rgba(180,120,255,0.58)",
+    backgroundColor: "rgba(89,48,145,0.32)",
+  },
+  tableActionEquipped: {
+    borderColor: "rgba(110,231,183,0.62)",
+    backgroundColor: "rgba(29,112,78,0.28)",
+  },
+  tableActionLabel: {
+    color: "#f4f0ff",
+    fontSize: 9,
+    fontFamily: "SpedaBold",
+  },
   equippedBadge: {
     flexDirection: "row-reverse",
     alignItems: "center",
@@ -321,6 +478,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
+  },
+  tablePreview: {
+    width: "100%",
+    height: undefined,
+  },
+  tablePreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenPreview: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullscreenPreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenCloseButton: {
+    position: "absolute",
+    top: 24,
+    right: 24,
+    zIndex: 1,
+    elevation: 1,
   },
   dominoPreviewRow: { flexDirection: "row", alignItems: "center" },
   dominoPreviewTile: {

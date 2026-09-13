@@ -75,11 +75,16 @@ test("openPlayerMelds rejects duplicate, foreign, and un-splittable inputs", () 
   }
 });
 
-test("normal open remains disabled for KonKan players", () => {
+test("normal open immediately eliminates a KonKan player", () => {
   const tiles = [tile(3), tile(4), tile(5), tile(10, "remainder")];
   const state = openState(tiles);
   state.players[0] = { ...state.players[0], konkan: true };
-  assert.equal(openPlayerMelds(state, 0, [run(tiles.slice(0, 3))], 12), state);
+  const result = openPlayerMelds(state, 0, [run(tiles.slice(0, 3))], 12);
+
+  assert.notEqual(result, state);
+  assert.equal(result.players[0].eliminated, true);
+  assert.notEqual(result.currentPlayerIndex, 0);
+  assert.equal(result.hasDrawnThisTurn, false);
 });
 test("opening is rejected outside the player's turn", () => {
   const tiles = [tile(3), tile(4), tile(5), tile(10, "remainder")];

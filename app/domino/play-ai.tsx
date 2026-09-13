@@ -1,5 +1,5 @@
 import { Redirect } from "expo-router";
-import { useRef } from "react";
+import { useState } from "react";
 
 function createPracticeMatchId() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -10,14 +10,14 @@ function createPracticeMatchId() {
 }
 
 export default function PlayAIModeScreen() {
-  const practiceMatchIdRef = useRef(createPracticeMatchId());
+  const [practiceMatchId] = useState(createPracticeMatchId);
 
   return (
     <Redirect
       href={{
         pathname: "/domino/game",
         params: {
-          room_id: practiceMatchIdRef.current,
+          room_id: practiceMatchId,
           mode: "1v1",
           practice: "true",
           playMode: "fun",

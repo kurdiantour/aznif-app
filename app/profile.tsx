@@ -35,7 +35,7 @@ export default function ProfileScreen() {
   const [draftName, setDraftName] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
-  const modalProgress = useRef(new Animated.Value(0)).current;
+  const [modalProgress] = useState(() => new Animated.Value(0));
   const isClosing = useRef(false);
 
   useEffect(() => {
@@ -65,6 +65,7 @@ export default function ProfileScreen() {
   }, [modalProgress, router]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftName(profile?.displayName ?? "");
   }, [profile?.displayName]);
 

@@ -15,6 +15,7 @@
     "test:okey": "npm run test:okey:core && npm run test:okey:ui",
     "test:okey:core": "node --import ./scripts/test-typescript-loader.mjs --test --experimental-strip-types okey/engine/__tests__/*.test.ts okey/engine/__tests__/*.test.js okey/server/__tests__/*.test.ts okey/lifecycle/__tests__/*.test.ts okey/feedback/__tests__/*.test.ts",
     "test:okey:ui": "jest --config jest.okey.config.cjs --runInBand",
+    "test:cloudflare:lifecycle": "node --test cloudflare/aznif-game-lifecycle/__tests__/*.test.mjs",
     "test:okey:ui:coverage": "jest --config jest.okey.config.cjs --runInBand --coverage",
     "check": "npm run lint && npm run typecheck && npm run test:security && npm run test:domino:timeout && npm run test:domino:waiting-room",
     "build:android:apk": "npx eas-cli build --platform android --profile preview-apk",

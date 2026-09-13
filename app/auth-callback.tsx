@@ -1,5 +1,5 @@
 import {
-  markPendingLeaderboardConsent,
+  claimNewAccountLeaderboardConsent,
 } from "@/lib/leaderboardVisibility";
 import { supabase } from "@/lib/supabase";
 import type { EmailOtpType } from "@supabase/supabase-js";
@@ -11,25 +11,6 @@ import { useURL } from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-
-const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
-
-function isRecentlyCreatedUser(
-  createdAt?: string,
-  lastSignInAt?: string,
-) {
-  if (!createdAt || !lastSignInAt) return false;
-
-  const createdTime = new Date(createdAt).getTime();
-  const lastSignInTime = new Date(lastSignInAt).getTime();
-
-  return (
-    Number.isFinite(createdTime) &&
-    Number.isFinite(lastSignInTime) &&
-    lastSignInTime >= createdTime &&
-    lastSignInTime - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS
-  );
-}
 
 function callbackParams(url: string) {
   const query = url.split("?")[1]?.split("#")[0] ?? "";
@@ -106,20 +87,8 @@ export default function AuthCallbackScreen() {
         }
 
         if (flow === "oauth") {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-
           await getOrCreateProfile();
-
-if (
-  isRecentlyCreatedUser(
-    user?.created_at,
-    user?.last_sign_in_at,
-  )
-) {
-  await markPendingLeaderboardConsent();
-}
+          await claimNewAccountLeaderboardConsent();
 
           router.replace("/(tabs)/play");
           return;
@@ -127,6 +96,7 @@ if (
 
         if (flow === "email") {
           await getOrCreateProfile();
+          await claimNewAccountLeaderboardConsent();
           router.replace("/(tabs)/play");
           return;
         }

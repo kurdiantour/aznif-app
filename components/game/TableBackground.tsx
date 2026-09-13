@@ -29,8 +29,6 @@ export default function TableBackground({
 
   useEffect(() => {
     if (tableId) {
-      setActiveTableId(tableId);
-      setTableBackgroundReady(true);
       return;
     }
 
@@ -69,11 +67,13 @@ export default function TableBackground({
     };
   }, [tableId]);
 
+  const resolvedTableId = tableId ?? activeTableId;
+
   return (
     <View style={styles.background}>
-      {tableBackgroundReady && activeTableId ? (
+      {tableBackgroundReady && resolvedTableId ? (
         <Image
-          source={getTableById(activeTableId).images.game}
+          source={getTableById(resolvedTableId).images.game}
           style={StyleSheet.absoluteFill}
           contentFit="fill"
           cachePolicy="memory-disk"

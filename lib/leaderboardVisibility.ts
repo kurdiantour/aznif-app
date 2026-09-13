@@ -6,13 +6,24 @@ export const PENDING_LEADERBOARD_CONSENT_KEY =
   "domino_pending_leaderboard_consent";
 const LEADERBOARD_CONSENT_DECISION_KEY_PREFIX =
   "domino_leaderboard_consent_decision";
-
 function pendingConsentKey(userId: string) {
   return `${PENDING_LEADERBOARD_CONSENT_KEY}:${userId}`;
 }
 
 function decisionKey(userId: string) {
   return `${LEADERBOARD_CONSENT_DECISION_KEY_PREFIX}:${userId}`;
+}
+
+export async function claimNewAccountLeaderboardConsent() {
+  const { data, error } = await supabase.rpc(
+    "claim_new_account_leaderboard_consent",
+  );
+
+  if (error) throw error;
+  if (data !== true) return false;
+
+  await markPendingLeaderboardConsent();
+  return true;
 }
 
 function isMissingLeaderboardVisibleColumn(error: unknown) {

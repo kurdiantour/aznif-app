@@ -34,7 +34,7 @@ export default function SettingsScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
   const logoutStartedRef = useRef(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
-  const modalProgress = useRef(new Animated.Value(0)).current;
+  const [modalProgress] = useState(() => new Animated.Value(0));
   const isClosing = useRef(false);
   const isWideLayout = width >= 720;
 

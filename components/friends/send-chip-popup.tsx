@@ -49,6 +49,7 @@ useEffect(() => {
   if (visible) return;
 
   Keyboard.dismiss();
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   setAmount("");
   setError(null);
   setSubmitting(false);

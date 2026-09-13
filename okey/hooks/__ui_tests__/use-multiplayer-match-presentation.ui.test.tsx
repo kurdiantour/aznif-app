@@ -14,7 +14,7 @@ const finishedRound = (matchFinished = false): Snapshot => ({
     completedRoundId: "7:1",
     turnPlayerId: null,
     turnDeadlineAt: null,
-    nextRoundEligibleAt: new Date(Date.now() + OKEY_ROUND_END_PRESENTATION_BUDGET.TOTAL_LIFECYCLE_DELAY_MS).toISOString(),
+    nextRoundEligibleAt: new Date().toISOString(),
     roundFinished: true,
     matchFinished,
   },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Animated,
   Easing,
@@ -28,7 +28,14 @@ const PARTICLE_COUNT = 26;
 export function GoldCoinIcon({ size = 32 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <Circle cx="16" cy="16" r="13" fill="#b8860b" stroke="#ffd45c" strokeWidth="1.5" />
+      <Circle
+        cx="16"
+        cy="16"
+        r="13"
+        fill="#b8860b"
+        stroke="#ffd45c"
+        strokeWidth="1.5"
+      />
       <Circle cx="16" cy="16" r="10" fill="#ffd45c" />
       <Path
         d="M9 16C9 12.134 12.134 9 16 9"
@@ -48,12 +55,35 @@ export function GoldCoinIcon({ size = 32 }: { size?: number }) {
 export function SpecialChestIcon({ size = 32 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <Rect x="4" y="14" width="24" height="13" rx="2" fill="#5c3c24" stroke="#ffd45c" strokeWidth="1.5" />
-      <Path d="M4 14C4 8.5 7 5 16 5C25 5 28 8.5 28 14H4Z" fill="#7a4f30" stroke="#ffd45c" strokeWidth="1.5" />
+      <Rect
+        x="4"
+        y="14"
+        width="24"
+        height="13"
+        rx="2"
+        fill="#5c3c24"
+        stroke="#ffd45c"
+        strokeWidth="1.5"
+      />
+      <Path
+        d="M4 14C4 8.5 7 5 16 5C25 5 28 8.5 28 14H4Z"
+        fill="#7a4f30"
+        stroke="#ffd45c"
+        strokeWidth="1.5"
+      />
       <Rect x="8" y="5" width="2" height="22" fill="#ffd45c" opacity="0.8" />
       <Rect x="22" y="5" width="2" height="22" fill="#ffd45c" opacity="0.8" />
       <Rect x="4" y="13" width="24" height="2" fill="#ffd45c" opacity="0.9" />
-      <Rect x="13" y="11" width="6" height="7" rx="1" fill="#f8d675" stroke="#b8860b" strokeWidth="1" />
+      <Rect
+        x="13"
+        y="11"
+        width="6"
+        height="7"
+        rx="1"
+        fill="#f8d675"
+        stroke="#b8860b"
+        strokeWidth="1"
+      />
       <Circle cx="16" cy="14" r="1" fill="#14121d" />
       <Path d="M15.5 14L15 17H17L16.5 14H15.5Z" fill="#14121d" />
     </Svg>
@@ -86,10 +116,15 @@ function rewardLabel(type: RewardRainType) {
 
 export default function RewardRain({ event }: Props) {
   const { width, height } = useWindowDimensions();
-  const values = useRef(
-    Array.from({ length: PARTICLE_COUNT }, () => new Animated.Value(0)),
-  ).current;
-  const amountProgress = useRef(new Animated.Value(0)).current;
+
+  const [values] = useState(() =>
+    Array.from(
+      { length: PARTICLE_COUNT },
+      () => new Animated.Value(0),
+    ),
+  );
+
+  const [amountProgress] = useState(() => new Animated.Value(0));
 
   const particles = useMemo(
     () =>
@@ -111,6 +146,7 @@ export default function RewardRain({ event }: Props) {
       value.stopAnimation();
       value.setValue(0);
     });
+
     amountProgress.stopAnimation();
     amountProgress.setValue(0);
 
@@ -150,6 +186,7 @@ export default function RewardRain({ event }: Props) {
     inputRange: [0, 1],
     outputRange: [0.76, 1],
   });
+
   const amountTranslateY = amountProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [12, 0],
@@ -159,18 +196,22 @@ export default function RewardRain({ event }: Props) {
     <View pointerEvents="none" style={styles.overlay}>
       {particles.map((particle, index) => {
         const progress = values[index];
+
         const translateY = progress.interpolate({
           inputRange: [0, 1],
           outputRange: [-90, Math.max(420, height + 90)],
         });
+
         const translateX = progress.interpolate({
           inputRange: [0, 0.45, 1],
           outputRange: [0, particle.drift, particle.drift * 0.45],
         });
+
         const rotate = progress.interpolate({
           inputRange: [0, 1],
           outputRange: ["0deg", `${particle.rotation}deg`],
         });
+
         const opacity = progress.interpolate({
           inputRange: [0, 0.05, 0.9, 1],
           outputRange: [0, 1, 1, 0],
@@ -182,13 +223,26 @@ export default function RewardRain({ event }: Props) {
             style={[
               styles.particle,
               {
-                left: Math.max(0, Math.min(width - particle.size, width * particle.leftRatio)),
+                left: Math.max(
+                  0,
+                  Math.min(
+                    width - particle.size,
+                    width * particle.leftRatio,
+                  ),
+                ),
                 opacity,
-                transform: [{ translateX }, { translateY }, { rotate }],
+                transform: [
+                  { translateX },
+                  { translateY },
+                  { rotate },
+                ],
               },
             ]}
           >
-            <RewardCurrencyIcon type={event.type} size={particle.size} />
+            <RewardCurrencyIcon
+              type={event.type}
+              size={particle.size}
+            />
           </Animated.View>
         );
       })}
@@ -198,15 +252,22 @@ export default function RewardRain({ event }: Props) {
           styles.amountBadge,
           {
             opacity: amountProgress,
-            transform: [{ translateY: amountTranslateY }, { scale: amountScale }],
+            transform: [
+              { translateY: amountTranslateY },
+              { scale: amountScale },
+            ],
           },
         ]}
       >
         <RewardCurrencyIcon type={event.type} size={34} />
+
         <Text style={styles.amountText}>
           {event.type === "special_chest"
             ? rewardLabel(event.type)
-            : `+${formatCurrencyAmount(event.amount, event.type === "mc" ? "mc" : event.type)} ${rewardLabel(event.type)}`}
+            : `+${formatCurrencyAmount(
+                event.amount,
+                event.type === "mc" ? "mc" : event.type,
+              )} ${rewardLabel(event.type)}`}
         </Text>
       </Animated.View>
     </View>
@@ -220,10 +281,12 @@ const styles = StyleSheet.create({
     elevation: 100,
     overflow: "hidden",
   },
+
   particle: {
     position: "absolute",
     top: 0,
   },
+
   amountBadge: {
     position: "absolute",
     alignSelf: "center",
@@ -238,6 +301,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,212,92,0.58)",
   },
+
   amountText: {
     color: "#fff6d8",
     fontSize: 20,
@@ -245,4 +309,3 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-

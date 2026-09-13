@@ -1,7 +1,7 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { DOMINO_HUMAN_TURN_DURATION_SECONDS } from "@/domino/shared/timing/domino-turn-timer";
 import { Player } from "@/domino/types/domino-game";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -22,7 +22,12 @@ type Props = {
   dealPlayerCount?: number;
   dealRotation?: -90 | 0 | 90;
   onPress?: () => void;
-  onFlightOriginChange?: (rect: { x: number; y: number; width: number; height: number }) => void;
+  onFlightOriginChange?: (rect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
 };
 
 const TURN_DURATION_SECONDS = DOMINO_HUMAN_TURN_DURATION_SECONDS;
@@ -118,7 +123,6 @@ export default function PlayerSeat({
   onPress,
   onFlightOriginChange,
 }: Props) {
-
   const tileCount = remainingTiles ?? player.tileCount;
 
   const wrapperRef = useRef<View | null>(null);
@@ -131,29 +135,28 @@ export default function PlayerSeat({
 
   const dealtTokenRef = useRef(0);
 
-  const previousTileCountRef =
-    useRef<number | null>(null);
-
-  const tileAnimationsRef =
-    useRef<Animated.Value[]>([]);
-
-  const tileAnimations = Array.from(
-    { length: Math.max(0, tileCount) },
-    (_, index) => {
-      if (!tileAnimationsRef.current[index]) {
-        tileAnimationsRef.current[index] =
-          new Animated.Value(1);
-      }
-
-      return tileAnimationsRef.current[index];
-    },
+  const tileAnimations = useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(0, tileCount) },
+        () => new Animated.Value(1),
+      ),
+    [tileCount],
   );
 
   const updateWrapperOrigin = () => {
-    wrapperRef.current?.measureInWindow((x, y, width, height) => {
-      setWrapperOrigin({ x, y });
-      onFlightOriginChange?.({ x: x + width * 0.58, y: y + height * 0.55, width: 18, height: 38 });
-    });
+    wrapperRef.current?.measureInWindow(
+      (x, y, width, height) => {
+        setWrapperOrigin({ x, y });
+
+        onFlightOriginChange?.({
+          x: x + width * 0.58,
+          y: y + height * 0.55,
+          width: 18,
+          height: 38,
+        });
+      },
+    );
   };
 
   useEffect(() => {
@@ -168,27 +171,33 @@ export default function PlayerSeat({
 
     dealtTokenRef.current = dealToken;
 
-    tileAnimations.forEach((animation) => {
-      animation.setValue(0);
-    });
+    const timeoutId = setTimeout(() => {
+      tileAnimations.forEach((animation) => {
+        animation.setValue(0);
+      });
 
-    setVisibleDealToken(dealToken);
+      setVisibleDealToken(dealToken);
 
-    Animated.sequence([
-      Animated.delay(dealOrder * 95),
+      Animated.sequence([
+        Animated.delay(dealOrder * 95),
 
-      Animated.stagger(
-        95 * dealPlayerCount,
-        tileAnimations.map((animation) =>
-          Animated.timing(animation, {
-            toValue: 1,
-            duration: 620,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
+        Animated.stagger(
+          95 * dealPlayerCount,
+          tileAnimations.map((animation) =>
+            Animated.timing(animation, {
+              toValue: 1,
+              duration: 620,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ),
         ),
-      ),
-    ]).start();
+      ]).start();
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [
     dealOrder,
     dealOrigin,
@@ -199,16 +208,7 @@ export default function PlayerSeat({
   ]);
 
   const isWaitingForNewDeal =
-    tileCount >= 7 &&
-    (
-      previousTileCountRef.current === null ||
-      (previousTileCountRef.current ?? tileCount) < tileCount
-    ) &&
-    dealtTokenRef.current === dealToken;
-
-  useEffect(() => {
-    previousTileCountRef.current = tileCount;
-  }, [tileCount]);
+    visibleDealToken !== dealToken;
 
   return (
     <View

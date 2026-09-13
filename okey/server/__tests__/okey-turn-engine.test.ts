@@ -210,7 +210,8 @@ test("Okey lifecycle entry points share the existing turn engine", () => {
   const room = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
   const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
 
-  assert.match(match, /controller: action === "manual-leave" \? "manual-leave" : "human"/);
+  assert.match(match, /reconcileAuthoritativeHumanCommand\(/);
+  assert.match(reconciler, /controller: input\.action === "manual-leave" \? "manual-leave" : "human"/);
   assert.match(room, /controller: action === "reconnect" \? "reconnect" : "disconnect"/);
   assert.match(reconciler, /controller: "elimination"/);
   assert.match(reconciler, /controller: "timeout"/);
@@ -312,24 +313,26 @@ test("runtime controllers no longer compose authoritative next state directly", 
   const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
   const bot = readFileSync("okey/server/okey-bot-executor.ts", "utf8");
 
-  assert.match(match, /executeAuthoritativeOkeyTransition/);
+  assert.doesNotMatch(match, /executeAuthoritativeOkeyTransition|commitAuthoritativeOkeyAction/);
+  assert.match(match, /reconcileAuthoritativeHumanCommand\(/);
   assert.doesNotMatch(match, /executeAuthoritativeOkeyTurn/);
   assert.doesNotMatch(match, /reduceAuthoritativeOkeyTransition/);
   assert.doesNotMatch(match, /applyAuthoritativeOkeyMatchCommand\(/);
   assert.doesNotMatch(match, /applyAuthoritativeManualLeave\(/);
 
-  assert.equal((reconciler.match(/executeAuthoritativeOkeyTransition\(\{/g) ?? []).length, 3);
+  assert.equal((reconciler.match(/executeAuthoritativeOkeyTransition\(\{/g) ?? []).length, 1);
+  assert.equal((reconciler.match(/executeOkeyAuthoritativePipeline\(\{/g) ?? []).length, 5);
   assert.equal((reconciler.match(/executeAuthoritativeOkeyTurn\(\{/g) ?? []).length, 1);
   assert.doesNotMatch(reconciler, /reduceAuthoritativeOkeyTransition/);
-  assert.match(reconciler, /finishingTeamForfeit[\s\S]*?executeAuthoritativeOkeyTurn\(\{/);
+  assert.match(reconciler, /preReducedState: finishingTeamForfeit/);
   assert.doesNotMatch(reconciler, /applyAuthoritativeOkeyEliminatedTurn\(/);
   assert.doesNotMatch(reconciler, /resolveAuthoritativeMatchDeadline\(/);
   assert.doesNotMatch(reconciler, /startAuthoritativeOkeyNextRound\(/);
 
-  assert.equal((bot.match(/executeAuthoritativeOkeyTransition\(\{/g) ?? []).length, 1);
+  assert.equal((bot.match(/executeAuthoritativeOkeyTransition\(\{/g) ?? []).length, 0);
   assert.doesNotMatch(bot, /executeAuthoritativeOkeyTurn/);
   assert.doesNotMatch(bot, /reduceAuthoritativeOkeyTransition/);
-  assert.match(bot, /type: "bot-action"/);
+  assert.match(bot, /selectOkeyBotIntent/);
   assert.doesNotMatch(bot, /settleAuthoritativeOkeyRound\(\{\s*\.\.\.currentState/);
 });
 
@@ -393,4 +396,3 @@ test("lifecycle controller dispatch has one engine owner", async () => {
   assert.doesNotMatch(reconciler, /if \(decision\.type === "expired-human-turn"\)/);
   assert.doesNotMatch(reconciler, /if \(decision\.type === "due-next-round"\)/);
 });
-

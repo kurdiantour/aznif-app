@@ -59,6 +59,7 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
 
   useEffect(() => {
     if (!visible) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRewardRainEvent(null);
       return;
     }

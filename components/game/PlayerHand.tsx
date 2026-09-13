@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -54,6 +55,17 @@ const HIDDEN_DEAL_TILE: DominoTileData = {
   right: 0,
   imageKey: "0-0",
 };
+
+type DealState = {
+  observedKey: string;
+  currentHandIds: Set<string>;
+  animatedHandSignature: string;
+  animatedDealToken: number;
+  visibleDealToken: number | null;
+  waitingForNewDeal: boolean;
+  epoch: number;
+};
+
 export default function PlayerHand({
   tiles,
   onPlayTile,
@@ -69,24 +81,35 @@ export default function PlayerHand({
   dealPlayerCount = 1,
   hiddenTileId = null,
 }: Props) {
-  const [localTiles, setLocalTiles] = useState(tiles);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [trayWindowOrigin, setTrayWindowOrigin] = useState<{
     x: number;
     y: number;
   } | null>(null);
-  const [visibleDealToken, setVisibleDealToken] = useState<number | null>(null);
-
-  const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const dealProgressRef = useRef(new Map<string, Animated.Value>());
-  const previousHandIdsRef = useRef<Set<string> | null>(null);
-  const animatedHandSignatureRef = useRef("");
-  const animatedDealTokenRef = useRef(0);
+  const [drag] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
   const dealAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const dealProgressByTileIdRef = useRef(
+    new Map<string, Animated.Value>(),
+  );
+  const startedDealEpochRef = useRef(0);
+
+  const getDealProgress = useCallback(
+    (tileId: string, initialValue = 1) => {
+      const progressByTileId = dealProgressByTileIdRef.current;
+      let progress = progressByTileId.get(tileId);
+
+      if (!progress) {
+        progress = new Animated.Value(initialValue);
+        progressByTileId.set(tileId, progress);
+      }
+
+      return progress;
+    },
+    [],
+  );
 
   const disabledRef = useRef(disabled);
   const tilesRef = useRef(tiles);
-  const localTilesRef = useRef(localTiles);
   const playableTileIdsRef = useRef(new Set(playableTileIds));
 
   const draggingIndexRef = useRef<number | null>(null);
@@ -96,8 +119,6 @@ export default function PlayerHand({
   const containerOffsetRef = useRef({ x: 0, y: 0 });
   const touchOffsetRef = useRef({ x: 0, y: 0 });
   const initialTilePositionRef = useRef({ x: 0, y: 0 });
-
-  const respondersRef = useRef<(PanResponderInstance | null)[]>([]);
 
   const resetDrag = useCallback(() => {
     Animated.timing(drag, {
@@ -131,7 +152,7 @@ export default function PlayerHand({
 
   const clampIndex = useCallback(
     (index: number) =>
-      Math.max(0, Math.min(localTilesRef.current.length - 1, index)),
+      Math.max(0, Math.min(tilesRef.current.length - 1, index)),
     [],
   );
 
@@ -148,7 +169,7 @@ export default function PlayerHand({
     (index: number, evt: any) => {
       if (disabledRef.current) return;
 
-      const tile = localTilesRef.current[index];
+      const tile = tilesRef.current[index];
       if (!tile || !playableTileIdsRef.current.has(tile.id)) return;
 
       const left = getLeftForIndex(index);
@@ -190,7 +211,7 @@ export default function PlayerHand({
       return;
     }
 
-    const draggedLocalTile = localTilesRef.current[from];
+    const draggedLocalTile = tilesRef.current[from];
     const shouldDropToBoard =
       lastGestureRef.current.dy <= DROP_TO_BOARD_DISTANCE;
 
@@ -218,7 +239,7 @@ export default function PlayerHand({
     (index: number) =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => {
-          const tile = localTilesRef.current[index];
+          const tile = tilesRef.current[index];
           return (
             !!tile &&
             !disabledRef.current &&
@@ -227,8 +248,8 @@ export default function PlayerHand({
         },
 
         onMoveShouldSetPanResponder: (_, gesture) =>
-          !!localTilesRef.current[index] &&
-          playableTileIdsRef.current.has(localTilesRef.current[index].id) &&
+          !!tilesRef.current[index] &&
+          playableTileIdsRef.current.has(tilesRef.current[index].id) &&
           !disabledRef.current &&
           (Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2),
 
@@ -290,71 +311,106 @@ export default function PlayerHand({
 
   useEffect(() => {
     tilesRef.current = tiles;
-    setLocalTiles(tiles);
   }, [tiles]);
 
   useEffect(() => {
     playableTileIdsRef.current = new Set(playableTileIds);
   }, [playableTileIds]);
 
-  useEffect(() => {
-    localTilesRef.current = localTiles;
-    respondersRef.current = localTiles.map((tile, index) =>
-      playableTileIdsRef.current.has(tile.id) ? createResponder(index) : null,
-    );
-  }, [localTiles, disabled, playableTileIds, createResponder]);
-
   const previewTiles = tiles;
   const handSignature = previewTiles.map((tile) => tile.id).join("|");
-  const previousHandIds = previousHandIdsRef.current;
-  const sharedTileCount = previousHandIds
-    ? previewTiles.reduce(
-        (count, tile) => count + (previousHandIds.has(tile.id) ? 1 : 0),
-        0,
-      )
-    : 0;
-  const isNewHand =
-    previewTiles.length >= 7 &&
-    (previousHandIds === null ||
-      previousHandIds.size === 0 ||
-      sharedTileCount <=
-        Math.floor(Math.min(previousHandIds.size, previewTiles.length) * 0.35));
-  const shouldStartDeal =
-    !!dealOrigin &&
-    !!trayWindowOrigin &&
-    ((dealToken > 0 && animatedDealTokenRef.current !== dealToken) ||
-      (isNewHand && animatedHandSignatureRef.current !== handSignature));
-  const isWaitingForNewDeal =
-    isNewHand &&
-    !shouldStartDeal &&
-    animatedDealTokenRef.current === dealToken;
-
-  previewTiles.forEach((tile) => {
-    if (!dealProgressRef.current.has(tile.id)) {
-      dealProgressRef.current.set(
-        tile.id,
-        new Animated.Value(shouldStartDeal ? 0 : 1),
-      );
-    } else if (shouldStartDeal) {
-      dealProgressRef.current.get(tile.id)?.setValue(0);
-    }
-  });
-
-  if (shouldStartDeal) {
-    animatedHandSignatureRef.current = handSignature;
-    animatedDealTokenRef.current = dealToken;
-  }
+  const canStartDeal = !!dealOrigin && !!trayWindowOrigin;
+  const dealObservationKey = handSignature + "|" + dealToken + "|" + canStartDeal;
+  const [dealState, setDealState] = useState<DealState>(() => ({
+    observedKey: dealObservationKey,
+    currentHandIds: new Set(previewTiles.map((tile) => tile.id)),
+    animatedHandSignature: "",
+    animatedDealToken: 0,
+    visibleDealToken: null,
+    waitingForNewDeal:
+      previewTiles.length >= 7 && dealToken === 0 && !canStartDeal,
+    epoch: 0,
+  }));
 
   useLayoutEffect(() => {
-    previousHandIdsRef.current = new Set(tiles.map((tile) => tile.id));
+    if (dealState.observedKey === dealObservationKey) return;
 
-    if (!shouldStartDeal) return;
+    const previousHandIds = dealState.currentHandIds;
+    const sharedTileCount = previewTiles.reduce(
+      (count, tile) => count + (previousHandIds.has(tile.id) ? 1 : 0),
+      0,
+    );
+    const isNewHand =
+      previewTiles.length >= 7 &&
+      (previousHandIds.size === 0 ||
+        sharedTileCount <=
+          Math.floor(Math.min(previousHandIds.size, previewTiles.length) * 0.35));
+    const shouldStartDeal =
+      canStartDeal &&
+      ((dealToken > 0 && dealState.animatedDealToken !== dealToken) ||
+        (isNewHand && dealState.animatedHandSignature !== handSignature));
+    previewTiles.forEach((tile) => {
+      const progress = getDealProgress(tile.id);
 
+      if (shouldStartDeal) {
+        progress.setValue(0);
+      }
+    });
+
+    // Deal metadata follows prop/layout observations; animation values stay in the ref map.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDealState({
+      observedKey: dealObservationKey,
+      currentHandIds: new Set(previewTiles.map((tile) => tile.id)),
+      animatedHandSignature: shouldStartDeal
+        ? handSignature
+        : dealState.animatedHandSignature,
+      animatedDealToken: shouldStartDeal
+        ? dealToken
+        : dealState.animatedDealToken,
+      visibleDealToken: shouldStartDeal
+        ? dealToken
+        : dealState.visibleDealToken,
+      waitingForNewDeal:
+        isNewHand &&
+        !shouldStartDeal &&
+        dealState.animatedDealToken === dealToken,
+      epoch: dealState.epoch + (shouldStartDeal ? 1 : 0),
+    });
+  }, [
+    canStartDeal,
+    dealObservationKey,
+    dealState,
+    dealToken,
+    getDealProgress,
+    handSignature,
+    previewTiles,
+  ]);
+
+  const playableTileIdsSet = useMemo(
+    () => new Set(playableTileIds),
+    [playableTileIds],
+  );
+  const responders = useMemo<(PanResponderInstance | null)[]>(
+    () =>
+      // Ref reads happen inside PanResponder callbacks, never while this map runs.
+      // eslint-disable-next-line react-hooks/refs
+      tiles.map((tile, index) =>
+        playableTileIdsSet.has(tile.id) ? createResponder(index) : null,
+      ),
+    [createResponder, playableTileIdsSet, tiles],
+  );
+  useLayoutEffect(() => {
+    if (
+      dealState.epoch === 0 ||
+      startedDealEpochRef.current === dealState.epoch
+    ) return;
+
+    startedDealEpochRef.current = dealState.epoch;
     dealAnimationRef.current?.stop();
-    setVisibleDealToken(dealToken);
 
     const animations = tiles.map((tile) =>
-      Animated.timing(dealProgressRef.current.get(tile.id)!, {
+      Animated.timing(getDealProgress(tile.id), {
         toValue: 1,
         duration: DEAL_DURATION_MS,
         easing: Easing.out(Easing.cubic),
@@ -373,7 +429,7 @@ export default function PlayerHand({
         dealAnimationRef.current = null;
       }
     });
-  }, [dealOrder, dealPlayerCount, dealToken, handSignature, shouldStartDeal, tiles]);
+  }, [dealOrder, dealPlayerCount, dealState.epoch, getDealProgress, tiles]);
 
   useEffect(() => {
     return () => dealAnimationRef.current?.stop();
@@ -384,6 +440,7 @@ export default function PlayerHand({
   const scaledTileWidth = TILE_WIDTH * scale;
   const scaledTileHeight = TILE_HEIGHT * scale;
 
+  /* eslint-disable react-hooks/refs -- Animated.Value instances intentionally live in a stable ref-backed map. */
   return (
     <View
       ref={handTrayRef}
@@ -404,11 +461,11 @@ export default function PlayerHand({
 
         const responder = isPlayable
           ? isDragging
-            ? respondersRef.current[draggingIndex ?? visualIndex]
-            : respondersRef.current[visualIndex]
+            ? responders[draggingIndex ?? visualIndex]
+            : responders[visualIndex]
           : null;
         const panHandlers = responder?.panHandlers ?? {};
-        const dealProgress = dealProgressRef.current.get(tile.id)!;
+        const dealProgress = getDealProgress(tile.id);
         const finalLeft = getLeftForIndex(visualIndex);
         const centerOriginTranslateX =
           dealOrigin && trayWindowOrigin
@@ -457,7 +514,7 @@ export default function PlayerHand({
                 height: scaledTileHeight,
                 zIndex: isDragging || isSelected ? 100 : isPlayable ? 50 : 1,
                 opacity: tile.id === hiddenTileId ? 0 :
-                  visibleDealToken === dealToken && !isWaitingForNewDeal
+                  dealState.visibleDealToken === dealToken && !dealState.waitingForNewDeal
                     ? Animated.multiply(
                         dealOpacity,
                         disabled ? 0.45 : isPlayable ? 1 : 0.5,
@@ -522,6 +579,7 @@ export default function PlayerHand({
       })}
     </View>
   );
+  /* eslint-enable react-hooks/refs */
 }
 
 const styles = StyleSheet.create({

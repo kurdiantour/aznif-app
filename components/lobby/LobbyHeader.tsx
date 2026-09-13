@@ -31,24 +31,29 @@ export function LobbyHeader() {
   const gemBalance = rawGemBalance?.toLocaleString() ?? "...";
   const [friendRequestCount, setFriendRequestCount] = useState(0);
 
-  const refreshFriendRequestCount = useCallback(async () => {
-    if (loading || !profile?.id) {
-      setFriendRequestCount(0);
-      return;
-    }
+const refreshFriendRequestCount = useCallback(async () => {
+  if (loading || !profile?.id) {
+    return;
+  }
 
-    try {
-      const requests = await getFriendRequests();
-      setFriendRequestCount(requests.length);
-    } catch (error) {
-      console.log("[LobbyHeader] Failed to load friend requests:", error);
-      setFriendRequestCount(0);
-    }
-  }, [loading, profile?.id]);
+  try {
+    const requests = await getFriendRequests();
+    setFriendRequestCount(requests.length);
+  } catch (error) {
+    console.log("[LobbyHeader] Failed to load friend requests:", error);
+    setFriendRequestCount(0);
+  }
+}, [loading, profile?.id]);
 
-  useEffect(() => {
+useEffect(() => {
+  const timeoutId = setTimeout(() => {
     void refreshFriendRequestCount();
-  }, [refreshFriendRequestCount]);
+  }, 0);
+
+  return () => {
+    clearTimeout(timeoutId);
+  };
+}, [refreshFriendRequestCount]);
 
   useEffect(() => {
     let mounted = true;
@@ -193,7 +198,7 @@ export function LobbyHeader() {
               onPress={() => router.push("/invite-friends")}
             >
               <Ionicons name="people" size={19} color="#ffffff" />
-              {friendRequestCount > 0 ? (
+              {!loading && profile?.id && friendRequestCount > 0 ? (
                 <View style={styles.friendRequestBadge}>
                   <Text style={styles.friendRequestBadgeText}>
                     {friendRequestCount > 9 ? "9+" : friendRequestCount}

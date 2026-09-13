@@ -130,7 +130,10 @@ export default function GameScreen() {
   const gameInitializedRef = useRef(false);
   const takeoverExitStartedRef = useRef(false);
   const practiceRewardSettlementRequestedRef = useRef(false);
-  const practiceMatchIdRef = useRef(roomId || `${Date.now()}-${Math.random()}`);
+  const [initialPracticeMatchId] = useState(() =>
+    roomId || `${Date.now()}-${Math.random()}`,
+  );
+  const practiceMatchIdRef = useRef(initialPracticeMatchId);
   const boardAreaRef = useRef<any>(null);
   const screenRef = useRef<View | null>(null);
   const screenOriginRef = useRef({ x: 0, y: 0 });
@@ -387,6 +390,7 @@ useEffect(() => {
 
  useEffect(() => {
   if (!shouldShowPassPrompt) {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPassCountdown(10);
     setIsPassingTurn(false);
     passRequestedRef.current = false;
@@ -404,12 +408,14 @@ useEffect(() => {
 
 useEffect(() => {
   if (shouldShowPassPrompt && passCountdown === 0) {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void handlePassTurn();
   }
 }, [passCountdown, shouldShowPassPrompt, handlePassTurn]);
 
   useEffect(() => {
     if (!isMyTurn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedTile(null);
       setSelectableBranches([]);
     }
@@ -421,6 +427,7 @@ useEffect(() => {
     const stillInHand = game.myHand.some((tile) => tile.id === selectedTile.id);
 
     if (!stillInHand) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedTile(null);
       setSelectableBranches([]);
     }
@@ -697,6 +704,7 @@ useEffect(() => {
 ]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBlockedIntroComplete(false);
     if (!isRoundResultReveal || !isBlockedResult) return;
     const timer = setTimeout(() => setBlockedIntroComplete(true), 5_000);

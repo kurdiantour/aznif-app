@@ -7,11 +7,11 @@ const read = (path: string) => readFileSync(path, "utf8");
 test("Okey Realtime broadcasts carry projections and only gaps fetch snapshots", () => {
   const edge = read("supabase/functions/okey_match/index.ts");
   const maintenance = read("supabase/functions/okey_maintenance/index.ts");
-  const bot = read("okey/server/okey-bot-executor.ts");
+  const reconciler = read("okey/server/okey-server-reconciler.ts");
   const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
   const core = read("lib/multiplayer/match/use-multiplayer-match.ts");
 
-  for (const broadcaster of [edge, maintenance, bot]) {
+  for (const broadcaster of [edge, maintenance, reconciler]) {
     assert.ok(broadcaster.includes("commandId"));
     assert.ok(broadcaster.includes("publicProjection"));
     assert.ok(broadcaster.includes("actionEvents"));
@@ -52,18 +52,17 @@ test("Okey bot execution is 100% server-owned with exact-match and idempotency",
 
   // Server reconciles and executes:
   assert.match(reconciler, /reconcileAuthoritativeServerTurns/);
-  assert.match(worker, /executeOkeyBotTurn\(\{/);
+  assert.match(worker, /reconcileAuthoritativeServerLifecycleWakeup\(\{/);
   assert.doesNotMatch(worker, /chooseBotDrawSource|prepareBotTurn|settleAuthoritativeOkeyRound/);
-  assert.match(executor, /createBotTurnClaim/);
-  assert.match(executor, /classifyBotTurnClaim/);
-  assert.match(executor, /system-bot-\$\{botStep\}:\$\{currentVersion\}/);
-  assert.match(executor, /hasDrawnThisTurn \? "discard" : "draw"/);
-  assert.match(executor, /botStep === "draw"[\s\S]*drawTile/);
+  assert.match(executor, /selectOkeyBotIntent/);
+  assert.match(reconciler, /system-bot-\$\{intent\.step\}/);
+  assert.match(reconciler, /evaluateOkeyServerLifecycle/);
+  assert.match(executor, /step === "draw"[\s\S]*drawTile/);
   assert.match(executor, /prepareBotTurn/);
-  assert.match(executor, /commit\.rejectionReason \?\? "already_processed"/);
-  assert.match(executor, /reason: "stale_bot_turn"/);
+  assert.match(reconciler, /committed\.rejectionReason \?\? "already_processed"/);
+  assert.match(reconciler, /reason: "stale_bot_turn"/);
   assert.doesNotMatch(worker, /handOffBotTurn:[\s\S]*handOffOkeyBotTurn/);
-  assert.doesNotMatch(executor, /dependencies\.handOffBotTurn/);
+  assert.doesNotMatch(executor, /dispatchContinuation|dispatchLifecycleWakeup/);
 });
 
 test("Okey timeout execution is 100% server-owned without client triggers", () => {
@@ -76,8 +75,12 @@ test("Okey timeout execution is 100% server-owned without client triggers", () =
 
   // Server reconciles timeouts:
   assert.match(reconciler, /reconcileAuthoritativeTimeoutTurn/);
-  assert.match(reconciler, /resolveAuthoritativeMatchDeadline/);
-  assert.match(edge, /reconcileAuthoritativeServerTurns/);
+  assert.match(reconciler, /executeAuthoritativeOkeyTransition/);
+  assert.match(reconciler, /type: "timeout"/);
+  assert.match(reconciler, /OKEY_AUTHORITATIVE_TRANSITION_REDUCERS/);
+  assert.doesNotMatch(reconciler, /resolveAuthoritativeMatchDeadline\(/);
+  assert.match(edge, /reconcileAuthoritativeHumanCommand/);
+  assert.doesNotMatch(edge, /reconcileAuthoritativeServerTurns/);
   assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
 
   // Client does NOT trigger or advance timeouts:
@@ -98,7 +101,7 @@ test("Okey maintenance settles finished matches while gameplay remains worker-ow
 
   assert.match(maintenance, /state_update/);
   assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
-  assert.match(maintenance, /x-okey-worker-key/);
+  assert.match(maintenance, /x-aznif-lifecycle-key/);
   assert.match(maintenance, /\.eq\("status", "finished"\)[\s\S]*settlement_at/);
   assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
   assert.match(worker, /\.schema\("okey"\)[\s\S]*\.from\("match_seats"\)/);
@@ -114,10 +117,14 @@ test("Okey eliminated turns are 100% server-owned through reconciler without cli
   const matchAdapterInterface = read("okey/adapters/okey-match-adapter.ts");
 
   // Server owners:
-  assert.match(edge, /reconcileAuthoritativeServerTurns/);
+  assert.match(edge, /reconcileAuthoritativeHumanCommand/);
+  assert.doesNotMatch(edge, /reconcileAuthoritativeServerTurns/);
   assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
   assert.doesNotMatch(bot, /reconcileAuthoritativeEliminatedTurns/);
-  assert.match(reconciler, /applyAuthoritativeOkeyEliminatedTurn/);
+  assert.match(reconciler, /executeAuthoritativeOkeyTransition/);
+  assert.match(reconciler, /type: "eliminated-turn"/);
+  assert.match(reconciler, /OKEY_AUTHORITATIVE_TRANSITION_REDUCERS/);
+  assert.doesNotMatch(reconciler, /applyAuthoritativeOkeyEliminatedTurn\(/);
   assert.match(reconciler, /system-eliminated-turn/);
 
   // Client triggers and adapter endpoints must NOT exist (Server is single owner):
@@ -139,7 +146,10 @@ test("Okey next round and match start are 100% server-owned without client trigg
   // Server reconciler owns next round and room match start:
   assert.match(reconciler, /reconcileAuthoritativeNextRound/);
   assert.match(reconciler, /reconcileAuthoritativeMatchStart/);
-  assert.match(reconciler, /startAuthoritativeOkeyNextRound/);
+  assert.match(reconciler, /executeAuthoritativeOkeyTransition/);
+  assert.match(reconciler, /type: "next-round"/);
+  assert.match(reconciler, /OKEY_AUTHORITATIVE_TRANSITION_REDUCERS/);
+  assert.doesNotMatch(reconciler, /startAuthoritativeOkeyNextRound\(/);
   assert.match(reconciler, /createAuthoritativeOkeyMatch/);
 
   // Client does NOT have triggers or endpoints:

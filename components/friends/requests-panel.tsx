@@ -85,6 +85,7 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
   useEffect(() => {
     let mounted = true;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
     refresh()

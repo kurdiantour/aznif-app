@@ -1,0 +1,23 @@
+name = "aznif-game-lifecycle"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+preview_urls = false
+minify = true
+
+[vars]
+SUPABASE_URL = "https://rcvrccnrzcennnbzrsex.supabase.co"
+
+[observability]
+enabled = true
+
+[[durable_objects.bindings]]
+name = "GAME_MATCH_ALARMS"
+class_name = "AznifGameAlarm"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AznifGameAlarm"]
+
+# Production secret (set with `wrangler secret put`, never commit its value):
+# AZNIF_LIFECYCLE_SECRET

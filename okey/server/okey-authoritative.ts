@@ -22,7 +22,6 @@ import {
 } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
 
 export { OKEY_DRAW_PHASE_SECONDS, OKEY_THROW_PHASE_SECONDS };
-import { OKEY_SERVER_ROUND_TRANSITION_DELAY_MS } from "./okey-lifecycle-timing.ts";
 
 import {
   resolveTimeoutTurn,
@@ -371,7 +370,10 @@ export function settleAuthoritativeOkeyRound(
   }
 
   const pendingForfeitTeamId = match.pendingForfeitTeamId;
-  const nextRoundEligibleAt = new Date(now + OKEY_SERVER_ROUND_TRANSITION_DELAY_MS).toISOString();
+  // This is an official rule transition, not a presentation window. Clients
+  // may keep showing the completed round, but the server can start the next
+  // round from the instant the result is committed.
+  const nextRoundEligibleAt = new Date(now).toISOString();
   const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
     ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"
     : null;

@@ -33,14 +33,14 @@ serve(async (request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const workerSecret = Deno.env.get("OKEY_WORKER_SECRET");
-  const receivedWorkerSecret = request.headers.get("x-okey-worker-key");
+  const lifecycleSecret = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
+  const receivedLifecycleSecret = request.headers.get("x-aznif-lifecycle-key");
 
   if (
     !supabaseUrl ||
     !serviceKey ||
-    !workerSecret ||
-    receivedWorkerSecret !== workerSecret
+    !lifecycleSecret ||
+    receivedLifecycleSecret !== lifecycleSecret
   ) {
     return json({ error: "unauthorized" }, 401);
   }

@@ -19,6 +19,7 @@ export default function WalletHistoryScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     Promise.all([getTransactions(), getCurrentUserId()])
       .then(([txs, uid]) => {

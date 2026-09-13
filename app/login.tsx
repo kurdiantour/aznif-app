@@ -1,7 +1,6 @@
 import { useProfile } from "@/lib/profile";
-import { markPendingLeaderboardConsent } from "@/lib/leaderboardVisibility";
+import { claimNewAccountLeaderboardConsent } from "@/lib/leaderboardVisibility";
 import {
-  getCurrentUser,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
@@ -27,27 +26,8 @@ import {
 } from "react-native";
 
 const SAVED_EMAIL_KEY = "domino_saved_email";
-const NEW_OAUTH_USER_CONSENT_WINDOW_MS = 5 * 60 * 1000;
-
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
-
-function isRecentlyCreatedUser(
-  createdAt?: string,
-  lastSignInAt?: string,
-) {
-  if (!createdAt || !lastSignInAt) return false;
-
-  const createdTime = new Date(createdAt).getTime();
-  const lastSignInTime = new Date(lastSignInAt).getTime();
-
-  return (
-    Number.isFinite(createdTime) &&
-    Number.isFinite(lastSignInTime) &&
-    lastSignInTime >= createdTime &&
-    lastSignInTime - createdTime <= NEW_OAUTH_USER_CONSENT_WINDOW_MS
-  );
-}
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -130,11 +110,12 @@ export default function LoginScreen() {
         try {
           await updateMyProfile({ username: cleanUsername });
           await refreshProfile();
-          await markPendingLeaderboardConsent();
         } catch (error) {
           console.warn("[auth] Signed in, but profile setup failed", error);
         }
       }
+
+      await claimNewAccountLeaderboardConsent();
 
       await AsyncStorage.setItem(SAVED_EMAIL_KEY, cleanEmail);
       router.replace("/(tabs)/play");
@@ -184,14 +165,7 @@ export default function LoginScreen() {
         return;
       }
 
-      const user = await getCurrentUser();
-
-      if (isRecentlyCreatedUser(
-  user?.created_at,
-  user?.last_sign_in_at,
-)) {
-        await markPendingLeaderboardConsent();
-      }
+      await claimNewAccountLeaderboardConsent();
 
       try {
         await refreshProfile();

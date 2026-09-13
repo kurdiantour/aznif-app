@@ -6,7 +6,9 @@ import {
   projectOkeyMatchPublicState,
   type OkeyServerPlayerIdentity,
 } from "../../../okey/server/okey-authoritative.ts";
-import { handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
+import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
+
+import { getOkeyLifecycleWakeupAt } from '../../../okey/server/okey-server-reconciler.ts';
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -42,10 +44,10 @@ serve(async (request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const workerSecret = Deno.env.get("OKEY_WORKER_SECRET");
+  const lifecycleSecret = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
   const authorization = request.headers.get("Authorization");
 
-  if (!url || !anon || !serviceKey || !workerSecret) {
+  if (!url || !anon || !serviceKey || !lifecycleSecret) {
     return json({ error: "server_configuration_incomplete" }, 503);
   }
 
@@ -204,6 +206,10 @@ serve(async (request) => {
 
   const state = createAuthoritativeOkeyMatch(identities);
   const deadline = getNextOkeyMatchTurnDeadline(state);
+  const lifecycleRunAt = getOkeyLifecycleWakeupAt(state, deadline, Date.now());
+  if (!lifecycleRunAt) {
+    return json({ error: 'test_match_has_no_lifecycle_transition' }, 500);
+  }
   const projection = projectOkeyMatchPublicState(state, 0, deadline);
 
   const created = await service.rpc("okey_create_preview_test_match", {
@@ -242,12 +248,15 @@ serve(async (request) => {
 
   await service.removeChannel(channel);
 
-  await handOffOkeyServerLifecycle({
-    supabaseUrl: url,
-    workerSecret,
+  const schedulerUrl = Deno.env.get("AZNIF_GAME_LIFECYCLE_URL");
+  if (!schedulerUrl) throw new Error("AZNIF_GAME_LIFECYCLE_URL is required");
+  await scheduleAznifGameLifecycle({
+    schedulerUrl,
+    lifecycleSecret,
+    gameType: "okey",
     matchId,
     expectedVersion: 0,
-    turnDeadlineAt: deadline,
+    runAt: lifecycleRunAt,
   });
 
   return json(

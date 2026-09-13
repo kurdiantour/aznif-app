@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { handSeatToBot } from "../../engine/okey-bot-policy.ts";
-import { executeOkeyBotTurn } from "../okey-bot-executor.ts";
+import { reconcileAuthoritativeBotTurn } from "../okey-server-reconciler.ts";
 import { createAuthoritativeOkeyMatch } from "../okey-authoritative.ts";
 
 const players = [
@@ -135,7 +135,7 @@ async function execute(
 
   const broadcasts: any[] = [];
 
-  const result = await executeOkeyBotTurn(
+  const result = await reconcileAuthoritativeBotTurn(
     {
       matchId: "match-1",
       requesterUserId: "requester-1",
@@ -211,10 +211,10 @@ test(
     );
     assert.equal(
       calls.commits[0].p_state.roundState.currentPlayerIndex,
-      state.roundState.currentPlayerIndex,
+      (state.roundState.currentPlayerIndex + 1) % state.roundState.players.length,
     );
-    assert.ok(calls.commits[0].p_state.roundState.pendingBotTurnAdvanceAt);
-    assert.equal(calls.commits[0].p_turn_deadline_at, null);
+    assert.equal(calls.commits[0].p_state.roundState.pendingBotTurnAdvanceAt ?? null, null);
+    assert.ok(calls.commits[0].p_turn_deadline_at);
   },
 );
 
@@ -233,7 +233,7 @@ test(
         state.roundState.currentPlayerIndex
       ];
 
-    const staleVersion = await executeOkeyBotTurn(
+    const staleVersion = await reconcileAuthoritativeBotTurn(
       {
         matchId: "match-1",
         requesterUserId: "requester-1",
@@ -261,7 +261,7 @@ test(
       state,
     });
 
-    const staleActor = await executeOkeyBotTurn(
+    const staleActor = await reconcileAuthoritativeBotTurn(
       {
         matchId: "match-1",
         requesterUserId: "requester-1",
@@ -304,7 +304,7 @@ test(
         human.roundState.currentPlayerIndex
       ];
 
-    const result = await executeOkeyBotTurn(
+    const result = await reconcileAuthoritativeBotTurn(
       {
         matchId: "match-1",
         requesterUserId: "requester-1",
@@ -629,7 +629,7 @@ test(
     const broadcasts: any[] = [];
 
     const run = () =>
-      executeOkeyBotTurn(
+      reconcileAuthoritativeBotTurn(
         {
           matchId: "match-1",
           requesterUserId: "requester-1",
@@ -743,7 +743,7 @@ test(
     });
 
     const run = () =>
-      executeOkeyBotTurn(
+      reconcileAuthoritativeBotTurn(
         {
           matchId: "match-1",
           requesterUserId: "requester-1",

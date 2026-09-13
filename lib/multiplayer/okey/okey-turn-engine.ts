@@ -401,7 +401,7 @@ export async function runAuthoritativeOkeyLifecycle(
   options: OkeyAuthoritativeLifecycleRunOptions,
 ): Promise<OkeyAuthoritativeLifecycleRunResult> {
   const getNow = options.now ?? Date.now;
-  const maxTransitions = Math.max(1, options.maxTransitions ?? 2);
+  const maxTransitions = Math.max(1, options.maxTransitions ?? 1);
   const executedDecisions: Exclude<OkeyLifecycleDecision, { type: "idle" | "terminal" }>[] = [];
   let currentBundle = initialBundle;
 
@@ -424,19 +424,15 @@ export async function runAuthoritativeOkeyLifecycle(
     executedDecisions.push(decision);
     currentBundle = nextBundle;
 
-    // Preserve the intentional server waiting boundaries: Bot, Timeout and
-    // Ghost transitions are one authoritative commit per invocation. A due
-    // next-round transition may immediately consume the starting dealer Bot's
-    // first required action, exactly as the current runtime does.
-    if (decision.type !== "due-next-round") {
-      const finalDecision = evaluateOkeyServerLifecycle(currentBundle, getNow());
-      return {
-        finalBundle: currentBundle,
-        finalDecision,
-        executedDecisions,
-        reason: finalDecision.type === "terminal" ? "terminal" : "waiting_boundary",
-      };
-    }
+    // Every invocation owns exactly one official transition. Any following
+    // transition is represented by a new durable alarm.
+    const finalDecision = evaluateOkeyServerLifecycle(currentBundle, getNow());
+    return {
+      finalBundle: currentBundle,
+      finalDecision,
+      executedDecisions,
+      reason: finalDecision.type === "terminal" ? "terminal" : "waiting_boundary",
+    };
   }
 
   const finalDecision = evaluateOkeyServerLifecycle(currentBundle, getNow());
@@ -831,5 +827,4 @@ export async function executeAuthoritativeOkeyTransition<
     broadcast: input.broadcast,
   });
 }
-
 

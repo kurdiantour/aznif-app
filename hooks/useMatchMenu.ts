@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Animated, Easing } from "react-native";
 
 export function useMatchMenu() {
   const [showMatchMenu, setShowMatchMenu] = useState(false);
   const [isMatchMenuOpen, setIsMatchMenuOpen] = useState(false);
 
-  const matchMenuTranslateX = useRef(new Animated.Value(420)).current;
+  const [matchMenuTranslateX] = useState(() => new Animated.Value(420));
 
   useEffect(() => {
     if (!showMatchMenu) return;

@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet } from 'react-native';
-import DominoTile from '@/components/game/DominoTile';
-import type { DominoTileData } from '@/domino/types/domino-game';
+import React, { useEffect, useState } from "react";
+import { Animated, Easing, StyleSheet } from "react-native";
+import DominoTile from "@/components/game/DominoTile";
+import type { DominoTileData } from "@/domino/types/domino-game";
 
 type Props = {
   tile: DominoTileData;
@@ -20,12 +20,13 @@ export default function DropAnimationOverlay({
   endY,
   onDone,
 }: Props) {
-  const drag = useRef(
-    new Animated.ValueXY({
-      x: 0,
-      y: 0,
-    })
-  ).current;
+  const [drag] = useState(
+    () =>
+      new Animated.ValueXY({
+        x: 0,
+        y: 0,
+      }),
+  );
 
   useEffect(() => {
     const targetDragX = endX - startX;
@@ -72,7 +73,7 @@ export default function DropAnimationOverlay({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 999,
   },
 });

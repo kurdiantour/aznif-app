@@ -21,21 +21,17 @@ import {
   pipTotal,
   roundToNearestFive,
 } from "../_shared/game-utils.ts";
-import { executeOkeyBotTurn } from "../../../okey/server/okey-bot-executor.ts";
 import { reconcileAuthoritativeServerLifecycleWakeup } from "../../../okey/server/okey-server-reconciler.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
-import { handOffOkeyServerLifecycle } from "../_shared/okey-bot-handoff.ts";
+import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const BOT_WORKER_SECRET = Deno.env.get("BOT_WORKER_SECRET");
-const OKEY_WORKER_SECRET = Deno.env.get("OKEY_WORKER_SECRET");
-
-type EdgeRuntimeLike = {
-  waitUntil?: (task: Promise<unknown>) => void;
-};
+const AZNIF_LIFECYCLE_SECRET = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
+const AZNIF_GAME_LIFECYCLE_URL = Deno.env.get("AZNIF_GAME_LIFECYCLE_URL");
 
 const svc = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "", {
   auth: { persistSession: false },
@@ -126,8 +122,7 @@ serve(async (req) => {
       room_id,
       match_id,
       expected_version,
-      expected_actor_id,
-      lifecycle_only = false,
+      run_at,
       eligible_at,
       turn_deadline_at,
     } = await req.json();
@@ -135,12 +130,12 @@ serve(async (req) => {
       return json({ error: "Invalid mode" }, 400);
 
     const workerSecret = req.headers.get("x-bot-worker-secret");
-    const okeyWorkerSecret = req.headers.get("x-okey-worker-key");
+    const aznifLifecycleSecret = req.headers.get("x-aznif-lifecycle-key");
     const isTrustedWorker = Boolean(
       (BOT_WORKER_SECRET && workerSecret === BOT_WORKER_SECRET) ||
         (mode === "okey" &&
-          OKEY_WORKER_SECRET &&
-          okeyWorkerSecret === OKEY_WORKER_SECRET),
+          AZNIF_LIFECYCLE_SECRET &&
+          aznifLifecycleSecret === AZNIF_LIFECYCLE_SECRET),
     );
 
     if (mode === "okey") {
@@ -148,89 +143,8 @@ serve(async (req) => {
         return json({ error: "Unauthorized" }, 401);
       }
       if (!match_id) return json({ error: "Missing match_id" }, 400);
-
-      if (lifecycle_only === true) {
-        const { data: seat, error: seatError } = await svc
-          .schema("okey")
-          .from("match_seats")
-          .select("user_id")
-          .eq("match_id", match_id)
-          .is("membership_released_at", null)
-          .order("player_index", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (seatError) throw seatError;
-
-        const requesterUserId = seat?.user_id ?? null;
-
-        if (!requesterUserId) {
-          return json({
-            ok: true,
-            processed: false,
-            reason: "match_has_no_seats",
-          });
-        }
-        const edgeRuntime = (globalThis as any).EdgeRuntime;
-        const lifecyclePromise = reconcileAuthoritativeServerLifecycleWakeup({
-          client: svc,
-          matchId: match_id,
-          requesterUserId,
-          deterministicCommandId,
-          ...(Number.isSafeInteger(expected_version) && expected_version >= 0
-            ? { initialVersion: Number(expected_version) }
-            : {}),
-          eligibleAt: typeof eligible_at === "string" ? eligible_at : null,
-          turnDeadlineAt: typeof turn_deadline_at === "string" ? turn_deadline_at : null,
-          broadcastStateUpdate: async (payload: any) => {
-            const channel = svc.channel(`okey-match:${match_id}`);
-            await channel.send({
-              type: "broadcast",
-              event: "state_update",
-              payload,
-            });
-            await svc.removeChannel(channel);
-          },
-        }).then(async (result: any) => {
-if (
-  result?.executed === true &&
-  result?.state &&
-  result.state.matchFinished !== true &&
-  Number.isSafeInteger(result.version) &&
-  SUPABASE_URL &&
-  OKEY_WORKER_SECRET
-) {
-            await handOffOkeyServerLifecycle({
-              supabaseUrl: SUPABASE_URL,
-              workerSecret: OKEY_WORKER_SECRET,
-              matchId: match_id,
-              expectedVersion: Number(result.version),
-              eligibleAt: result.state.roundState?.pendingBotTurnAdvanceAt ??
-                (result.state.roundState?.phase === "finished"
-                  ? result.state.nextRoundEligibleAt ?? null
-                  : null),
-            });
-          }
-          return result;
-        }).catch((error: any) => {
-          console.error("okey_lifecycle_worker_error", match_id, error);
-        });
-
-        if (edgeRuntime?.waitUntil) {
-          edgeRuntime.waitUntil(lifecyclePromise);
-          return json({ ok: true, accepted: true, mode: "okey-lifecycle" }, 202);
-        }
-
-        await lifecyclePromise;
-        return json({ ok: true, accepted: true, mode: "okey-lifecycle" });
-      }
-
-      if (
-        !Number.isSafeInteger(expected_version) ||
-        expected_version < 0 ||
-        typeof expected_actor_id !== "string" ||
-        expected_actor_id.length === 0
-      ) {
-        return json({ error: "Invalid Okey bot turn claim" }, 400);
+      if (!Number.isSafeInteger(expected_version) || expected_version < 0) {
+        return json({ error: "Missing or invalid expected_version" }, 400);
       }
 
       const { data: seat, error: seatError } = await svc
@@ -243,78 +157,56 @@ if (
         .limit(1)
         .maybeSingle();
       if (seatError) throw seatError;
+
       const requesterUserId = seat?.user_id ?? null;
 
       if (!requesterUserId) {
-        return json({ ok: true, processed: false, reason: "match_has_no_seats" });
+        return json({
+          ok: true,
+          processed: false,
+          reason: "match_has_no_seats",
+        });
       }
 
-      const result = await executeOkeyBotTurn({
+      const lifecyclePromise = reconcileAuthoritativeServerLifecycleWakeup({
+        client: svc,
         matchId: match_id,
         requesterUserId,
-        expectedVersion: expected_version,
-        expectedActorId: expected_actor_id,
-      }, {
-        client: svc,
         deterministicCommandId,
-        dispatchContinuation: async (continuationInput: {
-          matchId: string;
-          state: any;
-          version: number;
-        }) => {
-          if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
-
-          const continuation = handOffOkeyServerLifecycle({
-            supabaseUrl: SUPABASE_URL,
-            workerSecret: OKEY_WORKER_SECRET,
-            matchId: continuationInput.matchId,
-            expectedVersion: continuationInput.version,
-          }).catch((err: any) => {
-            console.error("okey_bot_continuation_dispatch_error", err);
+        ...(Number.isSafeInteger(expected_version) && expected_version >= 0
+          ? { initialVersion: Number(expected_version) }
+          : {}),
+        eligibleAt: typeof eligible_at === "string" ? eligible_at : null,
+        runAt: typeof run_at === 'string' ? run_at : null,
+        turnDeadlineAt:
+          typeof turn_deadline_at === "string" ? turn_deadline_at : null,
+        broadcastStateUpdate: async (payload: any) => {
+          const channel = svc.channel(`okey-match:${match_id}`);
+          await channel.send({
+            type: "broadcast",
+            event: "state_update",
+            payload,
           });
-
-          const edgeRuntime = (globalThis as any).EdgeRuntime;
-          if (edgeRuntime?.waitUntil) {
-            edgeRuntime.waitUntil(continuation);
-            return;
-          }
-
-          await continuation;
+          await svc.removeChannel(channel);
         },
-        dispatchLifecycleWakeup: async (wakeupInput: {
-          matchId: string;
-          state: any;
-          version: number;
-          eligibleAt?: string;
-          turnDeadlineAt?: string;
-        }) => {
-          if (!SUPABASE_URL || !OKEY_WORKER_SECRET) return;
-
-          const lifecycleHandoff = handOffOkeyServerLifecycle({
-            supabaseUrl: SUPABASE_URL,
-            workerSecret: OKEY_WORKER_SECRET,
-            matchId: wakeupInput.matchId,
-            expectedVersion: wakeupInput.version,
-            eligibleAt: wakeupInput.eligibleAt ?? null,
-            turnDeadlineAt: wakeupInput.turnDeadlineAt ?? null,
-          }).catch((wakeupError: any) => {
-            console.error(
-              "Server lifecycle handoff failed for match",
-              wakeupInput.matchId,
-              wakeupError,
-            );
+        dispatchLifecycleWakeup: async (wakeup: any) => {
+          if (!AZNIF_GAME_LIFECYCLE_URL || !AZNIF_LIFECYCLE_SECRET) return;
+          await scheduleAznifGameLifecycle({
+            schedulerUrl: AZNIF_GAME_LIFECYCLE_URL,
+            lifecycleSecret: AZNIF_LIFECYCLE_SECRET,
+            gameType: "okey",
+            matchId: wakeup.matchId,
+            expectedVersion: wakeup.version,
+            runAt: wakeup.runAt,
           });
-
-          const edgeRuntime = (globalThis as any).EdgeRuntime;
-          if (edgeRuntime?.waitUntil) {
-            edgeRuntime.waitUntil(lifecycleHandoff);
-            return;
-          }
-
-          await lifecycleHandoff;
         },
       });
-      return json(result, result.ok ? 200 : 500);
+
+      // One wake-up performs one short official transition. Do not acknowledge
+      // Cloudflare until that transition and the next alarm registration have
+      // completed; a thrown error lets Durable Object alarms retry durably.
+      const lifecycleResult = await lifecyclePromise;
+      return json({ ok: true, mode: "okey-lifecycle", result: lifecycleResult });
     }
 
     if (!room_id) return json({ error: "Missing room_id" }, 400);
@@ -379,7 +271,8 @@ if (
 
     const playerIndex =
       players?.findIndex(
-        (player: any) => player.user_id === currentTurnPlayerId,
+        (player: { user_id?: string | null }) =>
+          player.user_id === currentTurnPlayerId,
       ) ?? -1;
     const player = playerIndex >= 0 ? players[playerIndex] : null;
 

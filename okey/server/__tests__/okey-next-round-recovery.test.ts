@@ -30,7 +30,7 @@ test("snapshot is read-only and never wakes authoritative gameplay lifecycle", (
 
   assert.doesNotMatch(
     snapshotBlock,
-    /handOffOkeyServerLifecycle\(/,
+    /scheduleAznifGameLifecycle\(/,
   );
 
   assert.doesNotMatch(
@@ -42,7 +42,7 @@ test("snapshot is read-only and never wakes authoritative gameplay lifecycle", (
 test("authoritative command awaits lifecycle worker acceptance before replying", () => {
   assert.match(
     matchSource,
-    /const lifecycleHandoff = handOffOkeyServerLifecycle\([\s\S]*?await lifecycleHandoff;/,
+    /dispatchLifecycleWakeup:[\s\S]*?await scheduleAznifGameLifecycle\(/,
   );
 
   assert.doesNotMatch(
@@ -54,16 +54,13 @@ test("authoritative command awaits lifecycle worker acceptance before replying",
 test("bot worker keeps server-owned lifecycle delivery outside snapshot path", () => {
   assert.match(
     workerSource,
-    /await executeOkeyBotTurn\(/,
-  );
-
-  assert.match(
-    workerSource,
-    /handOffOkeyServerLifecycle\(/,
-  );
-
-  assert.match(
-    workerSource,
     /reconcileAuthoritativeServerLifecycleWakeup\(/,
   );
+
+  assert.match(
+    workerSource,
+    /scheduleAznifGameLifecycle\(/,
+  );
+
+  assert.match(workerSource, /AZNIF_GAME_LIFECYCLE_URL/);
 });
