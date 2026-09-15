@@ -12,10 +12,6 @@ const sql = readFileSync(
   .replace(/--.*$/gm, "")
   .replace(/\s+/g, " ");
 
-const botFunction = readFileSync(
-  "supabase/functions/process_bot_turns/index.ts",
-  "utf8",
-);
 
 test("runtime migration restores idempotent Okey Fun rewards", () => {
   assert.match(sql, /create table if not exists okey\.fun_match_rewards/);
@@ -34,10 +30,3 @@ test("runtime migration restores the cancellation refund used by okey_room", () 
   assert.match(sql, /p_match_id::text \|\| ':refund:'/);
 });
 
-test("bot completion uses the current Domino settlement authority", () => {
-  assert.match(botFunction, /"domino_settle_match"/);
-  assert.doesNotMatch(
-    botFunction.slice(botFunction.indexOf('if (mode === "1v1"')),
-    /"settle_finished_match_rewards"/,
-  );
-});

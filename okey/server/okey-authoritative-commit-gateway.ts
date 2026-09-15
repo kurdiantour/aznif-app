@@ -1,4 +1,4 @@
-import type { OkeyTurnCommit } from "../../lib/multiplayer/okey/okey-turn-engine.ts";
+import type { OkeyTurnCommit } from "./okey-turn-engine.ts";
 import type { OkeyActionEvent, OkeyActionEventDraft } from "./okey-action-events.ts";
 import {
   projectOkeyMatchPublicState,

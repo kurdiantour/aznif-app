@@ -7,7 +7,7 @@ import {
   getNextRoundDealerIndex,
   getRoundResultScoreDetails,
 } from "../okey-engine.ts";
-import { prepareTimeoutTurn, resolveTimeoutTurn } from "../okey-timeout.ts";
+import { prepareTimeoutTurn, resolveTimeoutTurn } from "../okey-engine.ts";
 import type { OkeyGameState, OkeyTile } from "../../types/okey.ts";
 import { OKEY_RULESET_V1 } from "../../rules/okey-ruleset-v1.ts";
 

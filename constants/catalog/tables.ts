@@ -1,6 +1,10 @@
 import type { ImageSourcePropType } from "react-native";
 
-export type TableId = "table-classic" | "table-midnight" | "table-royal";
+export type TableId =
+  | "table-classic"
+  | "table-midnight"
+  | "table-royal"
+  | "table-emerald-ivory";
 export type TableCatalogItem = {
   id: TableId;
   name: string;
@@ -14,8 +18,8 @@ export const TABLE_CATALOG: readonly TableCatalogItem[] = [
     name: "مێزی کلاسیک",
     price: 0,
     images: {
-      game: require("@/assets/images/game/tables/table-classic-game.webp"),
-      shopPreview: require("@/assets/images/shop/tables/table-classic-preview.webp"),
+      game: require("@/assets/images/okey/sets/classic/table.webp"),
+      shopPreview: require("@/assets/images/okey/sets/classic/shop-preview.webp"),
     },
   },
   {
@@ -23,8 +27,8 @@ export const TABLE_CATALOG: readonly TableCatalogItem[] = [
     name: "مێزی شەو",
     price: 350,
     images: {
-      game: require("@/assets/images/game/tables/table-purple-game.webp"),
-      shopPreview: require("@/assets/images/shop/tables/table-purple-preview.webp"),
+      game: require("@/assets/images/okey/sets/midnight/table.webp"),
+      shopPreview: require("@/assets/images/okey/sets/midnight/shop-preview.webp"),
     },
   },
   {
@@ -32,8 +36,17 @@ export const TABLE_CATALOG: readonly TableCatalogItem[] = [
     name: "مێزی شاهانە",
     price: 520,
     images: {
-      game: require("@/assets/images/game/tables/table-black-gold-game.webp"),
-      shopPreview: require("@/assets/images/shop/tables/table-black-gold-preview.webp"),
+      game: require("@/assets/images/okey/sets/royal/table.webp"),
+      shopPreview: require("@/assets/images/okey/sets/royal/shop-preview.webp"),
+    },
+  },
+  {
+    id: "table-emerald-ivory",
+    name: "Emerald Ivory",
+    price: 900,
+    images: {
+      game: require("@/assets/images/okey/sets/emerald-ivory/table.webp"),
+      shopPreview: require("@/assets/images/okey/sets/emerald-ivory/shop-preview.webp"),
     },
   },
 ];

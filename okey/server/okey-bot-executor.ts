@@ -1,5 +1,5 @@
 import { chooseBotDrawSource, prepareBotTurn } from "../engine/okey-bot-engine.ts";
-import { completeDeferredBotTurnAdvance, discardTile, drawTile } from "../engine/okey-engine.ts";
+import { discardTile, drawTile } from "../engine/okey-engine.ts";
 import type { OkeyGameState } from "../types/okey.ts";
 import {
   createBotPostDrawActionEvents,
@@ -7,7 +7,7 @@ import {
 } from "./okey-action-events.ts";
 
 export type OkeyBotIntent = {
-  step: "draw" | "discard" | "advance";
+  step: "draw" | "discard";
   actorPlayerId: string;
   roundState: OkeyGameState;
   actionEvents: OkeyActionEventDraft[];
@@ -34,17 +34,6 @@ export function selectOkeyBotIntent(input: {
     !currentPlayer ||
     currentPlayer.id !== input.expectedActorId
   ) return null;
-
-  if (input.step === "advance") {
-    const roundState = completeDeferredBotTurnAdvance(
-      input.state,
-      currentPlayer.id,
-      now,
-    );
-    return roundState === input.state
-      ? null
-      : { step: "advance", actorPlayerId: currentPlayer.id, roundState, actionEvents: [] };
-  }
 
   const botOptions = { difficulty: currentPlayer.botDifficulty ?? "normal" } as const;
   if (input.step === "draw") {

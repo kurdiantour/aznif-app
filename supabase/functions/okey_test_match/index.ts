@@ -8,7 +8,7 @@ import {
 } from "../../../okey/server/okey-authoritative.ts";
 import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
 
-import { getOkeyLifecycleWakeupAt } from '../../../okey/server/okey-server-reconciler.ts';
+import { getOkeyLifecycleRunAt } from '../../../okey/server/okey-server-reconciler.ts';
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -206,7 +206,7 @@ serve(async (request) => {
 
   const state = createAuthoritativeOkeyMatch(identities);
   const deadline = getNextOkeyMatchTurnDeadline(state);
-  const lifecycleRunAt = getOkeyLifecycleWakeupAt(state, deadline, Date.now());
+  const lifecycleRunAt = getOkeyLifecycleRunAt(state, deadline, Date.now());
   if (!lifecycleRunAt) {
     return json({ error: 'test_match_has_no_lifecycle_transition' }, 500);
   }

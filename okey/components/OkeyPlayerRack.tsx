@@ -856,7 +856,7 @@ export function OkeyPlayerRack({
 
         <Image
           pointerEvents="none"
-          source={require("@/assets/images/okey/player-rack-clean.png")}
+          source={require("@/assets/images/okey/sets/classic/player-rack.png")}
           style={styles.rackImage}
           contentFit="contain"
           cachePolicy="memory-disk"

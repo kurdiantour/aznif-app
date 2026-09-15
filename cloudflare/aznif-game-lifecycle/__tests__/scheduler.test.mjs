@@ -3,22 +3,22 @@ import test from "node:test";
 
 import worker, {
   AznifGameAlarm,
-  parseWakeup,
+  parseLifecycleJob,
 } from "../src/index.js";
 
-const wakeup = {
+const lifecycleJob = {
   gameType: "okey",
   matchId: "match-7",
   expectedVersion: 12,
   runAt: "2026-09-13T12:00:00.000Z",
 };
 
-test("public wake-up contract requires all four fields", () => {
-  assert.deepEqual(parseWakeup(wakeup), wakeup);
-  for (const key of Object.keys(wakeup)) {
-    const invalid = { ...wakeup };
+test("public lifecycle alarm contract requires all four fields", () => {
+  assert.deepEqual(parseLifecycleJob(lifecycleJob), lifecycleJob);
+  for (const key of Object.keys(lifecycleJob)) {
+    const invalid = { ...lifecycleJob };
     delete invalid[key];
-    assert.equal(parseWakeup(invalid), null);
+    assert.equal(parseLifecycleJob(invalid), null);
   }
 });
 
@@ -28,7 +28,7 @@ test("Durable Object identity is gameType:matchId", async () => {
   const response = await worker.fetch(new Request("https://scheduler.test", {
     method: "POST",
     headers: { authorization: "Bearer secret", "content-type": "application/json" },
-    body: JSON.stringify(wakeup),
+    body: JSON.stringify(lifecycleJob),
   }), {
     AZNIF_LIFECYCLE_SECRET: "secret",
     GAME_MATCH_ALARMS: {
@@ -38,11 +38,11 @@ test("Durable Object identity is gameType:matchId", async () => {
   });
   assert.equal(response.status, 200);
   assert.equal(durableName, "okey:match-7");
-  assert.deepEqual(forwarded, wakeup);
+  assert.deepEqual(forwarded, lifecycleJob);
 });
 
 test("Okey alarm calls one version-bound authoritative transition", async () => {
-  const records = new Map([["wakeup", wakeup]]);
+  const records = new Map([["lifecycle_job", lifecycleJob]]);
   const storage = {
     get: async (key) => records.get(key),
     delete: async (key) => records.delete(key),
@@ -67,7 +67,7 @@ test("Okey alarm calls one version-bound authoritative transition", async () => 
     mode: "okey",
     match_id: "match-7",
     expected_version: 12,
-    run_at: wakeup.runAt,
+    run_at: lifecycleJob.runAt,
   });
-  assert.equal(records.has("wakeup"), false);
+  assert.equal(records.has("lifecycle_job"), false);
 });

@@ -1,7 +1,11 @@
-import type { OkeyColor, OkeyGameState, OkeyMeld, OkeyTeamId, OkeyTile } from "../types/okey.ts";
+import type { OkeyColor, OkeyGameState, OkeyMeld, OkeyTeamId, OkeyTile } from "../types/okey.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
-import { isOkeyWildcard } from "./okeyengine-core.ts";
-export { isOkeyWildcard } from "./okeyengine-core.ts";
+
+export function isOkeyWildcard(tile: OkeyTile, okeyTile: OkeyTile): boolean {
+  if (tile.isFakeJoker) return false;
+  return tile.color === okeyTile.color && tile.value === okeyTile.value;
+}
+
 const COLORS: OkeyColor[] = [...OKEY_RULESET_V1.tiles.colors];
 const WINNING_HAND_SIZE = OKEY_RULESET_V1.hand.basicWinningSize;
 const INITIAL_OPEN_SCORE = OKEY_RULESET_V1.opening.initialMinimumScore;

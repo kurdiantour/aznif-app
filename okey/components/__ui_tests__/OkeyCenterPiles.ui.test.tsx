@@ -18,11 +18,29 @@ test("deck press dispatches Draw only while drawing is allowed", () => {
     onDrawDiscard: jest.fn(),
   };
   const enabled = render(<OkeyCenterPiles {...props} canDraw />);
-  fireEvent.press(enabled.getByTestId("okey-draw-deck"));
+  const getDeckResponder = () =>
+    enabled.getByTestId("okey-draw-deck").parent!;
+  const releaseDeckTap = () => {
+    fireEvent(
+      getDeckResponder(),
+      "responderRelease",
+      {
+        touchHistory: {
+          touchBank: [],
+          numberActiveTouches: 0,
+          indexOfSingleActiveTouch: -1,
+          mostRecentTimeStamp: 0,
+        },
+      },
+      { dx: 0, dy: 0, moveX: 0, moveY: 0 },
+    );
+  };
+
+  releaseDeckTap();
   expect(onDrawDeck).toHaveBeenCalledTimes(1);
 
   enabled.rerender(<OkeyCenterPiles {...props} canDraw={false} />);
-  fireEvent.press(enabled.getByTestId("okey-draw-deck"));
+  releaseDeckTap();
   expect(onDrawDeck).toHaveBeenCalledTimes(1);
 });
 
@@ -46,4 +64,27 @@ test("discard tap opens history without taking a forbidden discard", () => {
   fireEvent(discardGestureView, "responderRelease", {}, { dx: 0, dy: 0, moveX: 0, moveY: 0 });
   expect(onViewDiscards).toHaveBeenCalledTimes(1);
   expect(onDrawDiscard).not.toHaveBeenCalled();
+});
+test("deck press dispatches Draw when authoritative deckCount is zero", () => {
+  const onDrawDeck = jest.fn();
+  const view = render(
+    <OkeyCenterPiles
+      deckCount={0}
+      topDiscard={tile("discard", 7)}
+      canDraw
+      indicatorTile={tile("indicator", 12)}
+      okeyTile={tile("okey", 13)}
+      onDrawDeck={onDrawDeck}
+      onDrawDiscard={jest.fn()}
+    />,
+  );
+
+  fireEvent(
+    view.getByTestId("okey-draw-deck").parent!,
+    "responderRelease",
+    { touchHistory: { touchBank: [], numberActiveTouches: 0, indexOfSingleActiveTouch: -1, mostRecentTimeStamp: 0 } },
+    { dx: 0, dy: 0, moveX: 0, moveY: 0 },
+  );
+
+  expect(onDrawDeck).toHaveBeenCalledTimes(1);
 });

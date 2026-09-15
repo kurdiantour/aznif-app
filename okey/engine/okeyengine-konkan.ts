@@ -1,7 +1,7 @@
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "../types/okey.ts";
 import { getCombinations, getEffectiveTile, getMeldScore, getOrderedMeldScore, getOrderedRunWildcardValue, isOkeyWildcard, isValidMeld, sortTiles } from "./okeyengine-melds.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
-import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-core.ts";
+import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
 
 type SpendTarget = { targetPlayerIndex: number; meldIndex: number; tiles: OkeyTile[]; score: number; delta: number; releasedTile?: OkeyTile };
 type KonkanSetLockTarget = { targetPlayerIndex: number; meldIndex: number; tiles: OkeyTile[]; score: number };
@@ -25,7 +25,13 @@ export function getKonkanDiscardEntry(player: OkeyGameState["players"][number], 
 
 export function getKonkanDiscardOutcome(player: OkeyGameState["players"][number]) {
   const entersKonkan = !!player.pendingKonkanFromDiscard && !player.opened && !player.konkan;
-  return { entersKonkan, isKonkanFinish: player.konkan || entersKonkan, konkan: player.konkan || entersKonkan, konkanEntryReason: player.konkanEntryReason ?? (entersKonkan ? "discard-pick" as const : null) };
+  return {
+    entersKonkan,
+    isKonkanFinish: player.konkan || entersKonkan,
+    konkan: player.konkan || entersKonkan,
+    konkanEntryReason: player.konkanEntryReason ?? (entersKonkan ? "discard-pick" as const : null),
+    pendingKonkanFromDiscard: false,
+  };
 }
 
 function getSpendCandidatePlayerIndexes(state: OkeyGameState, playerIndex: number) {

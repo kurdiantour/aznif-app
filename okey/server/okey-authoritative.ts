@@ -19,27 +19,18 @@ import {
   type OkeyAuthoritativeTransitionReducers,
   OKEY_DRAW_PHASE_SECONDS,
   OKEY_THROW_PHASE_SECONDS,
-} from "../../lib/multiplayer/okey/okey-turn-engine.ts";
+} from "./okey-turn-engine.ts";
 
 export { OKEY_DRAW_PHASE_SECONDS, OKEY_THROW_PHASE_SECONDS };
 
 import {
   resolveTimeoutTurn,
-} from "../engine/okey-timeout.ts";
+} from "../engine/okey-engine.ts";
 
 import {
   handSeatToBot,
   isOkeyBotControlled,
-} from "../engine/okey-bot-policy.ts";
-
-import {
-  createBotTakeoverTransition,
-  projectSeatOwnership,
-} from "../../lib/multiplayer/core/seat-ownership.ts";
-import {
-  advanceConsecutiveTimeout,
-  resetConsecutiveTimeout,
-} from "../../lib/multiplayer/core/timeout-orchestration.ts";
+} from "../engine/okey-bot-engine.ts";
 
 import type {
   OkeyGameState,
@@ -976,17 +967,14 @@ function reconcileAuthoritativeBotOwnership(
 
   const player =
     current.roundState.players[playerIndex];
-  const ownership = player ? projectSeatOwnership({
-    seatId: String(playerIndex),
-    ownerPlayerId: player.id,
-    controlledByBot: isOkeyBotControlled(player),
-  }) : null;
-  const takeover = player && ownership &&
-      (current.timeoutCountsByPlayerId?.[player.id] ?? 0) >= OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD
-    ? createBotTakeoverTransition(ownership, "timeout")
-    : null;
+  const shouldTakeover = Boolean(
+    player &&
+      !isOkeyBotControlled(player) &&
+      (current.timeoutCountsByPlayerId?.[player.id] ?? 0) >=
+        OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD,
+  );
 
-  if (player && takeover) {
+  if (player && shouldTakeover) {
     current = reconcileAuthoritativeHumanControl({
       ...current,
       roundState: handSeatToBot(
@@ -1022,17 +1010,12 @@ export function applyAuthoritativeManualLeave(
   const manualLeftPlayerIds = (match.manualLeftPlayerIds ?? []).includes(player.id)
     ? match.manualLeftPlayerIds
     : [...(match.manualLeftPlayerIds ?? []), player.id];
-  const ownership = projectSeatOwnership({
-    seatId: String(actorPlayerIndex),
-    ownerPlayerId: player.id,
-    controlledByBot: isOkeyBotControlled(player),
-  });
-  const takeover = createBotTakeoverTransition(ownership, "manual_leave");
+  const shouldTakeover = !isOkeyBotControlled(player);
 
   const takeoverMatch = reconcileAuthoritativeHumanControl({
     ...match,
     manualLeftPlayerIds,
-    roundState: takeover
+    roundState: shouldTakeover
       ? handSeatToBot(
           match.roundState,
           actorPlayerIndex,
@@ -1076,7 +1059,7 @@ export function applyAuthoritativeOkeyMatchCommand(
     command.type === "draw" && actor && !isOkeyBotControlled(actor)
       ? {
           ...(match.timeoutCountsByPlayerId ?? {}),
-          [actor.id]: resetConsecutiveTimeout(),
+          [actor.id]: 0,
         }
       : match.timeoutCountsByPlayerId;
 
@@ -1261,13 +1244,14 @@ export function resolveAuthoritativeMatchDeadline(
   const timeoutCounts =
     match.timeoutCountsByPlayerId ?? {};
 
-  const timeoutProgress = isDrawTimeout
-    ? advanceConsecutiveTimeout(
-        timeoutCounts[player.id] ?? 0,
-        OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD,
-      )
-    : { streak: timeoutCounts[player.id] ?? 0, shouldTakeOver: false };
-  const timeoutCount = timeoutProgress.streak;
+  const currentStreak = timeoutCounts[player.id] ?? 0;
+  const timeoutCount = isDrawTimeout ? currentStreak + 1 : currentStreak;
+
+  const timeoutProgress = {
+    shouldTakeOver:
+      isDrawTimeout &&
+      timeoutCount >= OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD,
+  };
 
 const nextTimeoutCounts = {
   ...timeoutCounts,
@@ -1349,26 +1333,6 @@ export function isOkeyRoundStartPending(
   const roundStartsAtMs = Date.parse(match.roundStartsAt ?? "");
   return Number.isFinite(roundStartsAtMs) && now < roundStartsAtMs;
 }
-export function getNextOkeyTurnDeadline(
-  state: OkeyGameState,
-
-  now = Date.now(),
-): string | null {
-  if (state.phase !== "playing") {
-    return null;
-  }
-
-  const context = getAuthoritativeOkeyTurnContext(state);
-
-  return deriveAuthoritativeOkeyTurnDeadline({
-    phase: context.phase,
-    // This legacy helper historically derives only from phase. Keep that
-    // public behavior while delegating the actual deadline rule to the Engine.
-    controller: "human",
-    now,
-  });
-}
-
 export function getNextOkeyMatchTurnDeadline(
   match:
     OkeyAuthoritativeMatchState,

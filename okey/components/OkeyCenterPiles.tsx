@@ -113,9 +113,9 @@ export function OkeyCenterPiles({
   }, []);
   const deckDragHandlers = useMemo(
     () => PanResponder.create({
-      onStartShouldSetPanResponder: () => canDraw && deckCount > 0,
+      onStartShouldSetPanResponder: () => canDraw,
       onMoveShouldSetPanResponder: (_, gesture) =>
-        canDraw && deckCount > 0 && Math.hypot(gesture.dx, gesture.dy) > 3,
+        canDraw && Math.hypot(gesture.dx, gesture.dy) > 3,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         deckDragStartedRef.current = false;
@@ -139,7 +139,7 @@ export function OkeyCenterPiles({
         const wasDragging = deckDragStartedRef.current;
         deckDragStartedRef.current = false;
 
-        if (!canDraw || deckCount <= 0) {
+        if (!canDraw) {
           clearDeckDrag();
           return;
         }

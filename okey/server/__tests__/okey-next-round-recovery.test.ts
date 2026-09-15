@@ -17,7 +17,7 @@ const workerSource = readFileSync(
   "utf8",
 );
 
-test("snapshot is read-only and never wakes authoritative gameplay lifecycle", () => {
+test("snapshot is read-only and never schedules authoritative gameplay lifecycle", () => {
   const snapshotBlock =
     matchSource.match(
       /if \(isSnapshot\) \{[\s\S]*?\n  \}\n\n  \/\*\n   \* A duplicate command/,
@@ -42,19 +42,19 @@ test("snapshot is read-only and never wakes authoritative gameplay lifecycle", (
 test("authoritative command awaits lifecycle worker acceptance before replying", () => {
   assert.match(
     matchSource,
-    /dispatchLifecycleWakeup:[\s\S]*?await scheduleAznifGameLifecycle\(/,
+    /scheduleLifecycleAlarm:[\s\S]*?await scheduleAznifGameLifecycle\(/,
   );
 
   assert.doesNotMatch(
     matchSource,
-    /edgeRuntime\?\.waitUntil\(lifecycleHandoff\)/,
+    /edgeRuntime\?\.waitUntil\([\s\S]*scheduleAznifGameLifecycle/,
   );
 });
 
 test("bot worker keeps server-owned lifecycle delivery outside snapshot path", () => {
   assert.match(
     workerSource,
-    /reconcileAuthoritativeServerLifecycleWakeup\(/,
+    /reconcileAuthoritativeServerLifecycleAlarm\(/,
   );
 
   assert.match(

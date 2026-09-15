@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handSeatToBot } from "../../engine/okey-bot-policy.ts";
+import { handSeatToBot } from "../../engine/okey-bot-engine.ts";
 import { reconcileAuthoritativeBotTurn } from "../okey-server-reconciler.ts";
+import { selectOkeyBotIntent } from "../okey-bot-executor.ts";
 import { createAuthoritativeOkeyMatch } from "../okey-authoritative.ts";
 
 const players = [
@@ -29,7 +30,6 @@ function fakeClient(input: {
   state: ReturnType<typeof botMatch>;
   version?: number;
   applied?: boolean | ((attempt: number, args: any) => boolean);
-  handoffError?: Error;
   commitError?: Error | null;
   isTest?: boolean;
   committedEvents?: any[];
@@ -146,7 +146,6 @@ async function execute(
       client: harness.client,
       deterministicCommandId: async (source) => `id:${source}`,
       now: () => Date.parse("2026-08-30T00:00:00.000Z"),
-      wait: async () => undefined,
       broadcastStateUpdate: async (message) => {
         broadcasts.push(message);
       },
@@ -213,7 +212,6 @@ test(
       calls.commits[0].p_state.roundState.currentPlayerIndex,
       (state.roundState.currentPlayerIndex + 1) % state.roundState.players.length,
     );
-    assert.equal(calls.commits[0].p_state.roundState.pendingBotTurnAdvanceAt ?? null, null);
     assert.ok(calls.commits[0].p_turn_deadline_at);
   },
 );
@@ -243,7 +241,6 @@ test(
       {
         client: staleVersionHarness.client,
         deterministicCommandId: async () => "id",
-        wait: async () => undefined,
       },
     );
 
@@ -271,7 +268,6 @@ test(
       {
         client: staleActorHarness.client,
         deterministicCommandId: async () => "id",
-        wait: async () => undefined,
       },
     );
 
@@ -314,7 +310,6 @@ test(
       {
         client: harness.client,
         deterministicCommandId: async () => "id",
-        wait: async () => undefined,
       },
     );
 
@@ -640,7 +635,6 @@ test(
           client: harness.client,
           deterministicCommandId: async () =>
             "same-command-id",
-          wait: async () => undefined,
           broadcastStateUpdate: async (message) => {
             broadcasts.push(message);
           },
@@ -754,7 +748,6 @@ test(
           client: harness.client,
           deterministicCommandId: async () =>
             "same-terminal-command-id",
-          wait: async () => undefined,
           broadcastStateUpdate: async () =>
             undefined,
         },
@@ -778,3 +771,35 @@ test(
     );
   },
 );
+test("Bot deck-zero Draw reaches the same authoritative reshuffle path", () => {
+  const base = botMatch(false);
+  const [poolA, poolB, topDiscard] = base.roundState.deck.slice(0, 3);
+  const actorIndex = base.roundState.currentPlayerIndex;
+  const actor = base.roundState.players[actorIndex];
+  const blockedOwnerIndex = (actorIndex + 1) % base.roundState.players.length;
+  const prepared = {
+    ...base.roundState,
+    players: base.roundState.players.map((player, index) =>
+      index === blockedOwnerIndex ? { ...player, eliminated: true } : player),
+    deck: [],
+    discardPile: [poolA, poolB, topDiscard],
+    discardOwners: [null, null, { playerIndex: blockedOwnerIndex, playerId: base.roundState.players[blockedOwnerIndex].id }],
+    reshuffleCount: 0,
+    hasDrawnThisTurn: false,
+  };
+
+  const intent = selectOkeyBotIntent({
+    state: prepared,
+    expectedActorId: actor.id,
+    step: "draw",
+  });
+
+  assert.ok(intent);
+  assert.equal(intent.actionEvents[0]?.payload.source, "deck");
+  assert.equal(intent.roundState.reshuffleCount, 1);
+  assert.equal(intent.roundState.discardPile.length, 1);
+  assert.equal(intent.roundState.discardPile[0].id, topDiscard.id);
+  assert.equal(intent.roundState.players[actorIndex].hand.length, actor.hand.length + 1);
+  assert.equal(intent.roundState.hasDrawnThisTurn, true);
+  assert.equal(intent.roundState.phase, "playing");
+});

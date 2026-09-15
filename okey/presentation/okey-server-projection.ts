@@ -18,7 +18,7 @@ export function projectOkeyServerState(
     ...player,
     hand: projection.phase !== "playing" ? [] : Array.isArray(player.hand)
       ? player.hand
-      : Array.from({ length: player.handCount }, (_, index) => placeholder(`hidden-${player.id}-${index}`)),
+      : [],
     firstOpenScore: player.firstOpenScore ?? null,
     pendingKonkanFromDiscard: player.pendingKonkanFromDiscard ?? false,
   }));

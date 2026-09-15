@@ -21,7 +21,7 @@ import {
   settleAuthoritativeOkeyRound,
   startAuthoritativeOkeyNextRound,
 } from "../okey-authoritative.ts";
-import { handSeatToBot, isOkeyBotControlled } from "../../engine/okey-bot-policy.ts";
+import { handSeatToBot, isOkeyBotControlled } from "../../engine/okey-bot-engine.ts";
 
 test("viewer projection exposes only the viewer hand and never the deck", () => {
   const state = createInitialOkeyGame(0);

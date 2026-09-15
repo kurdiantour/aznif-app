@@ -489,15 +489,15 @@ if (action === "manual-leave") {
       payload.publicProjection,
       payload.actionEvents,
     ),
-    dispatchLifecycleWakeup: async (wakeup) => {
+    scheduleLifecycleAlarm: async (lifecycleJob) => {
       if (!lifecycleSecret || !schedulerUrl) return;
       await scheduleAznifGameLifecycle({
         schedulerUrl,
         lifecycleSecret,
         gameType: "okey",
-        matchId: wakeup.matchId,
-        expectedVersion: wakeup.version,
-        runAt: wakeup.runAt,
+        matchId: lifecycleJob.matchId,
+        expectedVersion: lifecycleJob.version,
+        runAt: lifecycleJob.runAt,
       });
     },
   });

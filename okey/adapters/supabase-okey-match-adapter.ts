@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
+  OkeyCommittedTransition,
   OnlineOkeyMatchAdapter,
 } from "@/okey/adapters/okey-match-adapter";
 
@@ -16,12 +17,7 @@ import {
   reconnectOkeyRoom,
 } from "@/okey/multiplayer/okey-room-api";
 
-export type OkeyCommittedTransition = {
-  version: number;
-  previousProjection: OkeyMatchServerProjection | null;
-  projection: OkeyMatchServerProjection;
-  actionEvents: OkeyActionEvent[];
-};
+export type { OkeyCommittedTransition };
 
 const MAX_DELIVERED_ACTION_EVENT_KEYS = 512;
 
@@ -55,9 +51,7 @@ class OkeyAuthoritativeCommandNotAppliedError extends Error {
   }
 }
 
-export class SupabaseOkeyMatchAdapter
-  implements OnlineOkeyMatchAdapter
-{
+export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
   readonly kind = "online" as const;
 
   private snapshot:
@@ -143,11 +137,14 @@ export class SupabaseOkeyMatchAdapter
     return this.snapshot;
   }
 
+  private requireSnapshot(): OkeyMatchServerProjection {
+    const snapshot = this.getSnapshot();
+    if (!snapshot) throw new Error("okey_snapshot_unavailable");
+    return snapshot;
+  }
+
   subscribe(
-    listener: (
-      snapshot:
-        OkeyMatchServerProjection,
-    ) => void,
+    listener: (snapshot: OkeyMatchServerProjection) => void,
   ): () => void {
     this.listeners.add(listener);
 

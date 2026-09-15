@@ -1,8 +1,8 @@
 # Aznif shared game lifecycle
 
-This Worker is the shared durable wake-up layer for Aznif games. Each Durable
+This Worker is the shared durable lifecycle alarm layer for Aznif games. Each Durable
 Object is addressed by `gameType:matchId` and stores one
-`{ gameType, matchId, expectedVersion, runAt }` wake-up. It owns no game state.
+`{ gameType, matchId, expectedVersion, runAt }` lifecycle alarm. It owns no game state.
 
 At alarm time it invokes exactly one authoritative transition. Supabase remains
 the source of truth and rejects stale `expectedVersion` values. A committed

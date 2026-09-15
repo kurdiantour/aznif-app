@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createInitialOkeyGame, getRequiredOpenScore } from "../okey-engine.ts";
-import { resolveTimeoutTurn } from "../okey-timeout.ts";
+import { createInitialOkeyGame, getRequiredOpenScore, resolveTimeoutTurn } from "../okey-engine.ts";
 import { OKEY_RULESET_V1 } from "../../rules/okey-ruleset-v1.ts";
 
 test("ruleset v1 is the implemented four-player team baseline", () => {

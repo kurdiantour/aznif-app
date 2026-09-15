@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
 
-import { chooseBotDiscardTile, playBotTurn, prepareBotTurn } from "../okey-bot-engine.ts";
 import {
+  chooseBotDiscardTile,
   createSeededOkeyBotRandom,
   getOkeyBotProfile,
   handSeatToBot,
   isOkeyBotControlled,
-} from "../okey-bot-policy.ts";
+  playBotTurn,
+  prepareBotTurn,
+} from "../okey-bot-engine.ts";
 import { createInitialOkeyGame } from "../okey-engine.ts";
 
 test("difficulty profiles are ordered and remove the old long artificial delay", () => {

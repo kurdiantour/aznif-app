@@ -1,5 +1,4 @@
 import { expect, test } from "@jest/globals";
-import { readFileSync } from "node:fs";
 import {
   findClosestMeldDropTarget,
   getOkeyRunEndForDrop,
@@ -61,8 +60,8 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
     [tile("a"), tile("b"), tile("c"), tile("draw")],
   );
 
-  expect(synced.bottom.slice(0, 3)).toEqual(["a", null, "b"]);
-  expect(synced.top.slice(0, 2)).toEqual(["c", "draw"]);
+  expect(synced.bottom.slice(0, 3)).toEqual(["a", "draw", "b"]);
+  expect(synced.top.slice(0, 2)).toEqual(["c", null]);
 
   const fullFirstRow = createEmptySlots();
   const topIds = fullFirstRow.top.map((_, index) => `top-${index}`);
@@ -78,46 +77,4 @@ test("drawn tile uses the first empty rack slot without shifting existing tiles"
 
   expect(nextRowSynced.top).toEqual(topIds);
   expect(nextRowSynced.bottom.slice(0, 2)).toEqual(["bottom-existing", "next-draw"]);
-});
-
-
-
-test("rapid double tap discards the same rack tile without waiting for a selection render", () => {
-  const interactions = readFileSync("okey/presentation/useOkeyTableActions.ts", "utf8");
-
-  expect(interactions).toContain("const lastTapRef = useRef");
-  expect(interactions).toMatch(
-    /previousTap\?\.tileId === tileId[\s\S]*?tappedAt - previousTap\.tappedAt <= 350[\s\S]*?discardTile\(tileId\)/,
-  );
-});
-
-test("KonKan hides the normal open button unless declaration is available", () => {
-  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
-
-  expect(scene).toMatch(
-    /canPlayAfterDraw && openAction\.allowed &&\s*\(!humanPlayer\.konkan \|\| openAction\.mode === "declare-konkan"\)/,
-  );
-});
-
-test("an ambiguous Joker spend submits the endpoint selected by its drop position", () => {
-  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
-
-  expect(scene).toMatch(
-    /getOkeyRunEndForDrop\(action\.runEndOptions, point, target\)/,
-  );
-  expect(scene).toMatch(
-    /submitTableMeldAction\(action, runEnd\)/,
-  );
-  expect(scene).toMatch(
-    /spendTileOnTableMeld\([\s\S]*?action\.targetMeldId,[\s\S]*?runEnd/,
-  );
-  expect(scene).not.toContain("onJokerEndpointSelected={handleJokerEndpointSelected}");
-});
-
-test("a finished online room keeps its authoritative match until route exit", () => {
-  const scene = readFileSync("okey/scenes/OkeyGameTableScene.tsx", "utf8");
-
-  expect(scene).toContain(
-    'onlineRoom?.status === "playing" || onlineRoom?.status === "finished"',
-  );
 });

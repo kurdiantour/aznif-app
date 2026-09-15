@@ -4,7 +4,6 @@ import { useAudioPlayer } from "expo-audio";
 
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import type { OkeyTile } from "@/okey/types/okey";
-import { OKEY_ROUND_END_PRESENTATION_BUDGET } from "@/okey/presentation/okey-presentation-budget";
 import { OkeyTileBack, OkeyTileFace } from "./OkeyTileFace";
 
 type ScreenRect = { x: number; y: number; width: number; height: number };
@@ -25,9 +24,9 @@ const SPARKS = Array.from({ length: 12 }, (_, index) => ({
 }));
 const FINISH_SOUND = require("@/assets/audio/game/bang.mp3");
 
-export const OKEY_FINAL_TILE_ANIMATION_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.FINAL_TILE_ANIMATION_MS;
-export const OKEY_FINAL_TILE_HOLD_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.FINAL_TILE_HOLD_MS;
-export const OKEY_FINAL_TILE_PRESENTATION_MS = OKEY_ROUND_END_PRESENTATION_BUDGET.CELEBRATION_DURATION_MS;
+export const OKEY_FINAL_TILE_ANIMATION_MS = 2_000;
+export const OKEY_FINAL_TILE_HOLD_MS = 3_000;
+export const OKEY_FINAL_TILE_PRESENTATION_MS = 5_000;
 
 export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcement, onComplete, playFinishSound }: Props) {
   const entrance = useRef(new Animated.Value(0)).current;

@@ -5,7 +5,6 @@ import test from "node:test";
 const sql = readFileSync("supabase/migrations/20260813000400_okey_membership_release.sql", "utf8")
   .toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const gateway = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
-const popup = readFileSync("okey/components/WaitingPlayersPopup.tsx", "utf8");
 
 test("Okey Party reserves one complete team pair atomically", () => {
   assert.match(sql, /pg_advisory_xact_lock\(hashtext\('okey-matchmaking:'/);
@@ -23,8 +22,4 @@ test("Party allocation and follow state commit in the same transaction", () => {
   assert.doesNotMatch(gateway, /service\.rpc\("align_okey_party_teammates"/);
 });
 
-test("Waiting popup distinguishes bundled avatar ids from remote URLs", () => {
-  assert.match(popup, /AVATAR_IDS\.includes\(\s*member\.avatarUrl as AvatarId\s*\)/);
-  assert.match(popup, /avatarId=\{avatarId\}/);
-  assert.match(popup, /avatarUrl=\{avatarId \? undefined/);
-});
+

@@ -91,6 +91,4 @@ export type OkeyGameState = {
   endReason: OkeyRoundEndReason | null;
   turnMessage: OkeyTurnMessage;
   hasDrawnThisTurn: boolean;
-  pendingBotTurnAdvanceAt?: string | null;
-  pendingBotTurnAdvancePlayerId?: string | null;
 };

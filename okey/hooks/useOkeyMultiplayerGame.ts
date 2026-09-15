@@ -1,8 +1,6 @@
-import { useCallback, useMemo } from "react";
-import { useMultiplayerMatch } from "@/lib/multiplayer/match";
-import { OkeyMultiplayerAdapter } from "@/okey/adapters/okey-multiplayer-adapter";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
-import { buildOkeyCoreFinalResult, buildOkeyCoreRoundResult, selectOkeyMultiplayerLifecycle } from "@/okey/adapters/okey-multiplayer-projection";
 import { createInitialOkeyGame, getRoundResultScoreDetails } from "@/okey/engine/okey-engine";
 import { projectOkeyServerState } from "@/okey/presentation/okey-server-projection";
 import { OKEY_RULESET_V1 } from "@/okey/rules/okey-ruleset-v1";
@@ -24,38 +22,207 @@ const projectResults = (projection: OkeyMatchServerProjection): OkeyRoundResult[
     scoreDetails: { scores: { teamA: result.teamAScore, teamB: result.teamBScore }, details: [] },
   }));
 
+export type OkeyEndRoundPresentationStage = "idle" | "draining" | "final-tile" | "score";
+
+const OKEY_SCORE_PRESENTATION_MS = 3_000;
+
 export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string | null = null) {
-  const commands = useMemo(() => matchId ? new SupabaseOkeyMatchAdapter(matchId) : null, [matchId]);
-  const adapter = useMemo(() => commands ? new OkeyMultiplayerAdapter(commands) : null, [commands]);
-  const getServerNow = useCallback(() => commands
-    ? new Date(Date.now() + commands.getServerClockOffsetMs()).toISOString() : null, [commands]);
-  const core = useMultiplayerMatch({
-    roomId: matchId, adapter, selectLifecycle: selectOkeyMultiplayerLifecycle,
-    buildRoundResult: buildOkeyCoreRoundResult, buildFinalResult: buildOkeyCoreFinalResult,
-    getSnapshotServerNow: getServerNow,
-    roundSyncIntervalMs: 1_000,
-  });
-  const projection = core.snapshot;
-  const refresh = core.refresh;
-  const applySnapshot = core.applySnapshot;
+  const adapter = useMemo(() => matchId ? new SupabaseOkeyMatchAdapter(matchId) : null, [matchId]);
+
+  const [projection, setProjection] = useState<OkeyMatchServerProjection | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const lastVersionRef = useRef(-1);
+  const mountedRef = useRef(true);
+
+  const applySnapshot = useCallback((next: OkeyMatchServerProjection) => {
+    if (!Number.isSafeInteger(next.version) || next.version < 0) return false;
+    if (next.version < lastVersionRef.current) return false;
+    lastVersionRef.current = next.version;
+    setProjection(next);
+    return true;
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!adapter) throw new Error("Multiplayer adapter is unavailable");
+    await adapter.refresh();
+    const next = adapter.getSnapshot();
+    if (next && mountedRef.current) applySnapshot(next);
+    return next;
+  }, [adapter, applySnapshot]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    lastVersionRef.current = -1;
+    setProjection(null);
+    setLoading(true);
+    setError(null);
+
+    if (!matchId || !adapter) {
+      setLoading(false);
+      setError("Multiplayer room is unavailable");
+      return;
+    }
+
+    let active = true;
+
+    const unsubscribe = adapter.subscribe((next) => {
+      if (!active) return;
+      applySnapshot(next);
+    });
+
+    void refresh()
+      .then(() => {
+        if (!active) return;
+        setLoading(false);
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : String(caught));
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+      mountedRef.current = false;
+      unsubscribe();
+    };
+  }, [matchId, adapter, refresh, applySnapshot]);
+
+  const [isAppActive, setIsAppActive] = useState(AppState.currentState === "active");
+  const [resumeCount, setResumeCount] = useState(0);
+
+  useEffect(() => {
+    if (!matchId || !adapter) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      const active = state === "active";
+      setIsAppActive(active);
+      if (!active) return;
+      void adapter.reconnect().catch((caught) => {
+        console.warn("Multiplayer resume reconcile failed", caught);
+        void refresh().catch(() => undefined);
+      });
+      setResumeCount((value) => value + 1);
+    });
+    return () => subscription.remove();
+  }, [matchId, adapter, refresh]);
+
+  const [turnMillisecondsLeft, setTurnMillisecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    const deadlineAt =
+      projection?.phase === "playing" && !projection.matchFinished
+        ? projection.turnDeadlineAt
+        : null;
+
+    if (!deadlineAt) {
+      setTurnMillisecondsLeft(null);
+      return;
+    }
+
+    const offset = adapter ? adapter.getServerClockOffsetMs() : 0;
+    const tick = () => {
+      const deadline = Date.parse(deadlineAt);
+      if (!Number.isFinite(deadline)) {
+        setTurnMillisecondsLeft(null);
+        return;
+      }
+      setTurnMillisecondsLeft(Math.max(0, deadline - (Date.now() + offset)));
+    };
+
+    tick();
+    const interval = setInterval(tick, 250);
+    return () => clearInterval(interval);
+  }, [adapter, projection?.phase, projection?.matchFinished, projection?.turnDeadlineAt]);
+
+  const [exitConfirmationVisible, setExitConfirmationVisible] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  const requestExit = useCallback(() => setExitConfirmationVisible(true), []);
+  const cancelExit = useCallback(() => setExitConfirmationVisible(false), []);
+  const confirmExit = useCallback(async () => {
+    if (!adapter || leaving) return;
+    setLeaving(true);
+    try {
+      await adapter.leave();
+      setProjection(null);
+      setExitConfirmationVisible(false);
+    } finally {
+      setLeaving(false);
+    }
+  }, [adapter, leaving]);
+
+  const [completedRoundFrame, setCompletedRoundFrame] = useState<OkeyMatchServerProjection | null>(null);
+  const [endRoundPresentationStage, setEndRoundPresentationStage] =
+    useState<OkeyEndRoundPresentationStage>("idle");
+  const [terminalPresentationComplete, setTerminalPresentationComplete] = useState(false);
+
+  useEffect(() => {
+    if (!adapter) return;
+    return adapter.subscribeCommittedTransitions((frame) => {
+      if (frame.projection.phase !== "finished") return;
+      setCompletedRoundFrame(frame.projection);
+      setEndRoundPresentationStage("draining");
+    });
+  }, [adapter]);
+
+  useEffect(() => {
+    if (!projection || projection.phase !== "finished" || completedRoundFrame) return;
+    setCompletedRoundFrame(projection);
+    setEndRoundPresentationStage("draining");
+  }, [completedRoundFrame, projection]);
+
+  const beginFinalTilePresentation = useCallback(() => {
+    setEndRoundPresentationStage((stage) => stage === "draining" ? "final-tile" : stage);
+  }, []);
+
+  const completeFinalPresentation = useCallback(() => {
+    setEndRoundPresentationStage((stage) => stage === "final-tile" ? "score" : stage);
+    if (projection?.matchFinished || completedRoundFrame?.matchFinished) {
+      setTerminalPresentationComplete(true);
+    }
+  }, [projection?.matchFinished, completedRoundFrame?.matchFinished]);
+
+  useEffect(() => {
+    if (endRoundPresentationStage !== "score" || !completedRoundFrame) return;
+    const timer = setTimeout(() => {
+      if (completedRoundFrame.matchFinished) {
+        setTerminalPresentationComplete(true);
+      }
+      setCompletedRoundFrame(null);
+      setEndRoundPresentationStage("idle");
+    }, OKEY_SCORE_PRESENTATION_MS);
+    return () => clearTimeout(timer);
+  }, [completedRoundFrame, endRoundPresentationStage]);
+
+  useEffect(() => {
+    if (!projection?.matchFinished || terminalPresentationComplete) return;
+    const timer = setTimeout(() => {
+      setTerminalPresentationComplete(true);
+    }, 6_500);
+    return () => clearTimeout(timer);
+  }, [projection?.matchFinished, terminalPresentationComplete]);
+
+  const presentedProjection = completedRoundFrame ?? projection;
   const fallback = useMemo(() => createInitialOkeyGame(), []);
   const state = useMemo(
-    () => projection ? projectOkeyServerState(projection, currentUserId) : fallback,
-    [currentUserId, fallback, projection],
+    () => presentedProjection ? projectOkeyServerState(presentedProjection, currentUserId) : fallback,
+    [currentUserId, fallback, presentedProjection],
   );
 
   const dispatch = useCallback(async (command: OkeyAuthoritativeCommand) => {
-    if (!commands) return false;
+    if (!adapter) return false;
     try {
-      await commands.dispatch(command);
-      const next = commands.getSnapshot();
+      await adapter.dispatch(command);
+      const next = adapter.getSnapshot();
       if (next) applySnapshot(next);
       return true;
     } catch {
       await refresh().catch(() => undefined);
       return false;
     }
-  }, [commands, applySnapshot, refresh]);
+  }, [adapter, applySnapshot, refresh]);
+
   const draw = useCallback((source: OkeyDrawSource) => dispatch({ type: "draw", source }), [dispatch]);
   const discard = useCallback((tileId: string) => dispatch({ type: "discard", tileId }), [dispatch]);
   const commitOpenIntent = useCallback((melds: OkeyMeld[], score: number, tileId?: string) => dispatch(tileId
@@ -79,30 +246,31 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   const lockKonkanSetOnTable = useCallback((tileId: string, targetPlayerId: string, targetMeldId: string, runEnd?: "start" | "end") =>
     dispatch({ type: "lock-konkan", tileId, targetPlayerId, targetMeldId, ...(runEnd ? { runEnd } : {}) }), [dispatch]);
 
-  const roundResults = useMemo(() => projection ? projectResults(projection) : [], [projection]);
-  const currentRound = projection?.currentRound ?? 1;
-  const matchFinished = projection?.matchFinished ?? false;
-  const showRoundResultPopup = core.showRoundResultPopup;
-  const showMatchResultPopup = core.showFinalMatchPopup;
+  const roundResults = useMemo(() => presentedProjection ? projectResults(presentedProjection) : [], [presentedProjection]);
+  const currentRound = presentedProjection?.currentRound ?? 1;
+  const matchFinished = presentedProjection?.matchFinished ?? false;
+  const showRoundResultPopup = endRoundPresentationStage === "score";
+  const isFinalComplete = endRoundPresentationStage === "score" || terminalPresentationComplete;
+  const showMatchResultPopup = matchFinished && isFinalComplete;
   const currentRoundResult = showRoundResultPopup || matchFinished
     ? roundResults.at(-1) ?? null : roundResults.find((result) => result.round === currentRound) ?? null;
 
   return {
-    state, onlineProjection: projection, onlineAdapter: commands,
-    leaveOnlineMatch: core.confirmExit, requestExit: core.requestExit, cancelExit: core.cancelExit,
-    exitConfirmationVisible: core.exitConfirmationVisible, leaving: core.leaving,
-    isAppActive: core.isAppActive, lifecycleResumeToken: core.resumeCount,
-    currentRound, maxRounds: projection?.maxRounds ?? OKEY_RULESET_V1.match.roundCount,
-    roundResults, matchScores: projection?.matchScores ?? { teamA: 0, teamB: 0 },
+    state, onlineProjection: presentedProjection, authoritativeProjection: projection, onlineAdapter: adapter,
+    leaveOnlineMatch: confirmExit, requestExit, cancelExit,
+    exitConfirmationVisible, leaving,
+    isAppActive, lifecycleResumeToken: resumeCount,
+    currentRound, maxRounds: presentedProjection?.maxRounds ?? OKEY_RULESET_V1.match.roundCount,
+    roundResults, matchScores: presentedProjection?.matchScores ?? { teamA: 0, teamB: 0 },
     showRoundResultPopup,
-    currentRoundResult, matchFinished, matchWinnerTeamId: projection?.matchWinnerTeamId ?? null,
+    currentRoundResult, matchFinished, matchWinnerTeamId: presentedProjection?.matchWinnerTeamId ?? null,
     showMatchResultPopup,
-    finalPresentationComplete: core.finalPresentationComplete,
-    completeFinalPresentation: core.completeFinalPresentation,
+    finalPresentationComplete: isFinalComplete,
+    endRoundPresentationStage, beginFinalTilePresentation, completeFinalPresentation,
     draw, discard, commitOpenIntent, declareKonkan, spendTileOnTableMeld, lockKonkanSetOnTable,
-    turnTimeLeft: core.turnSecondsLeft ?? 0,
-    turnTimeLeftMilliseconds: core.turnMillisecondsLeft ?? 0,
-    serverClockOffsetMs: commands?.getServerClockOffsetMs() ?? 0,
+    turnTimeLeft: turnMillisecondsLeft === null ? 0 : Math.ceil(turnMillisecondsLeft / 1_000),
+    turnTimeLeftMilliseconds: turnMillisecondsLeft ?? 0,
+    serverClockOffsetMs: adapter?.getServerClockOffsetMs() ?? 0,
   };
 }
 

@@ -1,51 +1,58 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, } from "react-native";
 
-import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
+import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
-import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
 import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
 import { OkeyForcedKonkan } from "@/okey/components/OkeyForcedKonkan";
 import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
-import {
-  OkeyMatchResultPopup,
-} from "@/okey/components/OkeyMatchResultPopup";
 import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
+import {
+    OkeyMatchResultPopup,
+} from "@/okey/components/OkeyMatchResultPopup";
 import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
 import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
+import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
 import { styles } from "@/okey/components/okeyStyles";
+import type { OkeyTableMeldAction } from "@/okey/engine/okey-engine";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
-import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
-import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyMeldDropOrchestration, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPlayerTileFlightCommands, useOkeyPresentationResetLifecycle, useOkeyTakeoverPresentationExit, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
+import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTakeoverPresentationExit, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import { useOkeyTableGeometry } from "@/okey/layout/useOkeyTableGeometry";
-import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import { useOkeyGameplayReadiness, useOkeyMatchExitLifecycle, useOkeyRoomLifecycle } from "@/okey/multiplayer/useOkeyRoomLifecycle";
+import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import {
-  type ScreenRect,
+    type ScreenRect,
 } from "@/okey/presentation/okey-game-presentation";
-import { useOkeyHumanMeldDropAvailability, useOkeyRackMoveInteraction, useOkeyRackTileInteraction, useOkeyTableActions } from "@/okey/presentation/useOkeyTableActions";
-import { useOkeyTablePresentation } from "@/okey/presentation/useOkeyTablePresentation";
-import { useOkeyTableViewModel } from "@/okey/presentation/useOkeyTableViewModel";
+import { getOkeyRunEndForDrop } from "@/okey/presentation/okey-table-interactions";
 import {
-  useOkeyAdapterPresentationLifecycle,
-  useOkeyFinalTilePresentationPolicy,
-  useOkeyForcedKonkanPresentation,
-  useOkeyTimeoutWarningPresentation,
-  useOkeyStagedMeldCleanup,
-} from "@/okey/presentation/useOkeyPresentationPolicy";
-import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
+    useOkeyHumanMeldDropAvailability,
+    useOkeyMeldDropOrchestration,
+    useOkeyPlayerTileFlightCommands,
+    useOkeyRackMoveInteraction,
+    useOkeyRackTileInteraction,
+    useOkeyTableActions,
+} from "@/okey/presentation/useOkeyTableActions";
+import {
+    useOkeyAdapterPresentationLifecycle,
+    useOkeyForcedKonkanPresentation,
+    useOkeyStagedMeldCleanup,
+    useOkeyTablePresentation,
+    useOkeyTableViewModel,
+} from "@/okey/presentation/useOkeyTablePresentation";
+import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
+import type { OkeyTile } from "@/okey/types/okey";
 
 const EMPTY_OKEY_TILES: OkeyTile[] = [];
 const PLAYER_PREVIEW_MELD_TILE_WIDTH = 18;
@@ -101,6 +108,7 @@ function OkeyGameTableSceneContent() {
     leavingWaitingRoom,
     cancelWaiting: handleCancelWaiting,
   } = useOkeyRoomLifecycle({ matchId: onlineMatchId, exitRoute });
+  const isOnlineRoomActive = onlineRoom?.status === "playing" || onlineRoom?.status === "finished";
   const {
     konkanRevealData, setKonkanRevealData, showKonkanReveal,
     completeKonkanRevealEntrance, resetPresentationOverlays, finishKonkanReveal,
@@ -145,6 +153,8 @@ const onlineController = useOkeyMultiplayerGame(
     matchWinnerTeamId,
     showMatchResultPopup,
     finalPresentationComplete,
+    endRoundPresentationStage,
+    beginFinalTilePresentation,
     completeFinalPresentation,
     draw,
     discard,
@@ -219,12 +229,12 @@ const onlineController = useOkeyMultiplayerGame(
   );
   const stableOpponentTileCounts = useMemo(
     () => Object.fromEntries(
-      presentedTablePlayers.map((player) => [player.id, player.hand.length]),
+      presentedTablePlayers.map((player) => [player.id, (player as any).handCount ?? player.hand.length]),
     ),
     [presentedTablePlayers],
   );
   const {
-    humanPlayer, isHumanTurn, opponentSeats, seatOrderedPlayers, presentedSeatOrderedPlayers,
+    humanPlayer, opponentSeats, seatOrderedPlayers, presentedSeatOrderedPlayers,
     profileTargetForPlayer, playerIdBySeat, viewerTeamId, opponentTeamId, teamScores,
     displayRoundResults, playerNamesById, displayCurrentRoundScoreDetails, viewerWon,
     matchSettlementRewards, shouldRenderMatchResultPopup,
@@ -237,7 +247,6 @@ const onlineController = useOkeyMultiplayerGame(
     serverClockOffsetMs, currentRoundResult, roundResults, matchScores, matchWinnerTeamId,
     showMatchResultPopup, matchFinished,
   });
-
   const presentedHumanRackTiles = useOkeyOptimisticRackPresentation(
     humanPlayer.hand,
     optimisticRackTile,
@@ -314,31 +323,26 @@ const shouldShowScorePopup =
     toLocalRect,
   });
 
+  const isHumanTurn = turnView.phase === "playing" && turnView.playerId === humanPlayer.id;
 
 
-  useOkeyTimeoutWarningPresentation({
-    currentRound,
-    deadlineAt: turnView.deadlineAt,
-    durationSeconds: turnView.durationSeconds,
-    playerId: turnView.playerId,
-    hasDrawn: state.hasDrawnThisTurn,
-    ready: onlineGameplayReady,
-    appActive: isAppActive,
-    humanTurn: isHumanTurn,
-    timeLeft: turnTimeLeft,
-    showWarning: setTurnWarningToastVisible,
-    emitWarning: (key) => emitFeedback("timeout-warning", `timeout-warning:${key}`),
-  });
 
-  const {
-    canDraw, canDrawDiscard, canPlayAfterDraw, canDiscardTile,
-    canDiscardSelectedTile, selectedTile, openAction, executeOpenAction, openActionButtonLabel, remainingMeldSlots,
-    selectOpenAction, selectTableMeldAction,
-  } = useOkeyTableActions({
-    state, humanPlayer, isHumanTurn, selectedTileId,
-    rackMeldSelection: openableRackMelds, declareKonkan, commitOpenIntent, setSelectedTileId,
-  });
+  const warningClockDeadlineRef = useRef<string | null>(null);
+  const timeoutWarningTurnRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (!onlineGameplayReady || !isAppActive || !isHumanTurn || turnTimeLeft <= 0 || turnTimeLeft > 5) return;
+    if (!turnView.playerId || !turnView.deadlineAt) return;
+    const warningKey = `${turnView.playerId}:${turnView.deadlineAt}`;
+    if (warningClockDeadlineRef.current !== turnView.deadlineAt) {
+      warningClockDeadlineRef.current = turnView.deadlineAt;
+      return;
+    }
+    if (timeoutWarningTurnRef.current === warningKey) return;
+    timeoutWarningTurnRef.current = warningKey;
+    setTurnWarningToastVisible(true);
+    emitFeedback("timeout-warning", `timeout-warning:${warningKey}`);
+  }, [emitFeedback, isAppActive, isHumanTurn, onlineGameplayReady, setTurnWarningToastVisible, turnTimeLeft, turnView.deadlineAt, turnView.playerId]);
 
 const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     isOnline: true,
@@ -357,6 +361,15 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     setTileFlight,
     toLocalRect,
     activePresentationRef,
+  });
+
+  const {
+    canDraw, canDrawDiscard, canPlayAfterDraw, canDiscardTile,
+    canDiscardSelectedTile, selectedTile, openAction, executeOpenAction, openActionButtonLabel, remainingMeldSlots,
+    selectOpenAction, selectTableMeldAction,
+  } = useOkeyTableActions({
+    state, humanPlayer, isHumanTurn, selectedTileId,
+    rackMeldSelection: openableRackMelds, declareKonkan, commitOpenIntent, setSelectedTileId,
   });
 
   const completeActivePresentation = useOkeyTileFlightCompletion({
@@ -395,11 +408,18 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   const isInsideHumanMeldDropZone = useOkeyHumanMeldDropAvailability({
     isInsideHumanMeldZone,
     blocked: showScoreDetails || showRoundResultPopup || showMatchResultPopup ||
-      showDiscardHistory || showFinalTileCelebration || isDiscardDragActive,
+      showDiscardHistory || endRoundPresentationStage === "final-tile" || isDiscardDragActive,
   });
+  const submitTableMeldAction = useCallback((action: OkeyTableMeldAction, runEnd?: "start" | "end") => {
+    if (action.type === "lock-konkan") {
+      return lockKonkanSetOnTable(action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
+    }
+    return spendTileOnTableMeld(action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
+  }, [lockKonkanSetOnTable, spendTileOnTableMeld]);
+
   const {
     updateTileDragMeldTarget,
-    dropTileOnTableMeld,
+    dropTileOnTableMeld: dropTileOnTableMeldOrchestrated,
     handleDropMeldGroup,
   } = useOkeyMeldDropOrchestration({
     canPlayAfterDraw,
@@ -423,6 +443,15 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     selectOpenAction,
     emitFeedback,
   });
+
+  const dropTileOnTableMeld = useCallback((tileId: string, point: { x: number; y: number }): boolean | Promise<boolean> => {
+    const target = hoveredMeldTargetRef.current;
+    if (!target) return dropTileOnTableMeldOrchestrated(tileId, point);
+    const action = selectTableMeldAction(tileId, target.playerId, target.meldId);
+    if (!action) return false;
+    const runEnd = getOkeyRunEndForDrop(action.runEndOptions, point, target);
+    return submitTableMeldAction(action, runEnd);
+  }, [dropTileOnTableMeldOrchestrated, hoveredMeldTargetRef, selectTableMeldAction, submitTableMeldAction]);
   useOkeyPresentationResetLifecycle({
     resumeToken: lifecycleResumeToken,
     round: currentRound,
@@ -490,7 +519,14 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     discardTile: startDiscardFlight, emitFeedback,
   });
   const openOpponentProfile = useStableEvent((playerId: string) => {
-    setProfilePlayer(profileTargetForPlayer(playerId));
+    const player = state.players.find((entry) => entry.id === playerId);
+    if (!player) return;
+    // timeLeft: turnView.playerId === player.id ? Math.max(0, Math.ceil(turnTimeLeft)) : undefined
+    setProfilePlayer({
+      id: player.id,
+      name: player.name,
+      avatarId: player.kind === "bot" ? "bot-avatar" : undefined,
+    });
   });
   const handleConfirmLeaveMatch = useOkeyMatchExitLifecycle({ leaveOnlineMatch, leaving, exitRoute });
   const handleDrawDeck = useStableEvent(() => startDrawFlight("deck"));
@@ -529,16 +565,22 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     [discardDropPlacement],
   );
 
-  useOkeyFinalTilePresentationPolicy({
-    phase: state.phase,
-    finalPresentationComplete,
+  useEffect(() => {
+    if (
+      endRoundPresentationStage === "draining" &&
+      !hasQueuedPresentation &&
+      tileFlight === null &&
+      !konkanRevealData.visible
+    ) {
+      beginFinalTilePresentation();
+    }
+  }, [
+    beginFinalTilePresentation,
+    endRoundPresentationStage,
     hasQueuedPresentation,
-    tileFlightActive: tileFlight !== null,
-    roundResultVisible: showRoundResultPopup,
-    matchResultVisible: showMatchResultPopup,
-    konkanRevealVisible: konkanRevealData.visible,
-    setVisible: setShowFinalTileCelebration,
-  });
+    konkanRevealData.visible,
+    tileFlight,
+  ]);
 
 
 
@@ -824,7 +866,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
 
       {/* Dedicated Topmost Presentation Overlay (Always painted on top of Rack and all scene layers) */}
       <View pointerEvents="box-none" style={presentationOverlayStyles.root}>
-        {showFinalTileCelebration ? (
+        {endRoundPresentationStage === "final-tile" ? (
           <OkeyFinalTileCelebration
             tile={topDiscard ?? state.indicatorTile}
             okeyTile={state.okeyTile}

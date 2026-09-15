@@ -10,11 +10,11 @@ import type {
 import { canDeclareBasicWin, getOkeyScoreValue, getRemainingPlayerMeldSlots, getRequiredOpenScore, isOkeyWildcard, sortTiles, validateOpenPlayerMelds } from "./okeyengine-melds.ts";
 export { canDeclareBasicWin, findBestMeldPlan, getMeldKind, getRemainingPlayerMeldSlots, getRequiredOpenScore, getTeamFirstOpenScore, isOkeyWildcard, isValidMeld, normalizeOpenMelds, orderRunTiles, sortTiles, MAX_PLAYER_MELDS } from "./okeyengine-melds.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
-import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-core.ts";
-export { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-core.ts";
 import { canDeclareKonkanOpen, declareKonkanOpen, eliminateKonkanPlayerMidTurn, getKonkanDiscardEntry, getKonkanDiscardOutcome, resolveKonkanDiscardPick } from "./okeyengine-konkan.ts";
 export { canDeclareKonkanOpen, canDeclareKonkanWin, canLockKonkanSet, canSpendTileOnBestMeld, canSpendTileOnMeld, declareKonkanOpen, eliminateKonkanPlayerMidTurn, findKonkanDeclarationForPlayer, findKonkanDeclarationRunTileIds, getLockedKonkanSetsForPlayer, hasLockedKonkanSet, hasPlayerExecutedKonkanSpend, hasSmallKonkanMeld, isOrderedOfficialKonkanRun, lockKonkanSet, resolveTableMeldAction, spendTileOnBestMeld, spendTileOnMeld } from "./okeyengine-konkan.ts";
 export type { OkeyRunEnd, OkeyTableMeldAction } from "./okeyengine-konkan.ts";
+import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
+export { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
 
 const COLORS: OkeyColor[] = [...OKEY_RULESET_V1.tiles.colors];
 const PLAYER_COUNT = OKEY_RULESET_V1.table.playerCount;
@@ -75,21 +75,21 @@ export function createInitialOkeyGame(
    * the authoritative room service immediately assigns the four real player
    * identities. Temporary automated control is only enabled later by the takeover worker.
    */
-const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
-  id: `seat-${index}`,
-  name: `Player ${index + 1}`,
-  kind: "human" as const,
-  teamId: getOkeyTeamIdForPlayerIndex(index),
-  hand: [] as OkeyTile[],
-  opened: false,
-  melds: [],
-  scoreOpened: 0,
-  firstOpenScore: null,
-  konkan: false,
-  konkanEntryReason: null,
-  pendingKonkanFromDiscard: false,
-  konkanSpendsExecuted: 0,
-}));
+  const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
+    id: `seat-${index}`,
+    name: `Player ${index + 1}`,
+    kind: "human" as const,
+    teamId: getOkeyTeamIdForPlayerIndex(index),
+    hand: [] as OkeyTile[],
+    opened: false,
+    melds: [],
+    scoreOpened: 0,
+    firstOpenScore: null,
+    konkan: false,
+    konkanEntryReason: null,
+    pendingKonkanFromDiscard: false,
+    konkanSpendsExecuted: 0,
+  }));
 
   const dealerTurnOrderIndex = COUNTER_CLOCKWISE_TURN_ORDER.findIndex(
     (playerIndex) => playerIndex === safeDealerIndex,
@@ -149,31 +149,6 @@ const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
     hasDrawnThisTurn: true,
   };
 }
-export function getTileLabel(tile: OkeyTile): string {
-  if (tile.isFakeJoker) return "ج";
-  return String(tile.value);
-}
-
-export function completeDeferredBotTurnAdvance(
-  state: OkeyGameState,
-  expectedPlayerId: string,
-  now = Date.now(),
-): OkeyGameState {
-  const currentPlayer = state.players[state.currentPlayerIndex];
-  const eligibleAtMs = Date.parse(state.pendingBotTurnAdvanceAt ?? "");
-  if (
-    state.phase !== "playing" ||
-    !currentPlayer ||
-    currentPlayer.id !== expectedPlayerId ||
-    state.pendingBotTurnAdvancePlayerId !== expectedPlayerId ||
-    !Number.isFinite(eligibleAtMs) ||
-    now < eligibleAtMs
-  ) return state;
-
-  const nextState = advanceTurn(state);
-  const nextPlayer = nextState.players[nextState.currentPlayerIndex];
-  return { ...nextState, turnMessage: getTurnMessage(nextPlayer.name, false) };
-}
 
 export function movePlayerHandTile(
   state: OkeyGameState,
@@ -196,48 +171,6 @@ export function movePlayerHandTile(
     ...state,
     players: state.players.map((entry, index) =>
       index === playerIndex ? { ...entry, hand: nextHand } : entry,
-    ),
-  };
-}
-export function movePlayerHandTiles(
-  state: OkeyGameState,
-  playerIndex: number,
-  tileIds: string[],
-  targetIndex: number,
-): OkeyGameState {
-  const player = state.players[playerIndex];
-  if (!player || player.eliminated || tileIds.length === 0) return state;
-
-  const tileIdSet = new Set(tileIds);
-  const movingTilesById = new Map(player.hand.map((tile) => [tile.id, tile]));
-  const movingTiles = tileIds
-    .map((tileId) => movingTilesById.get(tileId))
-    .filter((tile): tile is OkeyTile => tile !== undefined);
-
-  if (movingTiles.length !== tileIds.length) return state;
-
-  const remainingHand = player.hand.filter((tile) => !tileIdSet.has(tile.id));
-  const safeTargetIndex = Math.max(0, Math.min(targetIndex, remainingHand.length));
-  const nextHand = [
-    ...remainingHand.slice(0, safeTargetIndex),
-    ...movingTiles,
-    ...remainingHand.slice(safeTargetIndex),
-  ];
-
-  return {
-    ...state,
-    players: state.players.map((entry, index) =>
-      index === playerIndex ? { ...entry, hand: nextHand } : entry,
-    ),
-  };
-}
-export function sortPlayerHand(state: OkeyGameState, playerIndex: number): OkeyGameState {
-  return {
-    ...state,
-    players: state.players.map((player, index) =>
-      index === playerIndex && !player.eliminated
-        ? { ...player, hand: sortTiles(player.hand, state.okeyTile) }
-        : player,
     ),
   };
 }
@@ -392,23 +325,24 @@ export function openPlayerMelds(
       ...state.teamFirstOpenScores,
       [player.teamId]: state.teamFirstOpenScores[player.teamId] ?? score,
     },
-players: state.players.map((entry, index) =>
-  index === playerIndex
-    ? {
-        ...entry,
-        hand: nextHand,
-        opened: true,
-        melds: nextMelds,
-        scoreOpened: entry.scoreOpened + score,
-        firstOpenScore: entry.firstOpenScore ?? score,
-        pendingKonkanFromDiscard: false,
-      }
-    : entry,
-),
+    players: state.players.map((entry, index) =>
+      index === playerIndex
+        ? {
+            ...entry,
+            hand: nextHand,
+            opened: true,
+            melds: nextMelds,
+            scoreOpened: entry.scoreOpened + score,
+            firstOpenScore: entry.firstOpenScore ?? score,
+            pendingKonkanFromDiscard: false,
+          }
+        : entry,
+    ),
   };
 
   return nextState;
 }
+
 function finishTileCycleLimit(state: OkeyGameState): OkeyGameState {
   return {
     ...state,
@@ -428,6 +362,7 @@ function isCompleteFourColorSet(meld: OkeyMeld) {
     && meld.tiles.every((tile) => tile.value === value)
     && new Set(meld.tiles.map((tile) => tile.color)).size === COLORS.length;
 }
+
 function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
   if (state.deck.length > 0) return state;
   if (state.reshuffleCount >= MAX_DRAW_PILE_RESHUFFLES) return finishTileCycleLimit(state);
@@ -470,6 +405,7 @@ function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
     },
   };
 }
+
 export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGameState {
   if (state.phase !== "playing" || state.hasDrawnThisTurn) return state;
 
@@ -515,6 +451,7 @@ export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGame
     turnMessage: getTurnMessage(player.name, true),
   };
 }
+
 export function playEliminatedTurn(state: OkeyGameState): OkeyGameState {
   if (state.phase !== "playing" || state.hasDrawnThisTurn) return state;
   const player = state.players[state.currentPlayerIndex];
@@ -537,6 +474,7 @@ export function playEliminatedTurn(state: OkeyGameState): OkeyGameState {
   const nextPlayer = nextState.players[nextState.currentPlayerIndex];
   return { ...nextState, turnMessage: getTurnMessage(nextPlayer.name, false) };
 }
+
 function getDiscardOwner(state: OkeyGameState): OkeyDiscardOwner {
   const player = state.players[state.currentPlayerIndex];
   return player ? { playerIndex: state.currentPlayerIndex, playerId: player.id } : null;
@@ -545,7 +483,6 @@ function getDiscardOwner(state: OkeyGameState): OkeyDiscardOwner {
 export function discardTile(
   state: OkeyGameState,
   tileId: string,
-  options?: { deferTurnAdvanceUntil?: string },
 ): OkeyGameState {
   if (state.phase !== "playing" || !state.hasDrawnThisTurn) return state;
 
@@ -564,10 +501,8 @@ export function discardTile(
     index === state.currentPlayerIndex
       ? {
           ...entry,
-          hand: sortTiles(nextHand, state.okeyTile),
-          konkan: konkanOutcome.konkan,
-          konkanEntryReason: konkanOutcome.konkanEntryReason,
-          pendingKonkanFromDiscard: false,
+          hand: nextHand,
+          ...konkanOutcome,
         }
       : entry,
   );
@@ -597,13 +532,6 @@ export function discardTile(
       discardOwners: [...state.discardOwners, getDiscardOwner(state)],
       mustFinishAfterSecondKonkanDiscardPickPlayerId: null,
     };
-    if (options?.deferTurnAdvanceUntil) {
-      return {
-        ...burnedDiscardState,
-        pendingBotTurnAdvanceAt: options.deferTurnAdvanceUntil,
-        pendingBotTurnAdvancePlayerId: player.id,
-      };
-    }
     const burnedState = advanceTurn(burnedDiscardState);
     const burnedNextPlayer = burnedState.players[burnedState.currentPlayerIndex];
     return {
@@ -618,13 +546,6 @@ export function discardTile(
     discardPile: [...state.discardPile, tile],
     discardOwners: [...state.discardOwners, getDiscardOwner(state)],
   };
-  if (options?.deferTurnAdvanceUntil) {
-    return {
-      ...discardedState,
-      pendingBotTurnAdvanceAt: options.deferTurnAdvanceUntil,
-      pendingBotTurnAdvancePlayerId: player.id,
-    };
-  }
   const nextState = advanceTurn(discardedState);
   const nextPlayer = nextState.players[nextState.currentPlayerIndex];
 
@@ -710,3 +631,43 @@ export function getMatchWinnerTeamId(scores: Record<OkeyTeamId, number>): OkeyTe
     : scores.teamA > scores.teamB;
   return teamAWins ? "teamA" : "teamB";
 }
+
+export type PreparedTimeoutTurn = {
+  state: OkeyGameState;
+  drawnTileId: string | null;
+};
+
+export function prepareTimeoutTurn(state: OkeyGameState, playerIndex: number): PreparedTimeoutTurn {
+  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) {
+    return { state, drawnTileId: null };
+  }
+
+  if (state.hasDrawnThisTurn) {
+    return { state, drawnTileId: null };
+  }
+
+  const drawnTileId = state.deck[0]?.id ?? null;
+  if (!drawnTileId) return { state, drawnTileId: null };
+
+  return {
+    state: drawTile(state, "deck"),
+    drawnTileId,
+  };
+}
+
+export function resolveTimeoutTurn(state: OkeyGameState, playerIndex: number): OkeyGameState {
+  const prepared = prepareTimeoutTurn(state, playerIndex);
+  if (prepared.drawnTileId) {
+    return discardTile(prepared.state, prepared.drawnTileId);
+  }
+
+  if (state.phase !== "playing" || state.currentPlayerIndex !== playerIndex) return state;
+  if (!state.hasDrawnThisTurn) return prepared.state;
+
+  const player = state.players[playerIndex];
+  const discardTileId = player?.hand[player.hand.length - 1]?.id;
+  if (!discardTileId || !player?.hand.some((tile) => tile.id === discardTileId)) return state;
+
+  return discardTile(state, discardTileId);
+}
+

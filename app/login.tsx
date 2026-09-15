@@ -2,6 +2,7 @@ import { useProfile } from "@/lib/profile";
 import { claimNewAccountLeaderboardConsent } from "@/lib/leaderboardVisibility";
 import {
   signInWithEmail,
+  signInWithFacebook,
   signInWithGoogle,
   signUpWithEmail,
   updateMyProfile,
@@ -180,6 +181,31 @@ export default function LoginScreen() {
       setIsLoading(false);
     }
   };
+
+  const handleFacebookSignIn = async () => {
+    setIsLoading(true);
+    setMessage(null);
+    try {
+      const result = await signInWithFacebook();
+      if (result.error) {
+        setMessage("Facebook sign-in failed. Please try again.");
+        return;
+      }
+      await claimNewAccountLeaderboardConsent();
+      try {
+        await refreshProfile();
+      } catch (error) {
+        console.warn("[auth] Signed in, but profile refresh failed", error);
+      }
+      router.replace("/(tabs)/play");
+    } catch (error) {
+      console.warn("[auth] Facebook sign-in failed", error);
+      setMessage("Facebook sign-in failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const selectMode = (nextMode: "signin" | "signup") => {
     setMode(nextMode);
     setMessage(null);
@@ -348,15 +374,26 @@ export default function LoginScreen() {
                     </Pressable>
 
                     {!isSignup ? (
-                      <Pressable
-                        style={styles.textButton}
-                        onPress={() => router.push("/forgot-password")}
-                        disabled={isLoading}
-                      >
-                        <Text style={styles.textButtonLabel}>
-                          وشەی نهێنیت لەبیرکردووە؟
-                        </Text>
-                      </Pressable>
+                      <View style={styles.secondaryLinks}>
+                        <Pressable
+                          style={styles.textButton}
+                          onPress={() => router.push("/forgot-password")}
+                          disabled={isLoading}
+                        >
+                          <Text style={styles.textButtonLabel}>
+                            وشەی نهێنیت لەبیرکردووە؟
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.textButton}
+                          onPress={() => router.replace("/(tabs)/play")}
+                          disabled={isLoading}
+                          accessibilityRole="button"
+                          accessibilityLabel="Continue as guest"
+                        >
+                          <Text style={styles.guestLinkLabel}>بەردەوامبوون وەک میوان</Text>
+                        </Pressable>
+                      </View>
                     ) : (
                       <Text style={styles.privacyText}>
                         بە دروستکردنی هەژمار، ڕازیت بە{" "}
@@ -369,6 +406,17 @@ export default function LoginScreen() {
                         .
                       </Text>
                     )}
+                    {isSignup ? (
+                      <Pressable
+                        style={styles.textButton}
+                        onPress={() => router.replace("/(tabs)/play")}
+                        disabled={isLoading}
+                        accessibilityRole="button"
+                        accessibilityLabel="Continue as guest"
+                      >
+                        <Text style={styles.guestLinkLabel}>بەردەوامبوون وەک میوان</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
 
@@ -380,7 +428,7 @@ export default function LoginScreen() {
                       </View>
                       <Text style={[styles.guestTitle, styles.googleText]}>Google</Text>
                       <Text style={styles.guestCopy} numberOfLines={2}>
-                        بە هەژماری <Text style={styles.googleInlineText}>Gmail</Text> بچۆ ژوورەوە.
+                        بە هەژمارەکەتەوە بچۆ ژوورەوە
                       </Text>
                       <Pressable
                         style={[styles.guestButton, { minHeight: controlHeight }, styles.googleButton, isLoading && styles.disabled]}
@@ -392,19 +440,21 @@ export default function LoginScreen() {
                     </View>
 
                     <View style={styles.authChoiceCard}>
-                      <View style={styles.guestIcon}>
-                        <Ionicons name="game-controller-outline" size={22} color="#f8d774" />
+                      <View style={[styles.guestIcon, styles.facebookIcon]}>
+                        <FontAwesome name="facebook" size={22} color="#ffffff" />
                       </View>
-                      <Text style={styles.guestTitle}>میوان</Text>
+                      <Text style={[styles.guestTitle, styles.englishText]}>Facebook</Text>
                       <Text style={styles.guestCopy} numberOfLines={2}>
-                        بەبێ هەژمار بچۆ ناو یاری.
+                        بە هەژمارەکەتەوە بچۆ ژوورەوە
                       </Text>
                       <Pressable
                         style={[styles.guestButton, { minHeight: controlHeight }, isLoading && styles.disabled]}
-                        onPress={() => router.replace("/(tabs)/play")}
+                        onPress={() => void handleFacebookSignIn()}
                         disabled={isLoading}
+                        accessibilityRole="button"
+                        accessibilityLabel="Continue with Facebook"
                       >
-                        <Text style={styles.guestButtonText}>بەردەوامبوون</Text>
+                        <Text style={[styles.guestButtonText, styles.englishText]}>Facebook</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -495,6 +545,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#4285f4",
   },
 
+  facebookIcon: {
+    backgroundColor: "#1877f2",
+  },
   guestTitle: {
     color: "#ffffff",
     fontSize: 15,
@@ -610,6 +663,16 @@ rtlInput: {
     textAlign: "center",
     writingDirection: "rtl",
   },
+  secondaryLinks: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestLinkLabel: {
+    color: "#a8b7d5",
+    fontSize: 11,
+    fontFamily: "SpedaRegular",
+  },
   textButton: {
     alignSelf: "center",
     paddingVertical: 6,
@@ -651,6 +714,9 @@ guestButton: {
     backgroundColor: "rgba(255,255,255,0.1)",
   },
 
+  englishText: {
+    fontFamily: "RobotoMedium",
+  },
   googleInlineText: {
     fontFamily: "RobotoMedium",
   },

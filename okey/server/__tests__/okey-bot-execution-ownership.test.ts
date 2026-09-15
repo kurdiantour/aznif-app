@@ -6,7 +6,6 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 test("Okey Bot execution is 100% server-owned through reconciler with zero client triggers", () => {
   const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
-  const matchAdapter = read("okey/adapters/okey-multiplayer-adapter.ts");
   const hook = read("okey/hooks/useOkeyMultiplayerGame.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
   const executor = read("okey/server/okey-bot-executor.ts");
@@ -19,7 +18,6 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   // Client must NOT have any bot triggers or claims:
   assert.doesNotMatch(adapter, /processBotTurn/);
   assert.doesNotMatch(matchAdapterInterface, /processBotTurn/);
-  assert.doesNotMatch(matchAdapter, /async executeBotTurn/);
   assert.doesNotMatch(hook, /selectBotTurn/);
   assert.doesNotMatch(hook, /canExecuteBotTurn/);
 
@@ -33,7 +31,7 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   assert.match(executor, /selectOkeyBotIntent/);
   assert.match(reconciler, /reconcileAuthoritativeBotTurn/);
   assert.match(reconciler, /commitAuthoritativeOkeyAction\(\{/);
-  assert.doesNotMatch(executor, /\.rpc\(|evaluateOkeyServerLifecycle|commitAuthoritativeOkeyAction|\.channel\(|settleAuthoritative|okey_settle|dispatchContinuation|dispatchLifecycleWakeup/);
+  assert.doesNotMatch(executor, /\.rpc\(|evaluateOkeyServerLifecycle|commitAuthoritativeOkeyAction|\.channel\(|settleAuthoritative|okey_settle|dispatchContinuation|scheduleLifecycleAlarm/);
   assert.match(commitGateway, /p_expected_version: input\.expectedVersion/);
   assert.match(commitGateway, /p_turn_deadline_at: input\.prepared\.deadline/);
   assert.match(commitGateway, /p_action_events: input\.prepared\.actionEvents/);

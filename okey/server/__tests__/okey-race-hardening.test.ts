@@ -16,20 +16,21 @@ test("manual leave is retried server-side and client only closes after authorita
   assert.match(adapter, /await this\.runAuthoritativeMutation\([\s\S]*await leaveOkeyRoom/);
 });
 
-test("lifecycle wakeups are one-shot, version-bound, and only chain after a committed transition", () => {
-  const handoff = read("supabase/functions/_shared/aznif-game-lifecycle.ts");
+test("lifecycle alarms are one-shot, version-bound, and only chain after a committed transition", () => {
+  const scheduler = read("supabase/functions/_shared/aznif-game-lifecycle.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
   const reconciler = read("okey/server/okey-server-reconciler.ts");
 
-  assert.match(handoff, /expectedVersion: input\.expectedVersion/);
+  assert.match(scheduler, /expectedVersion: input\.expectedVersion/);
   assert.doesNotMatch(worker, /result\?\.executed === true/);
   assert.match(worker, /initialVersion: Number\(expected_version\)/);
-  const wakeupSource = reconciler.slice(
-    reconciler.indexOf("export async function reconcileAuthoritativeServerLifecycleWakeup"),
-    reconciler.indexOf("export const reconcileAuthoritativeServerScheduler"),
+  assert.doesNotMatch(worker, /eligible_at|turn_deadline_at/);
+  assert.doesNotMatch(reconciler, /dispatchContinuation|reconcileAuthoritativeServerScheduler/);
+  const lifecycleAlarmSource = reconciler.slice(
+    reconciler.indexOf("export async function reconcileAuthoritativeServerLifecycleAlarm"),
   );
-  assert.doesNotMatch(wakeupSource, /refreshAfterInitialSleep|retryIntervalMs|maxRetryDurationMs|await sleep\(|while\s*\(/);
-  assert.equal((wakeupSource.match(/await reconcileAuthoritativeServerTurns\(\{/g) ?? []).length, 1);
-  assert.match(wakeupSource, /version !== Number\(options\.initialVersion\)/);
+  assert.doesNotMatch(lifecycleAlarmSource, /refreshAfterInitialSleep|retryIntervalMs|maxRetryDurationMs|await sleep\(|while\s*\(/);
+  assert.equal((lifecycleAlarmSource.match(/await reconcileAuthoritativeServerTurns\(\{/g) ?? []).length, 1);
+  assert.match(lifecycleAlarmSource, /version !== Number\(options\.initialVersion\)/);
 });
 

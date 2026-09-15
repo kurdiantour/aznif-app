@@ -21,7 +21,7 @@ import {
   pipTotal,
   roundToNearestFive,
 } from "../_shared/game-utils.ts";
-import { reconcileAuthoritativeServerLifecycleWakeup } from "../../../okey/server/okey-server-reconciler.ts";
+import { reconcileAuthoritativeServerLifecycleAlarm } from "../../../okey/server/okey-server-reconciler.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
@@ -123,8 +123,6 @@ serve(async (req) => {
       match_id,
       expected_version,
       run_at,
-      eligible_at,
-      turn_deadline_at,
     } = await req.json();
     if (mode !== "1v1" && mode !== "2v2" && mode !== "okey")
       return json({ error: "Invalid mode" }, 400);
@@ -168,7 +166,7 @@ serve(async (req) => {
         });
       }
 
-      const lifecyclePromise = reconcileAuthoritativeServerLifecycleWakeup({
+      const lifecyclePromise = reconcileAuthoritativeServerLifecycleAlarm({
         client: svc,
         matchId: match_id,
         requesterUserId,
@@ -176,10 +174,7 @@ serve(async (req) => {
         ...(Number.isSafeInteger(expected_version) && expected_version >= 0
           ? { initialVersion: Number(expected_version) }
           : {}),
-        eligibleAt: typeof eligible_at === "string" ? eligible_at : null,
         runAt: typeof run_at === 'string' ? run_at : null,
-        turnDeadlineAt:
-          typeof turn_deadline_at === "string" ? turn_deadline_at : null,
         broadcastStateUpdate: async (payload: any) => {
           const channel = svc.channel(`okey-match:${match_id}`);
           await channel.send({
@@ -189,20 +184,20 @@ serve(async (req) => {
           });
           await svc.removeChannel(channel);
         },
-        dispatchLifecycleWakeup: async (wakeup: any) => {
+        scheduleLifecycleAlarm: async (lifecycleJob: any) => {
           if (!AZNIF_GAME_LIFECYCLE_URL || !AZNIF_LIFECYCLE_SECRET) return;
           await scheduleAznifGameLifecycle({
             schedulerUrl: AZNIF_GAME_LIFECYCLE_URL,
             lifecycleSecret: AZNIF_LIFECYCLE_SECRET,
             gameType: "okey",
-            matchId: wakeup.matchId,
-            expectedVersion: wakeup.version,
-            runAt: wakeup.runAt,
+            matchId: lifecycleJob.matchId,
+            expectedVersion: lifecycleJob.version,
+            runAt: lifecycleJob.runAt,
           });
         },
       });
 
-      // One wake-up performs one short official transition. Do not acknowledge
+      // One lifecycle alarm performs one short official transition. Do not acknowledge
       // Cloudflare until that transition and the next alarm registration have
       // completed; a thrown error lets Durable Object alarms retry durably.
       const lifecycleResult = await lifecyclePromise;

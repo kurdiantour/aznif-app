@@ -4,14 +4,25 @@ import type {
   OkeyMatchServerProjection,
 } from "@/okey/server/okey-authoritative";
 
+export type OkeyCommittedTransition = {
+  version: number;
+  previousProjection: OkeyMatchServerProjection | null;
+  projection: OkeyMatchServerProjection;
+  actionEvents: OkeyActionEvent[];
+};
+
 export interface OnlineOkeyMatchAdapter {
   readonly kind: "online";
 
   getCurrentUserId(): Promise<string | null>;
 
+  getServerClockOffsetMs(): number;
+
   getSnapshot():
     | OkeyMatchServerProjection
     | null;
+
+  refresh(): Promise<void>;
 
   subscribe(
     listener: (
@@ -21,6 +32,10 @@ export interface OnlineOkeyMatchAdapter {
   ): () => void;
 
   subscribeActionEvents(listener: (event: OkeyActionEvent) => void): () => void;
+
+  subscribeCommittedTransitions(
+    listener: (transition: OkeyCommittedTransition) => void,
+  ): () => void;
 
   subscribeReset(listener: () => void): () => void;
 

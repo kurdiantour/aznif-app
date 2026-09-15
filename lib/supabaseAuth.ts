@@ -1,6 +1,7 @@
 import { AVATAR_IDS } from "@/constants/avatars";
-import type { Session, User } from "@supabase/supabase-js";
+import type { Provider, Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
 import { supabase } from "./supabase";
 
 export type Profile = {
@@ -104,7 +105,7 @@ if (code) {
     });
     if (error) throw error;
   } else {
-    throw new Error("Google sign-in did not return a session code.");
+    throw new Error("OAuth sign-in did not return a session code.");
   }
 
   const {
@@ -115,7 +116,7 @@ if (code) {
   if (error) throw error;
 
   if (!session?.user) {
-    throw new Error("Google sign-in completed without a saved session.");
+    throw new Error("OAuth sign-in completed without a saved session.");
   }
 
   return session;
@@ -138,7 +139,7 @@ function usernameForUser(user: User, fullName: string | null, attempt: number) {
     .replace(/[^a-z0-9_]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 18);
-  const baseName = normalized || "google_user";
+  const baseName = normalized || defaultUsernameForUser(user.id, 0);
 
   return attempt === 0
     ? baseName
@@ -159,7 +160,7 @@ function generatePlayerId() {
   return "DV-" + Math.floor(Math.random() * 1_000_000).toString().padStart(6, "0");
 }
 
-function googleProfileFromUser(user: User) {
+function oauthProfileFromUser(user: User) {
   const metadata = user.user_metadata ?? {};
   const name =
     typeof metadata.name === "string" && metadata.name.trim()
@@ -190,42 +191,31 @@ export async function signInWithEmail(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
-export async function signInWithGoogle() {
+async function signInWithSocialProvider(provider: Provider, queryParams?: Record<string, string>) {
   const redirectTo = authRedirectUrl("oauth");
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
+    provider,
     options: {
       redirectTo,
       skipBrowserRedirect: true,
-      queryParams: {
-        access_type: "offline",
-        prompt: "select_account",
-      },
+      ...(queryParams ? { queryParams } : {}),
     },
   });
 
-  if (error) {
-    return { data, error };
-  }
+  if (error) return { data, error };
 
   if (!data.url) {
-    return {
-      data,
-      error: new Error("Google sign-in did not return an authorization URL."),
-    };
+    return { data, error: new Error(`${provider} sign-in did not return an authorization URL.`) };
   }
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
 
   if (result.type === "cancel" || result.type === "dismiss") {
-    return { data, error: new Error("Google sign-in was cancelled.") };
+    return { data, error: new Error(`${provider} sign-in was cancelled.`) };
   }
 
   if (result.type !== "success" || !result.url) {
-    return {
-      data,
-      error: new Error("Google sign-in did not return to the app."),
-    };
+    return { data, error: new Error(`${provider} sign-in did not return to the app.`) };
   }
 
   try {
@@ -233,16 +223,65 @@ export async function signInWithGoogle() {
   } catch (error) {
     return {
       data,
-      error:
-        error instanceof Error
-          ? error
-          : new Error("Google sign-in session could not be created."),
+      error: error instanceof Error
+        ? error
+        : new Error(`${provider} sign-in session could not be created.`),
     };
   }
 
   return { data, error: null };
 }
 
+export async function signInWithGoogle() {
+  return signInWithSocialProvider("google", {
+    access_type: "offline",
+    prompt: "select_account",
+  });
+}
+
+export async function signInWithFacebook() {
+  if (Platform.OS !== "ios") {
+    return signInWithSocialProvider("facebook");
+  }
+
+  try {
+    // Load the native SDK only when the iOS Facebook action is invoked.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { AuthenticationToken, LoginManager, Settings } = require("react-native-fbsdk-next") as typeof import("react-native-fbsdk-next");
+    Settings.initializeSDK();
+    const login = await LoginManager.logInWithPermissions(
+      ["public_profile", "email"],
+      "limited",
+    );
+
+    if (login.isCancelled) {
+      return { data: null, error: new Error("Facebook sign-in was cancelled.") };
+    }
+
+    const credential = await AuthenticationToken.getAuthenticationTokenIOS();
+    const idToken = credential?.authenticationToken;
+
+    if (!idToken) {
+      return {
+        data: null,
+        error: new Error("Facebook Limited Login did not return an ID token."),
+      };
+    }
+
+    return supabase.auth.signInWithIdToken({
+      provider: "facebook",
+      token: idToken,
+    });
+  } catch (error) {
+    console.warn("[auth] Native Facebook sign-in failed", error);
+    return {
+      data: null,
+      error: error instanceof Error
+        ? error
+        : new Error("Native Facebook sign-in failed."),
+    };
+  }
+}
 export async function signOut(scope: "global" | "local" = "global") {
   return supabase.auth.signOut({ scope });
 }
@@ -273,7 +312,7 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
     return existing.data;
   }
 
-  const googleProfile = googleProfileFromUser(user);
+  const oauthProfile = oauthProfileFromUser(user);
 
   for (let attempt = 0; attempt < PROFILE_CREATE_RETRIES; attempt += 1) {
     const { data, error } = await supabase
@@ -282,9 +321,9 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
         id: user.id,
         email: user.email ?? null,
         player_id: generatePlayerId(),
-        username: usernameForUser(user, googleProfile.name, attempt),
+        username: usernameForUser(user, oauthProfile.name, attempt),
         avatar_id: randomDefaultAvatarId(),
-        avatar_url: googleProfile.avatarUrl,
+        avatar_url: oauthProfile.avatarUrl,
       })
       .select(PROFILE_SELECT)
       .single<Profile>();
