@@ -9,17 +9,16 @@ import {
   type SetStateAction,
 } from "react";
 
+import type { OkeyCommittedTransition, SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 import {
-  type MeldDropRect,
   type ScreenRect,
-  type TileFlight,
+  type TileFlight
 } from "@/okey/presentation/okey-game-presentation";
-import type { OkeyGameState, OkeyMeld, OkeyTile } from "@/okey/types/okey";
-import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import { projectOkeyServerState } from "@/okey/presentation/okey-server-projection";
-import type { SupabaseOkeyMatchAdapter, OkeyCommittedTransition } from "@/okey/adapters/supabase-okey-match-adapter";
-import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 import type { PendingDraw, RackDropPlacement } from "@/okey/presentation/useOkeyTableActions";
+import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
+import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
+import type { OkeyGameState, OkeyTile } from "@/okey/types/okey";
 
 function useOkeyPresentationBoundary(key: string | number, onBoundary: () => void) {
   const previousKeyRef = useRef(key);
@@ -179,6 +178,10 @@ export function useOkeyTileFlightCoordinator(
   const setPresentedPlayers = useCallback((players: OkeyGameState["players"]) => {
     setPresentedTablePlayers(players);
   }, []);
+
+  useEffect(() => {
+    setPresentedTablePlayers(initialPlayers);
+  }, [initialPlayers]);
 
   const resetPresentationRuntime = useCallback((
     players: OkeyGameState["players"],
@@ -799,6 +802,9 @@ export function useOkeyTileFlightCompletion(input: {
   return () => {
     const completedFlight = input.tileFlight;
     input.completeOpponentPresentationFlight(completedFlight);
+    const waitingForAuthoritativeDeckDraw =
+      completedFlight?.id.startsWith("draw-") &&
+      input.pendingDrawRef.current?.source === "deck";
     const landedDiscardTile = completedFlight?.id.includes("discard-")
       ? completedFlight.tile
       : null;
@@ -815,7 +821,9 @@ export function useOkeyTileFlightCompletion(input: {
       input.setPresentedTopDiscard(input.topDiscard);
     }
 
-    input.setTileFlight(null);
+    if (!waitingForAuthoritativeDeckDraw) {
+      input.setTileFlight(null);
+    }
     // Keep a locally discarded rack tile hidden until the authoritative hand
     // no longer contains it. OkeyGameTableScene owns that release.
     if (input.pendingDrawRef.current?.source !== "deck") input.setHideDeckTopTile(false);
@@ -832,6 +840,8 @@ export function useOkeyTileFlightCompletion(input: {
       input.setHideDiscardTopTile(false);
       input.setDiscardPresentationFallback(null);
     }
+
+    if (waitingForAuthoritativeDeckDraw) return;
 
     const onlineTimeoutFlight = input.activePresentationRef.current.onlineTimeout;
     if (onlineTimeoutFlight?.stage === "deck-to-rack") {
@@ -966,6 +976,6 @@ export function useOkeyAuthoritativeRackRemovalPresentation(
 }
 
 export {
-  useOkeyTableMeldCommandPresentation,
-  useOkeyMeldDropOrchestration,
+  useOkeyMeldDropOrchestration, useOkeyTableMeldCommandPresentation
 } from "@/okey/presentation/useOkeyTableActions";
+

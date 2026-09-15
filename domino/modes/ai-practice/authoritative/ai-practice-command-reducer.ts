@@ -1,3 +1,5 @@
+import { getFinalMatchWinner } from '@/domino/core/rules/match-rules';
+import type { TeamId } from '@/domino/types/domino-game';
 import {
   applyMove,
   canAnyPlayerMove,
@@ -55,16 +57,18 @@ function blockedTransition(
     0,
   );
   const points = roundToNearestFive(opponentPips);
+  const teamScores = {
+    ...state.teamScores,
+    [winner.teamId]: Number(state.teamScores[winner.teamId] ?? 0) + points,
+  };
   return {
     accepted: true,
     state: {
       ...state,
       leaderIndex: blockerIndex,
       roundWinnerPlayerId: winner.id,
-      teamScores: {
-        ...state.teamScores,
-        [winner.teamId]: Number(state.teamScores[winner.teamId] ?? 0) + points,
-      },
+      teamScores,
+      winningTeamId: getFinalMatchWinner(teamScores as Record<TeamId, number>),
     },
     roundEndReason: 'blocked',
     scoringEvents: points > 0 ? [{
@@ -219,6 +223,7 @@ export function reduceAiPracticePlay(
         ...next,
         teamScores: scores,
         roundWinnerPlayerId: player.id,
+        winningTeamId: getFinalMatchWinner(scores as Record<TeamId, number>),
         leaderIndex: playerIndex,
       },
       lastPlayedTile: tile,

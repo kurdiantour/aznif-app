@@ -1,5 +1,6 @@
 import type { OkeyColor, OkeyGameState, OkeyMeld, OkeyTeamId, OkeyTile } from "../types/okey.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+import { hasOkeyTeammateOpenedForCurrentRules, getOkeyTeamFirstOpenScoreForCurrentRules, isActiveOkeyPlayer } from "./okeyengine-eliminated.ts";
 
 export function isOkeyWildcard(tile: OkeyTile, okeyTile: OkeyTile): boolean {
   if (tile.isFakeJoker) return false;
@@ -294,7 +295,7 @@ export function sortTiles(tiles: OkeyTile[], okeyTile?: OkeyTile): OkeyTile[] {
 }
 
 export function getTeamFirstOpenScore(state: OkeyGameState, teamId: OkeyTeamId): number | null {
-  return state.teamFirstOpenScores[teamId] ?? null;
+  return getOkeyTeamFirstOpenScoreForCurrentRules(state, teamId);
 }
 
 function getOpponentTeamId(teamId: OkeyTeamId): OkeyTeamId {
@@ -305,9 +306,7 @@ export function getRequiredOpenScore(state: OkeyGameState, playerIndex: number):
   const player = state.players[playerIndex];
   if (!player) return INITIAL_OPEN_SCORE;
 
-  const teammateOpened = state.players.some(
-    (entry, index) => index !== playerIndex && entry.teamId === player.teamId && entry.opened,
-  );
+  const teammateOpened = hasOkeyTeammateOpenedForCurrentRules(state, playerIndex);
   if (teammateOpened) return TEAMMATE_OPEN_SCORE;
 
   const ownFirstOpenScore = getTeamFirstOpenScore(state, player.teamId);
@@ -364,7 +363,7 @@ export function validateOpenPlayerMelds(
     !state.hasDrawnThisTurn
   ) return null;
   const player = state.players[playerIndex];
-  if (!player || player.eliminated || melds.length === 0) return null;
+  if (!isActiveOkeyPlayer(player) || melds.length === 0) return null;
 
   const normalized = normalizeOpenMelds(melds, state.okeyTile);
   if (!normalized || normalized.melds.length === 0) return null;

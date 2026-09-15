@@ -25,6 +25,7 @@ export function useRoundLifecycle({
   const scheduledRoundKeyRef = useRef<string | null>(null);
   const [phase, setPhase] = useState<RoundPhase>('playing');
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
+  const [completedFinalRevealKey, setCompletedFinalRevealKey] = useState<string | null>(null);
   const [nextRoundCountdown, setNextRoundCountdown] = useState(
     NEXT_ROUND_COUNTDOWN_SECONDS,
   );
@@ -33,6 +34,7 @@ export function useRoundLifecycle({
     clearRoundPhaseTimers(phaseTimerRef, countdownIntervalRef);
     scheduledRoundKeyRef.current = null;
     setRoundResult(null);
+    setCompletedFinalRevealKey(null);
     setNextRoundCountdown(NEXT_ROUND_COUNTDOWN_SECONDS);
     setPhase('playing');
   }, []);
@@ -54,11 +56,13 @@ export function useRoundLifecycle({
     clearRoundPhaseTimers(phaseTimerRef, countdownIntervalRef);
     scheduledRoundKeyRef.current = scheduleKey;
     setRoundResult(result);
+    setCompletedFinalRevealKey(null);
     setPhase('round_result_reveal');
 
     if (winningTeamId) {
       phaseTimerRef.current = setTimeout(() => {
         setPhase('playing');
+        setCompletedFinalRevealKey(scheduleKey);
       }, result.endReason === 'blocked' ? BLOCKED_RESULT_REVEAL_MS : ROUND_RESULT_REVEAL_MS);
       return;
     }
@@ -91,5 +95,5 @@ export function useRoundLifecycle({
     winningTeamId,
   ]);
 
-  return { phase, roundResult, nextRoundCountdown, resetRoundPresentation };
+  return { phase, roundResult, completedFinalRevealKey, nextRoundCountdown, resetRoundPresentation };
 }

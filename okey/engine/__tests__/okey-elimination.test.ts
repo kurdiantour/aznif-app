@@ -1,22 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  canDeclareKonkanOpen,
-  canLockKonkanSet,
-  canSpendTileOnMeld,
-  createInitialOkeyGame,
-  drawTile,
-  getOkeyOpenAction,
-  getRoundResultScoreDetails,
-  hasPlayerExecutedKonkanSpend,
-  lockKonkanSet,
-  movePlayerHandTile,
-  openPlayerMelds,
-  playEliminatedTurn,
-  spendTileOnMeld,
-} from "../okey-engine.ts";
 import { applyAuthoritativeOkeyCommand } from "../../server/okey-authoritative.ts";
 import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
+import {
+    canDeclareKonkanOpen,
+    canLockKonkanSet,
+    canSpendTileOnMeld,
+    createInitialOkeyGame,
+    drawTile,
+    getOkeyOpenAction,
+    getRoundResultScoreDetails,
+    hasPlayerExecutedKonkanSpend,
+    movePlayerHandTile,
+    openPlayerMelds,
+    playEliminatedTurn,
+    spendTileOnMeld
+} from "../okey-engine.ts";
 
 function tile(value: number, id = `tile-${value}`): OkeyTile {
   return { id, color: "red", value, copy: 1 };
@@ -36,13 +35,17 @@ function eliminatedState(): OkeyGameState {
   };
 }
 
-test("an eliminated turn draws and immediately discards exactly the deck tile", () => {
+test("an eliminated turn draws into hand, discards an older hand tile, and advances", () => {
   const state = eliminatedState();
   const originalHandIds = state.players[0].hand.map((entry) => entry.id);
+  const drawnTileId = state.deck[0].id;
   const result = playEliminatedTurn(state);
-  assert.deepEqual(result.players[0].hand.map((entry) => entry.id), originalHandIds);
+  const nextHandIds = result.players[0].hand.map((entry) => entry.id);
+  assert.equal(nextHandIds.length, originalHandIds.length);
+  assert.equal(nextHandIds.includes(drawnTileId), true);
   assert.equal(result.deck[0].id, "next-deck");
-  assert.equal(result.discardPile.at(-1)?.id, "forced-draw");
+  assert.equal(result.discardPile.at(-1)?.id, originalHandIds[0]);
+  assert.equal(nextHandIds.includes(originalHandIds[0]), false);
   assert.equal(result.discardOwners.at(-1)?.playerId, state.players[0].id);
   assert.notEqual(result.currentPlayerIndex, 0);
   assert.equal(result.hasDrawnThisTurn, false);
@@ -136,7 +139,7 @@ test("an eliminated player's hand and melds never enter draw-pile recycling", ()
   );
 });
 
-test("an eliminated player receives 100 only when their team loses the round", () => {
+test("an eliminated player receives burn and opponent KonKan penalties, but no penalty for a teammate win", () => {
   const state = eliminatedState();
   const lostRound = {
     ...state,
@@ -148,6 +151,17 @@ test("an eliminated player receives 100 only when their team loses the round", (
     (entry) => entry.playerId === state.players[0].id,
   );
   assert.equal(lostDetail?.points, 100);
+
+  const konkanLostRound = {
+    ...lostRound,
+    players: lostRound.players.map((player) =>
+      player.id === lostRound.winnerId ? { ...player, konkan: true } : player,
+    ),
+  };
+  const konkanLostDetail = getRoundResultScoreDetails(konkanLostRound).details.find(
+    (entry) => entry.playerId === state.players[0].id,
+  );
+  assert.equal(konkanLostDetail?.points, 200);
 
   const wonRound = {
     ...lostRound,

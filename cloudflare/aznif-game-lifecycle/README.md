@@ -47,7 +47,6 @@ Deploy the Edge Functions that consume these names:
 ```powershell
 npx supabase functions deploy process_bot_turns --project-ref rcvrccnrzcennnbzrsex
 npx supabase functions deploy okey_match --project-ref rcvrccnrzcennnbzrsex
-npx supabase functions deploy okey_test_match --project-ref rcvrccnrzcennnbzrsex
 npx supabase functions deploy okey_maintenance --project-ref rcvrccnrzcennnbzrsex
 ```
 

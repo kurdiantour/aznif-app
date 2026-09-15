@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Animated, Easing } from "react-native";
 
 import type { PlayerProfileTarget } from "@/components/game/player-profile-target";
+import type { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 import { mapOkeySettlementToPopupRewards, shouldShowOkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
 import { getRoundResultScoreDetails } from "@/okey/engine/okey-engine";
 import type { OkeyRoundResult } from "@/okey/hooks/useOkeyMultiplayerGame";
 import type { MeldOffset } from "@/okey/presentation/okey-game-presentation";
-import type { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import type { OkeyGameState, OkeyMeld, OkeyPlayer, OkeyTeamId, OkeyTile } from "@/okey/types/okey";
 
@@ -199,7 +199,7 @@ export function useOkeyTableViewModel(input: {
     return (["bottom", "top", "left", "right"] as const).map((seat) => playerForSeat(seat) ?? fallback[seat]);
   }, [playerForSeat, state.players]);
   const presentedSeatOrderedPlayers = useMemo(() => seatOrderedPlayers.map((player) =>
-    player.id === humanPlayer.id ? player : presentedTablePlayers.find((entry) => entry.id === player.id) ?? player,
+    presentedTablePlayers.find((entry) => entry.id === player.id) ?? player,
   ), [humanPlayer.id, presentedTablePlayers, seatOrderedPlayers]);
   const profileTargetForPlayer = useCallback((playerId: string): PlayerProfileTarget | null => {
     const player = state.players.find((entry) => entry.id === playerId);

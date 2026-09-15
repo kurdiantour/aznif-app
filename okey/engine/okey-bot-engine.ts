@@ -18,6 +18,7 @@ import {
   isOkeyWildcard,
 } from "./okeyengine-melds.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+import { isActiveOkeyPlayer, isEliminatedOkeyPlayer } from "./okeyengine-eliminated.ts";
 import type {
   OkeyDrawSource,
   OkeyGameState,
@@ -65,7 +66,7 @@ function getStableBotNumber(state: OkeyGameState, playerIndex: number): number {
 
 export function handSeatToBot(state: OkeyGameState, playerIndex: number, difficulty: OkeyBotDifficulty = "normal"): OkeyGameState {
   const player = state.players[playerIndex];
-  if (!player || player.eliminated || player.controlledByBot) return state;
+  if (!isActiveOkeyPlayer(player) || player.controlledByBot) return state;
   const botNumber = getStableBotNumber(state, playerIndex);
   const botName = `Bot ${botNumber}`;
   const turnMessage = "playerName" in state.turnMessage && state.turnMessage.playerName === player.name
@@ -183,7 +184,7 @@ function canLegallyDrawDiscard(state: OkeyGameState) {
   const owner = state.discardOwners[topIndex];
   const player = state.players[state.currentPlayerIndex];
   const ownerPlayer = owner ? state.players[owner.playerIndex] : null;
-  if (!player || ownerPlayer?.eliminated) return false;
+  if (!player || isEliminatedOkeyPlayer(ownerPlayer)) return false;
   const restricted = !!ownerPlayer?.konkan && ownerPlayer.id !== player.id && !(player.konkan && ownerPlayer.konkan);
   return !restricted || (state.konkanDiscardPickCounts[player.id] ?? 0) < 2;
 }
@@ -219,7 +220,7 @@ function tryOpen(state: OkeyGameState) {
 function tryLockUsefulKonkanSet(state: OkeyGameState) {
   const playerIndex = state.currentPlayerIndex;
   const player = state.players[playerIndex];
-  if (!player?.konkan || player.eliminated) return state;
+  if (!player?.konkan || isEliminatedOkeyPlayer(player)) return state;
 
   const hand = [...player.hand].sort((left, right) => left.id.localeCompare(right.id));
   for (const tile of hand) {
@@ -355,7 +356,7 @@ function spendUsefulTiles(state: OkeyGameState, profile: OkeyBotProfile) {
 function getBotTableFutureProtectedTileIds(state: OkeyGameState): Set<string> {
   const playerIndex = state.currentPlayerIndex;
   const player = state.players[playerIndex];
-  if (!player || player.eliminated || player.opened || player.konkan) return new Set();
+  if (!isActiveOkeyPlayer(player) || player.opened || player.konkan) return new Set();
 
   const evaluationState: OkeyGameState = {
     ...state,
@@ -370,7 +371,7 @@ function getBotTableFutureProtectedTileIds(state: OkeyGameState): Set<string> {
 
     for (const targetPlayer of evaluationState.players) {
       if (usefulOnTable) break;
-      if (!targetPlayer.opened || targetPlayer.eliminated) continue;
+      if (!targetPlayer.opened || isEliminatedOkeyPlayer(targetPlayer)) continue;
 
       for (const meld of targetPlayer.melds) {
         const action = resolveTableMeldAction(
@@ -398,7 +399,7 @@ function discardDanger(state: OkeyGameState, tile: OkeyTile) {
   const order: readonly number[] = OKEY_RULESET_V1.table.counterClockwiseTurnOrder;
   const nextPlayerIndex = order[(order.indexOf(state.currentPlayerIndex) + 1) % order.length];
   const nextPlayer = state.players[nextPlayerIndex];
-  if (!nextPlayer || nextPlayer.eliminated) return 0;
+  if (!isActiveOkeyPlayer(nextPlayer)) return 0;
   const effective = getEffectiveTile(tile, state.okeyTile);
   let danger = nextPlayer.opened ? getOkeyScoreValue(effective.value) * 0.35 : 0;
   if (nextPlayer.hand.length <= 4) danger += 9;
@@ -447,7 +448,7 @@ export function prepareBotTurn(
   if (state.phase !== "playing") return { state, discardTileId: null, decision: emptyDecision };
   const player = state.players[state.currentPlayerIndex];
   if (!player) return { state, discardTileId: null, decision: emptyDecision };
-  if (player.eliminated) return { state: playEliminatedTurn(state), discardTileId: null, decision: emptyDecision };
+  if (isEliminatedOkeyPlayer(player)) return { state: playEliminatedTurn(state), discardTileId: null, decision: emptyDecision };
   if (!isOkeyBotControlled(player)) return { state, discardTileId: null, decision: emptyDecision };
 
   const difficulty = options.difficulty ?? getOkeyBotDifficulty(player);

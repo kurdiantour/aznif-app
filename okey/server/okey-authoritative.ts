@@ -13,6 +13,7 @@ import {
 } from "../engine/okey-engine.ts";
 
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
+import { isEliminatedOkeyPlayer } from "../engine/okeyengine-eliminated.ts";
 import {
   deriveAuthoritativeOkeyTurnDeadline,
   getAuthoritativeOkeyTurnContext,
@@ -835,7 +836,7 @@ export function applyAuthoritativeOkeyCommand(
 
     case "open-and-discard": {
       const opened = openPlayerMelds(state, actorPlayerIndex, command.melds, command.score, { finalDiscard: true });
-      if (opened.players[actorPlayerIndex]?.eliminated) {
+      if (isEliminatedOkeyPlayer(opened.players[actorPlayerIndex])) {
         next = opened;
       } else {
         next = opened === state ? state : discardTile(opened, command.tileId);
@@ -1371,7 +1372,7 @@ export function applyAuthoritativeOkeyEliminatedTurn(
 
   const actor =
     match.roundState.players[match.roundState.currentPlayerIndex];
-  if (!actor?.eliminated || actor.id !== expectedActorId) {
+  if (!isEliminatedOkeyPlayer(actor) || actor.id !== expectedActorId) {
     throw new OkeyCommandError("command_rejected");
   }
 

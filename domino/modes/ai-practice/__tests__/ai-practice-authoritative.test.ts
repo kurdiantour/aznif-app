@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applyMove, createEmptyBoard } from '../../../core/engine/kozel-engine.ts';
 import {
+  reduceAiPracticeBlocked,
   reduceAiPracticeHumanDraw,
+  reduceAiPracticePlay,
   reduceAiPracticePass,
 } from '../authoritative/ai-practice-command-reducer.ts';
 
@@ -42,4 +44,40 @@ test('AI Practice human draw is a local authoritative transition', () => {
   assert.equal(result.accepted, true);
   assert.equal(result.state.hands[0].length, 2);
   assert.equal(result.state.boneyard.length, 0);
+});
+
+test('AI Practice empty hand commits final match outcome with the round winner for human and bot', () => {
+  const finalTile = { id: '6-1', left: 6, right: 1, imageKey: '6-1' };
+  for (const playerIndex of [0, 1]) {
+    const state = base();
+    state.currentIndex = playerIndex;
+    state.hands = playerIndex === 0
+      ? [[finalTile], [{ id: '1-4', left: 1, right: 4, imageKey: '1-4' }]]
+      : [[{ id: '1-4', left: 1, right: 4, imageKey: '1-4' }], [finalTile]];
+    state.teamScores = playerIndex === 0
+      ? { teamA: 345, teamB: 0 }
+      : { teamA: 0, teamB: 345 };
+
+    const result = reduceAiPracticePlay(state, finalTile, playerIndex, 'right');
+    const winner = seats[playerIndex];
+    assert.equal(result.accepted, true);
+    assert.equal(result.state.roundWinnerPlayerId, winner.id);
+    assert.equal(result.state.winningTeamId, winner.teamId);
+    assert.ok(result.state.teamScores[winner.teamId] >= 350);
+  }
+});
+
+test('AI Practice blocked round commits final match outcome with the round winner', () => {
+  const state = base();
+  state.hands = [
+    [{ id: '3-4', left: 3, right: 4, imageKey: '3-4' }],
+    [{ id: '1-1', left: 1, right: 1, imageKey: '1-1' }],
+  ];
+  state.teamScores = { teamA: 0, teamB: 345 };
+
+  const result = reduceAiPracticeBlocked(state, 0);
+  assert.equal(result.accepted, true);
+  assert.equal(result.state.roundWinnerPlayerId, 'bot');
+  assert.equal(result.state.winningTeamId, 'teamB');
+  assert.ok(result.state.teamScores.teamB >= 350);
 });

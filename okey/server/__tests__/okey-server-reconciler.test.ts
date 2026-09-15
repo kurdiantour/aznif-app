@@ -3,25 +3,24 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  createAuthoritativeOkeyMatch,
-  settleAuthoritativeOkeyRound,
-  startAuthoritativeOkeyNextRound,
-  type OkeyAuthoritativeMatchState,
-  type OkeyServerPlayerIdentity,
+    createAuthoritativeOkeyMatch,
+    settleAuthoritativeOkeyRound,
+    startAuthoritativeOkeyNextRound,
+    type OkeyAuthoritativeMatchState,
+    type OkeyServerPlayerIdentity,
 } from "../okey-authoritative.ts";
 
 import {
-  evaluateOkeyServerLifecycle,
-  generateOkeyReconcilerCommandId,
-  reconcileAuthoritativeEliminatedTurns,
-  reconcileAuthoritativeTimeoutTurn,
-  reconcileAuthoritativeNextRound,
-  reconcileAuthoritativeMatchStart,
-  reconcileAuthoritativeServerTurns,
-  reconcileAuthoritativeServerLifecycleAlarm,
-  reconcileAuthoritativeHumanCommand,
-  type OkeyAuthoritativeSnapshotBundle,
-  type OkeyLifecycleDecision,
+    evaluateOkeyServerLifecycle,
+    generateOkeyReconcilerCommandId,
+    reconcileAuthoritativeEliminatedTurns,
+    reconcileAuthoritativeHumanCommand,
+    reconcileAuthoritativeMatchStart,
+    reconcileAuthoritativeNextRound,
+    reconcileAuthoritativeServerLifecycleAlarm,
+    reconcileAuthoritativeServerTurns,
+    reconcileAuthoritativeTimeoutTurn,
+    type OkeyAuthoritativeSnapshotBundle
 } from "../okey-server-reconciler.ts";
 
 const mockPlayers: readonly [
@@ -337,14 +336,15 @@ test("reconcileAuthoritativeEliminatedTurns executes automatic draw/discard, adv
   assert.equal(result.actionEvents[1].actorPlayerId, "p2");
   assert.equal((result.actionEvents[1].payload as any).reason, "eliminated");
 
-  // Assert top deck tile was placed into discard pile and removed from deck:
-  assert.equal(result.state.roundState.discardPile.at(-1)?.id, expectedDrawnTile.id);
+  // Assert the drawn tile entered the hand while an older hand tile was discarded:
+  assert.equal(result.state.roundState.players[eliminatedPlayerIndex].hand.some((tile) => tile.id === expectedDrawnTile.id), true);
+  assert.equal(result.state.roundState.discardPile.at(-1)?.id, baseMatch.roundState.players[eliminatedPlayerIndex].hand[0].id);
   assert.equal(result.state.roundState.deck.length, initialDeck.length - 1);
 
   // Assert turn progressed to the next player (p3):
   assert.equal(result.state.roundState.currentPlayerIndex, 2);
 
-  // Assert player hands were NOT modified (eliminated player draws and directly discards):
+  // The hand rotates without changing its size:
   assert.equal(result.state.roundState.players[eliminatedPlayerIndex].hand.length, baseMatch.roundState.players[eliminatedPlayerIndex].hand.length);
   assert.equal(result.state.roundState.players[eliminatedPlayerIndex].eliminated, true);
 });

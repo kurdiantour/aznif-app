@@ -209,7 +209,7 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
       applySnapshot,
       refreshSnapshot,
     });
-  const { phase, roundResult, nextRoundCountdown, resetRoundPresentation } =
+  const { phase, roundResult, completedFinalRevealKey, nextRoundCountdown, resetRoundPresentation } =
     useRoundLifecycle({
       roundWinnerPlayerId,
       winningTeamId,
@@ -455,6 +455,7 @@ timeLeft:
     localPlayerTakenOver,
     phase,
     roundResult,
+    completedFinalRevealKey,
     nextRoundCountdown,
   };
 }

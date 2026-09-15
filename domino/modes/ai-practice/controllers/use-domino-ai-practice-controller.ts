@@ -1,5 +1,4 @@
 import { getNextHandKingIndex, NEXT_HAND_OPENING_STATE } from '@/domino/core/rules/king-rules';
-import { getFinalMatchWinner } from '@/domino/core/rules/match-rules';
 import {
   applyMove,
   canAnyPlayerMove,
@@ -143,16 +142,6 @@ export function useAiPracticeGame(): AiPracticeGameState {
     }, 3000);
   };
 
-  useEffect(() => {
-    if (winningTeamId) return;
-    if (!roundWinnerPlayerId) return;
-
-    const winnerTeamId = getFinalMatchWinner(teamScores);
-    if (!winnerTeamId) return;
-
-    setWinningTeamId(winnerTeamId);
-  }, [roundWinnerPlayerId, teamScores, winningTeamId]);
-
   const startNextRound = useCallback(() => {
     if (!roundWinnerPlayerId) return;
     const next = createAiPracticeNextRound({
@@ -190,7 +179,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     });
   }, [hands, lastScoringEvent?.points, roundEndReason, seats]);
 
-  const { phase, roundResult, nextRoundCountdown } = useRoundLifecycle({
+  const { phase, roundResult, completedFinalRevealKey, nextRoundCountdown } = useRoundLifecycle({
     roundWinnerPlayerId,
     winningTeamId,
     buildRoundResult: createRoundResult,
@@ -413,6 +402,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     lastPassedPlayerId,
     phase,
     roundResult,
+    completedFinalRevealKey,
     nextRoundCountdown,
   };
 }

@@ -150,7 +150,7 @@ export function useLocalTwoVsTwoPreviewGame(enabled = true): LocalTwoVsTwoPrevie
     endOfHandScoringEvent: state.endOfHandScoringEvent ?? null,
     teamScores: state.teamScores as Record<TeamId, number>, winningTeamId: state.winningTeamId ?? null,
     matchReward: state.matchReward ?? null, leaderPlayerId: state.leaderPlayerId, isFirstRound: isOpeningRound,
-    phase: lifecycle.phase, roundResult: lifecycle.roundResult, nextRoundCountdown: lifecycle.nextRoundCountdown,
+    phase: lifecycle.phase, roundResult: lifecycle.roundResult, completedFinalRevealKey: lifecycle.completedFinalRevealKey, nextRoundCountdown: lifecycle.nextRoundCountdown,
     availableBranchesForTile: (tile) => getAvailableBranches(tile, context),
     playTile: (tile, branch) => playFor(0, tile, branch), passTurn: () => passFor(0), drawTile: () => false,
     canDrawTile: false, hasPlayableTile: handHasPlayableTile(myHand, context),

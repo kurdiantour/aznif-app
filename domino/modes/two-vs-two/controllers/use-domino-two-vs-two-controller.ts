@@ -409,7 +409,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
     applySnapshot,
     refreshSnapshot,
   });
-  const { phase, roundResult, nextRoundCountdown } = useRoundLifecycle({
+  const { phase, roundResult, completedFinalRevealKey, nextRoundCountdown } = useRoundLifecycle({
     roundWinnerPlayerId,
     winningTeamId,
     buildRoundResult: createRoundResult,
@@ -449,6 +449,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
     phase,
     roundResult,
+    completedFinalRevealKey,
     nextRoundCountdown,
 
     rawState,

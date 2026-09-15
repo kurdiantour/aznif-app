@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
 import {
-  canDeclareBasicWin,
-  canDeclareKonkanOpen,
-  canDeclareKonkanWin,
-  createInitialOkeyGame,
-  declareKonkanOpen,
-  discardTile,
-  findKonkanDeclarationRunTileIds,
-  getRequiredOpenScore,
-  hasLockedKonkanSet,
-  hasSmallKonkanMeld,
-  MAX_PLAYER_MELDS,
-  openPlayerMelds,
-  resolveTableMeldAction,
-  spendTileOnMeld,
+    canDeclareBasicWin,
+    canDeclareKonkanOpen,
+    canDeclareKonkanWin,
+    createInitialOkeyGame,
+    declareKonkanOpen,
+    discardTile,
+    findKonkanDeclarationRunTileIds,
+    getRequiredOpenScore,
+    hasLockedKonkanSet,
+    hasSmallKonkanMeld,
+    MAX_PLAYER_MELDS,
+    openPlayerMelds,
+    resolveTableMeldAction,
+    spendTileOnMeld,
 } from "../okey-engine.ts";
 import { getMeldScore, getOrderedMeldScore } from "../okeyengine-melds.ts";
-import type { OkeyGameState, OkeyMeld, OkeyTile } from "../../types/okey.ts";
 
 const okeyTile: OkeyTile = { id: "okey", color: "blue", value: 13, copy: 1 };
 let tileSequence = 0;
@@ -143,6 +143,53 @@ test("opening thresholds cover initial, teammate, own-team, and opponent-first c
   assert.equal(getRequiredOpenScore(teammateOpened, 0), 61);
   assert.equal(getRequiredOpenScore({ ...state, teamFirstOpenScores: { teamA: 90, teamB: null } }, 0), 61);
   assert.equal(getRequiredOpenScore({ ...state, teamFirstOpenScores: { teamA: null, teamB: 92 } }, 0), 93);
+});
+
+test("a burned opener no longer raises the opposing threshold, while existing opens remain intact", () => {
+  const state = createInitialOkeyGame(0);
+  const originalOpponentMelds = state.players[1].melds;
+  const prepared: OkeyGameState = {
+    ...state,
+    teamFirstOpenScores: { teamA: 95, teamB: null },
+    players: state.players.map((player, index) => {
+      if (index === 0) return { ...player, opened: true, firstOpenScore: 95, scoreOpened: 95 };
+      return player;
+    }),
+  };
+
+  assert.equal(getRequiredOpenScore(prepared, 1), 96);
+  assert.equal(getRequiredOpenScore(prepared, 3), 96);
+  const burned = {
+    ...prepared,
+    players: prepared.players.map((player, index) => index === 0 ? { ...player, eliminated: true } : player),
+  };
+
+  assert.equal(getRequiredOpenScore(burned, 1), 81);
+  assert.equal(getRequiredOpenScore(burned, 3), 81);
+
+  const activeOpponentOpenedAfterBurn = {
+    ...burned,
+    teamFirstOpenScores: { teamA: 95, teamB: 95 },
+    players: burned.players.map((player, index) => index === 1
+      ? { ...player, opened: true, firstOpenScore: 95, scoreOpened: 95 }
+      : player),
+  };
+  assert.equal(getRequiredOpenScore(activeOpponentOpenedAfterBurn, 2), 96);
+
+  const opponentOpenedBeforeBurn = {
+    ...prepared,
+    teamFirstOpenScores: { teamA: 95, teamB: 81 },
+    players: prepared.players.map((player, index) => index === 1
+      ? { ...player, opened: true, firstOpenScore: 81, scoreOpened: 81 }
+      : player),
+  };
+  const opponentOpenedAfterBurn = {
+    ...opponentOpenedBeforeBurn,
+    players: opponentOpenedBeforeBurn.players.map((player, index) => index === 0 ? { ...player, eliminated: true } : player),
+  };
+  assert.equal(opponentOpenedAfterBurn.players[1].opened, true);
+  assert.equal(opponentOpenedAfterBurn.players[1].scoreOpened, 81);
+  assert.deepEqual(opponentOpenedAfterBurn.players[1].melds, originalOpponentMelds);
 });
 
 test("the seven-meld ceiling rejects an otherwise valid additional meld", () => {

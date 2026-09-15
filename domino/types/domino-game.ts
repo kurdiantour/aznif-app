@@ -118,6 +118,7 @@ export type GameState = {
 
   phase?: RoundPhase;
   roundResult?: RoundResult | null;
+  completedFinalRevealKey?: string | null;
   nextRoundCountdown?: number;
 
   availableBranchesForTile: (tile: DominoTileData) => KozelBranch[];

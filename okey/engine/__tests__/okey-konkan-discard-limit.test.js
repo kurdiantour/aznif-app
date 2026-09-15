@@ -60,7 +60,7 @@ function assert(condition, message) { if (!condition) throw new Error(message); 
   const picked = drawTile(state({ konkanDiscardPickCounts: { human: 1 } }), "discard");
   const burned = discardTile(picked, picked.players[0].hand[0].id);
   assert(burned.players[0].eliminated === true, "Discarding after second restricted pick should eliminate player.");
-  assert(burned.currentPlayerIndex !== 0, "Turn order should skip eliminated player.");
+  assert(burned.currentPlayerIndex !== 0, "Burned turn should advance to the next seat.");
 }
 
 {

@@ -323,10 +323,15 @@ useEffect(() => {
     players: game.players,
     roundWinnerPlayerId: game.roundWinnerPlayerId,
     lastPlayedTile: game.lastPlayedTile,
-    winningTeamId: game.winningTeamId,
   });
   const gamePhase = (game as any).phase;
   const roundResult = (game as any).roundResult;
+  const completedFinalRevealKey = (game as any).completedFinalRevealKey;
+  useEffect(() => {
+    if (!completedFinalRevealKey) return;
+    setShowScorePopup(false);
+    setShowGameOverPopup(true);
+  }, [completedFinalRevealKey, setShowScorePopup, setShowGameOverPopup]);
   const isRoundResultReveal = gamePhase === "round_result_reveal";
   const isBlockedResult = roundResult?.endReason === "blocked";
   const endOfHandScoringEvent: ScoringEvent | null =
@@ -712,7 +717,8 @@ useEffect(() => {
   }, [isBlockedResult, isRoundResultReveal, roundResult?.winnerId]);
 
   const shouldRenderPlayedBoardTiles =
-    gamePhase === "playing" ||
+    (gamePhase === "playing" &&
+      (!game.roundWinnerPlayerId || !roundResult)) ||
     isFinalTileAnimationRunning ||
     (isRoundResultReveal && isBlockedResult && !blockedIntroComplete);
 

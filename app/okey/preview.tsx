@@ -1,137 +1,69 @@
 import { Redirect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { OkeyTileFace } from "@/okey/components/OkeyTileFace";
+import { OkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
+import { OkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
+import { OkeyResponsiveLayoutProvider } from "@/okey/layout/OkeyResponsiveLayoutProvider";
+import type { OkeyTile, OkeyColor } from "@/okey/types/okey";
 
-import { supabase } from "@/lib/supabase";
+const colors: OkeyColor[] = ["red", "blue", "black", "yellow"];
+const makeState = () => {
+  const tiles: OkeyTile[] = Array.from({ length: 104 }, (_, index) => ({
+    id: `preview-${index}`, color: colors[index % 4],
+    value: Math.floor(index / 4) % 13 + 1, copy: index < 52 ? 1 : 2,
+  }));
+  return { hand: tiles.slice(0, 14), deck: tiles.slice(14), discards: [] as OkeyTile[], selected: null as string | null, turn: 1 };
+};
 
 export default function OkeyPreviewScreen() {
   const router = useRouter();
-  const [attempt, setAttempt] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-
-  const createTestMatch = useCallback(async () => {
-    const { data, error: invokeError } = await supabase.functions.invoke(
-      "okey_test_match",
-      {
-        body: {
-          action: "create",
-        },
-      },
-    );
-
-    if (invokeError || typeof data?.matchId !== "string") {
-      let serverError: string | null = null;
-
-      try {
-        if (invokeError && "context" in invokeError && invokeError.context) {
-          const body = await invokeError.context.json();
-          serverError = typeof body?.error === "string" ? body.error : null;
-        }
-      } catch {
-        serverError = null;
-      }
-
-      throw new Error(
-        serverError ?? invokeError?.message ?? "test_match_creation_failed",
-      );
-    }
-
-    router.replace({
-      pathname: "/okey/game",
-      params: {
-        matchId: data.matchId,
-        tableId: "preview-test",
-        mode: "fun",
-      },
-    });
-  }, [router]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-
-    let active = true;
-
-    void createTestMatch().catch((caught) => {
-      if (!active) return;
-      setError(
-        caught instanceof Error ? caught.message : "test_match_creation_failed",
-      );
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [attempt, createTestMatch]);
-
-  if (!__DEV__) {
-    return <Redirect href="/(tabs)/play" />;
-  }
-
-  return (
-    <View style={styles.container}>
-      <ActivityIndicator color="#fff" size="large" />
-      <Text style={styles.title}>Preparing real Okey test match</Text>
-      <Text style={styles.subtitle}>1 Admin Player + 3 Server Bots</Text>
-
-      {error ? (
-        <>
-          <Text style={styles.error}>{error}</Text>
-          <Pressable
-            style={styles.retry}
-            onPress={() => {
-              setError(null);
-              setAttempt((value) => value + 1);
-            }}
-          >
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
-        </>
-      ) : null}
+  const [local, setLocal] = useState(makeState);
+  if (!__DEV__) return <Redirect href="/(tabs)/play" />;
+  const draw = (fromDiscard: boolean) => setLocal(current => {
+    if (current.hand.length >= 15) return current;
+    const source = fromDiscard ? current.discards : current.deck;
+    if (!source.length) return current;
+    const tile = fromDiscard ? source[source.length - 1] : source[0];
+    return { ...current, hand: [...current.hand, tile],
+      ...(fromDiscard ? { discards: source.slice(0, -1) } : { deck: source.slice(1) }), selected: null };
+  });
+  const discard = () => setLocal(current => {
+    if (current.hand.length < 15 || !current.selected) return current;
+    const tile = current.hand.find(item => item.id === current.selected);
+    if (!tile) return current;
+    return { ...current, hand: current.hand.filter(item => item.id !== tile.id),
+      discards: [...current.discards, tile], selected: null, turn: current.turn + 1 };
+  });
+  return <OkeyResponsiveLayoutProvider><View style={styles.screen}>
+    <View style={styles.header}>
+      <Pressable onPress={() => router.back()}><Text style={styles.link}>‹ Back</Text></Pressable>
+      <Text style={styles.title}>Okey Preview · Local UI</Text>
+      <Pressable onPress={() => setLocal(makeState())}><Text style={styles.link}>Reset</Text></Pressable>
     </View>
-  );
+    <View style={styles.table}>
+      <View style={styles.opponents}>{(["top", "left", "right"] as const).map((side, index) => <OkeyOpponentSeat key={side} name={`Bot ${index + 1}`} count={14} active={false} side={side} turnTimeLeftMilliseconds={30000} turnDeadlineAt={null} serverClockOffsetMs={0} turnDurationSeconds={30} />)}</View>
+      <View style={styles.center}>
+        <View style={styles.pile}><Text style={styles.white}>Indicator</Text><OkeyTileFace tile={{ id: "indicator", color: "red", value: 8, copy: 1 }} compact /></View>
+        <Pressable style={styles.pile} onPress={() => draw(false)}><Text style={styles.white}>Deck · {local.deck.length}</Text><Text style={styles.big}>▣</Text></Pressable>
+        <Pressable style={styles.pile} onPress={() => draw(true)}><Text style={styles.white}>Discard</Text>{local.discards.length ? <OkeyTileFace tile={local.discards[local.discards.length - 1]} compact /> : <Text style={styles.big}>—</Text>}</Pressable>
+      </View>
+      <Text style={styles.hint}>Turn {local.turn} · Draw, select a tile, then discard</Text>
+    </View>
+    <View style={styles.rack}>
+      <OkeyPlayerRack tiles={local.hand} selectedTileId={local.selected} okeyTile={{ id: "okey", color: "red", value: 9, copy: 1 }} onSelectTile={tileId => setLocal(current => ({ ...current, selected: tileId }))} onMoveTile={(tileId, targetIndex) => setLocal(current => { const hand = [...current.hand]; const from = hand.findIndex(tile => tile.id === tileId); if (from < 0) return current; const [tile] = hand.splice(from, 1); hand.splice(targetIndex, 0, tile); return { ...current, hand }; })} showTurnTimer={false} turnTimeLeftMilliseconds={30000} turnDeadlineAt={null} serverClockOffsetMs={0} turnDurationSeconds={30} />
+      <Pressable style={styles.button} onPress={discard}><Text style={styles.white}>Discard selected tile</Text></Pressable>
+    </View>
+  </View></OkeyResponsiveLayoutProvider>;
 }
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    padding: 24,
-    backgroundColor: "#13251e",
-  },
-  title: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  subtitle: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  error: {
-    color: "#ff9b9b",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  retry: {
-    marginTop: 4,
-    borderRadius: 10,
-    backgroundColor: "#2e7d57",
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-  },
-  retryText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
+  screen: { flex: 1, backgroundColor: "#13251e" },
+  header: { paddingTop: 45, paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", justifyContent: "space-between" },
+  link: { color: "#f6c945", fontWeight: "700" }, title: { color: "#fff", fontSize: 17, fontWeight: "800" },
+  table: { flex: 1, margin: 12, borderRadius: 100, borderWidth: 9, borderColor: "#5b3219", backgroundColor: "#176b48", justifyContent: "space-around", padding: 16 },
+  opponents: { flexDirection: "row", justifyContent: "space-around" }, center: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 20 },
+  pile: { alignItems: "center", minWidth: 70, minHeight: 95, justifyContent: "center" }, white: { color: "#fff", fontWeight: "700" },
+  big: { color: "#f6c945", fontSize: 35 }, hint: { color: "#fff", textAlign: "center", fontSize: 12 },
+  rack: { backgroundColor: "#56341e", padding: 12 }, tiles: { gap: 3, alignItems: "center", paddingVertical: 8 },
+  button: { alignSelf: "center", backgroundColor: "#2e7d57", paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10 },
 });

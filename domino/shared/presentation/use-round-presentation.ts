@@ -1,4 +1,4 @@
-import type { DominoTileData, Player, TeamId } from '@/domino/types/domino-game';
+import type { DominoTileData, Player } from '@/domino/types/domino-game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const FINAL_TILE_REVEAL_DELAY_MS = 3_000;
@@ -7,12 +7,10 @@ export function useRoundPresentation({
   players,
   roundWinnerPlayerId,
   lastPlayedTile,
-  winningTeamId,
 }: {
   players: Player[];
   roundWinnerPlayerId: string | null;
   lastPlayedTile: DominoTileData | null;
-  winningTeamId: TeamId | null;
 }) {
   const winningTileReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [releasedWinningTileKey, setReleasedWinningTileKey] = useState<string | null>(null);
@@ -51,13 +49,6 @@ export function useRoundPresentation({
       clearTimeout(winningTileReleaseTimerRef.current);
     }
   }, []);
-
-  useEffect(() => {
-    if (winningTeamId) {
-      setShowScorePopup(false);
-      setShowGameOverPopup(true);
-    }
-  }, [winningTeamId]);
 
   return {
     winningTileKey,

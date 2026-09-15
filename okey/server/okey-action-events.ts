@@ -1,5 +1,5 @@
+import type { OkeyGameState, OkeyMeld, OkeyTile } from "../types/okey.ts";
 import type { OkeyAuthoritativeCommand } from "./okey-authoritative.ts";
-import type { OkeyMeld, OkeyTile, OkeyGameState } from "../types/okey.ts";
 
 export type OkeyActionEventType =
   | "draw"
@@ -73,12 +73,15 @@ export function createForcedDrawDiscardEvents(input: {
   actorPlayerId: string;
   source: "deck" | "discard";
   tile: OkeyTile | null;
+  discardedTile?: OkeyTile | null;
   reason: "timeout" | "eliminated";
 }): OkeyActionEventDraft[] {
   return [
     { type: "draw", actorPlayerId: input.actorPlayerId, payload: { source: input.source, reason: input.reason } },
     { type: "discard", actorPlayerId: input.actorPlayerId, payload: {
-      tileId: input.tile?.id ?? null, tile: input.tile, reason: input.reason,
+      tileId: (input.discardedTile ?? input.tile)?.id ?? null,
+      tile: input.discardedTile ?? input.tile,
+      reason: input.reason,
     } },
   ];
 }

@@ -1,3 +1,4 @@
+import { isActiveOkeyPlayer, isEliminatedOkeyPlayer } from "../engine/okeyengine-eliminated.ts";
 import {
     createForcedDrawDiscardEvents,
     createOkeyCommandActionEvents,
@@ -55,7 +56,8 @@ export function getOkeyLifecycleRunAt(
   if (state.matchFinished) return null;
   if (state.roundState.phase === 'finished') return state.nextRoundEligibleAt ?? null;
   const currentPlayer = state.roundState.players[state.roundState.currentPlayerIndex];
-  if (currentPlayer && !currentPlayer.eliminated &&
+  if (isEliminatedOkeyPlayer(currentPlayer)) return new Date(nowMs).toISOString();
+  if (isActiveOkeyPlayer(currentPlayer) &&
       (currentPlayer.controlledByBot === true || currentPlayer.kind === 'bot')) {
     return new Date(nowMs).toISOString();
   }
@@ -866,11 +868,17 @@ export async function reconcileAuthoritativeEliminatedTurns(options: {
       expectedVersion: currentVersion,
       resolveDeadline: (nextState) => getNextOkeyMatchTurnDeadline(nextState, getNow()),
       createActionEvents: (nextState) => {
-        const tile = nextState.roundState.discardPile.at(-1) ?? null;
+        const beforePlayer = currentState.roundState.players[decision.playerIndex];
+        const afterPlayer = nextState.roundState.players[decision.playerIndex];
+        const drawnTile = afterPlayer?.hand.find((tile) =>
+          !beforePlayer.hand.some((previousTile) => previousTile.id === tile.id),
+        ) ?? null;
+        const discardedTile = nextState.roundState.discardPile.at(-1) ?? null;
         return createForcedDrawDiscardEvents({
           actorPlayerId: actor.id,
           source: "deck",
-          tile,
+          tile: drawnTile,
+          discardedTile,
           reason: "eliminated",
         });
       },

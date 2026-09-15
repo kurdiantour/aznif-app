@@ -2,6 +2,7 @@ import type { OkeyGameState, OkeyMeld, OkeyTile } from "../types/okey.ts";
 import { getCombinations, getEffectiveTile, getMeldScore, getOrderedMeldScore, getOrderedRunWildcardValue, isOkeyWildcard, isValidMeld, sortTiles } from "./okeyengine-melds.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
 import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
+import { getOkeyLockMeldsForCurrentRules, isActiveOkeyPlayer, isEliminatedOkeyPlayer, markOkeyPlayerEliminated } from "./okeyengine-eliminated.ts";
 
 type SpendTarget = { targetPlayerIndex: number; meldIndex: number; tiles: OkeyTile[]; score: number; delta: number; releasedTile?: OkeyTile };
 type KonkanSetLockTarget = { targetPlayerIndex: number; meldIndex: number; tiles: OkeyTile[]; score: number };
@@ -10,7 +11,7 @@ type MeldAddCandidate = { tiles: OkeyTile[]; score: number; insertionIndex: numb
 export function resolveKonkanDiscardPick(state: OkeyGameState, playerIndex: number, discardOwnerPlayerIndex: number | null): { allowed: boolean; count: number; restricted: boolean; mustFinishPlayerId: string | null } {
   const player = state.players[playerIndex];
   const owner = discardOwnerPlayerIndex === null ? null : state.players[discardOwnerPlayerIndex];
-  if (!player || owner?.eliminated) return { allowed: false, count: 0, restricted: false, mustFinishPlayerId: state.mustFinishAfterSecondKonkanDiscardPickPlayerId };
+  if (!player || isEliminatedOkeyPlayer(owner)) return { allowed: false, count: 0, restricted: false, mustFinishPlayerId: state.mustFinishAfterSecondKonkanDiscardPickPlayerId };
   const restricted = !!owner?.konkan && owner.id !== player.id && !(player.konkan && owner.konkan);
   const count = state.konkanDiscardPickCounts[player.id] ?? 0;
   if (restricted && count >= OKEY_RULESET_V1.konkan.maximumRestrictedDiscardPicks) return { allowed: false, count, restricted, mustFinishPlayerId: state.mustFinishAfterSecondKonkanDiscardPickPlayerId };
@@ -45,7 +46,7 @@ function getSpendCandidatePlayerIndexes(state: OkeyGameState, playerIndex: numbe
       index !== playerIndex &&
       entry.teamId === player.teamId &&
       entry.opened &&
-      !entry.eliminated
+      isActiveOkeyPlayer(entry)
     )
     .map(({ index }) => index);
   const opponentIndexes = state.players
@@ -53,7 +54,7 @@ function getSpendCandidatePlayerIndexes(state: OkeyGameState, playerIndex: numbe
     .filter(({ entry }) =>
       entry.teamId !== player.teamId &&
       entry.opened &&
-      !entry.eliminated
+      isActiveOkeyPlayer(entry)
     )
     .map(({ index }) => index);
 
@@ -174,7 +175,7 @@ function getMeldWithTileAdded(
 
 function hasKonkanLock(state: OkeyGameState, playerId: string): boolean {
   return state.players.some((entry) =>
-    entry.melds.some((meld) => meld.locked && meld.lockedByPlayerId === playerId),
+    getOkeyLockMeldsForCurrentRules(entry).some((meld) => meld.locked && meld.lockedByPlayerId === playerId),
   );
 }
 
@@ -199,15 +200,9 @@ export function eliminateKonkanPlayerMidTurn(
   _reason?: "second-spend" | "normal-meld",
 ): OkeyGameState {
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return state;
+  if (!isActiveOkeyPlayer(player)) return state;
 
-  const nextPlayers = state.players.map((entry, index) =>
-    index === playerIndex ? { ...entry, eliminated: true } : entry,
-  );
-  const eliminatedState: OkeyGameState = {
-    ...state,
-    players: nextPlayers,
-  };
+  const eliminatedState = markOkeyPlayerEliminated(state, playerIndex);
   const nextState = advanceTurn(eliminatedState);
   const nextPlayer = nextState.players[nextState.currentPlayerIndex];
   return {
@@ -223,7 +218,7 @@ function findBestSpendTarget(state: OkeyGameState, playerIndex: number, tile: Ok
 
   for (const targetPlayerIndex of getSpendCandidatePlayerIndexes(state, playerIndex)) {
     const targetPlayer = state.players[targetPlayerIndex];
-    if (!targetPlayer.opened || targetPlayer.eliminated) continue;
+    if (!targetPlayer.opened || !isActiveOkeyPlayer(targetPlayer)) continue;
 
     let bestForPlayer: SpendTarget | null = null;
     for (let meldIndex = 0; meldIndex < targetPlayer.melds.length; meldIndex += 1) {
@@ -254,7 +249,7 @@ export function canSpendTileOnBestMeld(state: OkeyGameState, playerIndex: number
   if (state.currentPlayerIndex !== playerIndex) return false;
   if (!state.hasDrawnThisTurn) return false;
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return false;
+  if (!isActiveOkeyPlayer(player)) return false;
   const tile = player.hand.find((entry) => entry.id === tileId);
   return tile ? findBestSpendTarget(state, playerIndex, tile) !== null : false;
 }
@@ -275,7 +270,7 @@ function findSpecificSpendTarget(
   if (!allowedIndexes.has(targetPlayerIndex)) return null;
 
   const targetPlayer = state.players[targetPlayerIndex];
-  if (!targetPlayer?.opened || targetPlayer.eliminated) return null;
+  if (!targetPlayer?.opened || !isActiveOkeyPlayer(targetPlayer)) return null;
 
   const meldIndex = targetPlayer.melds.findIndex((meld) => meld.id === targetMeldId);
   if (meldIndex < 0) return null;
@@ -316,7 +311,7 @@ export function canSpendTileOnMeld(
   if (state.currentPlayerIndex !== playerIndex) return false;
   if (!state.hasDrawnThisTurn) return false;
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return false;
+  if (!isActiveOkeyPlayer(player)) return false;
   const tile = player.hand.find((entry) => entry.id === tileId);
   if (!tile) return false;
   return findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null ||
@@ -326,7 +321,7 @@ export function canSpendTileOnMeld(
 
 export function getLockedKonkanSetsForPlayer(state: OkeyGameState, playerId: string): OkeyMeld[] {
   return state.players.flatMap((player) =>
-    player.melds.filter(
+    getOkeyLockMeldsForCurrentRules(player).filter(
       (meld) => meld.locked && meld.lockedByPlayerId === playerId,
     ),
   );
@@ -347,7 +342,7 @@ function findKonkanSetLockTarget(
   if (targetPlayerIndex < 0) return null;
 
   const targetPlayer = state.players[targetPlayerIndex];
-  if (!targetPlayer.opened || targetPlayer.eliminated) return null;
+  if (!targetPlayer.opened || !isActiveOkeyPlayer(targetPlayer)) return null;
   const meldIndex = targetPlayer.melds.findIndex((meld) => meld.id === targetMeldId);
   if (meldIndex < 0) return null;
 
@@ -373,7 +368,7 @@ export function canLockKonkanSet(
   ) return false;
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
-  if (player?.eliminated || !tile) return false;
+  if (!isActiveOkeyPlayer(player) || !tile) return false;
   if (findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId) !== null) return true;
   return findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, "start") !== null ||
     findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, "end") !== null;
@@ -445,7 +440,7 @@ export function lockKonkanSet(
   ) return state;
   const player = state.players[playerIndex];
   const tile = player?.hand.find((entry) => entry.id === tileId);
-  if (!player || player.eliminated || !tile) return state;
+  if (!isActiveOkeyPlayer(player) || !tile) return state;
 
   const target = findKonkanSetLockTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, runEnd);
   if (!target) return state;
@@ -582,7 +577,7 @@ export function spendTileOnMeld(
   if (state.currentPlayerIndex !== playerIndex) return state;
   if (!state.hasDrawnThisTurn) return state;
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return state;
+  if (!isActiveOkeyPlayer(player)) return state;
   const tile = player.hand.find((entry) => entry.id === tileId);
   if (!tile) return state;
   const target = findSpecificSpendTarget(state, playerIndex, tile, targetPlayerId, targetMeldId, runEnd);
@@ -605,7 +600,7 @@ export function spendTileOnBestMeld(
   if (!state.hasDrawnThisTurn) return state;
 
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return state;
+  if (!isActiveOkeyPlayer(player)) return state;
 
   const tile = player.hand.find((entry) => entry.id === tileId);
   if (!tile) return state;
@@ -729,7 +724,7 @@ export function canDeclareKonkanOpen(
     !state.hasDrawnThisTurn
   ) return false;
   const player = state.players[playerIndex];
-  if (!player?.konkan || player.eliminated) return false;
+  if (!player?.konkan || !isActiveOkeyPlayer(player)) return false;
   if (!Array.isArray(completionMeldTileIds) || typeof discardTileId !== "string") return false;
   if (orderedRunTileIds.length !== OKEY_RULESET_V1.konkan.officialRunSize) return false;
 

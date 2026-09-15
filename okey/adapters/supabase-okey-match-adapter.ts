@@ -1,20 +1,21 @@
 import { supabase } from "@/lib/supabase";
+import { isEliminatedOkeyPlayer } from "@/okey/engine/okeyengine-eliminated";
 import type { OkeyActionEvent } from "@/okey/server/okey-action-events";
 
 import type {
-  OkeyCommittedTransition,
-  OnlineOkeyMatchAdapter,
+    OkeyCommittedTransition,
+    OnlineOkeyMatchAdapter,
 } from "@/okey/adapters/okey-match-adapter";
 
 import type {
-  OkeyAuthoritativeCommand,
-  OkeyMatchServerProjection,
-  OkeyMatchSettlement,
+    OkeyAuthoritativeCommand,
+    OkeyMatchServerProjection,
+    OkeyMatchSettlement,
 } from "@/okey/server/okey-authoritative";
 
 import {
-  leaveOkeyRoom,
-  reconnectOkeyRoom,
+    leaveOkeyRoom,
+    reconnectOkeyRoom,
 } from "@/okey/multiplayer/okey-room-api";
 
 export type { OkeyCommittedTransition };
@@ -323,7 +324,11 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
     try {
       await this.refresh();
     } catch {
-      // Realtime remains subscribed and can deliver the latest projection.
+      try {
+        await this.refresh();
+      } catch {
+        // Realtime remains subscribed and can deliver the latest projection.
+      }
     }
   }
 
@@ -691,7 +696,7 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
 
       if (
         Boolean(nextLocalPlayer.controlledByBot) !== Boolean(localPlayer.controlledByBot) ||
-        Boolean(nextLocalPlayer.eliminated) !== Boolean(localPlayer.eliminated)
+        isEliminatedOkeyPlayer(nextLocalPlayer) !== isEliminatedOkeyPlayer(localPlayer)
       ) {
         return null;
       }

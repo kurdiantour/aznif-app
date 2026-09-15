@@ -3,13 +3,14 @@ import test from 'node:test';
 
 import { discardTile, drawTile } from '../../engine/okey-engine.ts';
 import {
-  createAuthoritativeOkeyMatch,
-  getNextOkeyMatchTurnDeadline,
-  type OkeyAuthoritativeMatchState,
+    createAuthoritativeOkeyMatch,
+    getNextOkeyMatchTurnDeadline,
+    type OkeyAuthoritativeMatchState,
 } from '../okey-authoritative.ts';
 import {
-  getOkeyLifecycleRunAt,
-  reconcileAuthoritativeBotTurn,
+    getOkeyLifecycleRunAt,
+    reconcileAuthoritativeBotTurn,
+    reconcileAuthoritativeServerLifecycleAlarm,
 } from '../okey-server-reconciler.ts';
 
 const players = [
@@ -100,4 +101,96 @@ test('Human discard schedules an immediate Bot lifecycle alarm that executes exa
   assert.equal(alarmResult.step, 'draw');
   assert.equal(alarmResult.finalVersion, 9);
   assert.equal(commits, 1);
+});
+
+test('Ghost lifecycle alarms run immediately, preserve a null human deadline, and repeat on return', async () => {
+  const now = Date.parse('2026-09-16T12:00:00.000Z');
+  const base = createAuthoritativeOkeyMatch(players, 0);
+  const ghostIndex = 1;
+  let currentVersion = 20;
+  let currentState: OkeyAuthoritativeMatchState = {
+    ...base,
+    roundState: {
+      ...base.roundState,
+      currentPlayerIndex: ghostIndex,
+      hasDrawnThisTurn: false,
+      players: base.roundState.players.map((player, index) =>
+        index === ghostIndex ? { ...player, eliminated: true } : player,
+      ),
+    },
+  };
+  const scheduledRunAts: string[] = [];
+  let commitCount = 0;
+  const client: any = {
+    rpc: (name: string, args: any) => {
+      if (name === 'okey_get_authoritative_bundle') {
+        return { single: async () => ({
+          data: { status: 'playing', version: currentVersion, state: currentState, turn_deadline_at: null },
+          error: null,
+        }) };
+      }
+      if (name === 'okey_commit_authoritative_action') {
+        commitCount += 1;
+        currentVersion = args.p_expected_version + 1;
+        currentState = args.p_state;
+        return { single: async () => ({
+          data: {
+            applied: true,
+            version: currentVersion,
+            state: currentState,
+            turn_deadline_at: args.p_turn_deadline_at,
+            action_events: args.p_action_events,
+          },
+          error: null,
+        }) };
+      }
+      throw new Error(`unexpected rpc: ${name}`);
+    },
+  };
+
+  assert.equal(getOkeyLifecycleRunAt(currentState, null, now), new Date(now).toISOString());
+  assert.equal(getNextOkeyMatchTurnDeadline(currentState, now), null);
+
+  const firstAlarm = await reconcileAuthoritativeServerLifecycleAlarm({
+    client,
+    matchId: 'ghost-lifecycle',
+    requesterUserId: 'p1',
+    initialVersion: currentVersion,
+    runAt: new Date(now).toISOString(),
+    now: () => now,
+    scheduleLifecycleAlarm: async ({ runAt }) => { scheduledRunAts.push(runAt); },
+  });
+
+  assert.equal(firstAlarm.reason, 'eliminated_executed');
+  assert.equal(firstAlarm.executed, true);
+  assert.equal(firstAlarm.turnDeadlineAt, new Date(now + 15_000).toISOString());
+  assert.equal(commitCount, 1);
+  assert.equal(scheduledRunAts.length, 1);
+  assert.equal(scheduledRunAts[0], new Date(now + 15_000).toISOString());
+
+  currentState = {
+    ...currentState,
+    roundState: {
+      ...currentState.roundState,
+      currentPlayerIndex: ghostIndex,
+      hasDrawnThisTurn: false,
+    },
+  };
+  assert.equal(getNextOkeyMatchTurnDeadline(currentState, now), null);
+  const secondAlarm = await reconcileAuthoritativeServerLifecycleAlarm({
+    client,
+    matchId: 'ghost-lifecycle',
+    requesterUserId: 'p1',
+    initialVersion: currentVersion,
+    runAt: new Date(now).toISOString(),
+    now: () => now,
+    scheduleLifecycleAlarm: async ({ runAt }) => { scheduledRunAts.push(runAt); },
+  });
+
+  assert.equal(secondAlarm.reason, 'eliminated_executed');
+  assert.equal(secondAlarm.executed, true);
+  assert.equal(secondAlarm.turnDeadlineAt, new Date(now + 15_000).toISOString());
+  assert.equal(commitCount, 2);
+  assert.equal(scheduledRunAts.length, 2);
+  assert.equal(scheduledRunAts[1], new Date(now + 15_000).toISOString());
 });

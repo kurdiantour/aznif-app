@@ -1,19 +1,20 @@
-import type {
-  OkeyColor,
-  OkeyDiscardOwner,
-  OkeyDrawSource,
-  OkeyGameState,
-  OkeyMeld,
-  OkeyTeamId,
-  OkeyTile,
-} from "../types/okey.ts";
-import { canDeclareBasicWin, getOkeyScoreValue, getRemainingPlayerMeldSlots, getRequiredOpenScore, isOkeyWildcard, sortTiles, validateOpenPlayerMelds } from "./okeyengine-melds.ts";
-export { canDeclareBasicWin, findBestMeldPlan, getMeldKind, getRemainingPlayerMeldSlots, getRequiredOpenScore, getTeamFirstOpenScore, isOkeyWildcard, isValidMeld, normalizeOpenMelds, orderRunTiles, sortTiles, MAX_PLAYER_MELDS } from "./okeyengine-melds.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
-import { canDeclareKonkanOpen, declareKonkanOpen, eliminateKonkanPlayerMidTurn, getKonkanDiscardEntry, getKonkanDiscardOutcome, resolveKonkanDiscardPick } from "./okeyengine-konkan.ts";
+import type {
+    OkeyColor,
+    OkeyDiscardOwner,
+    OkeyDrawSource,
+    OkeyGameState,
+    OkeyMeld,
+    OkeyTeamId,
+    OkeyTile,
+} from "../types/okey.ts";
+import { chooseOkeyEliminatedTurnDiscardTile, getOkeyRecyclableMeldsForCurrentRules, isActiveOkeyPlayer, isEliminatedOkeyPlayer, markOkeyPlayerEliminated } from "./okeyengine-eliminated.ts";
+import { canDeclareKonkanOpen, eliminateKonkanPlayerMidTurn, getKonkanDiscardEntry, getKonkanDiscardOutcome, resolveKonkanDiscardPick } from "./okeyengine-konkan.ts";
+import { canDeclareBasicWin, getOkeyScoreValue, getRemainingPlayerMeldSlots, getRequiredOpenScore, isOkeyWildcard, sortTiles, validateOpenPlayerMelds } from "./okeyengine-melds.ts";
+import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
 export { canDeclareKonkanOpen, canDeclareKonkanWin, canLockKonkanSet, canSpendTileOnBestMeld, canSpendTileOnMeld, declareKonkanOpen, eliminateKonkanPlayerMidTurn, findKonkanDeclarationForPlayer, findKonkanDeclarationRunTileIds, getLockedKonkanSetsForPlayer, hasLockedKonkanSet, hasPlayerExecutedKonkanSpend, hasSmallKonkanMeld, isOrderedOfficialKonkanRun, lockKonkanSet, resolveTableMeldAction, spendTileOnBestMeld, spendTileOnMeld } from "./okeyengine-konkan.ts";
 export type { OkeyRunEnd, OkeyTableMeldAction } from "./okeyengine-konkan.ts";
-import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
+export { canDeclareBasicWin, findBestMeldPlan, getMeldKind, getRemainingPlayerMeldSlots, getRequiredOpenScore, getTeamFirstOpenScore, isOkeyWildcard, isValidMeld, MAX_PLAYER_MELDS, normalizeOpenMelds, orderRunTiles, sortTiles } from "./okeyengine-melds.ts";
 export { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
 
 const COLORS: OkeyColor[] = [...OKEY_RULESET_V1.tiles.colors];
@@ -157,7 +158,7 @@ export function movePlayerHandTile(
   targetIndex: number,
 ): OkeyGameState {
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return state;
+  if (!isActiveOkeyPlayer(player)) return state;
 
   const currentIndex = player.hand.findIndex((tile) => tile.id === tileId);
   if (currentIndex < 0) return state;
@@ -291,7 +292,7 @@ export function openPlayerMelds(
   options: { finalDiscard?: boolean } = {},
 ): OkeyGameState {
   const player = state.players[playerIndex];
-  if (!player || player.eliminated) return state;
+  if (!isActiveOkeyPlayer(player)) return state;
   const validation = validateOpenPlayerMelds(state, playerIndex, melds, {
     enforceRequiredScore: !options.finalDiscard,
   });
@@ -374,12 +375,10 @@ function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
     .slice(0, Math.max(0, topIndex))
     .filter((_, index) => {
       const owner = state.discardOwners[index];
-      return !owner || !state.players[owner.playerIndex]?.eliminated;
+      return !owner || !isEliminatedOkeyPlayer(state.players[owner.playerIndex]);
     });
   const completedSetTiles = state.players.flatMap((player) =>
-    player.eliminated
-      ? []
-      : player.melds
+    getOkeyRecyclableMeldsForCurrentRules(player)
           .filter((meld) => isCompleteFourColorSet(meld))
           .flatMap((meld) => meld.tiles),
   );
@@ -390,9 +389,9 @@ function rebuildDrawPileFromDiscardPool(state: OkeyGameState): OkeyGameState {
     ...state,
     players: state.players.map((player) => ({
       ...player,
-      melds: player.eliminated
-        ? player.melds
-        : player.melds.filter((meld) => !isCompleteFourColorSet(meld)),
+      melds: !isEliminatedOkeyPlayer(player)
+        ? player.melds.filter((meld) => !isCompleteFourColorSet(meld))
+        : player.melds,
     })),
     deck: shuffle(rebuildPool),
     discardPile: topDiscard ? [topDiscard] : [],
@@ -413,7 +412,7 @@ export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGame
   if (preparedState.phase !== "playing") return preparedState;
 
   const player = preparedState.players[preparedState.currentPlayerIndex];
-  if (player.eliminated) return preparedState;
+  if (isEliminatedOkeyPlayer(player)) return preparedState;
   const fromDiscard = source === "discard";
   const drawnTile = fromDiscard ? preparedState.discardPile[preparedState.discardPile.length - 1] : preparedState.deck[0];
   if (!drawnTile) return preparedState;
@@ -455,17 +454,23 @@ export function drawTile(state: OkeyGameState, source: OkeyDrawSource): OkeyGame
 export function playEliminatedTurn(state: OkeyGameState): OkeyGameState {
   if (state.phase !== "playing" || state.hasDrawnThisTurn) return state;
   const player = state.players[state.currentPlayerIndex];
-  if (!player?.eliminated) return state;
+  if (!isEliminatedOkeyPlayer(player)) return state;
 
   const preparedState = rebuildDrawPileFromDiscardPool(state);
   if (preparedState.phase !== "playing") return preparedState;
   const drawnTile = preparedState.deck[0];
   if (!drawnTile) return preparedState;
 
+  const discardedTile = chooseOkeyEliminatedTurnDiscardTile(player, drawnTile);
+  const nextHand = [...player.hand, drawnTile].filter((tile) => tile.id !== discardedTile.id);
+
   const nextState = advanceTurn({
     ...preparedState,
+    players: preparedState.players.map((entry, index) =>
+      index === preparedState.currentPlayerIndex ? { ...entry, hand: nextHand } : entry,
+    ),
     deck: preparedState.deck.slice(1),
-    discardPile: [...preparedState.discardPile, drawnTile],
+    discardPile: [...preparedState.discardPile, discardedTile],
     discardOwners: [...preparedState.discardOwners, {
       playerIndex: preparedState.currentPlayerIndex,
       playerId: player.id,
@@ -487,7 +492,7 @@ export function discardTile(
   if (state.phase !== "playing" || !state.hasDrawnThisTurn) return state;
 
   const player = state.players[state.currentPlayerIndex];
-  if (player.eliminated) return state;
+  if (isEliminatedOkeyPlayer(player)) return state;
   const tile = player.hand.find((entry) => entry.id === tileId);
   if (!tile) return state;
 
@@ -522,9 +527,7 @@ export function discardTile(
   }
 
   if (state.mustFinishAfterSecondKonkanDiscardPickPlayerId === player.id) {
-    const eliminatedPlayers = nextPlayers.map((entry, index) =>
-      index === state.currentPlayerIndex ? { ...entry, eliminated: true } : entry,
-    );
+    const eliminatedPlayers = markOkeyPlayerEliminated({ ...state, players: nextPlayers }, state.currentPlayerIndex).players;
     const burnedDiscardState = {
       ...state,
       players: eliminatedPlayers,
@@ -585,13 +588,13 @@ export function getRoundResultScoreDetails(state: OkeyGameState) {
   if (state.endReason === "win" && winner) {
     for (const player of state.players) {
       const isWinnerTeam = player.teamId === winner.teamId;
-      const handScore = player.eliminated
+      const handScore = isEliminatedOkeyPlayer(player)
         ? 0
         : getHandScore(player.hand, state.okeyTile);
       const points = isWinnerTeam
         ? 0
-        : player.eliminated
-          ? 100
+        : isEliminatedOkeyPlayer(player)
+          ? 100 + (winnerUsedKonkan ? OKEY_RULESET_V1.scoring.openedOpponentKonkanBonus : 0)
         : winnerUsedKonkan
           ? player.opened
             ? OKEY_RULESET_V1.scoring.openedOpponentKonkanBonus + handScore

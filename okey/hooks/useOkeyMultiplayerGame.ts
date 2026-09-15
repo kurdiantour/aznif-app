@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState } from "react-native";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 import { createInitialOkeyGame, getRoundResultScoreDetails } from "@/okey/engine/okey-engine";
 import { projectOkeyServerState } from "@/okey/presentation/okey-server-projection";
 import { OKEY_RULESET_V1 } from "@/okey/rules/okey-ruleset-v1";
 import type { OkeyAuthoritativeCommand, OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import type { OkeyDrawSource, OkeyGameState, OkeyMeld, OkeyTeamId } from "@/okey/types/okey";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState } from "react-native";
 
 export type OkeyRoundResult = {
   round: number;
@@ -218,10 +218,9 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
       if (next) applySnapshot(next);
       return true;
     } catch {
-      await refresh().catch(() => undefined);
       return false;
     }
-  }, [adapter, applySnapshot, refresh]);
+  }, [adapter, applySnapshot]);
 
   const draw = useCallback((source: OkeyDrawSource) => dispatch({ type: "draw", source }), [dispatch]);
   const discard = useCallback((tileId: string) => dispatch({ type: "discard", tileId }), [dispatch]);

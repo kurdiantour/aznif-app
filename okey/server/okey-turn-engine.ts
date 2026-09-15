@@ -1,4 +1,5 @@
 import type { OkeyGameState } from "../types/okey.ts";
+import { isGhostOkeySeat } from "../engine/okeyengine-eliminated.ts";
 
 /**
  * Canonical authoritative turn durations.
@@ -58,7 +59,7 @@ export function getAuthoritativeOkeyTurnContext(
   let controller: OkeyAuthoritativeSeatController | null = null;
 
   if (currentPlayer) {
-    if (currentPlayer.eliminated) {
+    if (isGhostOkeySeat(currentPlayer)) {
       controller = "ghost";
     } else if (
       currentPlayer.controlledByBot ||

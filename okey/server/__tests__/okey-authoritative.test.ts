@@ -2,26 +2,26 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { handSeatToBot, isOkeyBotControlled } from "../../engine/okey-bot-engine.ts";
 import { createInitialOkeyGame } from "../../engine/okey-engine.ts";
 import {
-  applyAuthoritativeOkeyCommand,
-  applyAuthoritativeOkeyMatchCommand,
-  applyAuthoritativeOkeyEliminatedTurn,
-  applyAuthoritativeManualLeave,
-  createAuthoritativeOkeyMatch,
-  getNextOkeyMatchTurnDeadline,
-  getOkeyMatchTurnDeadlineAfterTransition,
-  OKEY_DRAW_PHASE_SECONDS,
-  OKEY_THROW_PHASE_SECONDS,
-  OkeyCommandError,
-  projectOkeyPublicState,
-  projectOkeyState,
-  resolveAuthoritativeDeadline,
-  resolveAuthoritativeMatchDeadline,
-  settleAuthoritativeOkeyRound,
-  startAuthoritativeOkeyNextRound,
+    applyAuthoritativeManualLeave,
+    applyAuthoritativeOkeyCommand,
+    applyAuthoritativeOkeyEliminatedTurn,
+    applyAuthoritativeOkeyMatchCommand,
+    createAuthoritativeOkeyMatch,
+    getNextOkeyMatchTurnDeadline,
+    getOkeyMatchTurnDeadlineAfterTransition,
+    OKEY_DRAW_PHASE_SECONDS,
+    OKEY_THROW_PHASE_SECONDS,
+    OkeyCommandError,
+    projectOkeyPublicState,
+    projectOkeyState,
+    resolveAuthoritativeDeadline,
+    resolveAuthoritativeMatchDeadline,
+    settleAuthoritativeOkeyRound,
+    startAuthoritativeOkeyNextRound,
 } from "../okey-authoritative.ts";
-import { handSeatToBot, isOkeyBotControlled } from "../../engine/okey-bot-engine.ts";
 
 test("viewer projection exposes only the viewer hand and never the deck", () => {
   const state = createInitialOkeyGame(0);
@@ -153,7 +153,8 @@ test("an eliminated Human has no deadline and advances through one exact authori
   assert.equal(getNextOkeyMatchTurnDeadline(prepared), null);
 
   const next = applyAuthoritativeOkeyEliminatedTurn(prepared, actor.id);
-  assert.equal(next.roundState.discardPile.at(-1)?.id, "eliminated-draw");
+  assert.equal(next.roundState.players[0].hand.some((tile) => tile.id === "eliminated-draw"), true);
+  assert.equal(next.roundState.discardPile.at(-1)?.id, prepared.roundState.players[0].hand[0].id);
   assert.notEqual(next.roundState.currentPlayerIndex, 0);
   assert.throws(
     () => applyAuthoritativeOkeyEliminatedTurn(next, actor.id),

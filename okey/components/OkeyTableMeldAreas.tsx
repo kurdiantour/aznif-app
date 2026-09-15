@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Pressable, Text, View } from "react-native";
 
 import { isOkeyWildcard, MAX_PLAYER_MELDS } from "@/okey/engine/okey-engine";
+import { isEliminatedOkeyPlayer } from "@/okey/engine/okeyengine-eliminated";
 import type { OkeyMeld, OkeyPlayer, OkeyTile } from "@/okey/types/okey";
 import { useOkeyResponsiveLayout } from "../layout/OkeyResponsiveLayoutProvider";
 import { chunkOkeyMeldRows, OkeyMeldView, TABLE_MELD_TILE_HEIGHT, TABLE_MELD_TILE_WIDTH } from "./OkeyMeldView";
@@ -522,7 +523,7 @@ export function OkeyPlayerMeldArea({
               ))}
             </View>
           ))}
-          {player.eliminated ? (
+          {isEliminatedOkeyPlayer(player) ? (
             <View
               testID={"okey-eliminated-meld-overlay-" + player.id}
               pointerEvents="none"

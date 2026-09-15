@@ -27,9 +27,6 @@ verify_jwt = true
 [functions.okey_match]
 verify_jwt = true
 
-[functions.okey_test_match]
-verify_jwt = true
-
 [functions.okey_maintenance]
 verify_jwt = false
 

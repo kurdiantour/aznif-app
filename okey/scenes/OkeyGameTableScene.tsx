@@ -15,7 +15,7 @@ import { OkeyForcedKonkan } from "@/okey/components/OkeyForcedKonkan";
 import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
 import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
 import {
-    OkeyMatchResultPopup,
+  OkeyMatchResultPopup,
 } from "@/okey/components/OkeyMatchResultPopup";
 import { chunkOkeyMeldRows, OkeyMeldView } from "@/okey/components/OkeyMeldView";
 import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
@@ -24,7 +24,14 @@ import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
 import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
 import { styles } from "@/okey/components/okeyStyles";
-import type { OkeyTableMeldAction } from "@/okey/engine/okey-engine";
+import {
+  discardTile,
+  lockKonkanSet,
+  openPlayerMelds,
+  spendTileOnMeld,
+  type OkeyTableMeldAction,
+} from "@/okey/engine/okey-engine";
+import { isEliminatedOkeyPlayer } from "@/okey/engine/okeyengine-eliminated";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
 import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTakeoverPresentationExit, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
@@ -33,23 +40,23 @@ import { useOkeyTableGeometry } from "@/okey/layout/useOkeyTableGeometry";
 import { useOkeyGameplayReadiness, useOkeyMatchExitLifecycle, useOkeyRoomLifecycle } from "@/okey/multiplayer/useOkeyRoomLifecycle";
 import { OkeyTileFlightOverlay } from "@/okey/presentation/OkeyTileFlightOverlay";
 import {
-    type ScreenRect,
+  type ScreenRect,
 } from "@/okey/presentation/okey-game-presentation";
 import { getOkeyRunEndForDrop } from "@/okey/presentation/okey-table-interactions";
 import {
-    useOkeyHumanMeldDropAvailability,
-    useOkeyMeldDropOrchestration,
-    useOkeyPlayerTileFlightCommands,
-    useOkeyRackMoveInteraction,
-    useOkeyRackTileInteraction,
-    useOkeyTableActions,
+  useOkeyHumanMeldDropAvailability,
+  useOkeyMeldDropOrchestration,
+  useOkeyPlayerTileFlightCommands,
+  useOkeyRackMoveInteraction,
+  useOkeyRackTileInteraction,
+  useOkeyTableActions,
 } from "@/okey/presentation/useOkeyTableActions";
 import {
-    useOkeyAdapterPresentationLifecycle,
-    useOkeyForcedKonkanPresentation,
-    useOkeyStagedMeldCleanup,
-    useOkeyTablePresentation,
-    useOkeyTableViewModel,
+  useOkeyAdapterPresentationLifecycle,
+  useOkeyForcedKonkanPresentation,
+  useOkeyStagedMeldCleanup,
+  useOkeyTablePresentation,
+  useOkeyTableViewModel,
 } from "@/okey/presentation/useOkeyTablePresentation";
 import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
 import type { OkeyTile } from "@/okey/types/okey";
@@ -247,6 +254,34 @@ const onlineController = useOkeyMultiplayerGame(
     serverClockOffsetMs, currentRoundResult, roundResults, matchScores, matchWinnerTeamId,
     showMatchResultPopup, matchFinished,
   });
+
+  const commitOpenPresentation = useCallback((melds: typeof openableRackMelds.melds, score: number, tileId?: string) => {
+    const playerIndex = state.players.findIndex((player) => player.id === humanPlayer.id);
+    if (playerIndex >= 0) {
+      const opened = openPlayerMelds(state, playerIndex, melds, score, { finalDiscard: Boolean(tileId) });
+      const next = tileId && opened !== state ? discardTile(opened, tileId) : opened;
+      if (next !== state) setPresentedPlayers(next.players);
+    }
+    return commitOpenIntent(melds, score, tileId).then((accepted) => {
+      if (!accepted) setPresentedPlayers(state.players);
+      return accepted;
+    });
+  }, [commitOpenIntent, humanPlayer.id, setPresentedPlayers, state]);
+
+  const submitTableMeldPresentation = useCallback((action: OkeyTableMeldAction, runEnd?: "start" | "end") => {
+    const playerIndex = state.players.findIndex((player) => player.id === humanPlayer.id);
+    if (playerIndex >= 0) {
+      const next = action.type === "lock-konkan"
+        ? lockKonkanSet(state, playerIndex, action.tileId, action.targetPlayerId, action.targetMeldId, runEnd)
+        : spendTileOnMeld(state, playerIndex, action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
+      if (next !== state) setPresentedPlayers(next.players);
+    }
+    const command = action.type === "lock-konkan" ? lockKonkanSetOnTable : spendTileOnTableMeld;
+    return command(action.tileId, action.targetPlayerId, action.targetMeldId, runEnd).then((accepted) => {
+      if (!accepted) setPresentedPlayers(state.players);
+      return accepted;
+    });
+  }, [humanPlayer.id, lockKonkanSetOnTable, setPresentedPlayers, spendTileOnTableMeld, state]);
   const presentedHumanRackTiles = useOkeyOptimisticRackPresentation(
     humanPlayer.hand,
     optimisticRackTile,
@@ -254,6 +289,15 @@ const onlineController = useOkeyMultiplayerGame(
   );
   const topDiscard = state.discardPile[state.discardPile.length - 1] ?? null;
   const drawPending = pendingDrawRef.current !== null;
+  const hiddenRackTileIdsForPresentation = useMemo(() => {
+    const pendingDeckTileId = pendingDrawRef.current?.source === "deck"
+      ? pendingDrawRef.current.tileId
+      : null;
+    if (!pendingDeckTileId || hiddenRackTileIds.includes(pendingDeckTileId)) {
+      return hiddenRackTileIds;
+    }
+    return [...hiddenRackTileIds, pendingDeckTileId];
+  }, [hiddenRackTileIds, optimisticRackTile, onlineProjection]);
   const presentedDeckCount = Math.max(0, state.deck.length - (pendingDrawRef.current?.source === "deck" ? 1 : 0));
   const presentedDiscardCount = Math.max(0, state.discardPile.length - (pendingDrawRef.current?.source === "discard" ? 1 : 0));
   const {
@@ -369,7 +413,7 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     selectOpenAction, selectTableMeldAction,
   } = useOkeyTableActions({
     state, humanPlayer, isHumanTurn, selectedTileId,
-    rackMeldSelection: openableRackMelds, declareKonkan, commitOpenIntent, setSelectedTileId,
+    rackMeldSelection: openableRackMelds, declareKonkan, commitOpenIntent: commitOpenPresentation, setSelectedTileId,
   });
 
   const completeActivePresentation = useOkeyTileFlightCompletion({
@@ -412,10 +456,10 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
   });
   const submitTableMeldAction = useCallback((action: OkeyTableMeldAction, runEnd?: "start" | "end") => {
     if (action.type === "lock-konkan") {
-      return lockKonkanSetOnTable(action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
+      return submitTableMeldPresentation(action, runEnd);
     }
-    return spendTileOnTableMeld(action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
-  }, [lockKonkanSetOnTable, spendTileOnTableMeld]);
+    return submitTableMeldPresentation(action, runEnd);
+  }, [submitTableMeldPresentation]);
 
   const {
     updateTileDragMeldTarget,
@@ -437,9 +481,9 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     setHoveredTarget: setHoveredMeldTarget,
     setDroppedMelds,
     setCommittedSignatures: setLocalDragCommittedMeldSignatures,
-    lockKonkan: lockKonkanSetOnTable,
-    spendTile: spendTileOnTableMeld,
-    commitOpenIntent,
+    lockKonkan: (tileId, playerId, meldId, runEnd) => submitTableMeldPresentation({ type: "lock-konkan", tileId, targetPlayerId: playerId, targetMeldId: meldId, runEndOptions: [] }, runEnd),
+    spendTile: (tileId, playerId, meldId, runEnd) => submitTableMeldPresentation({ type: "spend", tileId, targetPlayerId: playerId, targetMeldId: meldId, runEndOptions: [] }, runEnd),
+    commitOpenIntent: commitOpenPresentation,
     selectOpenAction,
     emitFeedback,
   });
@@ -780,10 +824,10 @@ const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
           onDropTile={handleDropTile}
           stagedTileIds={droppedTileIds}
           onTileDragPointChange={handleTileDragPointChange}
-          hiddenTileIds={hiddenRackTileIds}
+          hiddenTileIds={hiddenRackTileIdsForPresentation}
           skipEnterAnimationTileIds={skipEnterAnimationTileIds}
          externalDropPlacement={discardDropPlacement}
-          eliminated={!!humanPlayer.eliminated}
+          eliminated={isEliminatedOkeyPlayer(humanPlayer)}
           onExternalDropPlaced={handleExternalDropPlaced}
 
           turnTimerActive={
