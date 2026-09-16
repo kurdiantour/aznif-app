@@ -548,3 +548,42 @@ test("snapshot refresh backfills missed action events after the last delivered v
   unsubscribe();
 });
 
+test("initial snapshot sends afterVersion: null and sets actionEventVersion cursor to projection version", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-initial-cursor");
+  expect((adapter as any).actionEventVersion).toBeNull();
+
+  mockInvoke.mockResolvedValueOnce({
+    data: {
+      projection: projection(7),
+      actionEvents: [],
+    },
+    error: null,
+  });
+
+  await adapter.refresh();
+
+  expect((mockInvoke.mock.calls[0]?.[1] as any).body).toMatchObject({
+    action: "snapshot",
+    matchId: "match-initial-cursor",
+    afterVersion: null,
+  });
+
+  expect((adapter as any).actionEventVersion).toBe(7);
+
+  mockInvoke.mockResolvedValueOnce({
+    data: {
+      projection: projection(7),
+      actionEvents: [],
+    },
+    error: null,
+  });
+
+  await adapter.refresh();
+
+  expect((mockInvoke.mock.calls[1]?.[1] as any).body).toMatchObject({
+    action: "snapshot",
+    matchId: "match-initial-cursor",
+    afterVersion: 7,
+  });
+});
+

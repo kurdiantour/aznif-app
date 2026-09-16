@@ -172,7 +172,7 @@ test("Bot intent provider does not own pacing and Reconciler consumes authoritat
   assert.match(engine, /ready: !startPending/);
   assert.doesNotMatch(executor, /evaluateOkeyServerLifecycle\(|notBefore/);
   assert.doesNotMatch(executor, /currentState\.roundStartsAt/);
-  assert.match(reconciler, /decision\.type === "bot-turn"[\s\S]*!decision\.ready/);
+  assert.match(engine, /case "bot-turn":[\s\S]*if \(!decision\.ready\)/);
   assert.doesNotMatch(reconciler, /currentState\??\.roundStartsAt/);
 });
 test("Priority 4: Expired human turn deadline is triggered when time is past deadline", () => {
@@ -494,7 +494,7 @@ test("reconcileAuthoritativeServerTurns commits only Timeout and hands the Bot c
 
   const mockClient: any = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -572,7 +572,7 @@ test("reconcileAuthoritativeServerTurns commits only Timeout and leaves eliminat
 
   const mockClient: any = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -643,7 +643,7 @@ test("reconcileAuthoritativeServerTurns executes bot turn through executeOkeyBot
 
   const mockClient: any = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -997,7 +997,7 @@ test("reconcileAuthoritativeServerTurns commits Next Round only and hands starti
 
   const mockClient: any = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -1121,7 +1121,7 @@ test("Server Lifecycle Alarm: round completion is immediately eligible by game r
 
   const mockClient = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -1194,7 +1194,7 @@ test("Server Lifecycle Alarm: performs no retry after a one-shot commit conflict
 
   const mockClient = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -1249,7 +1249,7 @@ test("Server Lifecycle Alarm: performs no retry after a one-shot commit conflict
   assert.deepEqual(sleptIntervals, []);
   assert.equal(alarmResult.ok, true);
   assert.equal(alarmResult.executed, false);
-  assert.equal(alarmResult.reason, "already_transitioned");
+  assert.equal(alarmResult.reason, "not_eligible");
   assert.equal(alarmResult.state?.roundState.phase, "finished");
   assert.equal(attemptCount, 1);
 });
@@ -1274,7 +1274,7 @@ test("Server Lifecycle Alarm: gracefully recognizes if match was already transit
 
   const mockClient = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -1325,7 +1325,7 @@ test("Server Lifecycle Alarm: executes one timeout transition when already due",
 
   const mockClient = {
     rpc: (name: string, args: any) => {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {
@@ -1378,16 +1378,16 @@ test("Server Lifecycle Alarm: executes one timeout transition when already due",
   assert.equal(alarmResult.version, 6);
 });
 
-test("Server Lifecycle Alarm: missing requester exits before any RPC", async () => {
-  let rpcCalls = 0;
+test("Server Lifecycle Alarm: system bundle fetch uses system RPC without requiring requesterUserId", async () => {
+  let rpcNameCalled = "";
 
   const mockClient = {
-    rpc: () => {
-      rpcCalls += 1;
+    rpc: (name: string) => {
+      rpcNameCalled = name;
       return {
         single: async () => ({
           data: null,
-          error: null,
+          error: new Error("fetch_failed"),
         }),
       };
     },
@@ -1395,16 +1395,13 @@ test("Server Lifecycle Alarm: missing requester exits before any RPC", async () 
 
   const result = await reconcileAuthoritativeServerLifecycleAlarm({
     client: mockClient,
-    matchId: "test-missing-requester-user-id",
-  } as any);
+    matchId: "test-system-bundle-fetch",
+  });
 
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, false);
   assert.equal(result.executed, false);
-  assert.equal(result.state, null);
-  assert.equal(result.version, null);
-  assert.equal(result.attempts, 0);
-  assert.equal(result.reason, "missing_requester_user_id");
-  assert.equal(rpcCalls, 0);
+  assert.equal(result.reason, "fetch_failed");
+  assert.equal(rpcNameCalled, "okey_get_system_authoritative_bundle");
 });
 test("Human deck-zero Draw rebuilds, commits, versions, and broadcasts the authoritative state", async () => {
   const base = createAuthoritativeOkeyMatch(mockPlayers, 0);

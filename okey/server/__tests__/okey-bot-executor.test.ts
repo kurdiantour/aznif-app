@@ -139,7 +139,7 @@ function fakeClient(input: {
 
   const client: any = {
     rpc(name: string, args: any) {
-      if (name === "okey_get_authoritative_bundle") {
+      if (name === "okey_get_authoritative_bundle" || name === "okey_get_system_authoritative_bundle") {
         return {
           single: async () => ({
             data: {

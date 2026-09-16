@@ -468,7 +468,7 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
 type OkeyServerLifecycleAlarmOptions = {
   client: any;
   matchId: string;
-  requesterUserId: string;
+  requesterUserId?: string;
   initialVersion?: number;
   runAt?: string | null;
   broadcastStateUpdate?: (input: {
@@ -504,8 +504,7 @@ type OkeyServerLifecycleAlarmResult = {
     | "match_finished"
     | "already_transitioned"
     | "fetch_failed"
-    | "not_eligible"
-    | "missing_requester_user_id";
+    | "not_eligible";
 };
 
 /** One-shot executor: fetch latest bundle, validate due state, reconcile once via executeOkeyServerLifecycle. */
@@ -514,23 +513,10 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
 ): Promise<OkeyServerLifecycleAlarmResult> {
   const getNow = options.now ?? Date.now;
   const matchId = options.matchId;
-  const requesterUserId = options.requesterUserId;
-  if (!requesterUserId) {
-    return {
-      ok: true,
-      executed: false,
-      state: null,
-      version: null,
-      attempts: 0,
-      reason: "missing_requester_user_id",
-    };
-  }
 
   const { data: bundleRaw, error: bundleError } = await options.client
-    .rpc("okey_get_authoritative_bundle", {
+    .rpc("okey_get_system_authoritative_bundle", {
       p_match_id: matchId,
-      p_user_id: requesterUserId,
-      p_command_id: null,
     })
     .single();
   if (bundleError || !bundleRaw) {
@@ -571,7 +557,6 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
   const reconciled = await executeOkeyServerLifecycle({
     client: options.client,
     matchId,
-    requesterUserId,
     state,
     version,
     turnDeadlineAt,

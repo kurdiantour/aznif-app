@@ -609,6 +609,9 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
         : payload.projection;
       const previousProjection = this.snapshot;
       this.publish(projection);
+      if (this.actionEventVersion === null && typeof projection.version === "number") {
+        this.actionEventVersion = projection.version;
+      }
       this.publishCommittedTransition(previousProjection, projection, actionEvents);
     }
   }

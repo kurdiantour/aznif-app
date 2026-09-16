@@ -906,7 +906,7 @@ export async function executeOkeyServerLifecycle(
         expectedVersion: currentVersion,
         resolveDeadline: (nextState) => {
           commandState = nextState;
-          actorPlayerId = options.requesterUserId ||
+          actorPlayerId =
             nextState.roundState.players[nextState.roundState.currentPlayerIndex]?.id ||
             "system";
           return getNextOkeyMatchTurnDeadline(nextState, getNow());

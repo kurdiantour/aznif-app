@@ -52,7 +52,7 @@ test('Human discard schedules an immediate Bot lifecycle alarm that executes exa
   let currentState = committedState;
   const client: any = {
     rpc: (name: string, args: any) => {
-      if (name === 'okey_get_authoritative_bundle') {
+      if (name === 'okey_get_authoritative_bundle' || name === 'okey_get_system_authoritative_bundle') {
         return { single: async () => ({
           data: { status: 'playing', version: 8, state: currentState, turn_deadline_at: null },
           error: null,
@@ -115,7 +115,7 @@ test('Ghost lifecycle alarms run immediately, preserve a null human deadline, an
   let commitCount = 0;
   const client: any = {
     rpc: (name: string, args: any) => {
-      if (name === 'okey_get_authoritative_bundle') {
+      if (name === 'okey_get_authoritative_bundle' || name === 'okey_get_system_authoritative_bundle') {
         return { single: async () => ({
           data: { status: 'playing', version: currentVersion, state: currentState, turn_deadline_at: null },
           error: null,

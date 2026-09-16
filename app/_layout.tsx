@@ -4,6 +4,7 @@ import { GameInvitesProvider } from "@/lib/gameInvitesProvider";
 import { appFontAssets, applyAppFontDefaults } from "@/lib/fonts";
 import "@/lib/rtl";
 import "@/lib/urlPolyfill";
+import { useKeepAwake } from "expo-keep-awake";
 import { useFonts } from "expo-font";
 import { NavigationBar } from "expo-navigation-bar";
 import { Stack } from "expo-router";
@@ -27,6 +28,7 @@ function applyImmersiveFullscreen() {
 }
 
 export default function Layout() {
+  useKeepAwake();
   const [fontsLoaded] = useFonts(appFontAssets);
 
   useEffect(() => {
@@ -67,6 +69,7 @@ export default function Layout() {
               screenOptions={{
                 headerShown: false,
                 animation: "none",
+                gestureEnabled: false,
                 contentStyle: {
                   backgroundColor: "#050b22",
                   direction: "rtl",

@@ -145,31 +145,9 @@ serve(async (req) => {
         return json({ error: "Missing or invalid expected_version" }, 400);
       }
 
-      const { data: seat, error: seatError } = await svc
-        .schema("okey")
-        .from("match_seats")
-        .select("user_id")
-        .eq("match_id", match_id)
-        .is("membership_released_at", null)
-        .order("player_index", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (seatError) throw seatError;
-
-      const requesterUserId = seat?.user_id ?? null;
-
-      if (!requesterUserId) {
-        return json({
-          ok: true,
-          processed: false,
-          reason: "match_has_no_seats",
-        });
-      }
-
       const lifecyclePromise = reconcileAuthoritativeServerLifecycleAlarm({
         client: svc,
         matchId: match_id,
-        requesterUserId,
         deterministicCommandId,
         ...(Number.isSafeInteger(expected_version) && expected_version >= 0
           ? { initialVersion: Number(expected_version) }

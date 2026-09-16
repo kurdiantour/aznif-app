@@ -467,27 +467,30 @@ if (action === "manual-leave") {
     const currentVersion = Number(bundle.version);
     const currentDeadline = bundle.turn_deadline_at;
 
-    const afterVersion = Number(body.afterVersion);
+    const rawAfterVersion = body.afterVersion;
     let actionEvents: OkeyActionEvent[] = [];
-    if (Number.isSafeInteger(afterVersion) && afterVersion >= 0) {
-      const { data: eventRows, error: eventError } = await service
-        .schema("okey")
-        .from("match_action_events")
-        .select("match_id,version,sequence,action_type,actor_player_id,payload,created_at")
-        .eq("match_id", matchId)
-        .gt("version", afterVersion)
-        .order("version", { ascending: true })
-        .order("sequence", { ascending: true });
-      if (eventError) throw eventError;
-      actionEvents = (eventRows ?? []).map((row) => ({
-        matchId: row.match_id,
-        version: Number(row.version),
-        sequence: Number(row.sequence),
-        type: row.action_type,
-        actorPlayerId: row.actor_player_id,
-        payload: row.payload ?? {},
-        createdAt: row.created_at,
-      })) as OkeyActionEvent[];
+    if (rawAfterVersion !== null && rawAfterVersion !== undefined) {
+      const afterVersion = Number(rawAfterVersion);
+      if (Number.isSafeInteger(afterVersion) && afterVersion >= 0) {
+        const { data: eventRows, error: eventError } = await service
+          .schema("okey")
+          .from("match_action_events")
+          .select("match_id,version,sequence,action_type,actor_player_id,payload,created_at")
+          .eq("match_id", matchId)
+          .gt("version", afterVersion)
+          .order("version", { ascending: true })
+          .order("sequence", { ascending: true });
+        if (eventError) throw eventError;
+        actionEvents = (eventRows ?? []).map((row) => ({
+          matchId: row.match_id,
+          version: Number(row.version),
+          sequence: Number(row.sequence),
+          type: row.action_type,
+          actorPlayerId: row.actor_player_id,
+          payload: row.payload ?? {},
+          createdAt: row.created_at,
+        })) as OkeyActionEvent[];
+      }
     }
 
     const settlement = await loadPersistedSettlementForViewer();

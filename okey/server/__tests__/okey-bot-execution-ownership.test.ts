@@ -15,6 +15,8 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   const maintenance = read("supabase/functions/okey_maintenance/index.ts");
   const matchAdapterInterface = read("okey/adapters/okey-match-adapter.ts");
 
+  const engine = read("okey/server/okey-turn-engine.ts");
+
   // Client must NOT have any bot triggers or claims:
   assert.doesNotMatch(adapter, /processBotTurn/);
   assert.doesNotMatch(matchAdapterInterface, /processBotTurn/);
@@ -30,7 +32,7 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
   assert.match(executor, /selectOkeyBotIntent/);
   assert.match(reconciler, /executeOkeyServerLifecycle/);
-  assert.match(reconciler, /commitAuthoritativeOkeyAction\(\{/);
+  assert.match(engine, /commitAuthoritativeOkeyAction\(\{/);
   assert.doesNotMatch(executor, /\.rpc\(|evaluateOkeyServerLifecycle|commitAuthoritativeOkeyAction|\.channel\(|settleAuthoritative|okey_settle|dispatchContinuation|scheduleLifecycleAlarm/);
   assert.match(commitGateway, /p_expected_version: input\.expectedVersion/);
   assert.match(commitGateway, /p_turn_deadline_at: input\.prepared\.deadline/);

@@ -28,7 +28,6 @@ import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/domino/types/domino-game";
 import { Ionicons } from "@expo/vector-icons";
-import { useKeepAwake } from "expo-keep-awake";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -53,8 +52,6 @@ function getTeamName(
 }
 
 export default function GameScreen() {
-  useKeepAwake();
-
   const { room_id, mode, practice, preview } = useLocalSearchParams();
   const router = useRouter();
 

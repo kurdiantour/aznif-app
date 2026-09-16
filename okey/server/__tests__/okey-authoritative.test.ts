@@ -742,3 +742,9 @@ test("runtime parser preserves the complete authoritative KonKan declaration", (
   const edge = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
   assert.match(edge, /case "declare-konkan"[\s\S]*completionMeldTileIds: command\.completionMeldTileIds as string\[\][\s\S]*discardTileId: command\.discardTileId/);
 });
+
+test("initial snapshot with afterVersion null/undefined skips match_action_events query in edge function", () => {
+  const edge = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
+  assert.match(edge, /const rawAfterVersion = body\.afterVersion/);
+  assert.match(edge, /if \(rawAfterVersion !== null && rawAfterVersion !== undefined\)/);
+});

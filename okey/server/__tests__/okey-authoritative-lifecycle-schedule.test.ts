@@ -15,7 +15,7 @@ test("external and Bot commits use one-step exact claims while maintenance stays
   const maintenance = readFileSync("supabase/functions/okey_maintenance/index.ts", "utf8");
   const scheduler = readFileSync("supabase/functions/_shared/aznif-game-lifecycle.ts", "utf8");
 
-  assert.match(worker, /\.is\("membership_released_at", null\)/);
+  assert.match(worker, /reconcileAuthoritativeServerLifecycleAlarm/);
   assert.match(maintenance, /\.eq\("status", "finished"\)/);
   assert.match(maintenance, /\.is\("settlement_at", null\)/);
   assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerLifecycleAlarm|\.eq\("status", "playing"\)/);
