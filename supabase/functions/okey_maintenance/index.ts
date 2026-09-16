@@ -1,3 +1,4 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
@@ -15,7 +16,6 @@ type MatchRow = {
   version: number | string;
   status: "finished";
   settlement_at: string | null;
-  is_test: boolean;
   public_projection: OkeyMatchServerProjection;
 };
 
@@ -35,6 +35,7 @@ serve(async (request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const lifecycleSecret = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
   const receivedLifecycleSecret = request.headers.get("x-aznif-lifecycle-key");
+
 
   if (
     !supabaseUrl ||
@@ -76,7 +77,7 @@ serve(async (request) => {
   const { data: settlementMatches, error: matchesError } = await service
     .schema("okey")
     .from("matches")
-    .select("id, version, status, settlement_at, is_test, public_projection")
+    .select("id, version, status, settlement_at, public_projection")
     .eq("status", "finished")
     .is("settlement_at", null)
     .order("updated_at", { ascending: true })
@@ -97,39 +98,6 @@ serve(async (request) => {
 
   for (const match of (settlementMatches ?? []) as MatchRow[]) {
     try {
-      if (match.is_test) {
-        const { error: testSettlementError } = await service
-          .schema("okey")
-          .from("matches")
-          .update({
-            settlement_at: new Date().toISOString(),
-            settlement: { type: "test", economyApplied: false },
-          })
-          .eq("id", match.id)
-          .eq("is_test", true)
-          .is("settlement_at", null);
-
-        if (testSettlementError) throw new Error(testSettlementError.message);
-        recoveredSettlements += 1;
-
-        try {
-          await broadcast(
-            match.id,
-            await deterministicCommandId(
-              `okey:${match.id}:maintenance-test-settlement:${match.version}`,
-            ),
-            Number(match.version),
-            match.public_projection,
-          );
-        } catch (broadcastError) {
-          console.error(
-            `Okey test settlement recovery broadcast failed for ${match.id}`,
-            broadcastError,
-          );
-        }
-        continue;
-      }
-
       const { data: stateRow, error: stateError } = await service
         .schema("okey")
         .from("match_private_states")

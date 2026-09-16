@@ -9,9 +9,9 @@ import {
 } from '../okey-authoritative.ts';
 import {
     getOkeyLifecycleRunAt,
-    reconcileAuthoritativeBotTurn,
     reconcileAuthoritativeServerLifecycleAlarm,
 } from '../okey-server-reconciler.ts';
+import { executeOkeyServerLifecycle } from '../okey-turn-engine.ts';
 
 const players = [
   { id: 'p1', name: 'P1', controlledByBot: false },
@@ -74,32 +74,24 @@ test('Human discard schedules an immediate Bot lifecycle alarm that executes exa
       }
       throw new Error(`unexpected rpc: ${name}`);
     },
-    schema: () => ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { is_test: false }, error: null }),
-          }),
-        }),
-      }),
-    }),
   };
 
-  const alarmResult = await reconcileAuthoritativeBotTurn({
+  const alarmResult = await executeOkeyServerLifecycle({
+    client,
     matchId: 'human-to-bot',
     requesterUserId: 'p1',
-    expectedVersion: 8,
-    expectedActorId: afterDiscard.players[botIndex].id,
-  }, {
-    client,
+    state: currentState,
+    version: 8,
+    turnDeadlineAt: null,
     now: () => Date.parse(runAt),
     deterministicCommandId: async () => 'bot-transition-id',
     broadcastStateUpdate: async () => {},
   });
 
-  assert.equal(alarmResult.processed, true);
+  assert.equal(alarmResult.executed, true);
+  assert.equal(alarmResult.botProcessed, true);
   assert.equal(alarmResult.step, 'draw');
-  assert.equal(alarmResult.finalVersion, 9);
+  assert.equal(alarmResult.version, 9);
   assert.equal(commits, 1);
 });
 

@@ -30,7 +30,7 @@ test("lifecycle alarms are one-shot, version-bound, and only chain after a commi
     reconciler.indexOf("export async function reconcileAuthoritativeServerLifecycleAlarm"),
   );
   assert.doesNotMatch(lifecycleAlarmSource, /refreshAfterInitialSleep|retryIntervalMs|maxRetryDurationMs|await sleep\(|while\s*\(/);
-  assert.equal((lifecycleAlarmSource.match(/await reconcileAuthoritativeServerTurns\(\{/g) ?? []).length, 1);
+  assert.equal((lifecycleAlarmSource.match(/await executeOkeyServerLifecycle\(\{/g) ?? []).length, 1);
   assert.match(lifecycleAlarmSource, /version !== Number\(options\.initialVersion\)/);
 });
 

@@ -18,7 +18,7 @@ test("external and Bot commits use one-step exact claims while maintenance stays
   assert.match(worker, /\.is\("membership_released_at", null\)/);
   assert.match(maintenance, /\.eq\("status", "finished"\)/);
   assert.match(maintenance, /\.is\("settlement_at", null\)/);
-  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerLifecycleAlarm|\.eq\("status", "playing"\)/);
   assert.match(scheduler, /expectedVersion: input\.expectedVersion/);
   assert.match(scheduler, /schedulerUrl/);
   assert.doesNotMatch(scheduler, /while\s*\(|setInterval|setTimeout/);

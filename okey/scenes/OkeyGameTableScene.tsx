@@ -388,7 +388,19 @@ const shouldShowScorePopup =
     emitFeedback("timeout-warning", `timeout-warning:${warningKey}`);
   }, [emitFeedback, isAppActive, isHumanTurn, onlineGameplayReady, setTurnWarningToastVisible, turnTimeLeft, turnView.deadlineAt, turnView.playerId]);
 
-const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
+useEffect(() => {
+  if (!turnWarningToastVisible) return;
+
+  const timeoutId = setTimeout(() => {
+    setTurnWarningToastVisible(false);
+  }, 3000);
+
+  return () => {
+    clearTimeout(timeoutId);
+  };
+}, [turnWarningToastVisible, setTurnWarningToastVisible]);
+
+  const { resetTimeoutPresentation } = useOkeyTimeoutTileFlightCoordinator({
     isOnline: true,
     onlineMatchId,
     onlineProjection,

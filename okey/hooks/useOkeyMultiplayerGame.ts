@@ -214,13 +214,11 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     if (!adapter) return false;
     try {
       await adapter.dispatch(command);
-      const next = adapter.getSnapshot();
-      if (next) applySnapshot(next);
       return true;
     } catch {
       return false;
     }
-  }, [adapter, applySnapshot]);
+  }, [adapter]);
 
   const draw = useCallback((source: OkeyDrawSource) => dispatch({ type: "draw", source }), [dispatch]);
   const discard = useCallback((tileId: string) => dispatch({ type: "discard", tileId }), [dispatch]);

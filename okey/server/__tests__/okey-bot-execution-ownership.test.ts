@@ -22,18 +22,17 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   assert.doesNotMatch(hook, /canExecuteBotTurn/);
 
   // Reconciler owns lifecycle execution; executor is policy-only:
-  assert.match(reconciler, /reconcileAuthoritativeServerTurns/);
+  assert.match(reconciler, /reconcileAuthoritativeServerLifecycleAlarm/);
   assert.match(edge, /reconcileAuthoritativeHumanCommand/);
-  assert.doesNotMatch(edge, /reconcileAuthoritativeServerTurns/);
-  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerTurns|\.eq\("status", "playing"\)/);
+  assert.doesNotMatch(edge, /reconcileAuthoritativeServerLifecycleAlarm/);
+  assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerLifecycleAlarm|\.eq\("status", "playing"\)/);
   assert.match(maintenance, /\.eq\("status", "finished"\)[\s\S]*settlement_at/);
   assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
   assert.match(executor, /selectOkeyBotIntent/);
-  assert.match(reconciler, /reconcileAuthoritativeBotTurn/);
+  assert.match(reconciler, /executeOkeyServerLifecycle/);
   assert.match(reconciler, /commitAuthoritativeOkeyAction\(\{/);
   assert.doesNotMatch(executor, /\.rpc\(|evaluateOkeyServerLifecycle|commitAuthoritativeOkeyAction|\.channel\(|settleAuthoritative|okey_settle|dispatchContinuation|scheduleLifecycleAlarm/);
   assert.match(commitGateway, /p_expected_version: input\.expectedVersion/);
   assert.match(commitGateway, /p_turn_deadline_at: input\.prepared\.deadline/);
   assert.match(commitGateway, /p_action_events: input\.prepared\.actionEvents/);
 });
-

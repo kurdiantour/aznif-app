@@ -2,9 +2,106 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { handSeatToBot } from "../../engine/okey-bot-engine.ts";
-import { reconcileAuthoritativeBotTurn } from "../okey-server-reconciler.ts";
+import {
+  evaluateOkeyServerLifecycle,
+  executeOkeyServerLifecycle,
+} from "../okey-turn-engine.ts";
+import type { OkeyAuthoritativeMatchState } from "../okey-authoritative.ts";
 import { selectOkeyBotIntent } from "../okey-bot-executor.ts";
 import { createAuthoritativeOkeyMatch } from "../okey-authoritative.ts";
+
+async function reconcileAuthoritativeBotTurn(
+  input: {
+    matchId: string;
+    requesterUserId: string;
+    expectedVersion: number;
+    expectedActorId: string;
+  },
+  dependencies: {
+    client: any;
+    deterministicCommandId?: (source: string) => Promise<string>;
+    now?: () => number;
+    broadcastStateUpdate?: (payload: any) => Promise<void>;
+  },
+) {
+  const { client } = dependencies;
+  const now = dependencies.now ?? Date.now;
+
+  const { data: bundleRaw } = await client
+    .rpc("okey_get_authoritative_bundle", {
+      p_match_id: input.matchId,
+      p_user_id: input.requesterUserId,
+      p_command_id: null,
+    })
+    .single();
+
+  if (!bundleRaw) {
+    return { ok: true, processed: false, reason: "match_not_found_or_forbidden" };
+  }
+  if (bundleRaw.status !== "playing") {
+    return { ok: true, processed: false, reason: "match_not_playing" };
+  }
+
+  const currentVersion = Number(bundleRaw.version);
+  if (!Number.isSafeInteger(currentVersion) || currentVersion < 0) {
+    return { ok: true, processed: false, reason: "invalid_version" };
+  }
+  if (currentVersion !== input.expectedVersion) {
+    return { ok: true, processed: false, reason: "stale_bot_turn" };
+  }
+
+  const currentState = bundleRaw.state as OkeyAuthoritativeMatchState;
+  if (currentState.matchFinished) {
+    return { ok: true, processed: false, reason: "match_finished" };
+  }
+
+  const decision = evaluateOkeyServerLifecycle({
+    state: currentState,
+    version: currentVersion,
+    turn_deadline_at: bundleRaw.turn_deadline_at as string | null,
+  }, now());
+
+  if (decision.type !== "bot-turn") {
+    return {
+      ok: true,
+      processed: false,
+      reason: decision.type === "idle" && decision.reason === "waiting_for_human_action"
+        ? "current_player_is_human"
+        : "stale_bot_turn",
+    };
+  }
+  if (decision.expectedActorId !== input.expectedActorId) {
+    return { ok: true, processed: false, reason: "stale_bot_turn" };
+  }
+
+  const result = await executeOkeyServerLifecycle({
+    client,
+    matchId: input.matchId,
+    requesterUserId: input.requesterUserId,
+    state: currentState,
+    version: currentVersion,
+    turnDeadlineAt: bundleRaw.turn_deadline_at as string | null,
+    broadcastStateUpdate: dependencies.broadcastStateUpdate,
+    deterministicCommandId: dependencies.deterministicCommandId,
+    now,
+    initialDecision: decision,
+  });
+
+  if (result.botProcessed && result.step && result.state) {
+    return {
+      ok: true,
+      processed: true,
+      step: result.step,
+      steps: [result.step],
+      finalVersion: result.version,
+      state: result.state,
+      turnDeadlineAt: result.turnDeadlineAt,
+      reason: result.reason ?? "transition_committed",
+    };
+  }
+
+  return { ok: true, processed: false, reason: result.reason ?? "already_processed" };
+}
 
 const players = [
   { id: "player-0", name: "Player 0" },
@@ -31,7 +128,6 @@ function fakeClient(input: {
   version?: number;
   applied?: boolean | ((attempt: number, args: any) => boolean);
   commitError?: Error | null;
-  isTest?: boolean;
   committedEvents?: any[];
 }) {
   const calls = {
@@ -85,33 +181,6 @@ function fakeClient(input: {
       }
 
       throw new Error(`unexpected_rpc:${name}`);
-    },
-
-    schema(schema: string) {
-      assert.equal(schema, "okey");
-
-      return {
-        from(table: string) {
-          assert.equal(table, "matches");
-
-          return {
-            select() {
-              return {
-                eq() {
-                  return {
-                    maybeSingle: async () => ({
-                      data: {
-                        is_test: input.isTest ?? false,
-                      },
-                      error: null,
-                    }),
-                  };
-                },
-              };
-            },
-          };
-        },
-      };
     },
   };
 

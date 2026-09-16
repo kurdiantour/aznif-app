@@ -112,6 +112,7 @@ test("runtime controllers no longer compose authoritative next state directly", 
   const match = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
   const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
   const bot = readFileSync("okey/server/okey-bot-executor.ts", "utf8");
+  const engine = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
 
   assert.doesNotMatch(match, /executeAuthoritativeOkeyTransition|commitAuthoritativeOkeyAction/);
   assert.match(match, /reconcileAuthoritativeHumanCommand\(/);
@@ -120,12 +121,18 @@ test("runtime controllers no longer compose authoritative next state directly", 
   assert.doesNotMatch(match, /applyAuthoritativeOkeyMatchCommand\(/);
   assert.doesNotMatch(match, /applyAuthoritativeManualLeave\(/);
 
+  assert.match(engine, /export async function executeOkeyAuthoritativePipeline/);
+  assert.match(engine, /export async function executeOkeyServerLifecycle/);
+  assert.doesNotMatch(reconciler, /async function executeOkeyAuthoritativePipeline/);
   assert.doesNotMatch(reconciler, /executeAuthoritativeOkeyTransition/);
   assert.doesNotMatch(reconciler, /executeAuthoritativeOkeyTurn/);
-  assert.equal((reconciler.match(/executeOkeyAuthoritativePipeline\(\{/g) ?? []).length, 5);
+  assert.equal((engine.match(/executeOkeyAuthoritativePipeline\(\{/g) ?? []).length, 4);
+  assert.equal((reconciler.match(/executeOkeyAuthoritativePipeline\(\{/g) ?? []).length, 1);
   assert.equal((reconciler.match(/reduceAuthoritativeOkeyTransition/g) ?? []).length, 2);
   assert.doesNotMatch(reconciler, /function reduceOkeyTransition\(/);
-  assert.match(reconciler, /preReducedState: finishingTeamForfeit/);
+  assert.match(engine, /preReducedState: finishingTeamForfeit/);
+  assert.doesNotMatch(reconciler, /reconcileAuthoritativeServerTurns\(\{/);
+  assert.match(reconciler, /reconcileAuthoritativeServerLifecycleAlarm[\s\S]*executeOkeyServerLifecycle\(\{/);
   assert.doesNotMatch(reconciler, /applyAuthoritativeOkeyEliminatedTurn\(/);
   assert.doesNotMatch(reconciler, /resolveAuthoritativeMatchDeadline\(/);
   assert.doesNotMatch(reconciler, /startAuthoritativeOkeyNextRound\(/);

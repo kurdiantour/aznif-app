@@ -25,7 +25,7 @@ test("snapshot is read-only and never schedules authoritative gameplay lifecycle
 
   assert.doesNotMatch(
     snapshotBlock,
-    /reconcileAuthoritativeServerTurns\(/,
+    /executeOkeyServerLifecycle|reconcileAuthoritativeServerLifecycleAlarm\(/,
   );
 
   assert.doesNotMatch(

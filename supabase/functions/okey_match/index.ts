@@ -6,6 +6,7 @@ import {
   type OkeyAuthoritativeCommand,
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
+  type OkeyMatchSettlement,
 } from "../../../okey/server/okey-authoritative.ts";
 
 import type {
@@ -298,16 +299,7 @@ serve(async (req) => {
     await service.removeChannel(channel);
   };
 
-  const { data: runtimeMatch, error: runtimeMatchError } = await service
-    .schema("okey")
-    .from("matches")
-    .select("is_test")
-    .eq("id", matchId)
-    .maybeSingle();
-  if (runtimeMatchError || !runtimeMatch) {
-    return json({ error: "match_runtime_lookup_failed" }, 500);
-  }
-  const isTestMatch = runtimeMatch.is_test === true;
+
 
 
   const loadManualLeaveBundle = async (): Promise<OkeyAuthoritativeBundle | null> => {
@@ -419,6 +411,50 @@ if (action === "manual-leave") {
     );
   }
 
+  const loadPersistedSettlementForViewer = async (): Promise<OkeyMatchSettlement | null> => {
+    if (!state.matchFinished) return null;
+
+    const { data: matchRow, error: matchError } = await service
+      .schema("okey")
+      .from("matches")
+      .select("settlement")
+      .eq("id", matchId)
+      .maybeSingle();
+
+    if (matchError) throw matchError;
+
+    const persistedSettlement =
+      matchRow?.settlement && typeof matchRow.settlement === "object"
+        ? (matchRow.settlement as OkeyMatchSettlement)
+        : null;
+
+    if (!persistedSettlement) return null;
+
+    if (persistedSettlement.currency !== "fun") {
+      return persistedSettlement;
+    }
+
+    const { data: rewardRow, error: rewardError } = await service
+      .schema("okey")
+      .from("fun_match_rewards")
+      .select("point_delta, gem_delta")
+      .eq("match_id", matchId)
+      .eq("user_id", authData.user.id)
+      .maybeSingle();
+
+    if (rewardError) throw rewardError;
+
+    return {
+      ...persistedSettlement,
+      playerReward: rewardRow
+        ? {
+            pointDelta: Number(rewardRow.point_delta ?? 0),
+            gemDelta: Number(rewardRow.gem_delta ?? 0),
+          }
+        : null,
+    };
+  };
+
   /*
    * Snapshot is strictly read-only. It only returns authoritative state,
    * missed action events, server time, and the viewer projection.
@@ -454,8 +490,10 @@ if (action === "manual-leave") {
       })) as OkeyActionEvent[];
     }
 
+    const settlement = await loadPersistedSettlementForViewer();
+
     return json({
-      settlement: null,
+      settlement,
       actionEvents,
       projection: projectForViewer(
         currentState,
@@ -478,7 +516,6 @@ if (action === "manual-leave") {
     clientExpectedVersion,
     commandReceivedAtMs: Date.now(),
     bundle,
-    isTestMatch,
   }, {
     client: service,
     deterministicCommandId,

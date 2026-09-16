@@ -13,15 +13,25 @@ import {
 import {
     evaluateOkeyServerLifecycle,
     generateOkeyReconcilerCommandId,
-    reconcileAuthoritativeEliminatedTurns,
     reconcileAuthoritativeHumanCommand,
     reconcileAuthoritativeMatchStart,
-    reconcileAuthoritativeNextRound,
     reconcileAuthoritativeServerLifecycleAlarm,
-    reconcileAuthoritativeServerTurns,
-    reconcileAuthoritativeTimeoutTurn,
     type OkeyAuthoritativeSnapshotBundle
 } from "../okey-server-reconciler.ts";
+import { executeOkeyServerLifecycle } from "../okey-turn-engine.ts";
+
+function reconcileAuthoritativeEliminatedTurns(options: Parameters<typeof executeOkeyServerLifecycle>[0]) {
+  return executeOkeyServerLifecycle(options);
+}
+function reconcileAuthoritativeTimeoutTurn(options: Parameters<typeof executeOkeyServerLifecycle>[0]) {
+  return executeOkeyServerLifecycle(options);
+}
+function reconcileAuthoritativeNextRound(options: Parameters<typeof executeOkeyServerLifecycle>[0]) {
+  return executeOkeyServerLifecycle(options);
+}
+function reconcileAuthoritativeServerTurns(options: Parameters<typeof executeOkeyServerLifecycle>[0]) {
+  return executeOkeyServerLifecycle(options);
+}
 
 const mockPlayers: readonly [
   OkeyServerPlayerIdentity,
@@ -323,7 +333,7 @@ test("reconcileAuthoritativeEliminatedTurns executes automatic draw/discard, adv
     },
   });
 
-  assert.equal(result.executedCount, 1);
+  assert.equal(result.executedEliminatedCount, 1);
   assert.equal(result.version, 11);
   assert.equal(commits.length, 1);
   assert.equal(broadcasts.length, 1);
@@ -384,7 +394,7 @@ test("reconcileAuthoritativeEliminatedTurns handles chained consecutive eliminat
     },
   };
 
-  const result = await reconcileAuthoritativeEliminatedTurns({
+  const step1Result = await reconcileAuthoritativeEliminatedTurns({
     client: mockClient,
     matchId: "test-chain-match",
     state: stateWithTwoEliminated,
@@ -392,7 +402,15 @@ test("reconcileAuthoritativeEliminatedTurns handles chained consecutive eliminat
     turnDeadlineAt: null,
   });
 
-  assert.equal(result.executedCount, 2);
+  const result = await reconcileAuthoritativeEliminatedTurns({
+    client: mockClient,
+    matchId: "test-chain-match",
+    state: step1Result.state,
+    version: step1Result.version,
+    turnDeadlineAt: step1Result.turnDeadlineAt,
+  });
+
+  assert.equal(result.executedEliminatedCount, 1);
   assert.equal(result.version, 22);
   assert.equal(commits.length, 2);
 
@@ -511,15 +529,6 @@ test("reconcileAuthoritativeServerTurns commits only Timeout and hands the Bot c
       }
       return { single: async () => ({ data: null, error: null }) };
     },
-    schema: () => ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { is_test: false }, error: null }),
-          }),
-        }),
-      }),
-    }),
   };
 
   const result = await reconcileAuthoritativeServerTurns({
@@ -598,15 +607,6 @@ test("reconcileAuthoritativeServerTurns commits only Timeout and leaves eliminat
       }
       return { single: async () => ({ data: null, error: null }) };
     },
-    schema: () => ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { is_test: false }, error: null }),
-          }),
-        }),
-      }),
-    }),
   };
 
   const result = await reconcileAuthoritativeServerTurns({
@@ -677,15 +677,6 @@ test("reconcileAuthoritativeServerTurns executes bot turn through executeOkeyBot
       }
       return { single: async () => ({ data: null, error: null }) };
     },
-    schema: () => ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { is_test: false }, error: null }),
-          }),
-        }),
-      }),
-    }),
   };
 
   const result = await reconcileAuthoritativeServerTurns({
@@ -752,6 +743,7 @@ test("reconcileAuthoritativeNextRound starts next round after eligibleAt and emi
     matchId: "test-next-round-match",
     state: settledRoundState,
     version: 15,
+    turnDeadlineAt: null,
     now: () => Date.parse("2026-09-02T12:00:05.000Z"),
   });
   assert.equal(beforeResult.executed, false);
@@ -762,6 +754,7 @@ test("reconcileAuthoritativeNextRound starts next round after eligibleAt and emi
     matchId: "test-next-round-match",
     state: settledRoundState,
     version: 15,
+    turnDeadlineAt: null,
     now: () => Date.parse("2026-09-02T12:00:16.000Z"),
   });
   assert.equal(afterResult.executed, true);
@@ -804,7 +797,6 @@ test("lifecycle commit failure: eliminated turn propagates instead of being swal
       state,
       version: 30,
       turnDeadlineAt: null,
-      maxIterations: 1,
     }),
     /forced_eliminated_commit_failure/,
   );
@@ -865,6 +857,7 @@ test("lifecycle commit failure: next round propagates instead of returning execu
       matchId: "test-next-round-failure",
       state,
       version: 32,
+      turnDeadlineAt: null,
       now: () => roundFinishTime,
     }),
     /forced_next_round_commit_failure/,
@@ -899,9 +892,8 @@ test("valid applied:false lifecycle races remain no-op", async () => {
     state: eliminatedState,
     version: 40,
     turnDeadlineAt: null,
-    maxIterations: 1,
   });
-  assert.equal(eliminatedResult.executedCount, 0);
+  assert.equal(eliminatedResult.executedEliminatedCount, 0);
   assert.equal(eliminatedResult.version, 40);
 
   const timeoutDeadline = "2026-09-02T12:00:30.000Z";
@@ -931,6 +923,7 @@ test("valid applied:false lifecycle races remain no-op", async () => {
     matchId: "test-next-round-applied-false",
     state: finishedState,
     version: 42,
+    turnDeadlineAt: null,
     now: () => roundFinishTime,
   });
   assert.equal(nextRoundResult.executed, false);
@@ -1038,15 +1031,6 @@ test("reconcileAuthoritativeServerTurns commits Next Round only and hands starti
       }
       return { single: async () => ({ data: null, error: null }) };
     },
-    schema: () => ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { is_test: false }, error: null }),
-          }),
-        }),
-      }),
-    }),
   };
 
   const result = await reconcileAuthoritativeServerTurns({
@@ -1077,8 +1061,8 @@ test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions 
 
   // Server owns reconciliation:
   assert.match(edge, /reconcileAuthoritativeHumanCommand/);
-  assert.doesNotMatch(edge, /reconcileAuthoritativeServerTurns/);
-  assert.match(reconciler, /reconcileAuthoritativeServerTurns/);
+  assert.doesNotMatch(edge, /executeOkeyServerLifecycle|reconcileAuthoritativeServerLifecycleAlarm/);
+  assert.match(reconciler, /reconcileAuthoritativeServerLifecycleAlarm/);
 
   // Client triggers and adapter methods are completely removed (Server is single owner):
   assert.doesNotMatch(hook, /eliminatedClaimRef/);
@@ -1475,7 +1459,6 @@ test("Human deck-zero Draw rebuilds, commits, versions, and broadcasts the autho
       player_index: playerIndex,
       command_applied: false,
     },
-    isTestMatch: true,
   }, {
     client,
     deterministicCommandId: async (source) => source,
