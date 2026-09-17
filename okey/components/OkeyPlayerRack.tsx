@@ -1,6 +1,7 @@
 
 import { Image } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useOkeyCosmetics } from "@/okey/hooks/useOkeyCosmetics";
 import {
   memo,
   useCallback,
@@ -236,6 +237,7 @@ export function OkeyPlayerRack({
   eliminated?: boolean;
 }) {
   const layout = useOkeyResponsiveLayout();
+  const { setAssets } = useOkeyCosmetics();
 
   const tileById = useMemo(
     () => new Map(tiles.map((tile) => [tile.id, tile])),
@@ -856,7 +858,7 @@ export function OkeyPlayerRack({
 
         <Image
           pointerEvents="none"
-          source={require("@/assets/images/okey/sets/classic/player-rack.png")}
+          source={setAssets.playerRack}
           style={styles.rackImage}
           contentFit="contain"
           cachePolicy="memory-disk"

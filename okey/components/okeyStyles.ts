@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native";
-import { RACK_BOTTOM_BASE, RACK_DEFAULT_PADDING_HORIZONTAL, RACK_HEIGHT, RACK_TURN_TIMER_HEIGHT, RACK_TURN_TIMER_LEFT, RACK_TURN_TIMER_RIGHT, RACK_TURN_TIMER_TOP } from "../layout/uiPositions";
+import { OPPONENT_RACK_HEIGHT, OPPONENT_RACK_WIDTH, RACK_BOTTOM_BASE, RACK_DEFAULT_PADDING_HORIZONTAL, RACK_HEIGHT, RACK_TURN_TIMER_HEIGHT, RACK_TURN_TIMER_LEFT, RACK_TURN_TIMER_RIGHT, RACK_TURN_TIMER_TOP } from "../layout/uiPositions";
 
 export const RACK_ROW_CAPACITY = 12;
 export const RACK_TILE_WIDTH = 45;
@@ -22,37 +22,33 @@ tableSurface: {
   overflow: "visible",
 },  feltTexture: { ...StyleSheet.absoluteFill, opacity: 0.2, borderWidth: 8, borderColor: "rgba(255,255,255,0.025)" },
   opponentSeat: { position: "absolute", alignItems: "center", gap: 0, zIndex: 500, elevation: 500 },
-  topSeat: { top: 8, alignSelf: "center" },
-
-
-leftSeat: {
-  left: -20,
-  top: "42%",
-  transform: [
-    { rotate: "-90deg" },
-    { translateY: -30 },
-  ],
-},
-
-rightSeat: {
-  right: -20,
-  top: "42%",
-  transform: [
-    { rotate: "90deg" },
-    { translateY: -30 },
-  ],
-},
+  topSeat: {},
+  leftSeat: {
+    transform: [
+      { rotate: "-90deg" },
+      { translateY: -30 },
+    ],
+  },
+  rightSeat: {
+    transform: [
+      { rotate: "90deg" },
+      { translateY: -30 },
+    ],
+  },
 opponentRack: {
-  height: 26,
-  minWidth: 112,
+  width: OPPONENT_RACK_WIDTH,
+  height: OPPONENT_RACK_HEIGHT,
   paddingHorizontal: 8,
-  borderRadius: 8,
+  overflow: "hidden",
   flexDirection: "row",
   alignItems: "center",
-  justifyContent: "flex-start",
-  backgroundColor: "rgba(76,40,17,0.72)",
-  borderWidth: 1,
-  borderColor: "rgba(255,220,150,0.24)",
+  justifyContent: "center",
+},
+opponentTilesRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 1,
 },
 
 namePlate: {
@@ -76,8 +72,12 @@ nameText: {
   fontSize: 13,
   textAlign: "center",
 },
-  countText: { color: "#f8d774", fontSize: 11, fontFamily: "RobotoMedium" },
-  tableMeldLayer: { ...StyleSheet.absoluteFill, zIndex: 7 },
+
+tableMeldLayer: {
+  ...StyleSheet.absoluteFill,
+  zIndex: 7,
+},
+
 meldArea: {
   alignItems: "flex-start",
 },
@@ -135,8 +135,6 @@ meldPreview: {
   jokerEndpointChoiceText: { color: "#2b2106", fontSize: 12, fontFamily: "RobotoBold" },
   humanMeldDropZone: { zIndex: 90, elevation: 90, justifyContent: "flex-start" },
   previewMeldContent: { zIndex: 91, elevation: 91, width: "100%", minHeight: 50, flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start", rowGap: 2 },
-  stagingArea: { position: "absolute", left: "38%", right: "38%", bottom: 116, height: 40, alignItems: "center", justifyContent: "flex-end" },
-  stagingRail: { width: "100%", height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.34)" },
   okeyMiniScoreBoard: { position: "absolute", left: 25, top: 22, zIndex: 230, elevation: 230, minWidth: 128, height: 34, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "rgba(255,255,255,0.12)", borderWidth: 1, borderColor: "rgba(248, 243, 223, 0.22)", overflow: "hidden" },
   okeyMiniScoreItem: { width: 62, height: "100%", alignItems: "center", justifyContent: "center" },
   okeyMiniScoreLabel: { color: "rgba(255,247,218,0.62)", fontSize: 7, fontFamily: "SpedaRegular" },
@@ -268,22 +266,7 @@ opponentTimerRight: {
   top: -7,
   height: 4,
 },
-rackSlotIndicator: {
-  position: "absolute",
-  left: 2,
-  right: 2,
-  top: 2,
-  bottom: 2,
-
-  borderRadius: 8,
-
-  borderWidth: 1,
-backgroundColor: "rgba(248,215,116,0.12)",
-borderColor: "rgba(248,215,116,0.20)",
-
-  zIndex: 40,
-  elevation: 40,
-},  tileShadow: { width: 46, height: 60, borderRadius: 6, shadowColor: "#000", shadowOpacity: 0.34, shadowRadius: 4, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
+  tileShadow: { width: 46, height: 60, borderRadius: 6, shadowColor: "#000", shadowOpacity: 0.34, shadowRadius: 4, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
   tileShadowCompact: { width: 42, height: 58 },
   selectedTile: { zIndex: 20, elevation: 20 },
   tileImage: { width: "100%", height: "100%" },
@@ -296,5 +279,5 @@ tileBack: {
   alignItems: "center",
   justifyContent: "center"
 },
-  tileBackSmall: { width: 20, height: 28, marginHorizontal: -2, borderRadius: 4 },
+  tileBackSmall: { width: 20, height: 28, borderRadius: 4 },
 });

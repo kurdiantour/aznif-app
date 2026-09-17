@@ -73,10 +73,12 @@ function useStableEvent<Args extends unknown[], Result>(handler: (...args: Args)
   return useCallback((...args: Args) => handlerRef.current(...args), []);
 }
 
-export default function OkeyGameTableScene() {
+import { useOkeyPreviewGame } from "@/okey/hooks/useOkeyPreviewGame";
+
+export default function OkeyGameTableScene({ isPreview: propIsPreview }: { isPreview?: boolean } = {}) {
   return (
     <OkeyResponsiveLayoutProvider>
-      <OkeyGameTableSceneContent />
+      <OkeyGameTableSceneContent isPreview={propIsPreview} />
     </OkeyResponsiveLayoutProvider>
   );
 }
@@ -89,12 +91,15 @@ function getRouteParam(
     : value;
 }
 
-function OkeyGameTableSceneContent() {
+function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: boolean }) {
   const router = useRouter();
   const params = useLocalSearchParams<{
     matchId?: string | string[];
     mode?: string | string[];
+    preview?: string | string[];
   }>();
+
+  const isPreview = Boolean(propIsPreview || getRouteParam(params.preview) === "true");
 
   const onlineMatchId = getRouteParam(params.matchId);
 
@@ -105,17 +110,27 @@ function OkeyGameTableSceneContent() {
 
   const exitRoute = okeyMatchMode === "aznif" ? "/(tabs)/aznif" : "/(tabs)/play";
 
-  const {
-    room: onlineRoom,
-    currentUserId,
-    activeMatchId: activeOnlineMatchId,
-    waitingForPlayers: waitingForOnlinePlayers,
-    countdownInProgress,
-    canCancelWaiting,
-    leavingWaitingRoom,
-    cancelWaiting: handleCancelWaiting,
-  } = useOkeyRoomLifecycle({ matchId: onlineMatchId, exitRoute });
-  const isOnlineRoomActive = onlineRoom?.status === "playing" || onlineRoom?.status === "finished";
+  const roomLifecycle = useOkeyRoomLifecycle({
+    matchId: isPreview ? "preview" : onlineMatchId,
+    exitRoute,
+  });
+
+  const previewController = useOkeyPreviewGame();
+  const onlineController = useOkeyMultiplayerGame(
+    isPreview ? undefined : roomLifecycle.activeMatchId,
+    isPreview ? "seat-0" : roomLifecycle.currentUserId,
+  );
+
+  const controller = isPreview ? previewController : onlineController;
+  const currentUserId = isPreview ? "seat-0" : roomLifecycle.currentUserId;
+  const onlineRoom = isPreview ? null : roomLifecycle.room;
+  const waitingForOnlinePlayers = isPreview ? false : roomLifecycle.waitingForPlayers;
+  const countdownInProgress = isPreview ? false : roomLifecycle.countdownInProgress;
+  const canCancelWaiting = isPreview ? false : roomLifecycle.canCancelWaiting;
+  const leavingWaitingRoom = isPreview ? false : roomLifecycle.leavingWaitingRoom;
+  const handleCancelWaiting = roomLifecycle.cancelWaiting;
+
+  const isOnlineRoomActive = isPreview || onlineRoom?.status === "playing" || onlineRoom?.status === "finished";
   const {
     konkanRevealData, setKonkanRevealData, showKonkanReveal,
     completeKonkanRevealEntrance, resetPresentationOverlays, finishKonkanReveal,
@@ -136,10 +151,6 @@ function OkeyGameTableSceneContent() {
   } = useOkeyTablePresentation();
   const { emitFeedback } = useOkeyFeedback();
   const responsiveLayout = useOkeyResponsiveLayout();
-const onlineController = useOkeyMultiplayerGame(
-    activeOnlineMatchId,
-    currentUserId,
-  );
 
   const {
     showMatchMenu,
@@ -181,7 +192,7 @@ const onlineController = useOkeyMultiplayerGame(
     cancelExit,
     exitConfirmationVisible,
     leaving,
-  } = onlineController;
+  } = controller;
 
   useOkeyAdapterPresentationLifecycle({
     adapter: onlineAdapter,
@@ -189,15 +200,17 @@ const onlineController = useOkeyMultiplayerGame(
     resetOverlays: resetPresentationOverlays,
   });
 
-
   const {
-    gameplayReady: onlineGameplayReady,
-    startTransitionPending: initialStartTransitionPending,
+    gameplayReady: onlineGameplayReadyRaw,
+    startTransitionPending: initialStartTransitionPendingRaw,
   } = useOkeyGameplayReadiness({
     projectionReady: onlineProjection !== null, room: onlineRoom,
     matchFinished, phase: state.phase, showRoundResult: showRoundResultPopup,
     showMatchResult: showMatchResultPopup, matchId: onlineMatchId,
   });
+
+  const onlineGameplayReady = isPreview ? true : onlineGameplayReadyRaw;
+  const initialStartTransitionPending = isPreview ? false : initialStartTransitionPendingRaw;
   const shouldShowWaitingPlayers = waitingForOnlinePlayers || initialStartTransitionPending;
 
   const dealLifecycleKey = onlineGameplayReady
@@ -447,11 +460,11 @@ useEffect(() => {
   });
   const exitAfterTakeoverPresentation = useCallback(() => router.replace(exitRoute), [exitRoute, router]);
   useOkeyTakeoverPresentationExit({
-    matchId: onlineMatchId,
+    matchId: isPreview ? "preview" : onlineMatchId,
     projection: onlineProjection,
     activePresentationRef,
     presentationToken: tileFlight,
-    onExit: exitAfterTakeoverPresentation,
+    onExit: isPreview ? () => {} : exitAfterTakeoverPresentation,
   });
 
 

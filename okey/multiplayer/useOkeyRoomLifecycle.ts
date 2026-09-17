@@ -22,11 +22,12 @@ export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
   }, []);
 
   useEffect(() => {
-    if (!matchId) router.replace(exitRoute);
+    if (!matchId || matchId === "preview") return;
+    router.replace(exitRoute);
   }, [exitRoute, matchId, router]);
 
   useEffect(() => {
-    if (!matchId) {
+    if (!matchId || matchId === "preview") {
       const reset = setTimeout(() => setRoom(null), 0);
       return () => clearTimeout(reset);
     }
@@ -38,7 +39,7 @@ export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
   }, [matchId]);
 
   useEffect(() => {
-    if (!matchId || room?.status !== "waiting") return;
+    if (!matchId || matchId === "preview" || room?.status !== "waiting") return;
     let active = true;
     const unsubscribe = subscribeOkeyWaitingRoomHeartbeat(
       matchId,
@@ -49,7 +50,7 @@ export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
   }, [matchId, room?.status]);
 
   useEffect(() => {
-    if (!matchId || !currentUserId || !party || party.leaderId === currentUserId || party.flowStatus !== "idle") return;
+    if (!matchId || matchId === "preview" || !currentUserId || !party || party.leaderId === currentUserId || party.flowStatus !== "idle") return;
     const redirect = setTimeout(() => { setRoom(null); router.replace(exitRoute); }, 0);
     return () => clearTimeout(redirect);
   }, [currentUserId, exitRoute, matchId, party, router]);

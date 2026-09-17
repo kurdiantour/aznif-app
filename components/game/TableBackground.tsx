@@ -1,15 +1,12 @@
 import { Image } from "expo-image";
-import { ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
+import { type TableId } from "@/constants/catalog/tables";
 import {
-  DEFAULT_TABLE_ID,
-  getTableById,
-  isTableId,
-  type TableId,
-} from "@/constants/catalog/tables";
-import { supabase } from "@/lib/supabase";
-import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
+  OkeyCosmeticsProvider,
+  useOkeyCosmetics,
+} from "@/okey/hooks/useOkeyCosmetics";
 
 type Props = {
   children: ReactNode;
@@ -17,63 +14,20 @@ type Props = {
   contentPadding?: boolean;
 };
 
-export default function TableBackground({
+function TableBackgroundInner({
   children,
-  tableId,
-  contentPadding = true,
-}: Props) {
-  const [activeTableId, setActiveTableId] = useState<TableId | null>(
-    tableId ?? getPreloadedTableId(),
-  );
-  const [tableBackgroundReady, setTableBackgroundReady] = useState(true);
-
-  useEffect(() => {
-    if (tableId) {
-      return;
-    }
-
-    let mounted = true;
-
-    void supabase
-      .from("user_equipped_shop_items")
-      .select("item_id")
-      .eq("category", "tables")
-      .maybeSingle()
-      .then(
-        ({ data, error }) => {
-          if (!mounted) return;
-
-          if (error) {
-            console.warn("Unable to load equipped table", error);
-          }
-
-          setActiveTableId(
-            data?.item_id && isTableId(data.item_id)
-              ? data.item_id
-              : DEFAULT_TABLE_ID,
-          );
-          setTableBackgroundReady(true);
-        },
-        (error: unknown) => {
-          if (!mounted) return;
-          console.warn("Unable to load equipped table", error);
-          setActiveTableId(DEFAULT_TABLE_ID);
-          setTableBackgroundReady(true);
-        },
-      );
-
-    return () => {
-      mounted = false;
-    };
-  }, [tableId]);
-
-  const resolvedTableId = tableId ?? activeTableId;
+  contentPadding,
+}: {
+  children: ReactNode;
+  contentPadding: boolean;
+}) {
+  const { setAssets, isReady } = useOkeyCosmetics();
 
   return (
     <View style={styles.background}>
-      {tableBackgroundReady && resolvedTableId ? (
+      {isReady ? (
         <Image
-          source={getTableById(resolvedTableId).images.game}
+          source={setAssets.table}
           style={StyleSheet.absoluteFill}
           contentFit="fill"
           cachePolicy="memory-disk"
@@ -92,6 +46,20 @@ export default function TableBackground({
         {children}
       </View>
     </View>
+  );
+}
+
+export default function TableBackground({
+  children,
+  tableId,
+  contentPadding = true,
+}: Props) {
+  return (
+    <OkeyCosmeticsProvider tableId={tableId}>
+      <TableBackgroundInner contentPadding={contentPadding}>
+        {children}
+      </TableBackgroundInner>
+    </OkeyCosmeticsProvider>
   );
 }
 

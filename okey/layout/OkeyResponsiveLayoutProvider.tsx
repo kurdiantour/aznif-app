@@ -155,6 +155,7 @@ export function createOkeyResponsiveLayout({
     seats: {
       top: {
         top: edge,
+        alignSelf: "center",
       },
 
       left: {

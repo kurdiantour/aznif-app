@@ -1,8 +1,10 @@
+import { Image } from "expo-image";
 import { memo, useEffect, useRef } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { styles } from "./okeyStyles";
 import { useOkeyResponsiveLayout } from "../layout/OkeyResponsiveLayoutProvider";
+import { useOkeyCosmetics } from "../hooks/useOkeyCosmetics";
 import { OkeyTileBack } from "./OkeyTileFace";
 import { OkeyTurnTimerBar } from "./OkeyTurnTimerBar";
 
@@ -39,10 +41,11 @@ export function OkeyOpponentSeat({
   onPress?: () => void;
 }) {
   const layout = useOkeyResponsiveLayout();
+  const { setAssets } = useOkeyCosmetics();
   const seatRef = useRef<View | null>(null);
 
   const targetBackCount =
-    count > 0 ? Math.min(7, Math.max(1, count)) : 0;
+    count > 0 ? Math.min(6, Math.max(1, count)) : 0;
 
   const measureSeat = () => {
     seatRef.current?.measureInWindow((x, y, width, height) => {
@@ -82,13 +85,20 @@ export function OkeyOpponentSeat({
       disabled={!onPress}
       style={[
         styles.opponentSeat,
-        side === "top" && styles.topSeat,
         side === "left" && styles.leftSeat,
         side === "right" && styles.rightSeat,
         layout.seats[side],
       ]}
     >
       <View style={styles.opponentRack}>
+        <Image
+          pointerEvents="none"
+          source={setAssets.opponentRack}
+          style={StyleSheet.absoluteFill}
+          contentFit="fill"
+          cachePolicy="memory-disk"
+          transition={0}
+        />
         <OkeyTurnTimerBar
           active={active}
           deadlineAt={turnDeadlineAt}
@@ -111,14 +121,16 @@ export function OkeyOpponentSeat({
           }
         />
 
-        {Array.from({
-          length: targetBackCount,
-        }).map((_, index) => (
-          <OkeyTileBack
-            key={index}
-            small
-          />
-        ))}
+        <View style={styles.opponentTilesRow}>
+          {Array.from({
+            length: targetBackCount,
+          }).map((_, index) => (
+            <OkeyTileBack
+              key={index}
+              small
+            />
+          ))}
+        </View>
       </View>
 
       <View style={styles.namePlate}>

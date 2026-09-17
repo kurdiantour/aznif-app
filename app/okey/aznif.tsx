@@ -28,6 +28,7 @@ import {
 import { formatAznif } from "@/lib/aznif-display";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
+import { preloadEquippedCosmeticSet } from "@/lib/game/gameLaunchPreload";
 import {
   matchmakeOkeyRoom,
   type OkeyRoomSnapshot,
@@ -196,9 +197,11 @@ export default function OkeyAznifScreen() {
   }, [joinError]);
 
   const openOnlineGame = useCallback(
-    (room: OkeyRoomSnapshot) => {
+    async (room: OkeyRoomSnapshot) => {
       setJoiningTableId(null);
       setJoinError(null);
+
+      await preloadEquippedCosmeticSet().catch(() => {});
 
       router.replace({
         pathname: "/okey/game",

@@ -6,6 +6,9 @@
 export const RACK_HEIGHT = 72;
 export const RACK_BOTTOM_BASE = 82; // used as `RACK_BOTTOM_BASE + safe.bottom`
 
+export const OPPONENT_RACK_WIDTH = 140;
+export const OPPONENT_RACK_HEIGHT = 40;
+
 // Rack default padding when a computed value isn't available
 export const RACK_DEFAULT_PADDING_HORIZONTAL = 86;
 
