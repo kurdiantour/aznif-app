@@ -12,6 +12,7 @@ import { MemoizedOkeyCenterPiles } from "@/okey/components/OkeyCenterPiles";
 import { OkeyDiscardHistoryPopup } from "@/okey/components/OkeyDiscardHistoryPopup";
 import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebration";
 import { OkeyForcedKonkan } from "@/okey/components/OkeyForcedKonkan";
+import { OkeyTileCycleAnnouncement } from "@/okey/components/OkeyTileCycleAnnouncement";
 import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
 import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
 import {
@@ -33,7 +34,7 @@ import {
 } from "@/okey/engine/okey-engine";
 import { isEliminatedOkeyPlayer } from "@/okey/engine/okeyengine-eliminated";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
-import { useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
+import { OKEY_TILE_CYCLE_ANNOUNCEMENT_MS, useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
 import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTakeoverPresentationExit, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import { useOkeyTableGeometry } from "@/okey/layout/useOkeyTableGeometry";
@@ -57,6 +58,7 @@ import {
   useOkeyStagedMeldCleanup,
   useOkeyTablePresentation,
   useOkeyTableViewModel,
+  useOkeyTileCycleAnnouncementPresentation,
 } from "@/okey/presentation/useOkeyTablePresentation";
 import { selectOkeyTurnView } from "@/okey/selectors/okey-turn-view";
 import type { OkeyTile } from "@/okey/types/okey";
@@ -344,7 +346,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
 
 const shouldShowScorePopup =
   (showScoreDetails && state.phase !== "finished") ||
-  showRoundResultPopup;
+  (showRoundResultPopup && currentRoundResult?.endReason !== "tile-cycle-limit");
   const {
     visible: forceKonkanAnnouncementVisible,
     panelProgress: forceKonkanPanelProgress,
@@ -353,6 +355,12 @@ const shouldShowScorePopup =
     onlineProjection?.forcedKonkanTeamId,
     onlineProjection?.roundStartsAt,
   );
+  const isCycleLimitActive = endRoundPresentationStage === "cycle-limit";
+  const {
+    visible: cycleLimitAnnouncementVisible,
+    panelProgress: cycleLimitPanelProgress,
+    countdownProgress: cycleLimitCountdownProgress,
+  } = useOkeyTileCycleAnnouncementPresentation(isCycleLimitActive, OKEY_TILE_CYCLE_ANNOUNCEMENT_MS);
   const droppedTileIds = useMemo(
     () => droppedMelds.flatMap((meld) => meld.tiles.map((tile) => tile.id)),
     [droppedMelds],
@@ -896,6 +904,11 @@ useEffect(() => {
           panelProgress={forceKonkanPanelProgress}
           countdownProgress={forceKonkanCountdownProgress}
         />
+        <OkeyTileCycleAnnouncement
+          visible={cycleLimitAnnouncementVisible}
+          panelProgress={cycleLimitPanelProgress}
+          countdownProgress={cycleLimitCountdownProgress}
+        />
       </View>
       <PlayerProfilePopup
         player={profilePlayer}
@@ -997,7 +1010,6 @@ const finishRevealStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(248,243,223,0.22)",
   },
-
 });
 
 

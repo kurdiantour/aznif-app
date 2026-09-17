@@ -128,7 +128,6 @@ export function useOkeyRackDrag({
   const tileShiftValuesRef = useRef<Record<string, Animated.ValueXY>>({});
   const tilePanHandlersRef = useRef<Record<string, any>>({});
   const rackInteractionLockedRef = useRef(rackInteractionLocked);
-  
 
   const committedRackSlotsRef = useRef(committedRackSlots);
   const tileByIdRef = useRef(new Map(tiles.map((tile) => [tile.id, tile])));

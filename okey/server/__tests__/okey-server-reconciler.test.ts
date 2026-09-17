@@ -1480,3 +1480,91 @@ test("Human deck-zero Draw rebuilds, commits, versions, and broadcasts the autho
   assert.equal(broadcastPayload.publicProjection.deckCount, 1);
   assert.equal(broadcastPayload.publicProjection.reshuffleCount, 1);
 });
+
+test("Human request entering before turn deadline is accepted even if internal server processing delay causes now() to pass deadline", async () => {
+  const base = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const playerIndex = base.roundState.currentPlayerIndex;
+  const deadlineAt = "2026-09-14T10:00:15.000Z";
+  const requestReceivedAtMs = Date.parse("2026-09-14T10:00:14.000Z");
+  const delayedServerProcessingNowMs = Date.parse("2026-09-14T10:00:20.000Z");
+
+  const client = {
+    rpc(name: string, parameters: any) {
+      return {
+        single: async () => ({
+          data: {
+            applied: true,
+            version: 8,
+            state: parameters.p_state,
+            turn_deadline_at: parameters.p_turn_deadline_at,
+            action_events: parameters.p_action_events,
+          },
+          error: null,
+        }),
+      };
+    },
+  };
+
+  const result = await reconcileAuthoritativeHumanCommand({
+    action: "command",
+    matchId: "server-delay-human-test",
+    actorUserId: base.roundState.players[playerIndex].id,
+    commandId: "draw-server-delay-command",
+    command: { type: "draw", source: "deck" },
+    clientExpectedVersion: 7,
+    commandReceivedAtMs: requestReceivedAtMs,
+    bundle: {
+      version: 7,
+      state: base,
+      turn_deadline_at: deadlineAt,
+      player_index: playerIndex,
+      command_applied: false,
+    },
+  }, {
+    client,
+    deterministicCommandId: async (source) => source,
+    now: () => delayedServerProcessingNowMs,
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("Human request entering after turn deadline is rejected with turn_deadline_expired", async () => {
+  const base = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const playerIndex = base.roundState.currentPlayerIndex;
+  const deadlineAt = "2026-09-14T10:00:15.000Z";
+  const requestReceivedAtMs = Date.parse("2026-09-14T10:00:16.000Z");
+
+  const client = {
+    rpc() {
+      return { single: async () => ({ data: null, error: null }) };
+    },
+  };
+
+  const result = await reconcileAuthoritativeHumanCommand({
+    action: "command",
+    matchId: "expired-human-test",
+    actorUserId: base.roundState.players[playerIndex].id,
+    commandId: "draw-expired-command",
+    command: { type: "draw", source: "deck" },
+    clientExpectedVersion: 7,
+    commandReceivedAtMs: requestReceivedAtMs,
+    bundle: {
+      version: 7,
+      state: base,
+      turn_deadline_at: deadlineAt,
+      player_index: playerIndex,
+      command_applied: false,
+    },
+  }, {
+    client,
+    deterministicCommandId: async (source) => source,
+    now: () => requestReceivedAtMs,
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error, "turn_deadline_expired");
+    assert.equal(result.status, 409);
+  }
+});

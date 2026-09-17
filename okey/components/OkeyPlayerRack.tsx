@@ -292,14 +292,17 @@ export function OkeyPlayerRack({
     new Set(tiles.map((tile) => tile.id)),
   );
 
-  const availableRackTileWidth =
+  const effectiveViewportWidth =
     rackViewportWidth > 0
-      ? Math.max(
-          0,
-          rackViewportWidth - RACK_TILE_SIDE_PADDING * 2,
-        )
-      : RACK_ROW_CAPACITY * RACK_TILE_WIDTH +
-        (RACK_ROW_CAPACITY - 1) * RACK_TILE_GAP;
+      ? rackViewportWidth
+      : typeof layout.playerRack.width === "number"
+      ? layout.playerRack.width * 0.94
+      : 540;
+
+  const availableRackTileWidth = Math.max(
+    0,
+    effectiveViewportWidth - RACK_TILE_SIDE_PADDING * 2,
+  );
 
   const rackTileWidth = Math.min(
     RACK_TILE_WIDTH,
@@ -365,6 +368,15 @@ export function OkeyPlayerRack({
   clearReturningJokerForTile,
 });
 
+  const getRowTileTop = useCallback(
+    (row: RackRow) => {
+      const rowLayout = rowLayouts[row];
+      if (!rowLayout) return 0;
+      return rowLayout.y + rowLayout.height - rackTileHeight;
+    },
+    [rowLayouts, rackTileHeight],
+  );
+
   useEffect(() => {
     const topSlotIndex = committedRackSlots.top.findIndex((tileId) => tileId === null);
     const bottomSlotIndex = committedRackSlots.bottom.findIndex((tileId) => tileId === null);
@@ -381,15 +393,15 @@ export function OkeyPlayerRack({
       return;
     }
 
-    const bottomInset = target.row === "bottom" ? rackTileHeight * 0.44 : 0;
     onDrawLandingRectChange?.({
       x: viewport.x + target.slotIndex * rackTileStride,
-      y: viewport.y + rowLayout.y + rowLayout.height - rackTileHeight - bottomInset,
+      y: viewport.y + getRowTileTop(target.row),
       width: rackTileWidth,
       height: rackTileHeight,
     });
   }, [
     committedRackSlots,
+    getRowTileTop,
     onDrawLandingRectChange,
     rackTileHeight,
     rackTileStride,
@@ -446,18 +458,13 @@ export function OkeyPlayerRack({
       const rowLayout = rowLayouts[row];
       if (!rowLayout) continue;
 
-      const bottomInset = row === "bottom" ? rackTileHeight * 0.44 : 0;
+      const rowTop = getRowTileTop(row);
       rackSlots[row].forEach((tileId, slotIndex) => {
         if (!tileId) return;
 
         const rect = {
           x: viewport.x + slotIndex * rackTileStride,
-          y:
-            viewport.y +
-            rowLayout.y +
-            rowLayout.height -
-            rackTileHeight -
-            bottomInset,
+          y: viewport.y + rowTop,
           width: rackTileWidth,
           height: rackTileHeight,
         };
@@ -467,6 +474,7 @@ export function OkeyPlayerRack({
     }
 
   }, [
+    getRowTileTop,
     onTileMeasured,
     rackSlots,
     rackTileHeight,
@@ -659,20 +667,7 @@ export function OkeyPlayerRack({
         style={{
           position: "absolute",
           left: slotIndex * rackTileStride,
-          top: (() => {
-            const rowLayout = rowLayouts[row];
-            if (!rowLayout) return 0;
-
-            const bottomInset =
-              row === "bottom" ? rackTileHeight * 0.44 : 0;
-
-            return (
-              rowLayout.y +
-              rowLayout.height -
-              rackTileHeight -
-              bottomInset
-            );
-          })(),
+          top: getRowTileTop(row),
           width: rackTileWidth,
           height: rackTileHeight,
           zIndex: isFlippingJoker ? 6000 : undefined,
@@ -748,35 +743,25 @@ export function OkeyPlayerRack({
     </View>
   );
 
-  const renderRackRow = (row: RackRow) => {
-    const bottomInset =
-      row === "bottom" ? rackTileHeight * 0.44 : 0;
-
-    return (
+  const renderRackRow = (row: RackRow) => (
+    <View
+      style={styles.rackRail}
+      onLayout={(event) => updateRowLayout(row, event)}
+    >
       <View
         style={[
-          styles.rackRail,
-          row === "bottom" && {
-            paddingBottom: bottomInset,
-          },
+          styles.rackRow,
+          { position: "relative" },
         ]}
-        onLayout={(event) => updateRowLayout(row, event)}
       >
-        <View
-          style={[
-            styles.rackRow,
-            { position: "relative" },
-          ]}
-        >
-          {Array.from({
-            length: RACK_ROW_CAPACITY,
-          }).map((_, slotIndex) =>
-            renderRackSlot(row, slotIndex),
-          )}
-        </View>
+        {Array.from({
+          length: RACK_ROW_CAPACITY,
+        }).map((_, slotIndex) =>
+          renderRackSlot(row, slotIndex),
+        )}
       </View>
-    );
-  };
+    </View>
+  );
 
   // Konkan-style visual continuity:
   // every rack tile from BOTH rows lives under this one permanent parent.

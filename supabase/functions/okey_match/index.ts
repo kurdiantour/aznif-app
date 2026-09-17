@@ -153,6 +153,8 @@ serve(async (req) => {
     );
   }
 
+  const commandReceivedAtMs = Date.now();
+
   const supabaseUrl =
     Deno.env.get("SUPABASE_URL");
 
@@ -517,7 +519,7 @@ if (action === "manual-leave") {
     commandId: body.commandId as string,
     command: action === "command" ? parseCommand(body.command) : null,
     clientExpectedVersion,
-    commandReceivedAtMs: Date.now(),
+    commandReceivedAtMs,
     bundle,
   }, {
     client: service,

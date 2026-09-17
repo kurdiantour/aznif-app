@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Animated, StyleSheet, Text, View } from "react-native";
 
-type OkeyForcedKonkanProps = {
+export type OkeyForcedKonkanProps = {
   visible: boolean;
   panelProgress: Animated.Value | Animated.AnimatedInterpolation<number>;
   countdownProgress: Animated.Value | Animated.AnimatedInterpolation<number>;
@@ -12,12 +12,6 @@ export function OkeyForcedKonkan({
   panelProgress,
   countdownProgress,
 }: OkeyForcedKonkanProps) {
-  /*
-   * Keep the component mounted while the presentation policy owns
-   * the entrance/exit animation. Visibility is expressed by the
-   * authoritative presentation progress rather than by changing
-   * gameplay state here.
-   */
   if (!visible && !panelProgress) {
     return null;
   }
@@ -42,10 +36,10 @@ export function OkeyForcedKonkan({
     >
       <View style={styles.titleRow}>
         <Ionicons name="lock-closed" size={15} color="#f8d774" />
-        <Text style={styles.text}>ع©غ†ظ†ع©ط§ظ†غŒ ظ†ط§ع†ط§ط±غŒ</Text>
+        <Text style={styles.text}>کۆنکانی ناچاری</Text>
       </View>
 
-      <Text style={styles.subtitle}>طھغŒظ…غŒ ط¯ظˆط§ع©غ•ظˆطھظˆظˆ ظ†ط§ع†ط§ط±غ• ع©غ†ظ†ع©ط§ظ† ط¨ع©ط§طھ</Text>
+      <Text style={styles.subtitle}>تیمی دواکەوتوو ناچارە کۆنکان بکات</Text>
 
       <View style={styles.progressTrack}>
         <Animated.View

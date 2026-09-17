@@ -403,7 +403,9 @@ export function useOkeyPlayerTileFlightCommands(input: {
     if (source === "deck") {
       setHideDeckTopTile(true);
     } else {
-      setPresentedTopDiscard(state.discardPile[state.discardPile.length - 2] ?? null);
+      if (state.discardPile.length >= 2) {
+        setPresentedTopDiscard(state.discardPile[state.discardPile.length - 2] ?? null);
+      }
       setDiscardPresentationFallback(null);
       setHideDiscardTopTile(false);
     }
@@ -530,10 +532,11 @@ export function useOkeyPlayerTileFlightCommands(input: {
     setOptimisticRackTile((current) => current?.id === pending.tileId ? null : current);
     setHideDeckTopTile(false);
     setHideDiscardTopTile(false);
+    setPresentedTopDiscard(state.discardPile[state.discardPile.length - 1] ?? null);
     if (pending.source === "deck" && tileFlight?.id.startsWith("draw-")) {
       setTileFlight(null);
     }
-  }, [canDraw, humanPlayer.hand, pendingDrawRef, setHideDeckTopTile, setHideDiscardTopTile, setOptimisticRackTile, setTileFlight, tileFlight]);
+  }, [canDraw, humanPlayer.hand, pendingDrawRef, setHideDeckTopTile, setHideDiscardTopTile, setOptimisticRackTile, setPresentedTopDiscard, setTileFlight, state.discardPile, tileFlight]);
 
   return { startDrawFlight, startDiscardFlight, handleDiscardDroppedOnRack, dropTileFromRack, handleDeckDroppedOnRack };
 }

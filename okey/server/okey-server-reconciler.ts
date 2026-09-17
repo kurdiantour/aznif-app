@@ -249,7 +249,7 @@ export async function reconcileAuthoritativeHumanCommand(
     }
 
     if (input.action === "command" && workingBundle.turn_deadline_at &&
-        Date.parse(workingBundle.turn_deadline_at) <= now()) {
+        Date.parse(workingBundle.turn_deadline_at) <= input.commandReceivedAtMs) {
       return { ok: false, error: "turn_deadline_expired", status: 409 };
     }
 

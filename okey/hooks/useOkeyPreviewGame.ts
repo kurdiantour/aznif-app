@@ -123,6 +123,21 @@ export function useOkeyPreviewGame() {
     [],
   );
 
+  const [exitConfirmationVisible, setExitConfirmationVisible] = useState(false);
+
+  const requestExit = useCallback(() => {
+    setExitConfirmationVisible(true);
+  }, []);
+
+  const cancelExit = useCallback(() => {
+    setExitConfirmationVisible(false);
+  }, []);
+
+  const leaveOnlineMatch = useCallback(() => {
+    setExitConfirmationVisible(false);
+    return Promise.resolve(true);
+  }, []);
+
   const noop = useCallback(() => {}, []);
 
   return {
@@ -130,10 +145,10 @@ export function useOkeyPreviewGame() {
     onlineProjection,
     authoritativeProjection: onlineProjection,
     onlineAdapter: null,
-    leaveOnlineMatch: noop,
-    requestExit: noop,
-    cancelExit: noop,
-    exitConfirmationVisible: false,
+    leaveOnlineMatch,
+    requestExit,
+    cancelExit,
+    exitConfirmationVisible,
     leaving: false,
     isAppActive: true,
     lifecycleResumeToken: 0,

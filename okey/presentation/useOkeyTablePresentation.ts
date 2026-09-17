@@ -291,6 +291,40 @@ export function useOkeyForcedKonkanPresentation(forcedTeamId?: string | null, ro
   return { visible, panelProgress, countdownProgress };
 }
 
+export function useOkeyTileCycleAnnouncementPresentation(active: boolean, durationMs: number) {
+  const [visible, setVisible] = useState(false);
+  const [panelProgress] = useState(() => new Animated.Value(0));
+  const [countdownProgress] = useState(() => new Animated.Value(1));
+
+  useEffect(() => {
+    setVisible(active);
+  }, [active]);
+
+  useEffect(() => {
+    const panelAnimation = Animated.timing(panelProgress, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 360 : 260,
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    });
+    panelAnimation.start();
+
+    countdownProgress.stopAnimation();
+    if (visible) {
+      countdownProgress.setValue(1);
+      Animated.timing(countdownProgress, {
+        toValue: 0,
+        duration: Math.max(0, durationMs),
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start();
+    }
+    return () => panelAnimation.stop();
+  }, [countdownProgress, durationMs, panelProgress, visible]);
+
+  return { visible, panelProgress, countdownProgress };
+}
+
 export function useOkeyPresentationBoundary(key: string | number, onBoundary: () => void) {
   const previousKeyRef = useRef(key);
   const onBoundaryRef = useRef(onBoundary);

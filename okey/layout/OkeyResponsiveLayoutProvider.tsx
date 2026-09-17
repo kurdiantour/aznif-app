@@ -12,8 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   CENTER_PILES_TOP_PCT,
-  RACK_BOTTOM_BASE,
-  RACK_HEIGHT,
+  RACK_ASPECT_RATIO,
 } from "./uiPositions";
 
 export type OkeySafeAreaInsets = {
@@ -114,15 +113,24 @@ export function createOkeyResponsiveLayout({
       ? 4
       : -20;
 
-  const rackHeight = RACK_HEIGHT;
-  const rackBottom = RACK_BOTTOM_BASE + safe.bottom;
+  const widthRatio =
+    layoutClass === "compact"
+      ? 0.90
+      : layoutClass === "tablet"
+      ? 0.78
+      : 0.84;
 
-  const rackHorizontalPadding = clamp(
-    usableWidth *
-      (layoutClass === "compact" ? 0.055 : 0.085),
-    28,
-    150,
-  );
+  const maxRackWidth =
+    layoutClass === "compact"
+      ? 560
+      : layoutClass === "tablet"
+      ? 820
+      : 595;
+
+const rackWidth = Math.min(usableWidth * widthRatio, maxRackWidth);
+const rackHeight = Math.round(rackWidth / RACK_ASPECT_RATIO);
+
+const rackBottom = 10;
 
   const centerPilesTop = clamp(
     usableHeight * CENTER_PILES_TOP_PCT,
@@ -236,12 +244,11 @@ export function createOkeyResponsiveLayout({
     rackWrap: {
       bottom: rackBottom,
       height: rackHeight,
-      paddingHorizontal: rackHorizontalPadding,
     },
 
     playerRack: {
-      maxWidth:
-        layoutClass === "tablet" ? 760 : 575,
+      width: rackWidth,
+      height: rackHeight,
     },
 
     playerSetScoreWrap: {

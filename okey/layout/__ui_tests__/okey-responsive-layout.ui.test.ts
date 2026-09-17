@@ -58,9 +58,21 @@ test.each(viewports)(
 
     const rackBottom = Number(layout.rackWrap.bottom);
     const rackHeight = Number(layout.rackWrap.height);
+    const playerRackWidth = Number(layout.playerRack.width);
+    const playerRackHeight = Number(layout.playerRack.height);
 
     expect(rackBottom).toBe(82 + insets.bottom);
-    expect(rackHeight).toBe(72);
+    expect(playerRackWidth).toBeLessThanOrEqual(layout.usableWidth);
+    expect(playerRackHeight).toBe(Math.round(playerRackWidth / (2351 / 533)));
+    expect(rackHeight).toBe(playerRackHeight);
+
+    if (expected === "regular") {
+      expect(playerRackWidth).toBeLessThanOrEqual(595);
+      expect(playerRackWidth).toBeGreaterThanOrEqual(575);
+    } else if (expected === "tablet") {
+      expect(playerRackWidth).toBeLessThanOrEqual(820);
+      expect(playerRackWidth).toBeGreaterThan(760);
+    }
 
     expect(
       Number(layout.meldAreas.bottom.bottom),

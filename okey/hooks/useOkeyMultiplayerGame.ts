@@ -22,9 +22,10 @@ const projectResults = (projection: OkeyMatchServerProjection): OkeyRoundResult[
     scoreDetails: { scores: { teamA: result.teamAScore, teamB: result.teamBScore }, details: [] },
   }));
 
-export type OkeyEndRoundPresentationStage = "idle" | "draining" | "final-tile" | "score";
+export type OkeyEndRoundPresentationStage = "idle" | "draining" | "final-tile" | "score" | "cycle-limit";
 
-const OKEY_SCORE_PRESENTATION_MS = 3_000;
+export const OKEY_SCORE_PRESENTATION_MS = 3_000;
+export const OKEY_TILE_CYCLE_ANNOUNCEMENT_MS = 4_000;
 
 export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string | null = null) {
   const adapter = useMemo(() => matchId ? new SupabaseOkeyMatchAdapter(matchId) : null, [matchId]);
@@ -173,8 +174,14 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   }, [completedRoundFrame, projection]);
 
   const beginFinalTilePresentation = useCallback(() => {
-    setEndRoundPresentationStage((stage) => stage === "draining" ? "final-tile" : stage);
-  }, []);
+    setEndRoundPresentationStage((stage) => {
+      if (stage !== "draining") return stage;
+      const isCycleLimit =
+        completedRoundFrame?.endReason === "tile-cycle-limit" ||
+        projection?.endReason === "tile-cycle-limit";
+      return isCycleLimit ? "cycle-limit" : "final-tile";
+    });
+  }, [completedRoundFrame?.endReason, projection?.endReason]);
 
   const completeFinalPresentation = useCallback(() => {
     setEndRoundPresentationStage((stage) => stage === "final-tile" ? "score" : stage);
@@ -182,6 +189,15 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
       setTerminalPresentationComplete(true);
     }
   }, [projection?.matchFinished, completedRoundFrame?.matchFinished]);
+
+  useEffect(() => {
+    if (endRoundPresentationStage !== "cycle-limit" || !completedRoundFrame) return;
+    const timer = setTimeout(() => {
+      setCompletedRoundFrame(null);
+      setEndRoundPresentationStage("idle");
+    }, OKEY_TILE_CYCLE_ANNOUNCEMENT_MS);
+    return () => clearTimeout(timer);
+  }, [completedRoundFrame, endRoundPresentationStage]);
 
   useEffect(() => {
     if (endRoundPresentationStage !== "score" || !completedRoundFrame) return;
