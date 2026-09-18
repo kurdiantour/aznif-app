@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createInitialOkeyGame,
   discardTile,
@@ -7,6 +7,7 @@ import {
   openPlayerMelds,
   spendTileOnMeld,
 } from "@/okey/engine/okey-engine";
+import { getOkeyBotProfile, isOkeyBotControlled, playBotTurn } from "@/okey/engine/okey-bot-engine";
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import type { OkeyDrawSource, OkeyGameState, OkeyMeld, OkeyTeamId } from "@/okey/types/okey";
 
@@ -18,6 +19,8 @@ function createPreviewState(): OkeyGameState {
     name: index === 0 ? "You" : `Bot ${index}`,
     kind: index === 0 ? ("human" as const) : ("bot" as const),
     controlledByBot: index !== 0,
+    botDifficulty: "normal" as const,
+    botNumber: index,
   }));
   return {
     ...initial,
@@ -25,10 +28,10 @@ function createPreviewState(): OkeyGameState {
   };
 }
 
-function createPreviewProjection(state: OkeyGameState): OkeyMatchServerProjection {
+function createPreviewProjection(state: OkeyGameState, version: number): OkeyMatchServerProjection {
   return {
     ...state,
-    version: 1,
+    version,
     deckCount: state.deck.length,
     turnDeadlineAt: new Date(Date.now() + 30000).toISOString(),
     turnDurationSeconds: 30,
@@ -52,11 +55,31 @@ function createPreviewProjection(state: OkeyGameState): OkeyMatchServerProjectio
 
 export function useOkeyPreviewGame() {
   const [state, setState] = useState<OkeyGameState>(createPreviewState);
+  const versionRef = useRef(0);
 
-  const onlineProjection = useMemo(
-    () => createPreviewProjection(state),
-    [state],
-  );
+  const onlineProjection = useMemo(() => {
+    versionRef.current += 1;
+    return createPreviewProjection(state, versionRef.current);
+  }, [state]);
+
+  useEffect(() => {
+    if (state.phase !== "playing") return;
+    const currentPlayer = state.players[state.currentPlayerIndex];
+    if (!currentPlayer || !isOkeyBotControlled(currentPlayer)) return;
+
+    const botProfile = getOkeyBotProfile(currentPlayer.botDifficulty ?? "normal");
+    const timeoutId = setTimeout(() => {
+      setState((current) => {
+        if (
+          current.phase !== "playing" ||
+          current.currentPlayerIndex !== state.currentPlayerIndex
+        ) return current;
+        return playBotTurn(current);
+      });
+    }, botProfile.thinkDelayMs);
+
+    return () => clearTimeout(timeoutId);
+  }, [state]);
 
   const draw = useCallback((source: OkeyDrawSource) => {
     setState((current) => drawTile(current, source));

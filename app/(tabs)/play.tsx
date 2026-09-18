@@ -123,32 +123,6 @@ export default function PlayScreen() {
 
   return (
     <View style={styles.screenWrapper}>
-      {__DEV__ && (
-        <View style={styles.devButtonsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.devButton,
-              pressed && styles.devButtonPressed,
-            ]}
-            onPress={() => router.push("/okey/preview")}
-          >
-            <Ionicons name="flask-outline" size={12} color="#f8d774" />
-            <Text style={styles.devButtonText}>Okey Preview</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.devButton,
-              pressed && styles.devButtonPressed,
-            ]}
-            onPress={() => router.push("/domino/preview")}
-          >
-            <Ionicons name="flask-outline" size={12} color="#f8d774" />
-            <Text style={styles.devButtonText}>Domino 2v2 Preview</Text>
-          </Pressable>
-        </View>
-      )}
-
       <View style={[styles.content, isTablet && styles.contentTablet]}>
         <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
           <GameCard
@@ -201,15 +175,6 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
-  devButtonsRow: {
-    position: "absolute",
-    top: -12,
-    right: 0,
-    flexDirection: "row",
-    gap: 8,
-    zIndex: 10,
-  },
-
   clockBox: {
     position: "absolute",
     top: 10,
@@ -229,28 +194,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 5,
-  },
-
-  devButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(168, 85, 247, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(168, 85, 247, 0.35)",
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-  },
-
-  devButtonPressed: {
-    opacity: 0.7,
-  },
-
-  devButtonText: {
-    color: "#e9d5ff",
-    fontSize: 10,
-    fontFamily: "SpedaBold",
-    marginLeft: 4,
   },
 
   content: {

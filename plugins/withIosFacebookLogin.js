@@ -2,26 +2,33 @@ const { withInfoPlist } = require("@expo/config-plugins");
 const {
   setFacebookConfig,
 } = require("react-native-fbsdk-next/plugin/build/withFacebookIOS");
+const {
+  withAndroidPermissions,
+  withFacebookAppIdString,
+  withFacebookManifest,
+} = require("react-native-fbsdk-next/plugin/build/withFacebookAndroid");
 
-// Keep the Facebook SDK configuration on iOS; Android retains its OAuth flow.
+// Configure the Facebook native SDK on both iOS and Android.
 module.exports = function withIosFacebookLogin(config) {
-  return withInfoPlist(config, (mod) => {
-    const appID = "1414624693952489";
-    const clientToken = "75cbd67473d1450154270d5bd0603dbe";
+  const props = {
+    appID: "1414624693952489",
+    clientToken: "75cbd67473d1450154270d5bd0603dbe",
+    displayName: "Aznif",
+    scheme: "fb1414624693952489",
+    isAutoInitEnabled: false,
+    autoLogAppEventsEnabled: false,
+    advertiserIDCollectionEnabled: false,
+  };
 
-    mod.modResults = setFacebookConfig(
-      {
-        appID,
-        clientToken,
-        displayName: "Aznif",
-        scheme: `fb${appID}`,
-        isAutoInitEnabled: false,
-        autoLogAppEventsEnabled: false,
-        advertiserIDCollectionEnabled: false,
-      },
-      mod.modResults,
-    );
-
+  config = withInfoPlist(config, (mod) => {
+    mod.modResults = setFacebookConfig(props, mod.modResults);
     return mod;
   });
+
+  config = withFacebookAppIdString(config, props);
+  config = withFacebookManifest(config, props);
+  config = withAndroidPermissions(config, props);
+
+  return config;
 };
+

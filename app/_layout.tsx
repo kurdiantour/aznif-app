@@ -17,6 +17,8 @@ import { AppState, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { WalletProvider } from '@/lib/wallet-context';
+import { AppUpdateModal } from '@/components/AppUpdateModal';
+import { ReturnToGameOverlay } from '@/components/okey/ReturnToGamePopup';
 
 function applyImmersiveFullscreen() {
   if (Platform.OS !== "android") return;
@@ -118,6 +120,8 @@ export default function Layout() {
               <Stack.Screen name="wallet-history" />
               <Stack.Screen name="(tabs)" />
             </Stack>
+            <AppUpdateModal />
+            <ReturnToGameOverlay />
           </GameInvitesProvider>
         </PresenceProvider>
         </WalletProvider>

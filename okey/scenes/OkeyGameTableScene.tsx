@@ -35,7 +35,7 @@ import {
 import { isEliminatedOkeyPlayer } from "@/okey/engine/okeyengine-eliminated";
 import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
 import { OKEY_TILE_CYCLE_ANNOUNCEMENT_MS, useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
-import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTakeoverPresentationExit, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
+import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import { useOkeyTableGeometry } from "@/okey/layout/useOkeyTableGeometry";
 import { useOkeyGameplayReadiness, useOkeyMatchExitLifecycle, useOkeyRoomLifecycle } from "@/okey/multiplayer/useOkeyRoomLifecycle";
@@ -466,15 +466,6 @@ useEffect(() => {
     startNextQueuedPresentation,
     completeOpponentPresentationFlight,
   });
-  const exitAfterTakeoverPresentation = useCallback(() => router.replace(exitRoute), [exitRoute, router]);
-  useOkeyTakeoverPresentationExit({
-    matchId: isPreview ? "preview" : onlineMatchId,
-    projection: onlineProjection,
-    activePresentationRef,
-    presentationToken: tileFlight,
-    onExit: isPreview ? () => {} : exitAfterTakeoverPresentation,
-  });
-
 
   useOkeyAuthoritativeRackRemovalPresentation(
     humanPlayer.hand,

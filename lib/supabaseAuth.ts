@@ -240,37 +240,60 @@ export async function signInWithGoogle() {
 }
 
 export async function signInWithFacebook() {
-  if (Platform.OS !== "ios") {
+  if (Platform.OS !== "ios" && Platform.OS !== "android") {
     return signInWithSocialProvider("facebook");
   }
 
   try {
-    // Load the native SDK only when the iOS Facebook action is invoked.
+    // Load the native SDK only when the Facebook action is invoked on mobile.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { AuthenticationToken, LoginManager, Settings } = require("react-native-fbsdk-next") as typeof import("react-native-fbsdk-next");
+    const { AccessToken, AuthenticationToken, LoginManager, Settings } = require("react-native-fbsdk-next") as typeof import("react-native-fbsdk-next");
     Settings.initializeSDK();
-    const login = await LoginManager.logInWithPermissions(
-      ["public_profile", "email"],
-      "limited",
-    );
 
+    if (Platform.OS === "ios") {
+      const login = await LoginManager.logInWithPermissions(
+        ["public_profile", "email"],
+        "limited",
+      );
+
+      if (login.isCancelled) {
+        return { data: null, error: new Error("Facebook sign-in was cancelled.") };
+      }
+
+      const credential = await AuthenticationToken.getAuthenticationTokenIOS();
+      const idToken = credential?.authenticationToken;
+
+      if (!idToken) {
+        return {
+          data: null,
+          error: new Error("Facebook Limited Login did not return an ID token."),
+        };
+      }
+
+      return supabase.auth.signInWithIdToken({
+        provider: "facebook",
+        token: idToken,
+      });
+    }
+
+    const login = await LoginManager.logInWithPermissions(["public_profile", "email"]);
     if (login.isCancelled) {
       return { data: null, error: new Error("Facebook sign-in was cancelled.") };
     }
 
-    const credential = await AuthenticationToken.getAuthenticationTokenIOS();
-    const idToken = credential?.authenticationToken;
+    const credential = await AccessToken.getCurrentAccessToken();
+    const accessToken = credential?.accessToken;
 
-    if (!idToken) {
+    if (!accessToken) {
       return {
         data: null,
-        error: new Error("Facebook Limited Login did not return an ID token."),
+        error: new Error("Facebook Login did not return an access token."),
       };
     }
 
     return supabase.auth.signInWithIdToken({
       provider: "facebook",
-      token: idToken,
+      token: accessToken,
     });
   } catch (error) {
     console.warn("[auth] Native Facebook sign-in failed", error);
@@ -423,3 +446,4 @@ export async function resendVerificationEmail(email: string) {
 export async function updatePassword(password: string) {
   return supabase.auth.updateUser({ password });
 }
+

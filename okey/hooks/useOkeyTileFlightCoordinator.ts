@@ -874,44 +874,6 @@ export function useOkeyTileFlightCompletion(input: {
 }
 export { useOkeyPlayerTileFlightCommands } from "@/okey/presentation/useOkeyTableActions";
 
-export function useOkeyTakeoverPresentationExit(input: {
-  matchId?: string;
-  projection: OkeyMatchServerProjection | null;
-  activePresentationRef: MutableRefObject<ActivePresentation>;
-  presentationToken: TileFlight | null;
-  onExit: () => void;
-}) {
-  const { matchId, projection, activePresentationRef, presentationToken, onExit } = input;
-  const exitStartedRef = useRef(false);
-  const previousControlRef = useRef<{ matchId: string; playerId: string; controlled: boolean } | null>(null);
-  const pendingTimeoutEventIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!matchId || !projection || exitStartedRef.current || projection.matchFinished) return;
-    const viewer = projection.players.find((player) => Array.isArray(player.hand));
-    if (!viewer) return;
-    const controlled = viewer.controlledByBot === true || viewer.kind === "bot";
-    const previous = previousControlRef.current;
-    previousControlRef.current = { matchId, playerId: viewer.id, controlled };
-    if (!controlled) { pendingTimeoutEventIdRef.current = null; return; }
-    const event = projection.lastTimeoutDiscardEvent;
-    const fresh = previous?.matchId === matchId && previous.playerId === viewer.id && previous.controlled === false;
-    if (pendingTimeoutEventIdRef.current === null && fresh && event?.playerId === viewer.id) {
-      if (activePresentationRef.current.completedTimeoutEventId === event.id) { exitStartedRef.current = true; onExit(); return; }
-      if (activePresentationRef.current.onlineTimeout?.eventId === event.id) { pendingTimeoutEventIdRef.current = event.id; return; }
-      exitStartedRef.current = true; onExit(); return;
-    }
-    const pendingId = pendingTimeoutEventIdRef.current;
-    if (pendingId) {
-      if (activePresentationRef.current.completedTimeoutEventId === pendingId || activePresentationRef.current.onlineTimeout?.eventId !== pendingId) {
-        pendingTimeoutEventIdRef.current = null; exitStartedRef.current = true; onExit();
-      }
-      return;
-    }
-    exitStartedRef.current = true;
-    onExit();
-  }, [activePresentationRef, matchId, onExit, presentationToken, projection]);
-}
-
 export function useOkeyOptimisticRackPresentation(
   authoritativeHand: OkeyTile[],
   optimisticTile: OkeyTile | null,

@@ -20,5 +20,9 @@ export default function OkeyPreviewScreen() {
   if (!__DEV__) return <Redirect href="/(tabs)/play" />;
   if (!ready) return null;
 
-  return <OkeyGameTableScene isPreview />;
+  return (
+    <>
+      <OkeyGameTableScene isPreview />
+    </>
+  );
 }

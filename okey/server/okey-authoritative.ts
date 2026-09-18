@@ -689,6 +689,9 @@ export type OkeyAuthoritativeCommand =
       targetPlayerId: string;
       targetMeldId: string;
       runEnd?: "start" | "end";
+    }
+  | {
+      type: "take-back-seat";
     };
 
 export type OkeyProjectedPlayer =
@@ -792,6 +795,7 @@ export function applyAuthoritativeOkeyCommand(
     OkeyAuthoritativeCommand,
 ): OkeyGameState {
   if (
+    command.type !== "take-back-seat" &&
     state.phase !== "playing"
   ) {
     throw new OkeyCommandError(
@@ -800,6 +804,7 @@ export function applyAuthoritativeOkeyCommand(
   }
 
   if (
+    command.type !== "take-back-seat" &&
     state.currentPlayerIndex !==
     actorPlayerIndex
   ) {
@@ -877,6 +882,18 @@ export function applyAuthoritativeOkeyCommand(
       );
       break;
 
+    case "take-back-seat":
+      if (!state.players[actorPlayerIndex].controlledByBot) {
+        throw new OkeyCommandError("command_rejected");
+      }
+      next = {
+        ...state,
+        players: state.players.map((p, i) =>
+          i === actorPlayerIndex ? { ...p, controlledByBot: false, kind: "human" } : p
+        ),
+      };
+      break;
+
     default:
       throw new OkeyCommandError(
         "invalid_command",
@@ -896,14 +913,7 @@ function isOkeyTerminalTakeover(
   match: OkeyAuthoritativeMatchState,
   player: OkeyAuthoritativeMatchState["roundState"]["players"][number],
 ): boolean {
-  return (
-    (match.manualLeftPlayerIds ?? []).includes(player.id) ||
-    (
-      isOkeyBotControlled(player) &&
-      (match.timeoutCountsByPlayerId?.[player.id] ?? 0) >=
-        OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD
-    )
-  );
+  return (match.manualLeftPlayerIds ?? []).includes(player.id);
 }
 
 function reconcileAuthoritativeHumanControl(
@@ -1037,10 +1047,17 @@ export function applyAuthoritativeOkeyMatchCommand(
     OkeyAuthoritativeCommand,
   now = Date.now(),
 ): OkeyAuthoritativeMatchState {
-  if (match.matchFinished || isOkeyRoundStartPending(match, now)) {
-    throw new OkeyCommandError(
-      "command_rejected",
-    );
+  if (match.matchFinished) {
+    throw new OkeyCommandError("command_rejected");
+  }
+  
+  if (command.type !== "take-back-seat" && isOkeyRoundStartPending(match, now)) {
+    throw new OkeyCommandError("command_rejected");
+  }
+
+  const actor = match.roundState.players[actorPlayerIndex];
+  if (command.type === "take-back-seat" && (match.manualLeftPlayerIds ?? []).includes(actor?.id)) {
+    throw new OkeyCommandError("command_rejected");
   }
 
   const nextRoundState =
@@ -1050,17 +1067,16 @@ export function applyAuthoritativeOkeyMatchCommand(
       command,
     );
 
-  const actor =
-    match.roundState.players[actorPlayerIndex];
+  const nextActor = nextRoundState.players[actorPlayerIndex];
 
   // The persisted field keeps its historical name for snapshot compatibility,
   // but now tracks consecutive DRAW-phase timeouts only. A successful Human
-  // draw is the sole action that clears that streak.
+  // draw or explicit take-back-seat clears that streak.
   const nextTimeoutCounts =
-    command.type === "draw" && actor && !isOkeyBotControlled(actor)
+    (command.type === "draw" || command.type === "take-back-seat") && nextActor && !isOkeyBotControlled(nextActor)
       ? {
           ...(match.timeoutCountsByPlayerId ?? {}),
-          [actor.id]: 0,
+          [nextActor.id]: 0,
         }
       : match.timeoutCountsByPlayerId;
 

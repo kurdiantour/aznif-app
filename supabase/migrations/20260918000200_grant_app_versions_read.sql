@@ -1,0 +1,1 @@
+GRANT SELECT ON TABLE public.app_versions TO anon, authenticated;

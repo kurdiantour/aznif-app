@@ -5,6 +5,7 @@ const mockNativeModuleLoad = jest.fn();
 const mockInitializeSDK = jest.fn();
 const mockLogin = jest.fn<(...args: unknown[]) => Promise<{ isCancelled: boolean }>>();
 const mockCredential = jest.fn<() => Promise<{ authenticationToken: string } | null>>();
+const mockAccessToken = jest.fn<() => Promise<{ accessToken: string } | null>>();
 const mockIdTokenSignIn = jest.fn<(...args: unknown[]) => Promise<{ data: unknown; error: null }>>();
 const mockOAuthSignIn = jest.fn<(...args: unknown[]) => Promise<{ data: { url: string | null }; error: null }>>();
 const mockOpenAuthSession = jest.fn<(...args: unknown[]) => Promise<{ type: "cancel" }>>();
@@ -15,6 +16,7 @@ jest.mock("react-native-fbsdk-next", () => {
   Settings: { initializeSDK: () => mockInitializeSDK() },
   LoginManager: { logInWithPermissions: (...args: unknown[]) => mockLogin(...args) },
   AuthenticationToken: { getAuthenticationTokenIOS: () => mockCredential() },
+  AccessToken: { getCurrentAccessToken: () => mockAccessToken() },
   };
 });
 
@@ -43,6 +45,7 @@ describe("Facebook sign-in platform routing", () => {
     mockInitializeSDK.mockReset();
     mockLogin.mockReset();
     mockCredential.mockReset();
+    mockAccessToken.mockReset();
     mockIdTokenSignIn.mockReset();
     mockOAuthSignIn.mockReset();
     mockOpenAuthSession.mockReset();
@@ -72,24 +75,24 @@ describe("Facebook sign-in platform routing", () => {
     }
   });
 
-  it("keeps Android on the existing OAuth path", async () => {
+  it("uses the native Facebook SDK on Android", async () => {
     const previousOS = Platform.OS;
     Object.defineProperty(Platform, "OS", { configurable: true, value: "android" });
     try {
-      mockOAuthSignIn.mockResolvedValue({ data: { url: "https://example.com/oauth" }, error: null });
-      mockOpenAuthSession.mockResolvedValue({ type: "cancel" });
+      mockLogin.mockResolvedValue({ isCancelled: false });
+      mockAccessToken.mockResolvedValue({ accessToken: "facebook-access-token" });
+      mockIdTokenSignIn.mockResolvedValue({ data: { session: {} }, error: null });
 
-      await signInWithFacebook();
+      const result = await signInWithFacebook();
 
-      expect(mockOAuthSignIn).toHaveBeenCalledWith({
+      expect(mockInitializeSDK).toHaveBeenCalledTimes(1);
+      expect(mockLogin).toHaveBeenCalledWith(["public_profile", "email"]);
+      expect(mockIdTokenSignIn).toHaveBeenCalledWith({
         provider: "facebook",
-        options: {
-          redirectTo: "dominoapp://auth-callback?flow=oauth",
-          skipBrowserRedirect: true,
-        },
+        token: "facebook-access-token",
       });
-      expect(mockLogin).not.toHaveBeenCalled();
-      expect(mockIdTokenSignIn).not.toHaveBeenCalled();
+      expect(result.error).toBeNull();
+      expect(mockOAuthSignIn).not.toHaveBeenCalled();
     } finally {
       Object.defineProperty(Platform, "OS", { configurable: true, value: previousOS });
     }
