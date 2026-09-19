@@ -1,33 +1,27 @@
 import { Image } from "expo-image";
 import { type ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
-
-import { type TableId } from "@/constants/catalog/tables";
 import {
-  OkeyCosmeticsProvider,
-  useOkeyCosmetics,
-} from "@/okey/hooks/useOkeyCosmetics";
+  StyleSheet,
+  View,
+  type ImageSourcePropType,
+} from "react-native";
 
 type Props = {
   children: ReactNode;
-  tableId?: TableId;
+  imageSource?: ImageSourcePropType;
   contentPadding?: boolean;
 };
 
-function TableBackgroundInner({
+export default function TableBackground({
   children,
-  contentPadding,
-}: {
-  children: ReactNode;
-  contentPadding: boolean;
-}) {
-  const { setAssets, isReady } = useOkeyCosmetics();
-
+  imageSource,
+  contentPadding = true,
+}: Props) {
   return (
     <View style={styles.background}>
-      {isReady ? (
+      {imageSource ? (
         <Image
-          source={setAssets.table}
+          source={imageSource}
           style={StyleSheet.absoluteFill}
           contentFit="fill"
           cachePolicy="memory-disk"
@@ -46,20 +40,6 @@ function TableBackgroundInner({
         {children}
       </View>
     </View>
-  );
-}
-
-export default function TableBackground({
-  children,
-  tableId,
-  contentPadding = true,
-}: Props) {
-  return (
-    <OkeyCosmeticsProvider tableId={tableId}>
-      <TableBackgroundInner contentPadding={contentPadding}>
-        {children}
-      </TableBackgroundInner>
-    </OkeyCosmeticsProvider>
   );
 }
 

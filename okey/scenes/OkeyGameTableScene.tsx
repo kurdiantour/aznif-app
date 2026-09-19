@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, } from "react-native";
+import { OkeyCosmeticsProvider, useOkeyCosmetics } from "@/okey/hooks/useOkeyCosmetics";
 
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
@@ -651,11 +652,28 @@ useEffect(() => {
   ]);
 
 
+function OkeyTableBackgroundWrapper({ children, roomId }: { children: ReactNode, roomId?: string }) {
+  return (
+    <OkeyCosmeticsProvider roomId={roomId}>
+      <OkeyTableBackgroundInner>
+        {children}
+      </OkeyTableBackgroundInner>
+    </OkeyCosmeticsProvider>
+  );
+}
 
+function OkeyTableBackgroundInner({ children }: { children: ReactNode }) {
+  const { setAssets, isReady } = useOkeyCosmetics();
+  return (
+    <TableBackground imageSource={isReady ? setAssets.table : undefined} contentPadding={false}>
+      {children}
+    </TableBackground>
+  );
+}
 
   
   return (
-<TableBackground contentPadding={false}>
+<OkeyTableBackgroundWrapper roomId={onlineMatchId}>
   <View
     ref={screenRef}
     onLayout={measureScreen}
@@ -841,6 +859,7 @@ useEffect(() => {
           selectedTileId={selectedTileId}
           okeyTile={state.okeyTile}
           onSelectTile={handleRackTileSelect}
+          playerId={humanPlayer.id}
 
           onRackScoreChange={setRackSetScore}
           onOpenableMeldsChange={setOpenableRackMelds}
@@ -976,7 +995,7 @@ useEffect(() => {
           }}
         />
       </View>
-    </TableBackground>
+</OkeyTableBackgroundWrapper>
   );
 }
 const finishRevealStyles = StyleSheet.create({

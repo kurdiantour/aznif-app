@@ -1,4 +1,7 @@
+import { type ReactNode } from "react";
 import BoardArea from "@/components/game/BoardArea";
+import { DominoCosmeticsProvider, useDominoCosmetics } from "@/domino/hooks/useDominoCosmetics";
+
 import DrawPilePrompt from "@/components/game/DrawPilePrompt";
 import GameOverPopup from "@/components/game/GameOverPopup";
 import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
@@ -9,7 +12,6 @@ import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import RoundResultReveal from "@/components/game/RoundResultReveal";
 import ScorePopup from "@/components/game/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
-import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import MiniScoreBoard from "@/components/game/MiniScoreBoard";
@@ -37,6 +39,16 @@ import {
   Text,
   View,
 } from "react-native";
+
+function DominoTableBackground({ children }: { children: ReactNode }) {
+  const { setAssets, isReady } = useDominoCosmetics();
+  return (
+    <TableBackground imageSource={isReady ? setAssets.table : undefined} contentPadding={true}>
+      {children}
+    </TableBackground>
+  );
+}
+
 
 function getTeamName(
   players: any[],
@@ -743,11 +755,11 @@ useEffect(() => {
 
   if (gameLoading) {
     return (
-      <TableBackground tableId={!isLocalGame ? getPreloadedTableId() : undefined}>
+      <DominoTableBackground>
         <View style={styles.loadingOverlay}>
         <Text style={styles.statusText}>{"\u06cc\u0627\u0631\u06cc \u0628\u0627\u0631 \u062f\u06d5\u06a9\u0631\u06ce\u062a..."}</Text>
         </View>
-      </TableBackground>
+      </DominoTableBackground>
     );
   }
 
@@ -765,21 +777,35 @@ useEffect(() => {
   }
 
   return (
-    <View ref={screenRef} onLayout={() => screenRef.current?.measureInWindow((x, y) => { screenOriginRef.current = { x, y }; })} style={styles.screen}>
-      {tileFlight.flight && <DominoTileFlightOverlay flight={tileFlight.flight} onDone={tileFlight.finish} />}
-      {isTwoVsTwoPreview && (
-        <View pointerEvents="box-none" style={styles.previewDevOverlay}>
-          <View style={styles.previewDevPanel}>
-            <Text style={styles.previewDevTitle}>Domino 2v2 Preview</Text>
+    <DominoCosmeticsProvider>
+      <View
+        ref={screenRef}
+        onLayout={() =>
+          screenRef.current?.measureInWindow((x, y) => {
+            screenOriginRef.current = { x, y };
+          })
+        }
+        style={styles.screen}
+      >
+        {tileFlight.flight && (
+          <DominoTileFlightOverlay
+            flight={tileFlight.flight}
+            onDone={tileFlight.finish}
+          />
+        )}
+        {isTwoVsTwoPreview && (
+          <View pointerEvents="box-none" style={styles.previewDevOverlay}>
+            <View style={styles.previewDevPanel}>
+              <Text style={styles.previewDevTitle}>Domino 2v2 Preview</Text>
             <Text style={styles.previewDevText}>You + 3 local bots</Text>
             <Pressable onPress={previewGame.restartGame} style={styles.previewRestartButton}>
               <Text style={styles.previewRestartText}>Restart Game</Text>
             </Pressable>
+            </View>
           </View>
-        </View>
-      )}
+        )}
       <View style={styles.stage}>
-        <TableBackground tableId={!isLocalGame ? getPreloadedTableId() : undefined}>
+        <DominoTableBackground>
           {topPlayer && (
             <View style={styles.topOpponentArea}>
               <View style={styles.avatarSlot}>
@@ -1056,11 +1082,10 @@ useEffect(() => {
   onCancel={() => setShowLeaveConfirm(false)}
   onConfirm={handleConfirmLeaveGame}
 />
-
-
-        </TableBackground>
+        </DominoTableBackground>
       </View>
     </View>
+    </DominoCosmeticsProvider>
   );
 }
 

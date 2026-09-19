@@ -41,7 +41,7 @@ export function OkeyOpponentSeat({
   onPress?: () => void;
 }) {
   const layout = useOkeyResponsiveLayout();
-  const { setAssets } = useOkeyCosmetics();
+  const { getPlayerAssets } = useOkeyCosmetics();
   const seatRef = useRef<View | null>(null);
 
   const targetBackCount =
@@ -93,7 +93,7 @@ export function OkeyOpponentSeat({
       <View style={styles.opponentRack}>
         <Image
           pointerEvents="none"
-          source={setAssets.opponentRack}
+          source={getPlayerAssets(playerId).opponentRack}
           style={StyleSheet.absoluteFill}
           contentFit="fill"
           cachePolicy="memory-disk"

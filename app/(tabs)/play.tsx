@@ -127,10 +127,10 @@ export default function PlayScreen() {
         <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
           <GameCard
             isTablet={isTablet}
-            title="ئەزنیف"
+            title="دۆمینۆ"
             subtitle="توانای خۆت بسەلمێنە"
             icon="grid-outline"
-            image={require("@/assets/images/lobby/aznif-card-v3.png")}
+            image={require("@/assets/images/lobby/fun/aznif-card-v3.webp")}
             onPress={() => router.push("/domino/fun")}
           />
 
@@ -139,7 +139,7 @@ export default function PlayScreen() {
             title="ئۆکەی"
             subtitle="توانای خۆت بسەلمێنە"
             icon="ellipse-outline"
-            image={require("@/assets/images/okey/lobby/okey-card.png")}
+            image={require("@/assets/images/lobby/fun/okey-card.webp")}
             onPress={() => router.push("/okey/fun")}
           />
 
@@ -148,7 +148,7 @@ export default function PlayScreen() {
             title="تاولە"
             subtitle="بەم زووانە"
             icon="cube-outline"
-            centerImage={require("@/assets/images/lobby/tawla.png")}
+            centerImage={require("@/assets/images/lobby/fun/tawla.webp")}
             disabled={true}
             showComingSoonClock={true}
           />
@@ -158,7 +158,7 @@ export default function PlayScreen() {
             title="دامە"
             subtitle="بەم زووانە"
             icon="grid-outline"
-            centerImage={require("@/assets/images/lobby/dama.png")}
+            centerImage={require("@/assets/images/lobby/fun/dama.webp")}
             disabled={true}
             showComingSoonClock={true}
           />

@@ -7,7 +7,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { FullWindowOverlay } from "react-native-screens";
 import { Image as ExpoImage } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { Redirect } from "expo-router";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
@@ -34,92 +33,29 @@ function ItemPreview({
   item: MockShopItem;
   onTablePreviewPress: (source: ImageSourcePropType) => void;
 }) {
-  const { category } = item;
+  const { width, height } = ReactNativeImage.resolveAssetSource(
+    item.images.shopPreview,
+  );
 
-  if (category === "tables") {
-    const { width, height } = ReactNativeImage.resolveAssetSource(
-      item.images.shopPreview,
-    );
-
-    return (
-      <Pressable
-        onPress={() => onTablePreviewPress(item.images.shopPreview)}
-        accessibilityRole="imagebutton"
-        accessibilityLabel="پیشاندانی وێنە بە قەبارەی تەواو"
-        style={[
-          styles.preview,
-          styles.tablePreview,
-          { aspectRatio: width / height },
-        ]}
-      >
-        <ExpoImage
-          source={item.images.shopPreview}
-          style={styles.tablePreviewImage}
-          contentFit="contain"
-          cachePolicy="memory-disk"
-          transition={0}
-        />
-      </Pressable>
-    );
-  }
-
-  if (category === "domino-skins" && item.previewImage) {
-    return (
+  return (
+    <Pressable
+      onPress={() => onTablePreviewPress(item.images.shopPreview)}
+      accessibilityRole="imagebutton"
+      accessibilityLabel="پیشاندانی وێنە بە قەبارەی تەواو"
+      style={[
+        styles.preview,
+        styles.tablePreview,
+        { aspectRatio: width / height },
+      ]}
+    >
       <ExpoImage
-        source={item.previewImage}
-        style={styles.preview}
-        contentFit="cover"
+        source={item.images.shopPreview}
+        style={styles.tablePreviewImage}
+        contentFit="contain"
         cachePolicy="memory-disk"
         transition={0}
       />
-    );
-  }
-
-  const { preview } = item;
-
-  return (
-    <LinearGradient colors={preview.colors} style={styles.preview}>
-      {category === "domino-skins" ? (
-        <View style={styles.dominoPreviewRow}>
-          {[0, 1, 2].map((tile) => (
-            <View
-              key={tile}
-              style={[
-                styles.dominoPreviewTile,
-                { borderColor: preview.accent },
-              ]}
-            >
-              <View
-                style={[
-                  styles.dominoDivider,
-                  { backgroundColor: preview.accent },
-                ]}
-              />
-              <View style={[styles.pip, { backgroundColor: preview.accent }]} />
-              {tile !== 0 ? (
-                <View
-                  style={[
-                    styles.pip,
-                    styles.pipLower,
-                    { backgroundColor: preview.accent },
-                  ]}
-                />
-              ) : null}
-            </View>
-          ))}
-        </View>
-      ) : (
-        <View style={styles.coverPreview}>
-          <View
-            style={[styles.coverGlow, { backgroundColor: preview.accent }]}
-          />
-          <View style={[styles.coverAvatar, { borderColor: preview.accent }]} />
-          <View
-            style={[styles.coverLine, { backgroundColor: preview.accent }]}
-          />
-        </View>
-      )}
-    </LinearGradient>
+    </Pressable>
   );
 }
 
@@ -218,7 +154,7 @@ function ShopContent() {
           style={styles.content}
           contentContainerStyle={[
             styles.grid,
-            category === "tables" && styles.tableGrid,
+            styles.tableGrid,
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -229,15 +165,10 @@ function ShopContent() {
                 <Pressable
                   key={item.id}
                   disabled={busyItemId !== null}
-                  onPress={
-                    item.category === "tables"
-                      ? undefined
-                      : () => handleItemAction(item)
-                  }
                   accessibilityLabel={isOwned ? "ئایتمی کڕدراو" : "ئایتمی شۆپ"}
                   style={[
                     styles.card,
-                    item.category === "tables" && styles.tableCard,
+                    styles.tableCard,
                     isEquipped && styles.cardEquipped,
                   ]}
                 >
@@ -250,43 +181,48 @@ function ShopContent() {
                           : item.price.toLocaleString()}
                       </Text>
                     </View>
-                    {item.category === "tables" ? (
-                      <Pressable
-                        disabled={busyItemId !== null || isEquipped}
-                        onPress={() => handleItemAction(item)}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          isEquipped
-                            ? "بەکارهاتووە"
-                            : isOwned
-                              ? "کڕدراوە"
-                              : "بیکڕە"
-                        }
-                        style={[
-                          styles.tableAction,
-                          !isOwned && styles.tableActionBuy,
-                          isOwned && !isEquipped && styles.tableActionOwned,
-                          isEquipped && styles.tableActionEquipped,
-                        ]}
-                      >
-                        {isEquipped ? (
-                          <Ionicons name="checkmark" size={13} color="#74f1a8" />
-                        ) : null}
-                        <Text style={styles.tableActionLabel}>
-                          {isEquipped ? "بەکارهاتووە" : isOwned ? "کڕدراوە" : "بیکڕە"}
-                        </Text>
-                      </Pressable>
-                    ) : isEquipped ? (
-                      <View style={styles.equippedBadge}>
+                    <Pressable
+                      disabled={busyItemId !== null || isEquipped}
+                      onPress={() => handleItemAction(item)}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        isEquipped
+                          ? "بەکارهاتووە"
+                          : isOwned
+                            ? "کڕدراوە"
+                            : "بیکڕە"
+                      }
+                      style={[
+                        styles.tableAction,
+                        !isOwned && styles.tableActionBuy,
+                        isOwned && !isEquipped && styles.tableActionOwned,
+                        isEquipped && styles.tableActionEquipped,
+                      ]}
+                    >
+                      {isEquipped ? (
                         <Ionicons name="checkmark" size={13} color="#74f1a8" />
-                        <Text style={styles.equippedLabel}>بەکارهاتووە</Text>
-                      </View>
-                    ) : null}
+                      ) : null}
+                      <Text style={styles.tableActionLabel}>
+                        {isEquipped ? "بەکارهاتووە" : isOwned ? "کڕدراوە" : "بیکڕە"}
+                      </Text>
+                    </Pressable>
                   </View>
+
                   <ItemPreview
                     item={item}
                     onTablePreviewPress={setFullscreenPreview}
                   />
+
+                  <View style={styles.cardBottomRow}>
+                    <Text
+                      style={[
+                        styles.cardName,
+                        styles.tableCardName,
+                      ]}
+                    >
+                      {item.name}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -556,5 +492,21 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 3,
     opacity: 0.8,
+  },
+  cardBottomRow: {
+    marginTop: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    width: "100%",
+  },
+  cardName: {
+    color: "#f4f0ff",
+    fontSize: 13,
+    fontFamily: "SpedaBold",
+  },
+  tableCardName: {
+    textAlign: "center",
+    flex: 1,
   },
 });

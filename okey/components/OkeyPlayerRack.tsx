@@ -187,6 +187,7 @@ export function OkeyPlayerRack({
   externalDropPlacement,
   onExternalDropPlaced,
   eliminated = false,
+  playerId,
 }: {
   tiles: OkeyTile[];
   selectedTileId: string | null;
@@ -235,9 +236,11 @@ export function OkeyPlayerRack({
     targetIndex: number,
   ) => void;
   eliminated?: boolean;
+  playerId?: string;
 }) {
   const layout = useOkeyResponsiveLayout();
-  const { setAssets } = useOkeyCosmetics();
+  const { getPlayerAssets } = useOkeyCosmetics();
+
 
   const tileById = useMemo(
     () => new Map(tiles.map((tile) => [tile.id, tile])),
@@ -843,7 +846,7 @@ export function OkeyPlayerRack({
 
         <Image
           pointerEvents="none"
-          source={setAssets.playerRack}
+          source={getPlayerAssets(playerId).playerRack}
           style={styles.rackImage}
           contentFit="contain"
           cachePolicy="memory-disk"

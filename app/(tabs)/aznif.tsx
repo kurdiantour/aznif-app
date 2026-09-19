@@ -119,7 +119,7 @@ export default function AznifPlayScreen() {
             title="دۆمینۆ"
             subtitle="توانای خۆت بسەلمێنە"
             icon="grid-outline"
-            image={require("@/assets/images/okey/lobby/dominoaznifcard.png")}
+            image={require("@/assets/images/lobby/aznft/dominoaznifcard.webp")}
             onPress={() => router.push("/domino/aznif")}
           />
 
@@ -128,7 +128,7 @@ export default function AznifPlayScreen() {
             title="ئۆکەی"
             subtitle="توانای خۆت بسەلمێنە"
             icon="ellipse-outline"
-            image={require("@/assets/images/okey/lobby/okeyaznifcard.png")}
+            image={require("@/assets/images/lobby/aznft/okeyaznifcard.webp")}
             onPress={() => router.push("/okey/aznif")}
           />
 
