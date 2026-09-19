@@ -1,5 +1,5 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";

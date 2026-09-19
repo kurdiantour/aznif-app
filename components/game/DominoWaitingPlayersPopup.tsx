@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 import { formatCurrencyAmount } from "@/lib/aznif-display";
 
 type WaitingPlayer = { playerIndex: number; avatarId?: AvatarId };

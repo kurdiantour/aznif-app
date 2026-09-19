@@ -1482,8 +1482,17 @@ test("Human deck-zero Draw rebuilds, commits, versions, and broadcasts the autho
 });
 
 test("Human request entering before turn deadline is accepted even if internal server processing delay causes now() to pass deadline", async () => {
-  const base = createAuthoritativeOkeyMatch(mockPlayers, 0);
-  const playerIndex = base.roundState.currentPlayerIndex;
+const initial = createAuthoritativeOkeyMatch(mockPlayers, 0);
+
+const base: OkeyAuthoritativeMatchState = {
+  ...initial,
+  roundState: {
+    ...initial.roundState,
+    hasDrawnThisTurn: false,
+  },
+};
+
+const playerIndex = base.roundState.currentPlayerIndex;
   const deadlineAt = "2026-09-14T10:00:15.000Z";
   const requestReceivedAtMs = Date.parse("2026-09-14T10:00:14.000Z");
   const delayedServerProcessingNowMs = Date.parse("2026-09-14T10:00:20.000Z");

@@ -3,61 +3,133 @@ import { useRouter } from "expo-router";
 
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import { supabase } from "@/lib/supabase";
-import { getOkeyRoomStatus, leaveOkeyRoom, subscribeOkeyRoom, subscribeOkeyWaitingRoomHeartbeat, type OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
+import {
+  getOkeyRoomStatus,
+  leaveOkeyRoom,
+  subscribeOkeyRoom,
+  subscribeOkeyWaitingRoomHeartbeat,
+  type OkeyRoomSnapshot,
+} from "@/okey/multiplayer/okey-room-api";
 
-export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
+export function useOkeyRoomLifecycle({
+  matchId,
+  exitRoute,
+}: {
   matchId?: string;
   exitRoute: "/(tabs)/aznif" | "/(tabs)/play";
 }) {
   const router = useRouter();
   const { party } = useGameParty();
+
   const [room, setRoom] = useState<OkeyRoomSnapshot | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [leavingWaitingRoom, setLeavingWaitingRoom] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getUser().then(({ data }) => { if (active) setCurrentUserId(data.user?.id ?? null); });
-    return () => { active = false; };
-  }, []);
 
-  useEffect(() => {
-    if (!matchId || matchId === "preview") return;
-    router.replace(exitRoute);
-  }, [exitRoute, matchId, router]);
+    void supabase.auth.getUser().then(({ data }) => {
+      if (active) {
+        setCurrentUserId(data.user?.id ?? null);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!matchId || matchId === "preview") {
       const reset = setTimeout(() => setRoom(null), 0);
       return () => clearTimeout(reset);
     }
+
     let active = true;
-    void getOkeyRoomStatus(matchId).then((snapshot) => { if (active) setRoom(snapshot); })
-      .catch((error) => console.warn("Unable to load Okey room status", error));
-    const unsubscribe = subscribeOkeyRoom(matchId, (snapshot) => { if (active) setRoom(snapshot); });
-    return () => { active = false; unsubscribe(); };
+
+    void getOkeyRoomStatus(matchId)
+      .then((snapshot) => {
+        if (active) {
+          setRoom(snapshot);
+        }
+      })
+      .catch((error) => {
+        console.warn("Unable to load Okey room status", error);
+      });
+
+    const unsubscribe = subscribeOkeyRoom(matchId, (snapshot) => {
+      if (active) {
+        setRoom(snapshot);
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [matchId]);
 
   useEffect(() => {
-    if (!matchId || matchId === "preview" || room?.status !== "waiting") return;
+    if (
+      !matchId ||
+      matchId === "preview" ||
+      room?.status !== "waiting"
+    ) {
+      return;
+    }
+
     let active = true;
+
     const unsubscribe = subscribeOkeyWaitingRoomHeartbeat(
       matchId,
-      (snapshot) => { if (active) setRoom(snapshot); },
-      (error) => console.warn("Unable to heartbeat Okey waiting room", error),
+      (snapshot) => {
+        if (active) {
+          setRoom(snapshot);
+        }
+      },
+      (error) => {
+        console.warn("Unable to heartbeat Okey waiting room", error);
+      },
     );
-    return () => { active = false; unsubscribe(); };
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [matchId, room?.status]);
 
   useEffect(() => {
-    if (!matchId || matchId === "preview" || !currentUserId || !party || party.leaderId === currentUserId || party.flowStatus !== "idle") return;
-    const redirect = setTimeout(() => { setRoom(null); router.replace(exitRoute); }, 0);
+    if (
+      !matchId ||
+      matchId === "preview" ||
+      !currentUserId ||
+      !party ||
+      party.leaderId === currentUserId ||
+      party.flowStatus !== "idle"
+    ) {
+      return;
+    }
+
+    const redirect = setTimeout(() => {
+      setRoom(null);
+      router.replace(exitRoute);
+    }, 0);
+
     return () => clearTimeout(redirect);
   }, [currentUserId, exitRoute, matchId, party, router]);
 
   const cancelWaiting = useCallback(async () => {
-    if (!matchId || leavingWaitingRoom || room?.countdownEndsAt || (party && party.leaderId !== currentUserId)) return;
+    if (
+      !matchId ||
+      leavingWaitingRoom ||
+      room?.countdownEndsAt ||
+      (party && party.leaderId !== currentUserId)
+    ) {
+      return;
+    }
+
     setLeavingWaitingRoom(true);
+
     try {
       await leaveOkeyRoom(matchId);
       setRoom(null);
@@ -67,51 +139,89 @@ export function useOkeyRoomLifecycle({ matchId, exitRoute }: {
     } finally {
       setLeavingWaitingRoom(false);
     }
-  }, [currentUserId, exitRoute, leavingWaitingRoom, matchId, party, room?.countdownEndsAt, router]);
+  }, [
+    currentUserId,
+    exitRoute,
+    leavingWaitingRoom,
+    matchId,
+    party,
+    room?.countdownEndsAt,
+    router,
+  ]);
 
-  const activeMatchId = room?.status === "playing" || room?.status === "finished" ? matchId : undefined;
+  const activeMatchId =
+    room?.status === "playing" || room?.status === "finished"
+      ? matchId
+      : undefined;
+
   return {
     room,
     currentUserId,
     activeMatchId,
-    waitingForPlayers: Boolean(matchId) && (room === null || room.status === "waiting"),
-    countdownInProgress: room?.status === "waiting" && room.countdownEndsAt !== null,
-    canCancelWaiting: !room?.countdownEndsAt && (!party || party.leaderId === currentUserId),
+    waitingForPlayers:
+      Boolean(matchId) && (room === null || room.status === "waiting"),
+    countdownInProgress:
+      room?.status === "waiting" && room.countdownEndsAt !== null,
+    canCancelWaiting:
+      !room?.countdownEndsAt && (!party || party.leaderId === currentUserId),
     leavingWaitingRoom,
     cancelWaiting,
   };
 }
 
-export function useOkeyRoomStartGate({ matchId, room, gameplayReady }: {
+export function useOkeyRoomStartGate({
+  matchId,
+  room,
+  gameplayReady,
+}: {
   matchId?: string;
   room: OkeyRoomSnapshot | null;
   gameplayReady: boolean;
 }) {
-  const [transitionMatchId, setTransitionMatchId] = useState<string | null>(null);
+  const [transitionMatchId, setTransitionMatchId] = useState<string | null>(
+    null,
+  );
+
   useEffect(() => {
-    if (matchId && room?.matchId === matchId && room.status === "waiting" && room.countdownEndsAt !== null) {
+    if (
+      matchId &&
+      room?.matchId === matchId &&
+      room.status === "waiting" &&
+      room.countdownEndsAt !== null
+    ) {
       const mark = setTimeout(() => setTransitionMatchId(matchId), 0);
       return () => clearTimeout(mark);
     }
   }, [matchId, room?.countdownEndsAt, room?.matchId, room?.status]);
+
   useEffect(() => {
-    if (transitionMatchId !== null && (transitionMatchId !== matchId || gameplayReady)) {
+    if (
+      transitionMatchId !== null &&
+      (transitionMatchId !== matchId || gameplayReady)
+    ) {
       const clear = setTimeout(() => setTransitionMatchId(null), 0);
       return () => clearTimeout(clear);
     }
   }, [gameplayReady, matchId, transitionMatchId]);
+
   return transitionMatchId === matchId && !gameplayReady;
 }
 
 /** Active-match exit only; intentionally separate from waiting-room cancellation. */
-export function useOkeyMatchExitLifecycle({ leaveOnlineMatch, leaving, exitRoute }: {
+export function useOkeyMatchExitLifecycle({
+  leaveOnlineMatch,
+  leaving,
+  exitRoute,
+}: {
   leaveOnlineMatch: () => Promise<unknown>;
   leaving: boolean;
   exitRoute: "/(tabs)/aznif" | "/(tabs)/play";
 }) {
   const router = useRouter();
+
   return useCallback(async () => {
     if (leaving) return;
+
     try {
       await leaveOnlineMatch();
       router.replace(exitRoute);
@@ -120,8 +230,16 @@ export function useOkeyMatchExitLifecycle({ leaveOnlineMatch, leaving, exitRoute
     }
   }, [exitRoute, leaveOnlineMatch, leaving, router]);
 }
-export function useOkeyGameplayReadiness({ projectionReady, room, matchFinished,
-  phase, showRoundResult, showMatchResult, matchId }: {
+
+export function useOkeyGameplayReadiness({
+  projectionReady,
+  room,
+  matchFinished,
+  phase,
+  showRoundResult,
+  showMatchResult,
+  matchId,
+}: {
   projectionReady: boolean;
   room: OkeyRoomSnapshot | null;
   matchFinished: boolean;
@@ -130,11 +248,22 @@ export function useOkeyGameplayReadiness({ projectionReady, room, matchFinished,
   showMatchResult: boolean;
   matchId?: string;
 }) {
-  const gameplayReady = (
+  const gameplayReady =
     projectionReady &&
     (room?.status === "playing" || matchFinished) &&
-    (phase === "playing" || phase === "finished" || showRoundResult || showMatchResult)
-  );
-  const startTransitionPending = useOkeyRoomStartGate({ matchId, room, gameplayReady });
-  return { gameplayReady, startTransitionPending };
+    (phase === "playing" ||
+      phase === "finished" ||
+      showRoundResult ||
+      showMatchResult);
+
+  const startTransitionPending = useOkeyRoomStartGate({
+    matchId,
+    room,
+    gameplayReady,
+  });
+
+  return {
+    gameplayReady,
+    startTransitionPending,
+  };
 }

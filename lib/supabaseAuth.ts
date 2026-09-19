@@ -1,4 +1,4 @@
-import { AVATAR_IDS } from "@/constants/avatars";
+import { AVATAR_IDS } from "@/types/avatar.ts";
 import type { Provider, Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";

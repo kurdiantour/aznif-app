@@ -935,13 +935,25 @@ function reconcileAuthoritativeHumanControl(
     };
   }
 
-  const remainingTeamIds = new Set(
-    remainingMembers.map((player) => player.teamId),
-  );
-  const pendingForfeitTeamId: OkeyTeamId | null =
-    remainingTeamIds.size === 1
-      ? remainingMembers[0].teamId === "teamA" ? "teamB" : "teamA"
-      : null;
+  const teamA = match.roundState.players.filter((p) => p.teamId === "teamA");
+  const teamB = match.roundState.players.filter((p) => p.teamId === "teamB");
+
+  const isTeamForfeited = (team: typeof teamA) => {
+    if (team.length === 0) return false;
+    const allBots = team.every((p) => p.controlledByBot || p.kind === "bot");
+    if (!allBots) return false;
+    
+    const hasTakeover = team.some((p) =>
+      (match.manualLeftPlayerIds ?? []).includes(p.id) ||
+      (match.timeoutCountsByPlayerId?.[p.id] ?? 0) >= OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD
+    );
+    return hasTakeover;
+  };
+
+  const teamAForfeited = isTeamForfeited(teamA);
+  const teamBForfeited = isTeamForfeited(teamB);
+
+  const pendingForfeitTeamId: OkeyTeamId | null = teamAForfeited ? "teamA" : teamBForfeited ? "teamB" : null;
 
   if (pendingForfeitTeamId) {
     const winnerTeamId: OkeyTeamId =
@@ -1087,7 +1099,7 @@ export function applyAuthoritativeOkeyMatchCommand(
         nextTimeoutCounts,
       roundState:
         nextRoundState,
-    }),
+    }, now),
   );
 }
 

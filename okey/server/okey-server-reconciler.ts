@@ -289,6 +289,7 @@ export async function reconcileAuthoritativeHumanCommand(
           workingState,
           nextState,
           workingBundle.turn_deadline_at,
+          input.commandReceivedAtMs,
         ),
         createActionEvents: (nextState) => {
           let actionEvents: OkeyActionEventDraft[] = acceptedCommand.type === "manual-leave"

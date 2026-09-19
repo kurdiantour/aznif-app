@@ -190,7 +190,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
           void refreshParty().then(followPartyFlow);
         },
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status !== "SUBSCRIBED") return;
 
         void refreshParty().then((nextParty) => {
@@ -203,12 +203,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
         });
       });
 
-    const fallback = setInterval(() => {
-      void refreshParty().then(followPartyFlow);
-    }, 2_000);
-
     return () => {
-      clearInterval(fallback);
       void supabase.removeChannel(channel);
     };
   }, [

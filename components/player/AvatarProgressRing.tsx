@@ -1,4 +1,4 @@
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { calculateLevelProgress } from "@/lib/progression";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";

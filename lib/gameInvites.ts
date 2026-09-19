@@ -1,4 +1,4 @@
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar.ts";
 import { supabase } from "./supabase";
 
 export type GameInvite = {

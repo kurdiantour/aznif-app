@@ -6,7 +6,8 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { getAvatarSource, type AvatarId } from "@/constants/avatars";
+import { getAvatarSource } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 
 type PlayerAvatarProps = {
   avatarId?: AvatarId;

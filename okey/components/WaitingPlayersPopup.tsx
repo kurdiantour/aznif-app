@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
+import { AVATAR_IDS, type AvatarId } from "@/types/avatar";
 import { formatCurrencyAmount } from "@/lib/aznif-display";
 
 type Props = {

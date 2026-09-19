@@ -273,14 +273,6 @@ serve(async (req) => {
     );
   }
 
-  const metadata =
-    authData.user.user_metadata ?? {};
-
-  const avatarUrl =
-    typeof metadata.avatar_url === "string"
-      ? metadata.avatar_url
-      : null;
-
   const service = createClient(
     supabaseUrl,
     serviceKey,
@@ -305,13 +297,14 @@ serve(async (req) => {
   }
   const { data: currentProfile, error: currentProfileError } = await service
     .from("profiles")
-    .select("username")
+    .select("username, avatar_id")
     .eq("id", authData.user.id)
     .maybeSingle();
   if (currentProfileError) {
     return json({ error: "profile_lookup_failed", details: currentProfileError.message }, 500);
   }
   const displayName = currentProfile?.username ?? "Player";
+  const avatarUrl = currentProfile?.avatar_id ?? null;
 
   if (["heartbeat", "reconnect"].includes(action)) {
     const { data: membership, error: membershipError } = await service

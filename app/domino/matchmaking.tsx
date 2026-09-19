@@ -1,6 +1,6 @@
 import DominoWaitingPlayersPopup from "@/components/game/DominoWaitingPlayersPopup";
 import { useGameParty } from "@/lib/gameInvitesProvider";
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 import { getCurrentProfile } from "@/lib/profile";
 import { calculateLevelFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
@@ -312,15 +312,8 @@ export default function MatchmakingScreen() {
         }
       });
 
-    // Realtime is the fast path; polling guarantees that a dropped event does
-    // not leave one player waiting forever (especially in private rooms).
-    const playersFallbackInterval = setInterval(() => {
-      void loadPlayers();
-    }, 2000);
-
     return () => {
       mounted = false;
-      clearInterval(playersFallbackInterval);
       void supabase.removeChannel(channel);
     };
   }, [currentRoomId, isOneVsOne]);

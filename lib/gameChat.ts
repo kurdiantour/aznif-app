@@ -1,4 +1,4 @@
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar.ts";
 import { supabase } from "@/lib/supabase";
 
 export type GameChatType = "domino" | "okey";

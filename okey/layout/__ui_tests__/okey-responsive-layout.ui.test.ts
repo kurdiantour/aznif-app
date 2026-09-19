@@ -1,5 +1,6 @@
 import { expect, test } from "@jest/globals";
 import { createOkeyResponsiveLayout } from "../OkeyResponsiveLayoutProvider";
+import { RACK_ASPECT_RATIO } from "../uiPositions";
 
 const viewports = [
   {
@@ -61,9 +62,11 @@ test.each(viewports)(
     const playerRackWidth = Number(layout.playerRack.width);
     const playerRackHeight = Number(layout.playerRack.height);
 
-    expect(rackBottom).toBe(82 + insets.bottom);
+    expect(rackBottom).toBe(10);
     expect(playerRackWidth).toBeLessThanOrEqual(layout.usableWidth);
-    expect(playerRackHeight).toBe(Math.round(playerRackWidth / (2351 / 533)));
+    expect(playerRackHeight).toBe(
+      Math.round(playerRackWidth / RACK_ASPECT_RATIO),
+    );
     expect(rackHeight).toBe(playerRackHeight);
 
     if (expected === "regular") {

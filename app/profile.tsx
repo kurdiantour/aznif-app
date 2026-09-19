@@ -1,6 +1,6 @@
 import { AvatarPickerModal } from "@/components/player/AvatarPickerModal";
 import { AvatarProgressRing } from "@/components/player/AvatarProgressRing";
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 import { getCurrentLeaderboardRank, useProfile } from "@/lib/profile";
 import {
   calculateLevelFromPoints,

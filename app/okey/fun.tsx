@@ -12,7 +12,6 @@ import {
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -27,7 +26,6 @@ import {
 } from "@/constants/layout";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
-import { preloadEquippedCosmeticSet } from "@/lib/game/gameLaunchPreload";
 import {
   matchmakeOkeyRoom,
   type OkeyRoomSnapshot,
@@ -227,8 +225,6 @@ export default function OkeyFunScreen() {
       setJoiningTableId(null);
       setJoinError(null);
 
-      await preloadEquippedCosmeticSet().catch(() => {});
-
       router.replace({
         pathname: "/okey/game",
         params: {
@@ -298,10 +294,8 @@ export default function OkeyFunScreen() {
         <View style={styles.screen}>
           <View style={[styles.content, isTablet && styles.contentTablet]}>
             <View style={[styles.tableSection, isTablet && styles.tableSectionTablet]}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={[
+              <View
+                style={[
                   styles.tableRow,
                   isTablet && styles.tableRowTablet,
                 ]}
@@ -324,7 +318,7 @@ export default function OkeyFunScreen() {
                     }}
                   />
                 ))}
-              </ScrollView>
+              </View>
             </View>
 
           </View>
@@ -391,6 +385,7 @@ const styles = StyleSheet.create({
   },
 
   tableRow: {
+    flexDirection: "row",
     height: OKEY_LOBBY_CARD_HEIGHT,
     gap: 8,
     paddingVertical: 0,

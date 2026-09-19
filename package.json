@@ -17,9 +17,10 @@
     "test:okey:ui": "jest --config jest.okey.config.cjs --runInBand",
     "test:cloudflare:lifecycle": "node --test cloudflare/aznif-game-lifecycle/__tests__/*.test.mjs",
     "test:okey:ui:coverage": "jest --config jest.okey.config.cjs --runInBand --coverage",
-    "check": "npm run lint && npm run typecheck && npm run test:security && npm run test:domino:timeout && npm run test:domino:waiting-room",
+    "check": "npm run lint && npm run typecheck && npm run typecheck:edge && npm run test:security && npm run test:domino:timeout && npm run test:domino:waiting-room && npm run test:okey && npm run test:cloudflare:lifecycle",
     "build:android:apk": "npx eas-cli build --platform android --profile preview-apk",
-    "build:android:production-apk": "npx eas-cli build --platform android --profile production-apk"
+    "build:android:production-apk": "npx eas-cli build --platform android --profile production-apk",
+    "typecheck:edge": "deno check --config supabase/functions/deno.json supabase/functions/*/index.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -1,5 +1,5 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 import { formatAznif } from "@/lib/aznif-display";
 import { sendFriendRequest } from "@/lib/friends";
 import { getRankTitleFromPoints } from "@/lib/progression";

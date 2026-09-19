@@ -1,4 +1,4 @@
-import { AVATAR_IDS, type AvatarId } from "@/constants/avatars";
+import { AVATAR_IDS, type AvatarId } from "@/types/avatar";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { PlayerAvatar } from "./PlayerAvatar";

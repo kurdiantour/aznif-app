@@ -1,4 +1,4 @@
-import type { AvatarId } from '@/constants/avatars';
+import type { AvatarId } from '../../types/avatar.ts';
 import { FULL_DOMINO_SET } from '@/domino/core/constants/domino-set';
 import { dealDominoHands } from '@/domino/core/setup/deal';
 import { shuffleArray } from '@/domino/core/setup/shuffle';

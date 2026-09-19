@@ -1,29 +1,6 @@
 import type { ImageSourcePropType } from "react-native";
 
-export type AvatarId =
-  | "avatar-1"
-  | "avatar-2"
-  | "avatar-3"
-  | "avatar-4"
-  | "avatar-5"
-  | "avatar-6"
-  | "avatar-7"
-  | "avatar-8"
-  | "avatar-9"
-  | "bot-avatar";
-
-export const AVATAR_IDS: AvatarId[] = [
-  "avatar-1",
-  "avatar-2",
-  "avatar-3",
-  "avatar-4",
-  "avatar-5",
-  "avatar-6",
-  "avatar-7",
-  "avatar-8",
-  "avatar-9",
-  "bot-avatar",
-];
+import { AvatarId, DEFAULT_AVATAR } from "@/types/avatar";
 
 export const AVATAR_SOURCE: Record<AvatarId, ImageSourcePropType> = {
   "avatar-1": require("@/assets/images/avatars/avatar-1.webp"),
@@ -40,5 +17,5 @@ export const AVATAR_SOURCE: Record<AvatarId, ImageSourcePropType> = {
 };
 
 export function getAvatarSource(id?: AvatarId) {
-  return AVATAR_SOURCE[id ?? "avatar-2"];
+  return AVATAR_SOURCE[id ?? DEFAULT_AVATAR];
 }

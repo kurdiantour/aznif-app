@@ -1,4 +1,4 @@
-import type { AvatarId } from "@/constants/avatars";
+import type { AvatarId } from "@/types/avatar";
 
 /** Minimal shared input consumed by the multiplayer profile popup. */
 export type PlayerProfileTarget = {
