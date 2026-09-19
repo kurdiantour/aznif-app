@@ -1,3 +1,5 @@
+import { useShopState } from "@/hooks/useShopState";
+import { getDefaultItem, getEquippedItem } from "@/lib/shop-state";
 import { supabase } from "@/lib/supabase";
 import React, {
   createContext,
@@ -13,7 +15,7 @@ import {
   isTableId,
   type OkeySetAssets,
   type TableId,
-} from "@/constants/catalog/tables";
+} from "@/constants/catalog/okey-sets";
 import { getPreloadedTableId } from "@/lib/game/gameLaunchPreload";
 
 type OkeyCosmeticsContextValue = {
@@ -43,7 +45,12 @@ export function OkeyCosmeticsProvider({
   tableId?: TableId;
   roomId?: string;
 }) {
-  const activeTableId = tableId ?? getPreloadedTableId();
+  const personal = useShopState(!roomId && !tableId);
+  const personalKey = getEquippedItem(personal.state, "tables")?.asset_key;
+  const defaultKey = getDefaultItem(personal.state, "tables")?.asset_key;
+  const localKey = personalKey && isTableId(personalKey) ? personalKey
+    : defaultKey && isTableId(defaultKey) ? defaultKey : DEFAULT_TABLE_ID;
+  const activeTableId = tableId ?? (roomId ? getPreloadedTableId() : localKey);
   const setAssets = getOkeySetAssets(activeTableId);
   const [playerTables, setPlayerTables] = useState<Record<string, TableId>>({});
 

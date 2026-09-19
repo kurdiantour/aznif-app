@@ -4,7 +4,9 @@ import {
   getTableById,
   isTableId,
   type TableId,
-} from "@/constants/catalog/tables";
+} from "@/constants/catalog/okey-sets";
+import { getMyShopState } from "@/lib/shop";
+import { getEquippedItem, projectShopState } from "@/lib/shop-state";
 import { supabase } from "@/lib/supabase";
 import { Image as ExpoImage } from "expo-image";
 import { Image } from "react-native";
@@ -21,7 +23,8 @@ export function setPreloadedTableId(id: TableId) {
   }
 }
 
-export async function preloadEquippedCosmeticSet(): Promise<TableId> {
+// Legacy room fallback remains raw to preserve the multiplayer contract.
+async function preloadLegacyRoomFallback(): Promise<TableId> {
   try {
     const { data } = await supabase
       .from("user_equipped_shop_items")
@@ -67,7 +70,7 @@ export async function prepareMultiplayerGameLaunch(
     preloadedTableId =
       typeof data === "string" && isTableId(data)
         ? data
-        : await preloadEquippedCosmeticSet();
+        : await preloadLegacyRoomFallback();
 
     const setAssets = getTableById(preloadedTableId).assets;
     for (const asset of [
@@ -109,4 +112,23 @@ export async function prepareMultiplayerGameLaunch(
         })();
 
   await Promise.all([tablePreparation, gamePreparation]);
+}
+
+export async function preloadEquippedCosmeticSet(): Promise<TableId> {
+  let key: TableId = DEFAULT_TABLE_ID;
+  try {
+    const raw = await getMyShopState();
+    const state = projectShopState(raw, performance.now() - raw.receivedAt);
+    const item = getEquippedItem(state, "tables");
+    if (item && isTableId(item.asset_key)) key = item.asset_key;
+  } catch (error) {
+    console.warn("Unable to resolve personal cosmetic set", error);
+  }
+  preloadedTableId = key;
+  const assets = getTableById(key).assets;
+  for (const asset of [assets.table, assets.playerRack, assets.opponentRack, assets.tiles.back]) {
+    const source = Image.resolveAssetSource(asset);
+    if (source?.uri) await ExpoImage.prefetch(source.uri, "memory-disk");
+  }
+  return key;
 }

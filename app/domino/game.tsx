@@ -777,7 +777,7 @@ useEffect(() => {
   }
 
   return (
-    <DominoCosmeticsProvider>
+    <DominoCosmeticsProvider roomId={roomId || undefined}>
       <View
         ref={screenRef}
         onLayout={() =>

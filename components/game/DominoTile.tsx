@@ -1,3 +1,4 @@
+import type { DominoTileKey } from "@/constants/catalog/domino-sets";
 import { DominoTileData } from "@/domino/types/domino-game";
 import { Image } from "expo-image";
 import { StyleSheet, View } from "react-native";
@@ -11,7 +12,7 @@ type Props = {
 };
 
 function getImageKey(left: number, right: number) {
-  return left <= right ? `${left}-${right}` : `${right}-${left}`;
+  return (left <= right ? `${left}-${right}` : `${right}-${left}`) as DominoTileKey;
 }
 
 export default function DominoTile({

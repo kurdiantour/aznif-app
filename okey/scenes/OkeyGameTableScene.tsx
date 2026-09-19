@@ -94,6 +94,25 @@ function getRouteParam(
     : value;
 }
 
+function OkeyTableBackgroundWrapper({ children, roomId }: { children: ReactNode, roomId?: string }) {
+  return (
+    <OkeyCosmeticsProvider roomId={roomId}>
+      <OkeyTableBackgroundInner>
+        {children}
+      </OkeyTableBackgroundInner>
+    </OkeyCosmeticsProvider>
+  );
+}
+
+function OkeyTableBackgroundInner({ children }: { children: ReactNode }) {
+  const { setAssets, isReady } = useOkeyCosmetics();
+  return (
+    <TableBackground imageSource={isReady ? setAssets.table : undefined} contentPadding={false}>
+      {children}
+    </TableBackground>
+  );
+}
+
 function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: boolean }) {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -651,27 +670,6 @@ useEffect(() => {
     tileFlight,
   ]);
 
-
-function OkeyTableBackgroundWrapper({ children, roomId }: { children: ReactNode, roomId?: string }) {
-  return (
-    <OkeyCosmeticsProvider roomId={roomId}>
-      <OkeyTableBackgroundInner>
-        {children}
-      </OkeyTableBackgroundInner>
-    </OkeyCosmeticsProvider>
-  );
-}
-
-function OkeyTableBackgroundInner({ children }: { children: ReactNode }) {
-  const { setAssets, isReady } = useOkeyCosmetics();
-  return (
-    <TableBackground imageSource={isReady ? setAssets.table : undefined} contentPadding={false}>
-      {children}
-    </TableBackground>
-  );
-}
-
-  
   return (
 <OkeyTableBackgroundWrapper roomId={onlineMatchId}>
   <View

@@ -12,7 +12,7 @@ import type { OkeyTile } from "@/okey/types/okey";
 import { getOkeyTileAccessibilityLabel, OKEY_ACCESSIBILITY } from "@/okey/accessibility/okey-accessibility";
 import { styles } from "./okeyStyles";
 import { useOkeyCosmetics } from "@/okey/hooks/useOkeyCosmetics";
-import type { OkeyTileImages } from "@/constants/catalog/tables";
+import type { OkeyTileImages } from "@/constants/catalog/okey-sets";
 
 function getTileImage(tile: OkeyTile, tiles: OkeyTileImages) {
   if (tile.isFakeJoker) {
