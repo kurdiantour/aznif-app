@@ -9,7 +9,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import type { OkeyCommittedTransition, SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
+import type { OkeyCommittedTransition, OkeyPresentationSource } from "@/okey/adapters/okey-match-adapter";
 import {
   type ScreenRect,
   type TileFlight
@@ -221,7 +221,7 @@ export function useOkeyTileFlightCoordinator(
 
 type UseOkeyOpponentTileFlightCoordinatorInput = {
   state: OkeyGameState;
-  adapter: SupabaseOkeyMatchAdapter | null;
+  adapter: OkeyPresentationSource | null;
   projectionVersion: number | null;
   tileFlight: TileFlight | null;
   deckTopRectRef: MutableRefObject<ScreenRect | null>;

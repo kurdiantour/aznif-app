@@ -75,6 +75,11 @@ export const styles = StyleSheet.create({
     ],
   },
 
+  opponentRackWrap: {
+    position: "relative",
+    overflow: "visible",
+  },
+
   opponentRack: {
     width: OPPONENT_RACK_WIDTH,
     height: OPPONENT_RACK_HEIGHT,

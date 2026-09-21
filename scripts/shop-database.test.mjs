@@ -1,18 +1,17 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { before, after, beforeEach, afterEach, test } from 'node:test';
+import { after, before, beforeEach, afterEach, test } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
-// Real PostgreSQL in WASM. No network, project credentials, or remote DB.
 const db = new PGlite();
 const migration = (name) => readFileSync(new URL(`../supabase/migrations/${name}.sql`, import.meta.url), 'utf8');
 const alice = '11111111-1111-4111-8111-111111111111';
 const bob = '22222222-2222-4222-8222-222222222222';
-const newcomer = '33333333-3333-4333-8333-333333333333';
-let multiplayerBefore;
+
 async function asUser(id = alice) {
   await db.exec('RESET ROLE');
   await db.query("SELECT set_config('request.jwt.claim.sub', $1, false)", [id]);
+  await db.query("SELECT set_config('request.jwt.claim.role', 'authenticated', false)");
   await db.exec('SET ROLE authenticated');
 }
 async function admin(sql) { await db.exec('RESET ROLE'); return db.exec(sql); }
@@ -24,222 +23,265 @@ async function count(table, condition = 'true') {
   await db.exec('RESET ROLE');
   return Number((await db.query(`SELECT count(*) AS n FROM public.${table} WHERE ${condition}`)).rows[0].n);
 }
-async function expectSqlError(sql, expression) {
-  await db.exec('SAVEPOINT expected_error');
-  await assert.rejects(db.exec(sql), expression);
-  await db.exec('ROLLBACK TO SAVEPOINT expected_error');
-}
 
 before(async () => {
-  // Minimal external dependencies; shop tables/functions/policies below are the
-  // actual committed migrations, not a reimplementation of the shop engine.
   await db.exec(`
-    CREATE ROLE anon; CREATE ROLE authenticated;
+    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA auth;
     CREATE TABLE auth.users(id uuid PRIMARY KEY);
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
       SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
     $$;
-    GRANT USAGE ON SCHEMA public, auth TO anon, authenticated;
-    CREATE TABLE public.wallets(user_id uuid PRIMARY KEY REFERENCES auth.users(id), mc numeric NOT NULL DEFAULT 0,
-      gold numeric NOT NULL DEFAULT 0 CHECK (gold >= 0), updated_at timestamptz DEFAULT now());
-    CREATE TABLE public.wallet_transactions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid,
-      from_user_id uuid, amount numeric NOT NULL CHECK (amount > 0), currency text, transaction_type text,
-      status text, metadata jsonb, balance_before numeric, balance_after numeric);
-    CREATE FUNCTION public.spend_gold_shop(uuid, numeric, jsonb) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+    CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
+      SELECT current_setting('request.jwt.claim.role', true)
+    $$;
+    GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+    CREATE SCHEMA okey;
+    CREATE TABLE okey.matches(id uuid PRIMARY KEY, status text NOT NULL, countdown_deadline_at timestamptz);
+    CREATE TABLE okey.match_seats(match_id uuid REFERENCES okey.matches(id), user_id uuid REFERENCES auth.users(id), membership_released_at timestamptz);
+    CREATE TABLE public.one_vs_one_rooms(id uuid PRIMARY KEY, status text NOT NULL);
+    CREATE TABLE public.two_vs_two_rooms(id uuid PRIMARY KEY, status text NOT NULL);
+    CREATE TABLE public.one_vs_one_players(room_id uuid REFERENCES public.one_vs_one_rooms(id), user_id uuid REFERENCES auth.users(id), left_at timestamptz);
+    CREATE TABLE public.two_vs_two_players(room_id uuid REFERENCES public.two_vs_two_rooms(id), user_id uuid REFERENCES auth.users(id), left_at timestamptz);
+    CREATE TABLE public.wallets(
+      user_id uuid PRIMARY KEY REFERENCES auth.users(id),
+      mc numeric NOT NULL DEFAULT 0, coin numeric NOT NULL DEFAULT 0,
+      gem numeric NOT NULL DEFAULT 0 CHECK (gem >= 0), updated_at timestamptz DEFAULT now()
+    );
+    CREATE TABLE public.wallet_transactions(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, from_user_id uuid,
+      amount numeric NOT NULL CHECK (amount > 0), currency text, transaction_type text,
+      status text, metadata jsonb, balance_before numeric, balance_after numeric
+    );
   `);
   for (const file of [
-    '20260613000300_shop_and_account_readiness',
-    '20260622000100_shop_gem_purchases',
-    '20260622000300_fix_purchase_or_equip_shop_item_category_ambiguity',
-    '20260622000400_domino_skins_catalog_defaults',
-    '20260630000400_shared_multiplayer_table',
-    '20260919171900_get_multiplayer_room_cosmetics',
+    '20260921000100_shop_catalog',
+    '20260921000200_shop_commerce',
+    '20260921000300_multiplayer_cosmetics_foundation',
+    '20260921000400_okey_multiplayer_cosmetics',
+    '20260921000500_domino_multiplayer_cosmetics',
   ]) await db.exec(migration(file));
   await db.exec(`
-    CREATE TRIGGER trigger_handle_new_user_wallets AFTER INSERT ON auth.users
-      FOR EACH ROW EXECUTE FUNCTION public.handle_new_user_wallets();
     INSERT INTO auth.users VALUES ('${alice}'), ('${bob}');
-    UPDATE public.wallets SET gold = 5000;
-    INSERT INTO public.user_shop_items(user_id, item_id) VALUES ('${alice}', 'skin-purple'), ('${bob}', 'table-royal');
-    UPDATE public.user_equipped_shop_items SET item_id = 'skin-purple' WHERE user_id = '${alice}';
+    INSERT INTO public.wallets(user_id, mc, coin, gem, updated_at)
+    VALUES ('${alice}', 0, 0, 5000, now()), ('${bob}', 0, 0, 5000, now())
+    ON CONFLICT (user_id) DO UPDATE SET gem = EXCLUDED.gem, updated_at = EXCLUDED.updated_at;
   `);
-  multiplayerBefore = (await db.query(`SELECT proname, pg_get_functiondef(oid) AS body FROM pg_proc
-    WHERE proname IN ('get_multiplayer_room_table', 'get_multiplayer_room_cosmetics') ORDER BY proname`)).rows;
-  await db.exec(migration('20260919193000_add_domino_sets'));
 });
 after(async () => db.close());
 beforeEach(async () => { await db.exec('RESET ROLE; BEGIN'); });
 afterEach(async () => { await db.exec('ROLLBACK; RESET ROLE'); });
 
-test('migration preserves paid legacy ownership/equip and remaps only the free legacy default', async () => {
+test('catalog is canonical Gem-only data and current sets/prices come from DB', async () => {
+  const columns = (await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='shop_items'`)).rows.map(r => r.column_name);
+  assert.ok(columns.includes('price_gem'));
+  assert.ok(!columns.includes('price_gold'));
+  const rows = (await db.query(`SELECT id, price_gem FROM public.shop_items ORDER BY sort_order,id`)).rows;
+  assert.equal(Number(rows.find(r => r.id === 'table-zagros').price_gem), 1200);
+  assert.equal(Number(rows.find(r => r.id === 'domino-emerald-ivory').price_gem), 430);
+});
+
+test('new users receive and equip both database defaults', async () => {
   await asUser();
   const data = await state();
-  assert.equal(data.equipped['domino-skins'], 'skin-purple');
-  assert.equal(data.items.find((i) => i.id === 'skin-purple').owned, true);
-  assert.equal(data.items.find((i) => i.id === 'skin-purple').active, false);
-  assert.equal(data.items.find((i) => i.id === 'skin-purple').access_kind, 'owned');
-  await asUser(bob);
-  assert.equal((await state()).equipped['domino-skins'], 'domino-classic');
-  assert.equal(await count('user_shop_items', "item_id = 'skin-ivory'"), 2);
+  assert.equal(data.equipped.tables, 'table-classic');
+  assert.equal(data.equipped['domino-skins'], 'domino-classic');
 });
 
-test('existing and new users get all metadata defaults; missing equip resolves without hardcoded IDs', async () => {
-  await admin(`INSERT INTO auth.users VALUES ('${newcomer}')`);
-  await asUser(newcomer);
-  let data = await state();
-  for (const item of data.items.filter((i) => i.is_default)) {
-    assert.equal(item.price_gold, 0); assert.equal(item.owned, true);
-    assert.equal(data.equipped[item.category], item.id);
-  }
-  await admin(`DELETE FROM public.user_equipped_shop_items WHERE user_id = '${newcomer}'`);
-  await asUser(newcomer);
-  data = await state();
-  for (const item of data.items.filter((i) => i.is_default)) assert.equal(data.equipped[item.category], item.id);
-});
-
-test('default metadata cannot be priced, hidden, disabled, moved, removed, duplicated or scheduled', async () => {
-  for (const assignment of ["price_gold = 3", "price_gold = NULL", "active = false", "enabled = false",
-    "is_default = false", "category = 'domino-skins'", "available_until = now() + interval '1 day'"]) {
-    await expectSqlError(`UPDATE public.shop_items SET ${assignment} WHERE id = 'table-classic'`, /default|constraint/i);
-  }
-  await expectSqlError("DELETE FROM public.shop_items WHERE id = 'table-classic'", /default/);
-  await expectSqlError("UPDATE public.shop_items SET is_default = true, price_gold = 0 WHERE id = 'table-midnight'", /unique/);
-});
-
-test('Zagros is unpriced and cannot be activated or acquired until configured', async () => {
-  await expectSqlError("UPDATE public.shop_items SET active = true WHERE id = 'table-zagros'", /priced_before_sale/);
+test('paid purchase uses locked DB price, Gem, ownership and equip atomically', async () => {
   await asUser();
-  const zagros = (await state()).items.find((i) => i.id === 'table-zagros');
-  assert.equal(zagros.price_gold, null); assert.equal(zagros.active, false);
-  assert.equal((await purchase(zagros.id)).status, 'unavailable');
-  assert.equal(await count('user_shop_items', "item_id = 'table-zagros'"), 0);
-});
-
-test('paid acquisition is atomic and repeat/queued requests charge once', async () => {
-  await asUser();
-  const results = await Promise.all([purchase('table-midnight', 350), purchase('table-midnight', 350)]);
-  assert.deepEqual(results.map((r) => r.status), ['purchased', 'equipped']);
-  assert.equal(Number(results[1].balance_after), 4650);
-  assert.equal((await state()).equipped.tables, 'table-midnight');
-  assert.equal(await count('wallet_transactions', "metadata->>'item_id' = 'table-midnight'"), 1);
-  assert.equal(await count('user_shop_items', "item_id = 'table-midnight'"), 1);
-});
-
-test('insufficient balance, missing consent and stale price cannot charge', async () => {
-  await asUser();
-  assert.equal((await purchase('table-midnight')).status, 'price_changed');
   assert.equal((await purchase('table-midnight', 1)).status, 'price_changed');
-  await admin(`UPDATE public.wallets SET gold = 1 WHERE user_id = '${alice}'`);
-  await asUser();
-  assert.equal((await purchase('table-midnight', 350)).status, 'insufficient_gems');
-  assert.equal(await count('wallet_transactions'), 0);
-});
-
-test('hidden and out-of-sale-window purchases stay usable by owners; explicit disable is separate', async () => {
-  await asUser(); await purchase('table-midnight', 350);
-  await admin("UPDATE public.shop_items SET active = false, available_until = now() - interval '1 hour' WHERE id = 'table-midnight'");
-  await asUser();
-  assert.equal((await purchase('table-midnight')).status, 'equipped');
+  const result = await purchase('table-midnight', 350);
+  assert.equal(result.status, 'purchased');
+  assert.equal(Number(result.balance_after), 4650);
   assert.equal((await state()).equipped.tables, 'table-midnight');
-  await asUser(bob);
-  assert.equal((await purchase('table-midnight', 350)).status, 'unavailable');
-  await admin("UPDATE public.shop_items SET enabled = false WHERE id = 'table-midnight'");
-  await asUser();
-  assert.equal((await state()).equipped.tables, 'table-classic');
-  assert.equal((await state()).items.find((i) => i.id === 'table-midnight').owned, true);
+  assert.equal(await count('wallet_transactions', "currency='Gem' AND metadata->>'item_id'='table-midnight'"), 1);
+  assert.equal(await count('user_shop_items', `user_id='${alice}' AND item_id='table-midnight'`), 1);
 });
 
-test('promotion requires both valid finite endpoints; null endpoints do not accidentally grant free use', async () => {
-  for (const assignment of ["free_from = now()", "free_until = now()", "free_from = now(), free_until = now()",
-    "free_from = now(), free_until = now() - interval '1 day'", "free_from = '-infinity', free_until = 'infinity'"]) {
-    await expectSqlError(`UPDATE public.shop_items SET ${assignment} WHERE id = 'table-midnight'`, /promotion_window/);
-  }
+test('repeat equip does not charge twice', async () => {
   await asUser();
-  assert.equal((await state()).items.find((i) => i.id === 'table-midnight').access_kind, null);
-  assert.equal((await purchase('table-midnight')).status, 'price_changed');
+  await purchase('table-royal', 520);
+  const again = await purchase('table-royal');
+  assert.equal(again.status, 'equipped');
+  assert.equal(await count('wallet_transactions', "metadata->>'item_id'='table-royal'"), 1);
 });
 
-test('temporary free equips without ownership or charge; expiration falls back only for nonowners', async () => {
-  await admin("UPDATE public.shop_items SET free_from = now() - interval '1 hour', free_until = now() + interval '1 hour' WHERE id = 'table-royal'");
+test('temporary free grants use without permanent ownership and expires to default', async () => {
+  await admin("UPDATE public.shop_items SET free_from=now()-interval '1 hour', free_until=now()+interval '1 hour' WHERE id='table-royal'");
   await asUser();
   assert.equal((await purchase('table-royal')).status, 'equipped');
-  assert.equal((await state()).items.find((i) => i.id === 'table-royal').access_kind, 'temporary');
-  assert.equal(await count('user_shop_items', `user_id = '${alice}' AND item_id = 'table-royal'`), 0);
-  await asUser(bob); await purchase('table-royal');
-  await admin("UPDATE public.shop_items SET free_until = now() - interval '1 second' WHERE id = 'table-royal'");
+  assert.equal(await count('user_shop_items', `user_id='${alice}' AND item_id='table-royal'`), 0);
+  await admin("UPDATE public.shop_items SET free_until=now()-interval '1 second' WHERE id='table-royal'");
   await asUser();
   assert.equal((await state()).equipped.tables, 'table-classic');
+});
+
+test('owned item remains usable when sale is hidden but disabled item falls back', async () => {
+  await asUser(); await purchase('table-midnight', 350);
+  await admin("UPDATE public.shop_items SET active=false WHERE id='table-midnight'");
+  await asUser(); assert.equal((await state()).equipped.tables, 'table-midnight');
+  await admin("UPDATE public.shop_items SET enabled=false WHERE id='table-midnight'");
+  await asUser(); assert.equal((await state()).equipped.tables, 'table-classic');
+});
+
+test('shared multiplayer resolver respects effective entitlement and current DB price', async () => {
+  await asUser(); await purchase('table-emerald-ivory', 900);
+  await db.exec('RESET ROLE; SET ROLE service_role');
+  let row = (await db.query(`SELECT * FROM shop_private.resolve_multiplayer_cosmetic('${alice}','tables')`)).rows[0];
+  assert.equal(row.asset_key, 'table-emerald-ivory');
+  assert.equal(Number(row.price_gem), 900);
+  await db.exec('RESET ROLE');
+  await admin("UPDATE public.shop_items SET price_gem=975 WHERE id='table-emerald-ivory'");
+  await db.exec('SET ROLE service_role');
+  row = (await db.query(`SELECT * FROM shop_private.resolve_multiplayer_cosmetic('${alice}','tables')`)).rows[0];
+  assert.equal(Number(row.price_gem), 975);
+});
+
+test('legacy generic multiplayer RPCs are absent', async () => {
+  const rows = (await db.query(`SELECT proname FROM pg_proc WHERE proname IN ('get_multiplayer_room_table','get_multiplayer_room_cosmetics')`)).rows;
+  assert.deepEqual(rows, []);
+});
+
+
+const roomId = '33333333-3333-4333-8333-333333333333';
+const charlie = '44444444-4444-4444-8444-444444444444';
+const dana = '55555555-5555-4555-8555-555555555555';
+const games = [
+  { name: 'Okey', rooms: 'okey.matches', players: 'okey.match_seats', roomKey: 'match_id', released: 'membership_released_at', category: 'tables', premium: 'table-royal', classic: 'table-classic', price: 520, started: 'playing' },
+  { name: 'Domino 1v1', rooms: 'public.one_vs_one_rooms', players: 'public.one_vs_one_players', roomKey: 'room_id', released: 'left_at', category: 'domino-skins', premium: 'domino-emerald-ivory', classic: 'domino-classic', price: 430, started: 'active', mode: '1v1' },
+  { name: 'Domino 2v2', rooms: 'public.two_vs_two_rooms', players: 'public.two_vs_two_players', roomKey: 'room_id', released: 'left_at', category: 'domino-skins', premium: 'domino-emerald-ivory', classic: 'domino-classic', price: 430, started: 'active', mode: '2v2' },
+];
+function defaultPlayerKeys(game) {
+  return game.mode === '1v1' ? {} : { [charlie]: game.classic, [dana]: game.classic };
+}
+async function seedRoom(game) {
+  await admin(`INSERT INTO ${game.rooms}(id,status) VALUES ('${roomId}','waiting');
+    INSERT INTO ${game.players}(${game.roomKey},user_id) VALUES ('${roomId}','${alice}'),('${roomId}','${bob}');`);
+  if (game.mode !== '1v1') {
+    await admin(`INSERT INTO auth.users VALUES ('${charlie}'),('${dana}');
+      INSERT INTO ${game.players}(${game.roomKey},user_id) VALUES ('${roomId}','${charlie}'),('${roomId}','${dana}');`);
+  }
+}
+async function resolveRoom(game) {
+  await db.exec('RESET ROLE');
+  if (!game.mode) {
+    await db.query("SELECT set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('SET ROLE service_role');
+    return (await db.query('SELECT public.resolve_okey_match_cosmetics($1) AS value', [roomId])).rows[0].value;
+  }
+  await asUser();
+  return (await db.query('SELECT public.resolve_domino_room_cosmetics($1,$2) AS value', [roomId, game.mode])).rows[0].value;
+}
+for (const game of games) {
+  test(`${game.name}: authoritative cosmetics freeze at lock and survive equip, price and membership changes`, async () => {
+    await asUser(); await purchase(game.premium, game.price);
+    await seedRoom(game);
+    const expected = { shared_set_asset_key: game.premium, player_set_asset_keys: { ...defaultPlayerKeys(game), [alice]: game.premium, [bob]: game.classic } };
+    assert.deepEqual(await resolveRoom(game), game.mode ? { ...expected, locked: true } : expected);
+    expected.locked = true;
+    await admin(`UPDATE ${game.rooms} SET status='${game.started}' WHERE id='${roomId}'`);
+    const stored = (await db.query(`SELECT cosmetics_snapshot FROM ${game.rooms} WHERE id=$1`, [roomId])).rows[0].cosmetics_snapshot;
+    assert.deepEqual(stored, expected);
+    await asUser(); await purchase(game.classic);
+    await admin(`UPDATE public.shop_items SET enabled=false,price_gem=1 WHERE id='${game.premium}';
+      UPDATE ${game.players} SET ${game.released}=now() WHERE user_id='${bob}';
+      UPDATE ${game.rooms} SET cosmetics_snapshot='{}'::jsonb,status='finished' WHERE id='${roomId}';`);
+    assert.deepEqual(await resolveRoom(game), expected);
+    await db.exec('RESET ROLE');
+    assert.deepEqual((await db.query(`SELECT cosmetics_snapshot FROM ${game.rooms} WHERE id=$1`, [roomId])).rows[0].cosmetics_snapshot, expected);
+  });
+  test(`${game.name}: full roster locks before gameplay and promotion expiry cannot change the snapshot`, async () => {
+    await admin(`UPDATE public.shop_items SET free_from=now()-interval '1 hour',free_until=now()+interval '1 hour' WHERE id='${game.premium}'`);
+    await asUser(); await purchase(game.premium);
+    await seedRoom(game);
+    if (!game.mode) await admin(`UPDATE okey.matches SET countdown_deadline_at=now()+interval '5 seconds' WHERE id='${roomId}'`);
+    const locked = await resolveRoom(game);
+    assert.equal(locked.locked, true);
+    assert.equal(locked.shared_set_asset_key, game.premium);
+    await asUser(); await purchase(game.classic);
+    await admin(`UPDATE public.shop_items SET free_until=now()-interval '1 second',price_gem=999 WHERE id='${game.premium}';
+      UPDATE ${game.players} SET ${game.released}=now() WHERE user_id='${bob}';`);
+    assert.deepEqual(await resolveRoom(game), locked);
+    await admin(`UPDATE ${game.rooms} SET status='${game.started}' WHERE id='${roomId}'`);
+    assert.deepEqual(await resolveRoom(game), locked);
+  });
+  test(`${game.name}: resolver rejects unauthorized callers`, async () => {
+    await seedRoom(game);
+    if (game.mode) {
+      await admin(`UPDATE ${game.players} SET ${game.released}=now() WHERE user_id='${alice}'`);
+      await asUser();
+      await assert.rejects(db.query('SELECT public.resolve_domino_room_cosmetics($1,$2)', [roomId, game.mode]), /active_room_membership_required/);
+    } else {
+      await asUser();
+      await assert.rejects(db.query('SELECT public.resolve_okey_match_cosmetics($1)', [roomId]), /permission denied/);
+    }
+  });
+}
+
+
+test('owned unpriced retired item has the same entitlement in Shop and Multiplayer', async () => {
+  await asUser(); await purchase('table-royal', 520);
+  await admin("UPDATE public.shop_items SET active=false,price_gem=NULL WHERE id='table-royal'");
+  await asUser(); assert.equal((await state()).equipped.tables, 'table-royal');
+  assert.equal((await purchase('table-royal')).status, 'equipped');
+  await db.exec('RESET ROLE; SET ROLE service_role');
+  const row = (await db.query(`SELECT * FROM shop_private.resolve_multiplayer_cosmetic('${alice}','tables')`)).rows[0];
+  assert.equal(row.asset_key, 'table-royal'); assert.equal(Number(row.price_gem), 0);
+});
+
+test('insufficient Gem and missing expected price do not mutate ownership, equip or ledger', async () => {
+  await admin(`UPDATE public.wallets SET gem=1 WHERE user_id='${alice}'`);
+  await asUser();
   assert.equal((await purchase('table-royal')).status, 'price_changed');
-  await asUser(bob); assert.equal((await state()).equipped.tables, 'table-royal');
-  assert.equal(await count('wallet_transactions'), 0);
-});
-
-test('exact promotion start is inclusive and end exclusive, including zero base price', async () => {
-  await admin("UPDATE public.shop_items SET free_from = '2026-01-01', free_until = '2026-02-01' WHERE id = 'table-midnight'");
-  const at = async (time) => (await db.query("SELECT shop_private.access_kind(s, false, $1::timestamptz) AS access FROM public.shop_items s WHERE s.id = 'table-midnight'", [time])).rows[0].access;
-  assert.equal(await at('2025-12-31'), null);
-  assert.equal(await at('2026-01-01'), 'temporary');
-  assert.equal(await at('2026-02-01'), null);
-  await admin("UPDATE public.shop_items SET price_gold = 0, free_from = now() - interval '1 hour', free_until = now() + interval '1 hour' WHERE id = 'table-midnight'");
-  await asUser(); await purchase('table-midnight');
-  assert.equal(await count('user_shop_items', "item_id = 'table-midnight'"), 0);
-});
-
-test('an arbitrary sixth set works by adding one row, with an unrelated asset key', async () => {
-  await admin("INSERT INTO public.shop_items(id,title,description,category,price_gold,asset_key) VALUES ('sixth-test-product','Fixture','Only in rolled back test','tables',77,'independent-bundle-key')");
-  await asUser();
-  assert.equal((await purchase('sixth-test-product', 77)).status, 'purchased');
-  const data = await state();
-  assert.equal(data.equipped.tables, 'sixth-test-product');
-  assert.equal(data.items.find((i) => i.id === 'sixth-test-product').asset_key, 'independent-bundle-key');
-});
-
-test('catalog sort and price come from the database', async () => {
-  await admin("UPDATE public.shop_items SET price_gold = 123, sort_order = -20 WHERE id = 'table-midnight'");
-  await asUser();
-  assert.equal((await state()).items[0].id, 'table-midnight');
-  assert.equal((await purchase('table-midnight', 350)).status, 'price_changed');
-  assert.equal(Number((await purchase('table-midnight', 123)).balance_after), 4877);
-});
-
-test('a ledger failure rolls back debit, ownership and equipment together', async () => {
-  await admin(`CREATE FUNCTION public.reject_test_ledger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test ledger failure'; END $$;
-    CREATE TRIGGER reject_test_ledger BEFORE INSERT ON public.wallet_transactions FOR EACH ROW EXECUTE FUNCTION public.reject_test_ledger();`);
-  await asUser();
-  await expectSqlError("SELECT * FROM public.purchase_or_equip_shop_item('table-midnight', 350)", /test ledger failure/);
+  assert.equal((await purchase('table-royal',520)).status, 'insufficient_gems');
   assert.equal((await state()).equipped.tables, 'table-classic');
-  assert.equal(await count('user_shop_items', "item_id = 'table-midnight'"), 0);
-  assert.equal(Number((await db.query(`SELECT gold FROM public.wallets WHERE user_id = '${alice}'`)).rows[0].gold), 5000);
+  assert.equal(await count('wallet_transactions'), 0);
+  assert.equal(await count('user_shop_items', `user_id='${alice}' AND item_id='table-royal'`), 0);
 });
 
-test('RLS and RPC privileges isolate users and prohibit direct client mutations', async () => {
+test('a ledger failure rolls back Gem, ownership and equip', async () => {
+  await admin(`CREATE FUNCTION public.fail_shop_ledger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test_ledger_failure'; END $$;
+    CREATE TRIGGER fail_shop_ledger BEFORE INSERT ON public.wallet_transactions FOR EACH ROW EXECUTE FUNCTION public.fail_shop_ledger();`);
+  await asUser(); await db.exec('SAVEPOINT purchase_attempt');
+  await assert.rejects(purchase('table-royal',520), /test_ledger_failure/);
+  await db.exec('ROLLBACK TO SAVEPOINT purchase_attempt');
+  assert.equal((await state()).equipped.tables, 'table-classic');
+  await db.exec('RESET ROLE');
+  assert.equal(Number((await db.query(`SELECT gem FROM public.wallets WHERE user_id='${alice}'`)).rows[0].gem), 5000);
+  assert.equal(await count('user_shop_items', `user_id='${alice}' AND item_id='table-royal'`), 0);
+});
+
+test('base free claims remain owned after a subsequent price increase', async () => {
+  await admin("UPDATE public.shop_items SET price_gem=0 WHERE id='table-royal'");
+  await asUser(); assert.equal((await purchase('table-royal')).status, 'claimed');
+  await admin("UPDATE public.shop_items SET price_gem=999 WHERE id='table-royal'");
+  await asUser(); assert.equal((await purchase('table-royal')).status, 'equipped');
+  assert.equal(await count('wallet_transactions'), 0);
+  assert.equal(await count('user_shop_items', `user_id='${alice}' AND item_id='table-royal'`), 1);
+});
+
+test('Shop ACL removes inherited table privileges and RLS exposes only own ownership/equip', async () => {
+  for (const table of ['shop_items','user_shop_items','user_equipped_shop_items']) {
+    for (const role of ['anon','authenticated']) {
+      for (const privilege of ['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) {
+        assert.equal((await db.query('SELECT has_table_privilege($1,$2,$3) AS allowed',[role,`public.${table}`,privilege])).rows[0].allowed,false);
+      }
+    }
+  }
   await asUser();
-  assert.equal((await db.query('SELECT * FROM public.user_shop_items')).rows.some((r) => r.user_id === bob), false);
-  assert.equal((await state()).items.find((i) => i.id === 'table-royal').owned, false);
-  await expectSqlError("INSERT INTO public.user_shop_items(user_id,item_id) VALUES (auth.uid(),'table-midnight')", /permission|policy/i);
-  await expectSqlError("UPDATE public.shop_items SET price_gold = 0 WHERE id = 'table-midnight'", /permission/i);
-  await expectSqlError("SELECT * FROM public.purchase_shop_item('table-midnight')", /permission/i);
-  await expectSqlError('SELECT shop_private.protect_default()', /permission/i);
-  await db.exec('RESET ROLE; SET ROLE anon');
-  await expectSqlError('SELECT public.get_my_shop_state()', /permission/i);
-  await expectSqlError("SELECT public.purchase_or_equip_shop_item('table-midnight',350)", /permission/i);
+  for (const table of ['user_shop_items','user_equipped_shop_items']) {
+    const rows = (await db.query(`SELECT user_id FROM public.${table}`)).rows;
+    assert.equal(rows.length,2); assert.ok(rows.every(row => row.user_id===alice));
+  }
 });
 
-test('unauthenticated calls fail, and equipment cannot cross categories', async () => {
-  await asUser('');
-  await expectSqlError('SELECT public.get_my_shop_state()', /Authentication required/);
-  await expectSqlError("SELECT public.purchase_or_equip_shop_item('table-classic')", /Authentication required/);
-  await admin('SELECT 1');
-  await expectSqlError(`UPDATE public.user_equipped_shop_items SET item_id = 'table-classic' WHERE user_id = '${alice}' AND category = 'domino-skins'`, /foreign key/);
-});
-
-test('multiplayer function definitions remain byte-for-byte unchanged in PostgreSQL', async () => {
-  const after = (await db.query(`SELECT proname, pg_get_functiondef(oid) AS body FROM pg_proc
-    WHERE proname IN ('get_multiplayer_room_table', 'get_multiplayer_room_cosmetics') ORDER BY proname`)).rows;
-  assert.deepEqual(after, multiplayerBefore);
-});
-
-test('documents the pre-existing Emerald migration price_gem / price_gold history mismatch', async () => {
-  await expectSqlError(migration('20260914133715_add_emerald_ivory_shop_item'), /price_gem/);
-});
+for (const game of games) {
+  test(`${game.name}: started room without a snapshot fails closed instead of recomputing live cosmetics`, async () => {
+    // Represents historical data predating the snapshot triggers.
+    await admin(`INSERT INTO ${game.rooms}(id,status) VALUES ('${roomId}','${game.started}');
+      INSERT INTO ${game.players}(${game.roomKey},user_id) VALUES ('${roomId}','${alice}');`);
+    await assert.rejects(resolveRoom(game), /cosmetics_snapshot_missing/);
+  });
+}

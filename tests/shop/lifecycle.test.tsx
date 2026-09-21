@@ -9,6 +9,7 @@ let mockChanged: () => void;
 let mockAuth: (event: string, session: { user: { id: string } } | null) => void;
 const mockUnsubscribe = jest.fn();
 jest.mock("@/lib/shop", () => ({
+  getCachedShopState: () => null,
   getMyShopState: () => mockGet(),
   subscribeShopChanges: (callback: () => void) => { mockChanged = callback; return mockUnsubscribe; },
 }));

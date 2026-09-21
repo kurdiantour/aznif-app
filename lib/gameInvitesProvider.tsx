@@ -21,6 +21,7 @@ import {
   type GameInvite,
 } from "./gameInvites";
 import { supabase } from "./supabase";
+import { getCachedShopState, getMyShopState } from "./shop";
 
 type GamePartyContextValue = {
   party: DominoParty | null;
@@ -66,6 +67,10 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
 
     try {
       const nextParty = await getMyDominoParty();
+      if (nextParty?.currentGame === "okey" && nextParty.flowStatus === "matchmaking" &&
+          !getCachedShopState(profile.id)) {
+        await getMyShopState();
+      }
       setParty(nextParty);
       return nextParty;
     } catch (reason) {

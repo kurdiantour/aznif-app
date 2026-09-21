@@ -46,6 +46,11 @@ export type OkeyRoomSnapshot = {
   members: OkeyRoomMember[];
 };
 
+export type OkeyRoomCosmeticsResponse = {
+  shared_set_asset_key?: unknown;
+  player_set_asset_keys?: unknown;
+};
+
 async function roomAction(
   body: Record<string, unknown>,
 ): Promise<OkeyRoomSnapshot> {
@@ -133,6 +138,53 @@ export function leaveOkeyRoom(
     action: "leave",
     matchId,
   });
+}
+
+export async function getOkeyRoomCosmetics(
+  matchId: string,
+): Promise<OkeyRoomCosmeticsResponse> {
+  const { data, error } = await supabase.functions.invoke(
+    "okey_room",
+    {
+      body: {
+        action: "cosmetics",
+        matchId,
+      },
+    },
+  );
+
+  if (error) {
+    let errorBody: {
+      error?: string;
+      details?: string;
+    } | null = null;
+
+    try {
+      if ("context" in error && error.context) {
+        errorBody = await error.context.json();
+      }
+    } catch {
+      errorBody = null;
+    }
+
+    throw new Error(
+      errorBody?.details
+        ? `${errorBody.error ?? "okey_room_cosmetics_failed"}: ${errorBody.details}`
+        : errorBody?.error ??
+            error.message ??
+            "okey_room_cosmetics_failed",
+    );
+  }
+
+  if (
+    !data?.cosmetics ||
+    typeof data.cosmetics !== "object" ||
+    Array.isArray(data.cosmetics)
+  ) {
+    throw new Error("okey_room_cosmetics_response_invalid");
+  }
+
+  return data.cosmetics as OkeyRoomCosmeticsResponse;
 }
 
 export function subscribeOkeyWaitingRoomHeartbeat(
@@ -406,3 +458,4 @@ export async function getActiveOkeyMemberships(): Promise<
 
   return data.memberships as OkeyActiveMembership[];
 }
+

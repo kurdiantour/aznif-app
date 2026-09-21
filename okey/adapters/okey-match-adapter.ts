@@ -48,3 +48,8 @@ export interface OnlineOkeyMatchAdapter {
 
   leave(): Promise<void>;
 }
+
+/** Presentation does not depend on the match transport. */
+export type OkeyPresentationSource = Pick<OnlineOkeyMatchAdapter,
+  "subscribeActionEvents" | "subscribeCommittedTransitions" | "subscribeReset"
+>;

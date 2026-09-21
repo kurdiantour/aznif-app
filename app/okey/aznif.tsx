@@ -25,6 +25,7 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import { formatAznif } from "@/lib/aznif-display";
+import { getCachedShopState, getMyShopState } from "@/lib/shop";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
 import {
@@ -168,6 +169,9 @@ function TableCard({
 }
 
 export default function OkeyAznifScreen() {
+  useEffect(() => {
+    void getMyShopState().catch(() => undefined);
+  }, []);
   const { profile } = useProfile();
   const { width, height } = useWindowDimensions();
 
@@ -222,10 +226,11 @@ export default function OkeyAznifScreen() {
       setJoiningTableId(table.id);
 
       try {
+        if (!getCachedShopState()) await getMyShopState();
         const room =
           await matchmakeOkeyRoom(table.id);
 
-        openOnlineGame(room);
+        await openOnlineGame(room);
       } catch (error) {
         console.warn(
           "Unable to join Okey Aznif table:",

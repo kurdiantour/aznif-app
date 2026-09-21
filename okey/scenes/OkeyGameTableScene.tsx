@@ -1,3 +1,5 @@
+import type { OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
+import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -94,9 +96,9 @@ function getRouteParam(
     : value;
 }
 
-function OkeyTableBackgroundWrapper({ children, roomId }: { children: ReactNode, roomId?: string }) {
+function OkeyTableBackgroundWrapper({ children, roomId, requireSnapshot, waitingRoom, currentUserId }: { children: ReactNode, roomId?: string, requireSnapshot?: boolean, waitingRoom?: OkeyRoomSnapshot, currentUserId?: string | null }) {
   return (
-    <OkeyCosmeticsProvider roomId={roomId}>
+    <OkeyCosmeticsProvider roomId={roomId} requireSnapshot={requireSnapshot} waitingRoom={waitingRoom} currentUserId={currentUserId}>
       <OkeyTableBackgroundInner>
         {children}
       </OkeyTableBackgroundInner>
@@ -107,9 +109,11 @@ function OkeyTableBackgroundWrapper({ children, roomId }: { children: ReactNode,
 function OkeyTableBackgroundInner({ children }: { children: ReactNode }) {
   const { setAssets, isReady } = useOkeyCosmetics();
   return (
-    <TableBackground imageSource={isReady ? setAssets.table : undefined} contentPadding={false}>
-      {children}
-    </TableBackground>
+    <MatchCosmeticsGate ready={isReady}>
+      <TableBackground imageSource={setAssets.table} contentPadding={false}>
+        {children}
+      </TableBackground>
+    </MatchCosmeticsGate>
   );
 }
 
@@ -137,7 +141,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     exitRoute,
   });
 
-  const previewController = useOkeyPreviewGame();
+  const previewController = useOkeyPreviewGame(isPreview);
   const onlineController = useOkeyMultiplayerGame(
     isPreview ? undefined : roomLifecycle.activeMatchId,
     isPreview ? "seat-0" : roomLifecycle.currentUserId,
@@ -282,6 +286,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     matchSettlementRewards, shouldRenderMatchResultPopup,
   } = useOkeyTableViewModel({
     state, currentUserId, onlineProjection, presentedTablePlayers,
+    waitingRoom: onlineRoom?.status === "waiting" ? onlineRoom : null,
     stableOpponentTileCounts, onlineGameplayReady,
     turnPlayerIndex: turnView.playerIndex, turnPlayerId: turnView.playerId,
     turnPhase: turnView.phase, turnDeadlineAt: turnView.deadlineAt,
@@ -670,13 +675,18 @@ useEffect(() => {
     tileFlight,
   ]);
 
-  return (
-<OkeyTableBackgroundWrapper roomId={onlineMatchId}>
-  <View
-    ref={screenRef}
-    onLayout={measureScreen}
-    style={[styles.screen, responsiveLayout.screen]}
+return (
+  <OkeyTableBackgroundWrapper
+    roomId={isOnlineRoomActive ? onlineMatchId : undefined}
+    waitingRoom={onlineRoom?.status === "waiting" ? onlineRoom : undefined}
+    currentUserId={currentUserId}
+    requireSnapshot={!!onlineMatchId && isOnlineRoomActive}
   >
+    <View
+      ref={screenRef}
+      onLayout={measureScreen}
+      style={[styles.screen, responsiveLayout.screen]}
+    >
 
 <WaitingPlayersPopup
   visible={shouldShowWaitingPlayers}
@@ -857,7 +867,7 @@ useEffect(() => {
           selectedTileId={selectedTileId}
           okeyTile={state.okeyTile}
           onSelectTile={handleRackTileSelect}
-          playerId={humanPlayer.id}
+          playerId={currentUserId ?? humanPlayer.id}
 
           onRackScoreChange={setRackSetScore}
           onOpenableMeldsChange={setOpenableRackMelds}

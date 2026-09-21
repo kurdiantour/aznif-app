@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { getMyShopState, subscribeShopChanges } from "@/lib/shop";
+import { getCachedShopState, getMyShopState, subscribeShopChanges } from "@/lib/shop";
 import { nextShopBoundaryDelay, projectShopState } from "@/lib/shop-state";
 import type { ShopState } from "@/lib/shop-types";
 import { supabase } from "@/lib/supabase";
 
 /** Shared personal shop lifecycle; callers opt out for room cosmetics. */
 export function useShopState(enabled = true) {
-  const [state, setState] = useState<ShopState | null>(null);
+  const [state, setState] = useState<ShopState | null>(() => enabled ? getCachedShopState() : null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
-  const source = useRef<ShopState | null>(null);
+  const source = useRef<ShopState | null>(state);
   const generation = useRef(0);
   const mounted = useRef(false);
 
@@ -45,8 +45,8 @@ export function useShopState(enabled = true) {
       if (userId === (session?.user.id ?? null)) return;
       userId = session?.user.id ?? null;
       generation.current++;
-      source.current = null;
-      setState(null);
+      source.current = getCachedShopState(userId);
+      setState(source.current);
       // Leave the auth callback before calling another Supabase API.
       void Promise.resolve().then(refresh);
     });

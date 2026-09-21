@@ -1,8 +1,9 @@
+import type { OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing } from "react-native";
 
 import type { PlayerProfileTarget } from "@/components/game/player-profile-target";
-import type { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
+import type { OkeyPresentationSource } from "@/okey/adapters/okey-match-adapter";
 import { mapOkeySettlementToPopupRewards, shouldShowOkeyMatchResultPopup } from "@/okey/components/OkeyMatchResultPopup";
 import { getRoundResultScoreDetails } from "@/okey/engine/okey-engine";
 import type { OkeyRoundResult } from "@/okey/hooks/useOkeyMultiplayerGame";
@@ -141,6 +142,7 @@ export function useOkeyTableViewModel(input: {
   state: OkeyGameState;
   currentUserId: string | null;
   onlineProjection: OkeyMatchServerProjection | null;
+  waitingRoom?: OkeyRoomSnapshot | null;
   presentedTablePlayers: OkeyPlayer[];
   stableOpponentTileCounts: Record<string, number>;
   onlineGameplayReady: boolean;
@@ -158,7 +160,7 @@ export function useOkeyTableViewModel(input: {
   showMatchResultPopup: boolean;
   matchFinished: boolean;
 }) {
-  const { state, currentUserId, onlineProjection, presentedTablePlayers,
+  const { state, currentUserId, onlineProjection, waitingRoom, presentedTablePlayers,
     stableOpponentTileCounts, onlineGameplayReady, turnPlayerIndex, turnPlayerId, turnPhase, turnDeadlineAt,
     turnDurationSeconds, turnTimeLeftMilliseconds, serverClockOffsetMs,
     currentRoundResult, roundResults, matchScores, matchWinnerTeamId, showMatchResultPopup, matchFinished } = input;
@@ -169,11 +171,12 @@ export function useOkeyTableViewModel(input: {
   const isHumanTurn = turnPhase === "playing" && turnPlayerId === humanPlayer.id;
   const localPlayerIndex = useMemo(() => {
     if (!currentUserId) return null;
+    if (waitingRoom) return waitingRoom.members.find(member => member.userId === currentUserId)?.playerIndex ?? null;
     const players = onlineProjection?.players;
     if (!players) return null;
     const index = players.findIndex((player) => player.id === currentUserId);
     return index >= 0 ? index : null;
-  }, [currentUserId, onlineProjection?.players]);
+  }, [currentUserId, onlineProjection?.players, waitingRoom]);
   const seatMap = useMemo(() => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex), [localPlayerIndex]);
   const playerForSeat = useCallback((seat: OkeyRelativeSeat) => {
     if (!seatMap) return null;
@@ -182,15 +185,17 @@ export function useOkeyTableViewModel(input: {
   }, [onlineProjection?.players, seatMap, state.players]);
   const opponentSeats = useMemo(() => (["top", "left", "right"] as const).map((side) => {
     const serverIndex = seatMap?.[side] ?? null;
-    const player = playerForSeat(side);
+    const player = waitingRoom ? null : playerForSeat(side);
+    const member = waitingRoom?.members.find(entry => entry.playerIndex === serverIndex);
     return {
-      side, id: player?.id ?? `waiting-${side}`, name: player?.name ?? "",
+      side, playerIndex: serverIndex, id: member?.userId ?? player?.id,
+      name: member?.displayName ?? player?.name ?? "",
       count: onlineGameplayReady && player ? stableOpponentTileCounts[player.id] ?? player.hand.length : 0,
-      active: onlineGameplayReady && serverIndex !== null && turnPlayerIndex === serverIndex,
+      active: !waitingRoom && onlineGameplayReady && serverIndex !== null && turnPlayerIndex === serverIndex,
       turnTimeLeftMilliseconds, turnDeadlineAt, serverClockOffsetMs, turnDurationSeconds,
       turnTimerPhase: state.hasDrawnThisTurn ? "throw" as const : "draw" as const,
     };
-  }), [onlineGameplayReady, playerForSeat, seatMap, serverClockOffsetMs, stableOpponentTileCounts,
+  }), [waitingRoom, onlineGameplayReady, playerForSeat, seatMap, serverClockOffsetMs, stableOpponentTileCounts,
     state.hasDrawnThisTurn, turnDeadlineAt, turnDurationSeconds, turnPlayerIndex, turnTimeLeftMilliseconds]);
   const seatOrderedPlayers = useMemo(() => {
     const fallback: Record<OkeyRelativeSeat, OkeyPlayer> = {
@@ -234,7 +239,7 @@ export function useOkeyTableViewModel(input: {
 }
 
 export function useOkeyAdapterPresentationLifecycle({ adapter, showKonkanReveal, resetOverlays }: {
-  adapter: SupabaseOkeyMatchAdapter | null;
+  adapter: OkeyPresentationSource | null;
   showKonkanReveal: (runTiles: OkeyTile[], completionMeldTiles: OkeyTile[]) => void;
   resetOverlays: () => void;
 }) {

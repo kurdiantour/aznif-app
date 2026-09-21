@@ -21,7 +21,7 @@
     "build:android:apk": "npx eas-cli build --platform android --profile preview-apk",
     "build:android:production-apk": "npx eas-cli build --platform android --profile production-apk",
     "typecheck:edge": "deno check --config supabase/functions/deno.json supabase/functions/*/index.ts",
-    "test:shop:db": "node --test scripts/shop-database.test.mjs scripts/shop-assets.test.mjs",
+    "test:shop:db": "node --test scripts/shop-database.test.mjs scripts/shop-assets.test.mjs scripts/shop-fresh-install.test.mjs scripts/shop-match-integration.test.mjs",
     "test:shop:ui": "jest --config jest.shop.config.cjs --runInBand",
     "test:shop": "npm run test:shop:db && npm run test:shop:ui"
   },

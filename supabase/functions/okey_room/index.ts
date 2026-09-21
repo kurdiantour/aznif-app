@@ -215,6 +215,7 @@ serve(async (req) => {
       "reconnect",
       "leave",
       "active-memberships",
+      "cosmetics",
     ].includes(action)
   ) {
     return json(
@@ -343,6 +344,43 @@ serve(async (req) => {
         status: membership.status,
       })),
     });
+  }
+  if (action === "cosmetics") {
+    const { data: membership, error: membershipError } = await service
+      .schema("okey")
+      .from("match_seats")
+      .select("user_id")
+      .eq("match_id", body.matchId)
+      .eq("user_id", authData.user.id)
+      .is("membership_released_at", null)
+      .maybeSingle();
+
+    if (membershipError) {
+      return json({
+        error: "membership_lookup_failed",
+        details: membershipError.message,
+      }, 500);
+    }
+
+    if (!membership) {
+      return json({
+        error: "active_match_membership_required",
+      }, 403);
+    }
+
+    const { data: cosmetics, error: cosmeticsError } = await service.rpc(
+      "resolve_okey_match_cosmetics",
+      { p_match_id: body.matchId },
+    );
+
+    if (cosmeticsError) {
+      return json({
+        error: "cosmetics_resolution_failed",
+        details: cosmeticsError.message,
+      }, 500);
+    }
+
+    return json({ cosmetics });
   }
   let activeParty: {
     id: string;
@@ -976,4 +1014,5 @@ serve(async (req) => {
     room: withTableEconomy(room),
   });
 });
+
 

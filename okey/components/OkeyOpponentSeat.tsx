@@ -90,15 +90,27 @@ export function OkeyOpponentSeat({
         layout.seats[side],
       ]}
     >
-      <View style={styles.opponentRack}>
-        <Image
-          pointerEvents="none"
-          source={getPlayerAssets(playerId).opponentRack}
-          style={StyleSheet.absoluteFill}
-          contentFit="fill"
-          cachePolicy="memory-disk"
-          transition={0}
-        />
+      <View style={styles.opponentRackWrap}>
+        <View style={styles.opponentRack}>
+          <Image
+            pointerEvents="none"
+            source={getPlayerAssets(playerId).opponentRack}
+            style={StyleSheet.absoluteFill}
+            contentFit="fill"
+            cachePolicy="memory-disk"
+            transition={0}
+          />
+          <View style={styles.opponentTilesRow}>
+            {Array.from({
+              length: targetBackCount,
+            }).map((_, index) => (
+              <OkeyTileBack
+                key={index}
+                small
+              />
+            ))}
+          </View>
+        </View>
         <OkeyTurnTimerBar
           active={active}
           deadlineAt={turnDeadlineAt}
@@ -120,17 +132,6 @@ export function OkeyOpponentSeat({
                 : styles.opponentTimerRight
           }
         />
-
-        <View style={styles.opponentTilesRow}>
-          {Array.from({
-            length: targetBackCount,
-          }).map((_, index) => (
-            <OkeyTileBack
-              key={index}
-              small
-            />
-          ))}
-        </View>
       </View>
 
       <View style={styles.namePlate}>

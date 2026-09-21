@@ -1,3 +1,4 @@
+import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
 import { type ReactNode } from "react";
 import BoardArea from "@/components/game/BoardArea";
 import { DominoCosmeticsProvider, useDominoCosmetics } from "@/domino/hooks/useDominoCosmetics";
@@ -43,9 +44,11 @@ import {
 function DominoTableBackground({ children }: { children: ReactNode }) {
   const { setAssets, isReady } = useDominoCosmetics();
   return (
-    <TableBackground imageSource={isReady ? setAssets.table : undefined} contentPadding={true}>
-      {children}
-    </TableBackground>
+    <MatchCosmeticsGate ready={isReady}>
+      <TableBackground imageSource={setAssets.table} contentPadding={true}>
+        {children}
+      </TableBackground>
+    </MatchCosmeticsGate>
   );
 }
 
@@ -777,7 +780,7 @@ useEffect(() => {
   }
 
   return (
-    <DominoCosmeticsProvider roomId={roomId || undefined}>
+    <DominoCosmeticsProvider roomId={roomId || undefined} mode={gameMode}>
       <View
         ref={screenRef}
         onLayout={() =>

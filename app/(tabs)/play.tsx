@@ -123,6 +123,15 @@ export default function PlayScreen() {
 
   return (
     <View style={styles.screenWrapper}>
+      {__DEV__ && (
+        <Pressable
+          accessibilityRole="button"
+          style={styles.okeyPreviewButton}
+          onPress={() => router.push("/okey/preview")}
+        >
+          <Text style={styles.okeyPreviewButtonText}>Okey Preview</Text>
+        </Pressable>
+      )}
       <View style={[styles.content, isTablet && styles.contentTablet]}>
         <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
           <GameCard
@@ -170,6 +179,20 @@ export default function PlayScreen() {
 }
 
 const styles = StyleSheet.create({
+  okeyPreviewButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: "#3b1676",
+  },
+  okeyPreviewButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
   screenWrapper: {
     flex: 1,
     width: "100%",

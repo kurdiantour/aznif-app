@@ -24,6 +24,7 @@ import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
+import { getCachedShopState, getMyShopState } from "@/lib/shop";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
 import {
@@ -194,6 +195,9 @@ function TableCard({
 }
 
 export default function OkeyFunScreen() {
+  useEffect(() => {
+    void getMyShopState().catch(() => undefined);
+  }, []);
   const { profile } = useProfile();
   const { width, height } = useWindowDimensions();
 
@@ -254,10 +258,12 @@ export default function OkeyFunScreen() {
       setJoiningTableId(table.id);
 
       try {
+        // Resolve equipment before creating a room, so failure cannot strand a waiting room.
+        if (!getCachedShopState()) await getMyShopState();
         const room =
           await matchmakeOkeyRoom(table.id);
 
-        openOnlineGame(room);
+        await openOnlineGame(room);
       } catch (error) {
         console.warn(
           "Unable to join Okey Fun table:",

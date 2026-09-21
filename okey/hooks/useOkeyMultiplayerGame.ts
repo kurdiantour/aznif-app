@@ -22,7 +22,8 @@ const projectResults = (projection: OkeyMatchServerProjection): OkeyRoundResult[
     scoreDetails: { scores: { teamA: result.teamAScore, teamB: result.teamBScore }, details: [] },
   }));
 
-export type OkeyEndRoundPresentationStage = "idle" | "draining" | "final-tile" | "score" | "cycle-limit";
+export type OkeyEndRoundPresentationStage =
+  "idle" | "draining" | "final-tile" | "score" | "cycle-limit" | "complete";
 
 export const OKEY_SCORE_PRESENTATION_MS = 3_000;
 export const OKEY_TILE_CYCLE_ANNOUNCEMENT_MS = 4_000;
@@ -158,20 +159,28 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     useState<OkeyEndRoundPresentationStage>("idle");
   const [terminalPresentationComplete, setTerminalPresentationComplete] = useState(false);
 
+  const presentedRoundsRef = useRef(new Set<string>());
+  const acceptFinishedRound = useCallback((frame: OkeyMatchServerProjection) => {
+    if (frame.phase !== "finished") return;
+    // Settlement versions may change; presentation identity is the match and round.
+    const key = JSON.stringify([matchId, frame.currentRound]);
+    if (presentedRoundsRef.current.has(key)) return;
+    presentedRoundsRef.current.add(key);
+    setCompletedRoundFrame(frame);
+    setEndRoundPresentationStage("draining");
+  }, [matchId]);
+
   useEffect(() => {
     if (!adapter) return;
     return adapter.subscribeCommittedTransitions((frame) => {
-      if (frame.projection.phase !== "finished") return;
-      setCompletedRoundFrame(frame.projection);
-      setEndRoundPresentationStage("draining");
+      acceptFinishedRound(frame.projection);
     });
-  }, [adapter]);
+  }, [adapter, acceptFinishedRound]);
 
   useEffect(() => {
     if (!projection || projection.phase !== "finished" || completedRoundFrame) return;
-    setCompletedRoundFrame(projection);
-    setEndRoundPresentationStage("draining");
-  }, [completedRoundFrame, projection]);
+    acceptFinishedRound(projection);
+  }, [acceptFinishedRound, completedRoundFrame, projection]);
 
   const beginFinalTilePresentation = useCallback(() => {
     setEndRoundPresentationStage((stage) => {
@@ -194,7 +203,8 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
     if (endRoundPresentationStage !== "cycle-limit" || !completedRoundFrame) return;
     const timer = setTimeout(() => {
       setCompletedRoundFrame(null);
-      setEndRoundPresentationStage("idle");
+      if (completedRoundFrame.matchFinished) setTerminalPresentationComplete(true);
+      setEndRoundPresentationStage(completedRoundFrame.matchFinished ? "complete" : "idle");
     }, OKEY_TILE_CYCLE_ANNOUNCEMENT_MS);
     return () => clearTimeout(timer);
   }, [completedRoundFrame, endRoundPresentationStage]);
@@ -202,11 +212,9 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   useEffect(() => {
     if (endRoundPresentationStage !== "score" || !completedRoundFrame) return;
     const timer = setTimeout(() => {
-      if (completedRoundFrame.matchFinished) {
-        setTerminalPresentationComplete(true);
-      }
+      if (completedRoundFrame.matchFinished) setTerminalPresentationComplete(true);
       setCompletedRoundFrame(null);
-      setEndRoundPresentationStage("idle");
+      setEndRoundPresentationStage(completedRoundFrame.matchFinished ? "complete" : "idle");
     }, OKEY_SCORE_PRESENTATION_MS);
     return () => clearTimeout(timer);
   }, [completedRoundFrame, endRoundPresentationStage]);

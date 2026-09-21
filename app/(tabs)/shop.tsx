@@ -68,11 +68,12 @@ function ShopContent() {
   const [category, setCategory] = useState<ShopCategory>("tables");
   const {
     state,
+    error: loadError,
     refresh: refreshShopState,
   } = useShopState();
 
   const equipped = state?.equippedByCategory ?? {};
-  const [, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [fullscreenPreview, setFullscreenPreview] =
     useState<ImageSourcePropType | null>(null);
@@ -159,6 +160,18 @@ function ShopContent() {
 
   return (
     <View style={styles.screen}>
+      {actionError || loadError ? (
+        <View style={styles.errorBanner}>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>
+            {actionError ?? "بارکردنی شۆپ سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە."}
+          </Text>
+          {loadError ? (
+            <Pressable accessibilityRole="button" onPress={() => { void refreshShopState(); }}>
+              <Text style={styles.errorText}>دووبارە هەوڵ بدەوە</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       <View style={styles.body}>
         <View style={styles.sidebar}>
           {SHOP_CATEGORIES.map((tab) => {
@@ -395,6 +408,8 @@ export default function ShopScreen() {
 }
 
 const styles = StyleSheet.create({
+  errorBanner: { padding: 12, gap: 8, backgroundColor: "#431d2b", borderRadius: 8 },
+  errorText: { color: "#fff", textAlign: "right", fontFamily: "SpedaBold" },
   priceEmoji: {
     fontSize: 12,
   },

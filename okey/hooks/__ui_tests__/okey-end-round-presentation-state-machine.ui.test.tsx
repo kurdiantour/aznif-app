@@ -113,6 +113,8 @@ function EndRoundHarness({ matchId, userId }: { matchId: string; userId: string 
   const game = useOkeyMultiplayerGame(matchId, userId);
   return (
     <View>
+      <Text testID="match-popup">{String(game.showMatchResultPopup)}</Text>
+      <Text testID="settlement">{JSON.stringify(game.onlineProjection?.settlement ?? null)}</Text>
       <Text testID="stage">{game.endRoundPresentationStage}</Text>
       <Text testID="current-round">{game.currentRound}</Text>
       <Text testID="popup-visible">{game.showRoundResultPopup ? "visible" : "hidden"}</Text>
@@ -213,5 +215,87 @@ test("End round sequence: Final action -> Final Discard presentation completes -
   expect(getByTestId("phase").props.children).toBe("playing");
   expect(getByTestId("hand-count").props.children).toBe(2);
 
+  jest.useRealTimers();
+});
+
+
+test.each(["p1", "p2"])("terminal presentation stays complete for %s and accepts late settlement", async (userId) => {
+  jest.useFakeTimers();
+  const finished = { ...createMockProjection({ version: 10, currentRound: 3, phase: "finished" }),
+    matchFinished: true, matchWinnerTeamId: "teamA", settlement: null };
+  currentAdapterSnapshot = finished;
+  const ui = render(<EndRoundHarness matchId="terminal-match" userId={userId} />);
+  await act(async () => { await Promise.resolve(); });
+  expect(ui.getByTestId("stage").props.children).toBe("draining");
+  fireEvent.press(ui.getByTestId("btn-final-tile"));
+  act(() => {
+    snapshotCb?.({ ...finished });
+    committedTransitionCb?.({ projection: { ...finished }, actionEvents: [] });
+  });
+  expect(ui.getByTestId("stage").props.children).toBe("final-tile");
+  fireEvent.press(ui.getByTestId("btn-complete-final"));
+  expect(ui.getByTestId("match-popup").props.children).toBe("true");
+  act(() => { jest.advanceTimersByTime(3000); });
+  expect(ui.getByTestId("stage").props.children).toBe("complete");
+  const settlement = { type: "winner", rewards: [] };
+  for (let i = 0; i < 3; i++) {
+    act(() => {
+      const next = { ...finished, version: 11 + i, settlement };
+      snapshotCb?.(next);
+      committedTransitionCb?.({ projection: next, actionEvents: [] });
+    });
+    fireEvent.press(ui.getByTestId("btn-final-tile"));
+    act(() => { jest.advanceTimersByTime(16000); });
+    expect(ui.getByTestId("stage").props.children).toBe("complete");
+    expect(ui.getByTestId("match-popup").props.children).toBe("true");
+    expect(ui.getByTestId("settlement").props.children).toBe(JSON.stringify(settlement));
+  }
+  ui.unmount();
+  jest.useRealTimers();
+});
+
+test("finished intermediate round is not replayed while next round is delayed", async () => {
+  jest.useFakeTimers();
+  const finished = createMockProjection({ version: 2, currentRound: 1, phase: "finished" });
+  currentAdapterSnapshot = finished;
+  const ui = render(<EndRoundHarness matchId="delayed-next-round" userId="p1" />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.press(ui.getByTestId("btn-final-tile"));
+  fireEvent.press(ui.getByTestId("btn-complete-final"));
+  act(() => { jest.advanceTimersByTime(3000); });
+  expect(ui.getByTestId("stage").props.children).toBe("idle");
+  act(() => { committedTransitionCb?.({ projection: finished, actionEvents: [] }); });
+  expect(ui.getByTestId("stage").props.children).toBe("idle");
+  act(() => {
+    snapshotCb?.(createMockProjection({ version: 3, currentRound: 2, phase: "playing" }));
+  });
+  expect(ui.getByTestId("current-round").props.children).toBe(2);
+  act(() => {
+    const next = createMockProjection({ version: 4, currentRound: 2, phase: "finished" });
+    snapshotCb?.(next);
+    committedTransitionCb?.({ projection: next, actionEvents: [] });
+  });
+  expect(ui.getByTestId("stage").props.children).toBe("draining");
+  ui.unmount();
+  jest.useRealTimers();
+});
+
+test("terminal cycle limit completes without replaying its announcement", async () => {
+  jest.useFakeTimers();
+  currentAdapterSnapshot = { ...createMockProjection({ version: 5, currentRound: 3, phase: "finished" }),
+    matchFinished: true, endReason: "tile-cycle-limit" };
+  const ui = render(<EndRoundHarness matchId="cycle-terminal" userId="p1" />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.press(ui.getByTestId("btn-final-tile"));
+  expect(ui.getByTestId("stage").props.children).toBe("cycle-limit");
+  act(() => { jest.advanceTimersByTime(4000); });
+  expect(ui.getByTestId("stage").props.children).toBe("complete");
+  expect(ui.getByTestId("match-popup").props.children).toBe("true");
+  act(() => {
+    committedTransitionCb?.({ projection: currentAdapterSnapshot, actionEvents: [] });
+    jest.advanceTimersByTime(20000);
+  });
+  expect(ui.getByTestId("stage").props.children).toBe("complete");
+  ui.unmount();
   jest.useRealTimers();
 });
