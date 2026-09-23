@@ -4,6 +4,8 @@ const ROOT_CONTROLLER_CLASS = `
 
 private final class GameSystemGesturesRootViewController: UIViewController {
 
+  private var lastProtectedState: Bool? = nil
+
   private var activeContentController: UIViewController? {
 
     func resolve(_ controller: UIViewController) -> UIViewController {
@@ -56,7 +58,19 @@ private final class GameSystemGesturesRootViewController: UIViewController {
   }
 
   override var childForHomeIndicatorAutoHidden: UIViewController? {
-    activeContentController
+
+    let controller = activeContentController
+    let protect = controller?.prefersHomeIndicatorAutoHidden ?? false
+
+    if protect != lastProtectedState {
+      lastProtectedState = protect
+
+      DispatchQueue.main.async { [weak self] in
+        self?.setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+      }
+    }
+
+    return controller
   }
 
   override var childForScreenEdgesDeferringSystemGestures: UIViewController? {
@@ -69,19 +83,23 @@ private final class GameSystemGesturesRootViewController: UIViewController {
 
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+
     setNeedsUpdateOfHomeIndicatorAutoHidden()
     setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
   }
 
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
+
     setNeedsUpdateOfHomeIndicatorAutoHidden()
     setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
   }
 }
+
 `;
 
 function addGameSystemGesturesRootController(source) {
+
   if (source.includes("GameSystemGesturesRootViewController")) {
     return source;
   }
@@ -100,6 +118,7 @@ function addGameSystemGesturesRootController(source) {
   override func createRootViewController() -> UIViewController {
     GameSystemGesturesRootViewController()
   }
+
 `;
 
   return (
@@ -109,7 +128,9 @@ function addGameSystemGesturesRootController(source) {
 }
 
 module.exports = function withIosGameSystemGestures(config) {
+
   return withAppDelegate(config, (appDelegateConfig) => {
+
     if (appDelegateConfig.modResults.language !== "swift") {
       throw new Error(
         "withIosGameSystemGestures requires a Swift AppDelegate"

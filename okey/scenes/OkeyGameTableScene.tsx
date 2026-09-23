@@ -1,3 +1,4 @@
+import { OkeyReturningJokerOverlay, useOkeyReturningJokerPresentation } from "@/okey/presentation/OkeyReturningJokerPresentation";
 import type { OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
 import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,9 +37,9 @@ import {
   type OkeyTableMeldAction,
 } from "@/okey/engine/okey-engine";
 import { isEliminatedOkeyPlayer } from "@/okey/engine/okeyengine-eliminated";
-import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/hooks/useOkeyFeedback";
+import { useOkeyFeedback, useOkeyGameFeedback } from "@/okey/feedback/useOkeyFeedback";
 import { OKEY_TILE_CYCLE_ANNOUNCEMENT_MS, useOkeyMultiplayerGame } from "@/okey/hooks/useOkeyMultiplayerGame";
-import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/hooks/useOkeyTileFlightCoordinator";
+import { useOkeyAuthoritativeRackRemovalPresentation, useOkeyOpponentTileFlightCoordinator, useOkeyOptimisticRackPresentation, useOkeyPresentationResetLifecycle, useOkeyTileFlightCompletion, useOkeyTileFlightCoordinator, useOkeyTimeoutTileFlightCoordinator } from "@/okey/presentation/useOkeyTileFlightCoordinator";
 import { OkeyResponsiveLayoutProvider, useOkeyResponsiveLayout } from "@/okey/layout/OkeyResponsiveLayoutProvider";
 import { useOkeyTableGeometry } from "@/okey/layout/useOkeyTableGeometry";
 import { useOkeyGameplayReadiness, useOkeyMatchExitLifecycle, useOkeyRoomLifecycle } from "@/okey/multiplayer/useOkeyRoomLifecycle";
@@ -161,7 +162,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     konkanRevealData, setKonkanRevealData, showKonkanReveal,
     completeKonkanRevealEntrance, resetPresentationOverlays, finishKonkanReveal,
     finishFinalTilePresentation, resetTablePresentation,
-    selectedTileId, setSelectedTileId, rackSetScore, setRackSetScore,
+    selectedTileId, setSelectedTileId,
     openableRackMelds, setOpenableRackMelds, droppedMelds, setDroppedMelds,
     localDragCommittedMeldSignatures, setLocalDragCommittedMeldSignatures,
     tableMeldOffsets, setTableMeldOffsets, showScoreDetails, setShowScoreDetails,
@@ -273,6 +274,11 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     state.players,
     state.discardPile[state.discardPile.length - 1] ?? null,
   );
+  const presentedState = useMemo(() => ({
+    ...state,
+    players: presentedTablePlayers.length > 0 ? presentedTablePlayers : state.players,
+  }), [state, presentedTablePlayers]);
+
   const stableOpponentTileCounts = useMemo(
     () => Object.fromEntries(
       presentedTablePlayers.map((player) => [player.id, (player as any).handCount ?? player.hand.length]),
@@ -285,7 +291,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     displayRoundResults, playerNamesById, displayCurrentRoundScoreDetails, viewerWon,
     matchSettlementRewards, shouldRenderMatchResultPopup,
   } = useOkeyTableViewModel({
-    state, currentUserId, onlineProjection, presentedTablePlayers,
+    state: presentedState, currentUserId, onlineProjection, presentedTablePlayers,
     waitingRoom: onlineRoom?.status === "waiting" ? onlineRoom : null,
     stableOpponentTileCounts, onlineGameplayReady,
     turnPlayerIndex: turnView.playerIndex, turnPlayerId: turnView.playerId,
@@ -296,36 +302,40 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
   });
 
   const commitOpenPresentation = useCallback((melds: typeof openableRackMelds.melds, score: number, tileId?: string) => {
-    const playerIndex = state.players.findIndex((player) => player.id === humanPlayer.id);
+    const playerIndex = presentedState.players.findIndex((player) => player.id === humanPlayer.id);
     if (playerIndex >= 0) {
-      const opened = openPlayerMelds(state, playerIndex, melds, score, { finalDiscard: Boolean(tileId) });
-      const next = tileId && opened !== state ? discardTile(opened, tileId) : opened;
-      if (next !== state) setPresentedPlayers(next.players);
+      const opened = openPlayerMelds(presentedState, playerIndex, melds, score, { finalDiscard: Boolean(tileId) });
+      const next = tileId && opened !== presentedState ? discardTile(opened, tileId) : opened;
+      if (next !== presentedState) setPresentedPlayers(next.players);
     }
     return commitOpenIntent(melds, score, tileId).then((accepted) => {
       if (!accepted) setPresentedPlayers(state.players);
       return accepted;
     });
-  }, [commitOpenIntent, humanPlayer.id, setPresentedPlayers, state]);
+  }, [commitOpenIntent, humanPlayer.id, setPresentedPlayers, presentedState, state]);
 
   const submitTableMeldPresentation = useCallback((action: OkeyTableMeldAction, runEnd?: "start" | "end") => {
-    const playerIndex = state.players.findIndex((player) => player.id === humanPlayer.id);
+    const playerIndex = presentedState.players.findIndex((player) => player.id === humanPlayer.id);
     if (playerIndex >= 0) {
       const next = action.type === "lock-konkan"
-        ? lockKonkanSet(state, playerIndex, action.tileId, action.targetPlayerId, action.targetMeldId, runEnd)
-        : spendTileOnMeld(state, playerIndex, action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
-      if (next !== state) setPresentedPlayers(next.players);
+        ? lockKonkanSet(presentedState, playerIndex, action.tileId, action.targetPlayerId, action.targetMeldId, runEnd)
+        : spendTileOnMeld(presentedState, playerIndex, action.tileId, action.targetPlayerId, action.targetMeldId, runEnd);
+      if (next !== presentedState) setPresentedPlayers(next.players);
     }
     const command = action.type === "lock-konkan" ? lockKonkanSetOnTable : spendTileOnTableMeld;
     return command(action.tileId, action.targetPlayerId, action.targetMeldId, runEnd).then((accepted) => {
       if (!accepted) setPresentedPlayers(state.players);
       return accepted;
     });
-  }, [humanPlayer.id, lockKonkanSetOnTable, setPresentedPlayers, spendTileOnTableMeld, state]);
+  }, [humanPlayer.id, lockKonkanSetOnTable, setPresentedPlayers, spendTileOnTableMeld, presentedState, state]);
   const presentedHumanRackTiles = useOkeyOptimisticRackPresentation(
     humanPlayer.hand,
     optimisticRackTile,
     setOptimisticRackTile,
+  );
+  const returningJokers = useOkeyReturningJokerPresentation(
+    onlineGameplayReady ? presentedHumanRackTiles : EMPTY_OKEY_TILES,
+    `${dealLifecycleKey}:${humanPlayer.id}`,
   );
   const topDiscard = state.discardPile[state.discardPile.length - 1] ?? null;
   const drawPending = pendingDrawRef.current !== null;
@@ -338,6 +348,10 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     }
     return [...hiddenRackTileIds, pendingDeckTileId];
   }, [hiddenRackTileIds, optimisticRackTile, onlineProjection]);
+  const combinedHiddenRackTileIds = useMemo(() => {
+    const arrivingIds = returningJokers.arrivals.filter((entry) => entry.rect).map(({ tile }) => tile.id);
+    return arrivingIds.length ? [...hiddenRackTileIdsForPresentation, ...arrivingIds] : hiddenRackTileIdsForPresentation;
+  }, [hiddenRackTileIdsForPresentation, returningJokers.arrivals]);
   const presentedDeckCount = Math.max(0, state.deck.length - (pendingDrawRef.current?.source === "deck" ? 1 : 0));
   const presentedDiscardCount = Math.max(0, state.discardPile.length - (pendingDrawRef.current?.source === "discard" ? 1 : 0));
   const {
@@ -470,7 +484,7 @@ useEffect(() => {
     canDiscardSelectedTile, selectedTile, openAction, executeOpenAction, openActionButtonLabel, remainingMeldSlots,
     selectOpenAction, selectTableMeldAction,
   } = useOkeyTableActions({
-    state, humanPlayer, isHumanTurn, selectedTileId,
+    state: presentedState, humanPlayer, isHumanTurn, selectedTileId,
     rackMeldSelection: openableRackMelds, declareKonkan, commitOpenIntent: commitOpenPresentation, setSelectedTileId,
   });
 
@@ -569,7 +583,7 @@ useEffect(() => {
     dropTileFromRack,
     handleDeckDroppedOnRack: handleDeckDroppedOnRackCommand,
   } = useOkeyPlayerTileFlightCommands({
-    state, humanPlayer, topDiscard, canDraw, canDiscardTile, droppedMelds, tileFlight,
+    state: presentedState, humanPlayer, topDiscard, canDraw, canDiscardTile, droppedMelds, tileFlight,
     deckTopRectRef, discardTopRectRef, drawLandingRectRef, rackTileRectsRef,
     pendingDrawRef, awaitingDiscardRemovalTileIdRef, isPointInsideRack,
     isPointInsideDiscardPile, toLocalRect, draw, discard, commitOpenIntent,
@@ -643,7 +657,10 @@ useEffect(() => {
     dropTile: dropTileFromRack, setSelectedTileId, emitFeedback,
   });
   const handleDropMeldGroupStable = useStableEvent(handleDropMeldGroup);
-  const handleTileDragPointChange = useStableEvent(updateTileDragMeldTarget);
+  const handleTileDragPointChange = useStableEvent((tileId: string | null, point: { x: number; y: number } | null) => {
+    if (tileId) returningJokers.dismiss(tileId);
+    updateTileDragMeldTarget(tileId, point);
+  });
   const handleRackMeasured = useStableEvent((rect: ScreenRect) => {
     rackRectRef.current = rect;
   });
@@ -652,6 +669,7 @@ useEffect(() => {
   });
   const handleRackTileMeasured = useStableEvent((tileId: string, rect: ScreenRect) => {
     rackTileRectsRef.current[tileId] = rect;
+    returningJokers.onTileMeasured(tileId, rect);
   });
   const skipEnterAnimationTileIds = useMemo(
     () => discardDropPlacement ? [discardDropPlacement.tileId] : [],
@@ -855,7 +873,7 @@ return (
                 </Text>
                 <Text style={styles.playerSetScoreSlash}>{" / "}</Text>
                 <Text style={styles.playerSetScoreCurrent}>
-                  {rackSetScore}
+                  {openableRackMelds.score}
                 </Text>
               </View>
             )}
@@ -869,13 +887,12 @@ return (
           onSelectTile={handleRackTileSelect}
           playerId={currentUserId ?? humanPlayer.id}
 
-          onRackScoreChange={setRackSetScore}
           onOpenableMeldsChange={setOpenableRackMelds}
           onDropMeldGroup={handleDropMeldGroupStable}
           onDropTile={handleDropTile}
           stagedTileIds={droppedTileIds}
           onTileDragPointChange={handleTileDragPointChange}
-          hiddenTileIds={hiddenRackTileIdsForPresentation}
+          hiddenTileIds={combinedHiddenRackTileIds}
           skipEnterAnimationTileIds={skipEnterAnimationTileIds}
          externalDropPlacement={discardDropPlacement}
           eliminated={isEliminatedOkeyPlayer(humanPlayer)}
@@ -906,6 +923,9 @@ return (
           onMoveTile={handleMoveRackTile}
 
         />
+        {returningJokers.arrivals.map(({ tile, rect }) => rect && !hiddenRackTileIdsForPresentation.includes(tile.id) ? (
+          <OkeyReturningJokerOverlay key={tile.id} tile={tile} rect={toLocalRect(rect)} onDone={returningJokers.dismiss} />
+        ) : null)}
         {tileFlight ? (
           <OkeyTileFlightOverlay key={tileFlight.id} flight={tileFlight} okeyTile={state.okeyTile} onDone={completeActivePresentation} />
         ) : null}
@@ -1041,3 +1061,4 @@ const presentationOverlayStyles = StyleSheet.create({
     alignItems: "center",
   },
 });
+

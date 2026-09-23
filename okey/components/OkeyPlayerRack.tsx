@@ -51,7 +51,7 @@ import {
 } from "./okeyStyles";
 import { OkeyTileFace } from "./OkeyTileFace";
 import { OkeyTurnTimerBar } from "./OkeyTurnTimerBar";
-import { useOkeyRackDrag } from "./useOkeyRackDrag";
+import { useOkeyRackDrag } from "@/okey/rack/useOkeyRackDrag";
 
 type TileRect = { x: number; y: number; width: number; height: number };
 
@@ -80,32 +80,6 @@ function EnteringRackTile({ children, height, fromX = 0, fromY, delay = 0 }: {
         { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [fromX, 0] }) },
         { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [fromY ?? -height * 4.2, 0] }) },
         { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1.08, 1] }) },
-      ],
-    }}>
-      {children}
-    </Animated.View>
-  );
-}
-
-function ReturningJokerTile({ children, height }: { children: ReactNode; height: number }) {
-  const progress = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    progress.setValue(0);
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: 760,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [progress]);
-  return (
-    <Animated.View style={{
-      opacity: progress,
-      transform: [
-        { translateX: progress.interpolate({ inputRange: [0, 0.58, 1], outputRange: [52, -8, 0] }) },
-        { translateY: progress.interpolate({ inputRange: [0, 0.72, 1], outputRange: [-height * 3.8, height * 0.12, 0] }) },
-        { rotate: progress.interpolate({ inputRange: [0, 0.7, 1], outputRange: ["-18deg", "5deg", "0deg"] }) },
-        { scale: progress.interpolate({ inputRange: [0, 0.72, 1], outputRange: [0.72, 1.08, 1] }) },
       ],
     }}>
       {children}
@@ -287,13 +261,8 @@ export function OkeyPlayerRack({
     () => new Set(tiles.map((tile) => tile.id)),
   );
   const rackInteractionLocked = enteringTileIds.size > 0;
-  const [returningJokerTileIds, setReturningJokerTileIds] =
-    useState<Set<string>>(() => new Set());
   const [flippingJokerTileIds, setFlippingJokerTileIds] =
     useState<Set<string>>(() => new Set());
-  const previousTileIdsRef = useRef(
-    new Set(tiles.map((tile) => tile.id)),
-  );
 
   const effectiveViewportWidth =
     rackViewportWidth > 0
@@ -330,18 +299,6 @@ export function OkeyPlayerRack({
     [],
   );
 
-  const clearReturningJokerForTile = useCallback(
-    (tileId: string) => {
-      setReturningJokerTileIds((current) => {
-        if (!current.has(tileId)) return current;
-        const next = new Set(current);
-        next.delete(tileId);
-        return next;
-      });
-    },
-    [],
-  );
-
   const {
     committedRackSlots,
     rackSlots,
@@ -368,7 +325,6 @@ export function OkeyPlayerRack({
   onTileDragPointChange,
   externalDropPlacement,
   onExternalDropPlaced,
-  clearReturningJokerForTile,
 });
 
   const getRowTileTop = useCallback(
@@ -517,37 +473,6 @@ export function OkeyPlayerRack({
     };
   }, [dealResetKey]);
 
-  useEffect(() => {
-    const previousTileIds = previousTileIdsRef.current;
-    const returningIds = tiles
-      .filter(
-        (tile) =>
-          tile.jokerOrigin === "stolen" &&
-          !previousTileIds.has(tile.id),
-      )
-      .map((tile) => tile.id);
-
-    previousTileIdsRef.current = new Set(
-      tiles.map((tile) => tile.id),
-    );
-    if (returningIds.length === 0) return;
-
-    setReturningJokerTileIds(
-      (current) => new Set([...current, ...returningIds]),
-    );
-
-    const timeout = setTimeout(() => {
-      setReturningJokerTileIds((current) => {
-        const next = new Set(current);
-        returningIds.forEach((tileId) => next.delete(tileId));
-        return next;
-      });
-    }, 900);
-
-    enterAnimationTimeoutsRef.current.push(timeout);
-    return () => clearTimeout(timeout);
-  }, [tiles]);
-
   useEffect(
     () => () => {
       enterAnimationTimeoutsRef.current.forEach((timeout) =>
@@ -685,12 +610,7 @@ export function OkeyPlayerRack({
               : undefined
           }
         >
-          {returningJokerTileIds.has(tile.id) &&
-          !shouldHideTile ? (
-            <ReturningJokerTile height={rackTileHeight}>
-              {tileFace}
-            </ReturningJokerTile>
-          ) : enteringTileIds.has(tile.id) &&
+          {enteringTileIds.has(tile.id) &&
             !shouldHideTile &&
             !skipEnterAnimationTileIdSet.has(tile.id) ? (
             <EnteringRackTile

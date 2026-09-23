@@ -9,6 +9,9 @@ module.exports = {
   collectCoverageFrom: [
     "okey/components/**/*.{ts,tsx}",
     "okey/hooks/**/*.{ts,tsx}",
+    "okey/feedback/**/*.{ts,tsx}",
+    "okey/multiplayer/OkeyReturnToGameOverlay.tsx",
+    "components/game/ReturnToGamePopup.tsx",
     "okey/presentation/**/*.{ts,tsx}",
     "okey/rack/**/*.{ts,tsx}",
     "!okey/**/*.d.ts",

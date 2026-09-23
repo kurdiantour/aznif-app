@@ -1,6 +1,6 @@
 import { expect, test } from "@jest/globals";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { OKEY_FEEDBACK_PREFERENCES_KEY, loadOkeyFeedbackPreferences, saveOkeyFeedbackPreferences } from "../../hooks/useOkeyFeedback";
+import { OKEY_FEEDBACK_PREFERENCES_KEY, loadOkeyFeedbackPreferences, saveOkeyFeedbackPreferences } from "../useOkeyFeedback";
 
 test("sound and haptic preferences survive a storage reload", async () => {
   await saveOkeyFeedbackPreferences({ soundEnabled: false, hapticsEnabled: true });

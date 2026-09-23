@@ -1,5 +1,5 @@
 import type { OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing } from "react-native";
 
 import type { PlayerProfileTarget } from "@/components/game/player-profile-target";
@@ -19,7 +19,6 @@ export function useOkeyTablePresentation() {
     completionMeldTiles: OkeyTile[];
   }>({ visible: false, runTiles: [], completionMeldTiles: [] });
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
-  const [rackSetScore, setRackSetScore] = useState(0);
   const [openableRackMelds, setOpenableRackMelds] = useState<{
     melds: OkeyMeld[];
     score: number;
@@ -89,7 +88,6 @@ export function useOkeyTablePresentation() {
   const resetTablePresentation = useCallback(() => {
     setTableMeldOffsets({});
     setSelectedTileId(null);
-    setRackSetScore(0);
     setDroppedMelds([]);
     setPendingNormalMeld(null);
     setLocalDragCommittedMeldSignatures([]);
@@ -111,7 +109,6 @@ export function useOkeyTablePresentation() {
     completeKonkanRevealEntrance, resetPresentationOverlays, finishKonkanReveal,
     finishFinalTilePresentation, resetTablePresentation,
     selectedTileId, setSelectedTileId,
-    rackSetScore, setRackSetScore,
     openableRackMelds, setOpenableRackMelds,
     droppedMelds, setDroppedMelds, removeStagedMeld,
     pendingNormalMeld, setPendingNormalMeld,
@@ -328,17 +325,6 @@ export function useOkeyTileCycleAnnouncementPresentation(active: boolean, durati
   }, [countdownProgress, durationMs, panelProgress, visible]);
 
   return { visible, panelProgress, countdownProgress };
-}
-
-export function useOkeyPresentationBoundary(key: string | number, onBoundary: () => void) {
-  const previousKeyRef = useRef(key);
-  const onBoundaryRef = useRef(onBoundary);
-  useLayoutEffect(() => { onBoundaryRef.current = onBoundary; }, [onBoundary]);
-  useEffect(() => {
-    if (previousKeyRef.current === key) return;
-    previousKeyRef.current = key;
-    onBoundaryRef.current();
-  }, [key]);
 }
 
 export function useOkeyStagedMeldCleanup(

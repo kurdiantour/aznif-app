@@ -17,7 +17,7 @@ import {
   type OkeyFeedbackEvent,
   OkeyFeedbackGate,
   type OkeyFeedbackPreferences,
-} from "../feedback/okey-feedback-gate";
+} from "./okey-feedback-gate";
 
 export {
   DEFAULT_OKEY_FEEDBACK_PREFERENCES,

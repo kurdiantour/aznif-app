@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -802,9 +803,6 @@ export function useOkeyTileFlightCompletion(input: {
   return () => {
     const completedFlight = input.tileFlight;
     input.completeOpponentPresentationFlight(completedFlight);
-    const waitingForAuthoritativeDeckDraw =
-      completedFlight?.id.startsWith("draw-") &&
-      input.pendingDrawRef.current?.source === "deck";
     const landedDiscardTile = completedFlight?.id.includes("discard-")
       ? completedFlight.tile
       : null;
@@ -821,15 +819,19 @@ export function useOkeyTileFlightCompletion(input: {
       input.setPresentedTopDiscard(input.topDiscard);
     }
 
-    if (!waitingForAuthoritativeDeckDraw) {
-      input.setTileFlight(null);
+    input.setTileFlight(null);
+    if (completedFlight?.id.startsWith("draw-") && completedFlight.tile) {
+      input.setHiddenRackTileIds((current) =>
+        current.filter((entry) => entry !== completedFlight.tile!.id),
+      );
     }
     // Keep a locally discarded rack tile hidden until the authoritative hand
     // no longer contains it. OkeyGameTableScene owns that release.
     if (input.pendingDrawRef.current?.source !== "deck") input.setHideDeckTopTile(false);
 
     if (landedDiscardTile) {
-      if (input.topDiscard?.id === landedDiscardTile.id) {
+      const isHumanLocalDiscard = completedFlight?.id?.startsWith("discard-");
+      if (isHumanLocalDiscard || input.topDiscard?.id === landedDiscardTile.id) {
         input.setHideDiscardTopTile(false);
         input.setDiscardPresentationFallback(null);
       } else {
@@ -840,8 +842,6 @@ export function useOkeyTileFlightCompletion(input: {
       input.setHideDiscardTopTile(false);
       input.setDiscardPresentationFallback(null);
     }
-
-    if (waitingForAuthoritativeDeckDraw) return;
 
     const onlineTimeoutFlight = input.activePresentationRef.current.onlineTimeout;
     if (onlineTimeoutFlight?.stage === "deck-to-rack") {
@@ -879,9 +879,11 @@ export function useOkeyOptimisticRackPresentation(
   optimisticTile: OkeyTile | null,
   setOptimisticTile: Dispatch<SetStateAction<OkeyTile | null>>,
 ) {
-  const presentedHand = optimisticTile && !authoritativeHand.some((tile) => tile.id === optimisticTile.id)
-    ? [...authoritativeHand, optimisticTile]
-    : authoritativeHand;
+  const presentedHand = useMemo(() =>
+    optimisticTile && !authoritativeHand.some((tile) => tile.id === optimisticTile.id)
+      ? [...authoritativeHand, optimisticTile]
+      : authoritativeHand,
+  [authoritativeHand, optimisticTile]);
   useLayoutEffect(() => {
     if (optimisticTile && authoritativeHand.some((tile) => tile.id === optimisticTile.id)) {
       setOptimisticTile(null);

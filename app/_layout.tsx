@@ -18,7 +18,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { WalletProvider } from '@/lib/wallet-context';
 import { AppUpdateModal } from '@/components/AppUpdateModal';
-import { ReturnToGameOverlay } from '@/components/okey/ReturnToGamePopup';
+import { OkeyReturnToGameOverlay } from '@/okey/multiplayer/OkeyReturnToGameOverlay';
 
 function applyImmersiveFullscreen() {
   if (Platform.OS !== "android") return;
@@ -121,7 +121,7 @@ export default function Layout() {
               <Stack.Screen name="(tabs)" />
             </Stack>
             <AppUpdateModal />
-            <ReturnToGameOverlay />
+            <OkeyReturnToGameOverlay />
           </GameInvitesProvider>
         </PresenceProvider>
         </WalletProvider>

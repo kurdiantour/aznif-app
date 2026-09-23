@@ -396,9 +396,14 @@ export function useOkeyPlayerTileFlightCommands(input: {
       return true;
     }
 
+    const sourceRect = source === "deck" ? deckTopRectRef.current : discardTopRectRef.current;
+    const targetRect = drawLandingRectRef.current;
+    if (animate && (tileFlight || !sourceRect || !targetRect)) return false;
+
     const pending = { tileId: tile.id, source } as const;
     pendingDrawRef.current = pending;
     setOptimisticRackTile(tile);
+    if (animate) setHiddenRackTileIds((current) => current.includes(tile.id) ? current : [...current, tile.id]);
 
     if (source === "deck") {
       setHideDeckTopTile(true);
@@ -411,14 +416,16 @@ export function useOkeyPlayerTileFlightCommands(input: {
     }
 
     if (placementPoint) {
-      setDiscardDropPlacement({ tileId: tile.id, point: placementPoint, nonce: Date.now() });
+      setDiscardDropPlacement({
+        tileId: tile.id,
+        point: placementPoint,
+        nonce: Date.now(),
+      });
     }
 
-    const sourceRect = source === "deck" ? deckTopRectRef.current : discardTopRectRef.current;
-    const targetRect = drawLandingRectRef.current;
-    if (animate && !tileFlight && sourceRect && targetRect) {
+    if (animate) {
       launchTileFlight({
-        flight: { id: "draw-" + tile.id + "-" + Date.now(), tile, face: source === "deck" ? "back" : "front", from: toLocalRect(sourceRect), to: toLocalRect(targetRect) },
+        flight: { id: "draw-" + tile.id + "-" + Date.now(), tile, face: "front", from: toLocalRect(sourceRect!), to: toLocalRect(targetRect!) },
       });
     }
 
@@ -429,6 +436,7 @@ export function useOkeyPlayerTileFlightCommands(input: {
       setDiscardDropPlacement((current) => current?.tileId === tile.id ? null : current);
       setSelectedTileId((current) => current === tile.id ? null : current);
       setTileFlight((current) => current?.tile?.id === tile.id ? null : current);
+      setHiddenRackTileIds((current) => current.filter((entry) => entry !== tile.id));
       if (source === "deck") {
         setHideDeckTopTile(false);
       } else {
@@ -438,7 +446,7 @@ export function useOkeyPlayerTileFlightCommands(input: {
       }
     });
     return true;
-  }, [canDraw, deckTopRectRef, discardTopRectRef, draw, drawLandingRectRef, launchTileFlight, pendingDrawRef, setDiscardDropPlacement, setDiscardPresentationFallback, setHideDeckTopTile, setHideDiscardTopTile, setOptimisticRackTile, setPresentedTopDiscard, setSelectedTileId, setTileFlight, state.deck, state.discardPile, tileFlight, toLocalRect, topDiscard]);
+  }, [canDraw, deckTopRectRef, discardTopRectRef, draw, drawLandingRectRef, launchTileFlight, pendingDrawRef, setDiscardDropPlacement, setDiscardPresentationFallback, setHideDeckTopTile, setHideDiscardTopTile, setHiddenRackTileIds, setOptimisticRackTile, setPresentedTopDiscard, setSelectedTileId, setTileFlight, state.deck, state.discardPile, tileFlight, toLocalRect, topDiscard]);
 
   const startDrawFlight = useCallback((source: "deck" | "discard") => {
     beginDrawIntent(source, undefined, true);
@@ -533,9 +541,6 @@ export function useOkeyPlayerTileFlightCommands(input: {
     setHideDeckTopTile(false);
     setHideDiscardTopTile(false);
     setPresentedTopDiscard(state.discardPile[state.discardPile.length - 1] ?? null);
-    if (pending.source === "deck" && tileFlight?.id.startsWith("draw-")) {
-      setTileFlight(null);
-    }
   }, [canDraw, humanPlayer.hand, pendingDrawRef, setHideDeckTopTile, setHideDiscardTopTile, setOptimisticRackTile, setPresentedTopDiscard, setTileFlight, state.discardPile, tileFlight]);
 
   return { startDrawFlight, startDiscardFlight, handleDiscardDroppedOnRack, dropTileFromRack, handleDeckDroppedOnRack };

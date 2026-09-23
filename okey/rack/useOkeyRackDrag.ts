@@ -31,7 +31,6 @@ import {
   getTileOrigin,
   moveTileIntoSlot,
   moveTilesIntoSlot,
-  syncSlotsWithTiles,
   type DragOrigin,
   type DraggingMeld,
   type ExternalDropPlacement,
@@ -73,7 +72,6 @@ type UseOkeyRackDragParams = {
   externalDropPlacement?: ExternalDropPlacement | null;
   onExternalDropPlaced?: (tileId: string, targetIndex: number) => void;
 
-  clearReturningJokerForTile: (tileId: string) => void;
 };
 
 /**
@@ -98,7 +96,6 @@ export function useOkeyRackDrag({
   onTileDragPointChange,
   externalDropPlacement,
   onExternalDropPlaced,
-  clearReturningJokerForTile,
 }: UseOkeyRackDragParams) {
   const [committedRackSlots, setCommittedRackSlots] = useState<RackSlots>(() =>
     getInitialRackSlots(tiles),
@@ -126,6 +123,7 @@ export function useOkeyRackDrag({
   const wildcardLongPressHandledRef = useRef(false);
   const consumedExternalDropNonceRef = useRef<number | null>(null);
   const tileShiftValuesRef = useRef<Record<string, Animated.ValueXY>>({});
+  const lastPreviewRef = useRef<RackSlots | null>(null);
   const tilePanHandlersRef = useRef<Record<string, any>>({});
   const rackInteractionLockedRef = useRef(rackInteractionLocked);
 
@@ -238,6 +236,8 @@ export function useOkeyRackDrag({
   }, []);
 
   const resetNeighborShifts = useCallback(() => {
+    if (!lastPreviewRef.current) return;
+    lastPreviewRef.current = null;
     for (const value of Object.values(tileShiftValuesRef.current)) {
       value.stopAnimation();
       value.setValue({ x: 0, y: 0 });
@@ -246,6 +246,8 @@ export function useOkeyRackDrag({
 
   const applyRackPreview = useCallback(
     (originalSlots: RackSlots, previewSlots: RackSlots, draggedTileIds: Set<string>) => {
+      if (lastPreviewRef.current && rackSlotsEqual(lastPreviewRef.current, previewSlots)) return;
+      lastPreviewRef.current = previewSlots;
       for (const row of ROW_ORDER) {
         for (let slotIndex = 0; slotIndex < originalSlots[row].length; slotIndex += 1) {
           const tileId = originalSlots[row][slotIndex];
@@ -457,10 +459,35 @@ export function useOkeyRackDrag({
 
     if (pendingExternalPlacement) return;
 
-    const synchronizedSlots = syncSlotsWithTiles(
-      committedRackSlotsRef.current,
-      tiles,
-    );
+    const tileIds = new Set(tiles.map((tile) => tile.id));
+    const synchronizedSlots = cloneSlots(committedRackSlotsRef.current);
+    const slottedTileIds = new Set<string>();
+
+    for (const row of ROW_ORDER) {
+      for (let index = 0; index < synchronizedSlots[row].length; index += 1) {
+        const tileId = synchronizedSlots[row][index];
+        if (tileId && tileIds.has(tileId)) {
+          slottedTileIds.add(tileId);
+        } else if (tileId) {
+          synchronizedSlots[row][index] = null;
+        }
+      }
+    }
+
+    // New rack membership uses the same top-first empty-slot rule as
+    // OkeyPlayerRack's draw landing target, so Flight and final render agree.
+    for (const tile of tiles) {
+      if (slottedTileIds.has(tile.id)) continue;
+
+      const topSlotIndex = synchronizedSlots.top.findIndex((tileId) => tileId === null);
+      const bottomSlotIndex = synchronizedSlots.bottom.findIndex((tileId) => tileId === null);
+      if (topSlotIndex >= 0) {
+        synchronizedSlots.top[topSlotIndex] = tile.id;
+      } else if (bottomSlotIndex >= 0) {
+        synchronizedSlots.bottom[bottomSlotIndex] = tile.id;
+      }
+      slottedTileIds.add(tile.id);
+    }
 
     if (!rackSlotsEqual(synchronizedSlots, committedRackSlotsRef.current)) {
       commitRackSlots(synchronizedSlots);
@@ -635,7 +662,6 @@ export function useOkeyRackDrag({
 
           if (!dragStartedRef.current) {
             dragStartedRef.current = true;
-            clearReturningJokerForTile(tileId);
 
             if (!draggingMeldRef.current) {
               setDraggingTileId(tileId);
@@ -822,7 +848,6 @@ export function useOkeyRackDrag({
       clearDragState,
       clearLongPressTimer,
       commitRackSlots,
-      clearReturningJokerForTile,
       resetNeighborShifts,
       scheduleDragPointChange,
       setDragPositionFromTouch,
