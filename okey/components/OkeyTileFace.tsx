@@ -39,25 +39,16 @@ type OkeyTileFaceProps = {
   onAccessibilityMoveNext?: () => void;
 };
 
-export function OkeyTileFace({
-  tile,
-  selected,
-  compact,
-  isWildcard,
-  flipped = false,
-  onPress,
-  onFlipAnimationActiveChange,
-  panHandlers,
-  width,
-  height,
-  accessibilityLabel,
-  onAccessibilityMovePrevious,
-  onAccessibilityMoveNext,
-}: OkeyTileFaceProps) {
-  const { setAssets } = useOkeyCosmetics();
+function FlippingTileImage({ tile, tiles, flipped, onFlipAnimationActiveChange }: {
+  tile: OkeyTile;
+  tiles: OkeyTileImages;
+  flipped: boolean;
+  onFlipAnimationActiveChange?: (active: boolean) => void;
+}) {
   const flipProgress = useRef(
     new Animated.Value(flipped ? 1 : 0),
   ).current;
+  const previousFlippedRef = useRef(flipped);
   const onFlipAnimationActiveChangeRef = useRef(onFlipAnimationActiveChange);
 
   useEffect(() => {
@@ -65,6 +56,8 @@ export function OkeyTileFace({
   }, [onFlipAnimationActiveChange]);
 
   useEffect(() => {
+    if (previousFlippedRef.current === flipped) return;
+    previousFlippedRef.current = flipped;
     onFlipAnimationActiveChangeRef.current?.(true);
     const animation = Animated.timing(flipProgress, {
       toValue: flipped ? 1 : 0,
@@ -113,7 +106,7 @@ export function OkeyTileFace({
     outputRange: [0, 0, 1, 1],
   });
 
-  const tileNode = (
+  return (
     <Animated.View
       pointerEvents="none"
       style={{
@@ -151,7 +144,7 @@ export function OkeyTileFace({
       >
         <Image
           pointerEvents="none"
-          source={getTileImage(tile, setAssets.tiles)}
+          source={getTileImage(tile, tiles)}
           style={styles.tileImage}
           contentFit="contain"
           cachePolicy="memory-disk"
@@ -181,7 +174,7 @@ export function OkeyTileFace({
       >
         <Image
           pointerEvents="none"
-          source={setAssets.tiles.back}
+          source={tiles.back}
           style={styles.tileImage}
           contentFit="contain"
           cachePolicy="memory-disk"
@@ -189,6 +182,32 @@ export function OkeyTileFace({
         />
       </Animated.View>
     </Animated.View>
+  );
+
+}
+
+export function OkeyTileFace({
+  tile,
+  selected,
+  compact,
+  isWildcard,
+  flipped = false,
+  onPress,
+  onFlipAnimationActiveChange,
+  panHandlers,
+  width,
+  height,
+  accessibilityLabel,
+  onAccessibilityMovePrevious,
+  onAccessibilityMoveNext,
+}: OkeyTileFaceProps) {
+  const { setAssets } = useOkeyCosmetics();
+  const tileNode = isWildcard || flipped ? (
+    <FlippingTileImage tile={tile} tiles={setAssets.tiles} flipped={flipped}
+      onFlipAnimationActiveChange={onFlipAnimationActiveChange} />
+  ) : (
+    <Image pointerEvents="none" source={getTileImage(tile, setAssets.tiles)}
+      style={styles.tileImage} contentFit="contain" cachePolicy="memory-disk" transition={0} />
   );
 
   const tileStyle = [

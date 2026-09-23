@@ -5,20 +5,20 @@ export type RackRow = "top" | "bottom";
 export type RackSlot = string | null;
 export type RackSlots = Record<RackRow, RackSlot[]>;
 export type RackRowLayout = { x: number; y: number; width: number; height: number };
+export function getRackRowTileTop(layout: RackRowLayout, tileHeight: number) {
+  return layout.y + layout.height - tileHeight;
+}
+
 export type DragOrigin = { row: RackRow; slotIndex: number };
 export type InsertionTarget = {
   row: RackRow;
   slotIndex: number;
-  flatIndex: number;
 };
 export type DraggingMeld = OkeyMeld & { tileIds: string[]; touchedTileIndex: number };
 export type ExternalDropPlacement = { tileId: string; point: { x: number; y: number }; nonce: number };
 
 export const ROW_ORDER: RackRow[] = ["bottom", "top"];
 export const GROUP_LONG_PRESS_MS = 150;
-// Allow normal finger jitter while the user holds a tile to activate group drag.
-// The drag activation threshold still handles intentional early movement.
-export const GROUP_LONG_PRESS_MOVE_TOLERANCE = 24;
 export const DRAG_ACTIVATION_DISTANCE = 2;
 export const ROW_SNAP_PADDING_RATIO = 0.45;
 export const RACK_TILE_ENTER_MS = 620;
@@ -242,7 +242,6 @@ export function getInsertionTargetForPoint(args: {
   return {
     row: targetRow,
     slotIndex,
-    flatIndex: getFlatIndexForSlot(sourceSlots, targetRow, slotIndex),
   };
 }
 
@@ -311,7 +310,6 @@ export function getGroupInsertionTargetForPoint(args: {
   return {
     row: targetRow,
     slotIndex,
-    flatIndex: getFlatIndexForSlot(sourceSlots, targetRow, slotIndex),
   };
 }
 
@@ -328,7 +326,6 @@ export function getExternalDropTargetForPoint(args: {
 }): InsertionTarget | null {
   const {
     point,
-    committedSlots,
     viewport,
     rowLayouts,
     rackTileWidth,
@@ -371,7 +368,6 @@ export function getExternalDropTargetForPoint(args: {
   return {
     row: targetRow,
     slotIndex,
-    flatIndex: getFlatIndexForSlot(committedSlots, targetRow, slotIndex),
   };
 }
 

@@ -21,16 +21,14 @@ import {
 } from "react-native";
 
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
-import {
-  getOpenableRackLayout,
-  getRackDisplayScore,
-} from "@/okey/engine/okey-rack-layout";
+import { useOkeyRackSnapshot } from "@/okey/rack/useOkeyRackSnapshot";
 import {
   ROW_ORDER,
   RACK_DEAL_BATCH_STAGGER_MS,
   RACK_TILE_ENTER_MS,
   getFlatIndexForSlot,
   getSlotEnterDelay,
+  getRackRowTileTop,
   type ExternalDropPlacement,
   type RackRow,
   type RackRowLayout,
@@ -134,8 +132,8 @@ export function OkeyPlayerRack({
   selectedTileId,
   okeyTile,
   onSelectTile,
+  onTileDragStart,
   onMoveTile,
-  onRackScoreChange,
   onOpenableMeldsChange,
   stagedTileIds = [],
   onDropMeldGroup,
@@ -150,7 +148,6 @@ export function OkeyPlayerRack({
   turnWarningToastVisible = false,
   turnWarningToastMessage,
   showTurnTimer = true,
-  turnTimeLeftMilliseconds,
   turnDeadlineAt,
   serverClockOffsetMs,
   turnDurationSeconds,
@@ -167,8 +164,8 @@ export function OkeyPlayerRack({
   selectedTileId: string | null;
   okeyTile: OkeyTile;
   onSelectTile: (tileId: string) => void;
+  onTileDragStart?: (tileId: string) => void;
   onMoveTile: (tileId: string, targetIndex: number) => void;
-  onRackScoreChange?: (score: number) => void;
   onOpenableMeldsChange?: (payload: {
     melds: OkeyMeld[];
     score: number;
@@ -196,7 +193,6 @@ export function OkeyPlayerRack({
   turnWarningToastVisible?: boolean;
   turnWarningToastMessage?: string;
   showTurnTimer?: boolean;
-  turnTimeLeftMilliseconds: number;
   turnDeadlineAt: string | null;
   serverClockOffsetMs: number;
   turnDurationSeconds: number | null;
@@ -207,7 +203,6 @@ export function OkeyPlayerRack({
   externalDropPlacement?: ExternalDropPlacement | null;
   onExternalDropPlaced?: (
     tileId: string,
-    targetIndex: number,
   ) => void;
   eliminated?: boolean;
   playerId?: string;
@@ -309,6 +304,7 @@ export function OkeyPlayerRack({
     draggedMeldScale,
     getTileShiftValue,
     getTilePanHandlers,
+    moveRackTile,
   } = useOkeyRackDrag({
   tiles,
   okeyTile,
@@ -320,6 +316,7 @@ export function OkeyPlayerRack({
   viewportOriginRef,
   rowLayoutsRef,
   onSelectTile,
+  onTileDragStart,
   onDropMeldGroup,
   onDropTile,
   onTileDragPointChange,
@@ -331,7 +328,7 @@ export function OkeyPlayerRack({
     (row: RackRow) => {
       const rowLayout = rowLayouts[row];
       if (!rowLayout) return 0;
-      return rowLayout.y + rowLayout.height - rackTileHeight;
+      return getRackRowTileTop(rowLayout, rackTileHeight);
     },
     [rowLayouts, rackTileHeight],
   );
@@ -412,7 +409,6 @@ export function OkeyPlayerRack({
     const viewport = viewportOriginRef.current;
     if (viewport.width <= 0 || viewport.height <= 0) return;
 
-    const nextRects: Record<string, TileRect> = {};
     for (const row of ROW_ORDER) {
       const rowLayout = rowLayouts[row];
       if (!rowLayout) continue;
@@ -427,7 +423,6 @@ export function OkeyPlayerRack({
           width: rackTileWidth,
           height: rackTileHeight,
         };
-        nextRects[tileId] = rect;
         onTileMeasured?.(tileId, rect);
       });
     }
@@ -483,45 +478,9 @@ export function OkeyPlayerRack({
     [],
   );
 
-  useEffect(() => {
-    const rows = ROW_ORDER.map((row) => {
-      const rowSets: OkeyTile[][] = [];
-      let currentSet: OkeyTile[] = [];
-
-      for (const tileId of committedRackSlots[row]) {
-        const tile =
-          tileId && !stagedTileIdSet.has(tileId)
-            ? tileById.get(tileId)
-            : null;
-
-        if (tile) {
-          currentSet.push(tile);
-        } else if (currentSet.length > 0) {
-          rowSets.push(currentSet);
-          currentSet = [];
-        }
-      }
-
-      if (currentSet.length > 0) rowSets.push(currentSet);
-      return rowSets;
-    }).flat();
-
-    const displayScore = getRackDisplayScore(rows, okeyTile);
-    const openableMelds = getOpenableRackLayout(rows, okeyTile);
-
-    onRackScoreChange?.(displayScore);
-    onOpenableMeldsChange?.({
-      ...openableMelds,
-      contiguousGroups: rows,
-    });
-  }, [
-    committedRackSlots,
-    okeyTile,
-    onOpenableMeldsChange,
-    onRackScoreChange,
-    stagedTileIdSet,
-    tileById,
-  ]);
+  useOkeyRackSnapshot(
+    committedRackSlots, tileById, stagedTileIdSet, okeyTile, onOpenableMeldsChange,
+  );
 
   const renderRackTile = (
     tileId: string,
@@ -549,8 +508,8 @@ export function OkeyPlayerRack({
 
     const moveForAccessibility = (targetIndex: number) => {
       if (rackInteractionLocked || eliminated || isStaged) return;
+      moveRackTile(tile.id, targetIndex);
       onMoveTile(tile.id, targetIndex);
-      onSelectTile(tile.id);
     };
 
     const tileFace = (
@@ -758,7 +717,6 @@ export function OkeyPlayerRack({
           visible={showTurnTimer}
           deadlineAt={turnDeadlineAt}
           serverClockOffsetMs={serverClockOffsetMs}
-          remainingMilliseconds={turnTimeLeftMilliseconds}
           durationSeconds={turnDurationSeconds}
           phase={turnTimerPhase}
           style={styles.rackTurnTimer}

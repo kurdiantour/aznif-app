@@ -81,7 +81,7 @@ export function useOkeyTablePresentation() {
   const removeStagedMeld = useCallback((meldId: string) => {
     setDroppedMelds((current) => current.filter((entry) => entry.id !== meldId));
   }, []);
-  const handleExternalDropPlaced = useCallback((tileId: string, _targetIndex: number) => {
+  const handleExternalDropPlaced = useCallback((tileId: string) => {
     setSelectedTileId(tileId);
     setDiscardDropPlacement(null);
   }, []);

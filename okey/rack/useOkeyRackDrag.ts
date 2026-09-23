@@ -16,18 +16,17 @@ import {
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import {
   DRAG_ACTIVATION_DISTANCE,
-  GROUP_LONG_PRESS_MOVE_TOLERANCE,
   GROUP_LONG_PRESS_MS,
   ROW_ORDER,
   ROW_SNAP_PADDING_RATIO,
   cloneSlots,
   getBestMeldIncludingSlot,
   getExternalDropTargetForPoint,
-  getFlatIndexForSlot,
   getGroupInsertionTargetForPoint,
   getInitialRackSlots,
   getInsertionTargetForPoint,
   getRowTilesFromSlots,
+  getRackRowTileTop,
   getTileOrigin,
   moveTileIntoSlot,
   moveTilesIntoSlot,
@@ -62,6 +61,7 @@ type UseOkeyRackDragParams = {
   rowLayoutsRef: MutableRefObject<Record<RackRow, RackRowLayout | null>>;
 
   onSelectTile: (tileId: string) => void;
+  onTileDragStart?: (tileId: string) => void;
   onDropMeldGroup?: (meld: OkeyMeld, point: { x: number; y: number }) => boolean;
   onDropTile?: (tileId: string, point: { x: number; y: number }) => boolean;
   onTileDragPointChange?: (
@@ -70,7 +70,7 @@ type UseOkeyRackDragParams = {
   ) => void;
 
   externalDropPlacement?: ExternalDropPlacement | null;
-  onExternalDropPlaced?: (tileId: string, targetIndex: number) => void;
+  onExternalDropPlaced?: (tileId: string) => void;
 
 };
 
@@ -91,6 +91,7 @@ export function useOkeyRackDrag({
   viewportOriginRef,
   rowLayoutsRef,
   onSelectTile,
+  onTileDragStart,
   onDropMeldGroup,
   onDropTile,
   onTileDragPointChange,
@@ -118,7 +119,7 @@ export function useOkeyRackDrag({
   const latestDragPointRef = useRef({ x: 0, y: 0 });
   const dragStartedRef = useRef(false);
   const dragStartSlotsRef = useRef<RackSlots | null>(null);
-  const dragPreviewSlotsRef = useRef<RackSlots | null>(null);
+  const previewTargetRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wildcardLongPressHandledRef = useRef(false);
   const consumedExternalDropNonceRef = useRef<number | null>(null);
@@ -137,12 +138,14 @@ export function useOkeyRackDrag({
   const rackTileStrideRef = useRef(rackTileStride);
 
   const onSelectTileRef = useRef(onSelectTile);
+  const onTileDragStartRef = useRef(onTileDragStart);
   const onDropMeldGroupRef = useRef(onDropMeldGroup);
   const onDropTileRef = useRef(onDropTile);
   const onTileDragPointChangeRef = useRef(onTileDragPointChange);
   const onExternalDropPlacedRef = useRef(onExternalDropPlaced);
 
   const dragPointFrameRef = useRef<number | null>(null);
+  const externalHoverActiveRef = useRef(false);
   const pendingDragPointRef = useRef<{
     tileId: string | null;
     point: { x: number; y: number } | null;
@@ -153,6 +156,7 @@ export function useOkeyRackDrag({
   }, [committedRackSlots]);
 
   const commitRackSlots = useCallback((nextSlots: RackSlots) => {
+    if (rackSlotsEqual(committedRackSlotsRef.current, nextSlots)) return;
     committedRackSlotsRef.current = nextSlots;
     setCommittedRackSlots(nextSlots);
   }, []);
@@ -194,6 +198,7 @@ export function useOkeyRackDrag({
 
   useEffect(() => {
     onSelectTileRef.current = onSelectTile;
+    onTileDragStartRef.current = onTileDragStart;
     onDropMeldGroupRef.current = onDropMeldGroup;
     onDropTileRef.current = onDropTile;
     onTileDragPointChangeRef.current = onTileDragPointChange;
@@ -203,6 +208,7 @@ export function useOkeyRackDrag({
     onDropTile,
     onExternalDropPlaced,
     onSelectTile,
+    onTileDragStart,
     onTileDragPointChange,
   ]);
 
@@ -228,8 +234,7 @@ export function useOkeyRackDrag({
     const existing = tileShiftValuesRef.current[tileId];
     if (existing) return existing;
 
-    // Rack ordering is committed only on drop. Stable rack tiles do not move
-    // during hover, so this transform intentionally stays at zero.
+    // Preview transforms preserve the stable tile tree until release.
     const value = new Animated.ValueXY({ x: 0, y: 0 });
     tileShiftValuesRef.current[tileId] = value;
     return value;
@@ -260,12 +265,10 @@ export function useOkeyRackDrag({
           const toLayout = rowLayoutsRef.current[previewOrigin.row];
           if (!fromLayout || !toLayout) continue;
 
-          const fromBottomInset = row === "bottom" ? rackTileHeightRef.current * 0.44 : 0;
-          const toBottomInset = previewOrigin.row === "bottom" ? rackTileHeightRef.current * 0.44 : 0;
           const fromTop =
-            fromLayout.y + fromLayout.height - rackTileHeightRef.current - fromBottomInset;
+            getRackRowTileTop(fromLayout, rackTileHeightRef.current);
           const toTop =
-            toLayout.y + toLayout.height - rackTileHeightRef.current - toBottomInset;
+            getRackRowTileTop(toLayout, rackTileHeightRef.current);
 
           const value = getTileShiftValue(tileId);
           value.stopAnimation();
@@ -281,6 +284,8 @@ export function useOkeyRackDrag({
 
   const scheduleDragPointChange = useCallback(
     (tileId: string | null, point: { x: number; y: number } | null) => {
+      if (!tileId && !externalHoverActiveRef.current) return;
+      externalHoverActiveRef.current = tileId !== null;
       pendingDragPointRef.current = { tileId, point };
 
       if (dragPointFrameRef.current !== null) return;
@@ -307,6 +312,7 @@ export function useOkeyRackDrag({
   useEffect(
     () => () => {
       cancelScheduledDragPointChange();
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     },
     [cancelScheduledDragPointChange],
   );
@@ -365,15 +371,9 @@ export function useOkeyRackDrag({
         return;
       }
 
-      const bottomInset =
-        origin.row === "bottom" ? rackTileHeightRef.current * 0.44 : 0;
       const targetPosition = {
         x: origin.slotIndex * rackTileStrideRef.current,
-        y:
-          rowLayout.y +
-          rowLayout.height -
-          rackTileHeightRef.current -
-          bottomInset,
+        y: getRackRowTileTop(rowLayout, rackTileHeightRef.current),
       };
 
       dragPosition.stopAnimation();
@@ -519,7 +519,6 @@ export function useOkeyRackDrag({
     commitRackSlots(placement.slots);
     onExternalDropPlacedRef.current?.(
       externalDropPlacement.tileId,
-      getFlatIndexForSlot(placement.slots, placement.row, placement.slotIndex),
     );
   }, [commitRackSlots, externalDropPlacement, getExternalDropTarget, tiles]);
 
@@ -586,11 +585,12 @@ export function useOkeyRackDrag({
       setDraggingMeld(null);
       dragStartedRef.current = false;
       dragStartSlotsRef.current = null;
-      dragPreviewSlotsRef.current = null;
+      previewTargetRef.current = null;
 
       resetNeighborShifts();
 
       cancelScheduledDragPointChange();
+      externalHoverActiveRef.current = false;
       onTileDragPointChangeRef.current?.(null, null);
     },
     [
@@ -630,7 +630,7 @@ export function useOkeyRackDrag({
           dragStartSlotsRef.current = cloneSlots(
             committedRackSlotsRef.current,
           );
-          dragPreviewSlotsRef.current = null;
+          previewTargetRef.current = null;
 
           const startPoint = getTouchPoint(event, gesture, true);
           latestDragPointRef.current = startPoint;
@@ -645,15 +645,6 @@ export function useOkeyRackDrag({
 
         onPanResponderMove: (event, gesture) => {
           if (
-            Math.abs(gesture.dx) >
-              GROUP_LONG_PRESS_MOVE_TOLERANCE ||
-            Math.abs(gesture.dy) >
-              GROUP_LONG_PRESS_MOVE_TOLERANCE
-          ) {
-            clearLongPressTimer();
-          }
-
-          if (
             Math.hypot(gesture.dx, gesture.dy) <
             DRAG_ACTIVATION_DISTANCE
           ) {
@@ -661,7 +652,9 @@ export function useOkeyRackDrag({
           }
 
           if (!dragStartedRef.current) {
+            clearLongPressTimer();
             dragStartedRef.current = true;
+            onTileDragStartRef.current?.(tileId);
 
             if (!draggingMeldRef.current) {
               setDraggingTileId(tileId);
@@ -681,6 +674,10 @@ export function useOkeyRackDrag({
               { moveX: point.x, moveY: point.y },
               originalSlots,
             );
+            const targetKey = target ? `group:${target.row}:${target.slotIndex}` : null;
+            scheduleDragPointChange(null, null);
+            if (previewTargetRef.current === targetKey) return;
+            previewTargetRef.current = targetKey;
             const placement = target
               ? moveTilesIntoSlot(
                   originalSlots,
@@ -690,7 +687,6 @@ export function useOkeyRackDrag({
                 )
               : null;
 
-            dragPreviewSlotsRef.current = placement?.slots ?? null;
             if (placement) {
               applyRackPreview(
                 originalSlots,
@@ -700,13 +696,16 @@ export function useOkeyRackDrag({
             } else {
               resetNeighborShifts();
             }
-            scheduleDragPointChange(null, null);
           } else {
             const target = getInsertionTarget(
               tileId,
               { moveX: point.x, moveY: point.y },
               originalSlots,
             );
+            const targetKey = target ? `tile:${target.row}:${target.slotIndex}` : null;
+            scheduleDragPointChange(target ? null : tileId, target ? null : point);
+            if (previewTargetRef.current === targetKey) return;
+            previewTargetRef.current = targetKey;
             const placement = target
               ? moveTileIntoSlot(
                   originalSlots,
@@ -716,13 +715,11 @@ export function useOkeyRackDrag({
                 )
               : null;
 
-            dragPreviewSlotsRef.current = placement?.slots ?? null;
             if (placement) {
               applyRackPreview(originalSlots, placement.slots, new Set([tileId]));
             } else {
               resetNeighborShifts();
             }
-            scheduleDragPointChange(tileId, point);
           }
 
         },
@@ -742,16 +739,7 @@ export function useOkeyRackDrag({
               { moveX: point.x, moveY: point.y },
               originalSlots,
             );
-            const placement = dragPreviewSlotsRef.current
-              ? {
-                  slots: dragPreviewSlotsRef.current,
-                  row: target?.row ?? getTileOrigin(
-                    dragPreviewSlotsRef.current,
-                    currentDraggingMeld.tileIds[0],
-                  )?.row ?? "bottom",
-                  slotIndex: target?.slotIndex ?? 0,
-                }
-              : target
+            const placement = target
                 ? moveTilesIntoSlot(
                     originalSlots,
                     currentDraggingMeld.tileIds,
@@ -802,13 +790,7 @@ export function useOkeyRackDrag({
             { moveX: point.x, moveY: point.y },
             originalSlots,
           );
-          const placement = dragPreviewSlotsRef.current
-            ? {
-                slots: dragPreviewSlotsRef.current,
-                row: target?.row ?? getTileOrigin(dragPreviewSlotsRef.current, tileId)?.row ?? "bottom",
-                slotIndex: target?.slotIndex ?? getTileOrigin(dragPreviewSlotsRef.current, tileId)?.slotIndex ?? 0,
-              }
-            : target
+          const placement = target
               ? moveTileIntoSlot(
                   originalSlots,
                   tileId,
@@ -823,6 +805,8 @@ export function useOkeyRackDrag({
             return;
           }
 
+          cancelScheduledDragPointChange();
+          onTileDragPointChangeRef.current?.(tileId, point);
           const dropped =
             onDropTileRef.current?.(tileId, point) ?? false;
 
@@ -845,6 +829,7 @@ export function useOkeyRackDrag({
     },
     [
       applyRackPreview,
+      cancelScheduledDragPointChange,
       clearDragState,
       clearLongPressTimer,
       commitRackSlots,
@@ -858,6 +843,17 @@ export function useOkeyRackDrag({
     ],
   );
 
+  const moveRackTile = useCallback((tileId: string, targetIndex: number) => {
+    if (rackInteractionLockedRef.current || dragStartSlotsRef.current) return;
+    const slots = committedRackSlotsRef.current;
+    const targetId = ROW_ORDER.flatMap((row) => slots[row]).filter((id) => id !== null)[targetIndex];
+    if (!targetId) return;
+    const target = getTileOrigin(slots, targetId);
+    if (!target) return;
+    const placement = moveTileIntoSlot(slots, tileId, target.row, target.slotIndex);
+    if (placement) commitRackSlots(placement.slots);
+  }, [commitRackSlots]);
+
   return {
     committedRackSlots,
     rackSlots,
@@ -868,6 +864,7 @@ export function useOkeyRackDrag({
     draggedMeldScale,
     getTileShiftValue,
     getTilePanHandlers,
+    moveRackTile,
     dragStartedRef,
   };
 }

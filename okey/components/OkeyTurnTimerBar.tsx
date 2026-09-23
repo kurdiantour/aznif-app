@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -29,13 +29,23 @@ export function OkeyTurnTimerBar({
   visible?: boolean;
   deadlineAt: string | null;
   serverClockOffsetMs: number;
-  remainingMilliseconds: number;
+  remainingMilliseconds?: number;
   durationSeconds: number | null;
   phase?: "draw" | "throw";
   orientation?: "horizontal" | "vertical";
   reverse?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const [clockNow, setClockNow] = useState(Date.now);
+  useEffect(() => {
+    if (remainingMilliseconds !== undefined || !active || !visible) return;
+    const refresh = () => setClockNow(Date.now());
+    const initialTick = setTimeout(refresh, 0);
+    const timer = setInterval(refresh, 1000);
+    return () => { clearTimeout(initialTick); clearInterval(timer); };
+  }, [active, visible, remainingMilliseconds, deadlineAt]);
+  const accessibleRemaining = remainingMilliseconds ??
+    (deadlineAt ? Date.parse(deadlineAt) - clockNow - serverClockOffsetMs : 0);
   const progress = useRef(new Animated.Value(0)).current;
   const drawColorMix = useRef(
     new Animated.Value(phase === "draw" ? 1 : 0),
@@ -136,7 +146,7 @@ export function OkeyTurnTimerBar({
       accessibilityRole="timer"
       accessibilityLabel={
         active && visible
-          ? `کاتی نۆبەت، ${Math.ceil(Math.max(0, remainingMilliseconds) / 1_000)} چرکە`
+          ? `کاتی نۆبەت، ${Math.ceil(Math.max(0, accessibleRemaining) / 1_000)} چرکە`
           : undefined
       }
       accessibilityLiveRegion="polite"

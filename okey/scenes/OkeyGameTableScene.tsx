@@ -657,8 +657,10 @@ useEffect(() => {
     dropTile: dropTileFromRack, setSelectedTileId, emitFeedback,
   });
   const handleDropMeldGroupStable = useStableEvent(handleDropMeldGroup);
+  const handleTileDragStart = useStableEvent((tileId: string) => returningJokers.dismiss(tileId));
+  const handleRackTileSelectStable = useStableEvent(handleRackTileSelect);
+  const handleDropTileStable = useStableEvent(handleDropTile);
   const handleTileDragPointChange = useStableEvent((tileId: string | null, point: { x: number; y: number } | null) => {
-    if (tileId) returningJokers.dismiss(tileId);
     updateTileDragMeldTarget(tileId, point);
   });
   const handleRackMeasured = useStableEvent((rect: ScreenRect) => {
@@ -884,12 +886,13 @@ return (
           tiles={onlineGameplayReady ? presentedHumanRackTiles : EMPTY_OKEY_TILES}
           selectedTileId={selectedTileId}
           okeyTile={state.okeyTile}
-          onSelectTile={handleRackTileSelect}
+          onSelectTile={handleRackTileSelectStable}
+          onTileDragStart={handleTileDragStart}
           playerId={currentUserId ?? humanPlayer.id}
 
           onOpenableMeldsChange={setOpenableRackMelds}
           onDropMeldGroup={handleDropMeldGroupStable}
-          onDropTile={handleDropTile}
+          onDropTile={handleDropTileStable}
           stagedTileIds={droppedTileIds}
           onTileDragPointChange={handleTileDragPointChange}
           hiddenTileIds={combinedHiddenRackTileIds}
@@ -908,7 +911,6 @@ return (
               ? "هەلدانی تاشەبەردێک انجام بدە"
               : undefined
           }
-          turnTimeLeftMilliseconds={turnTimeLeftMilliseconds}
           turnDeadlineAt={turnView.deadlineAt}
           serverClockOffsetMs={serverClockOffsetMs}
           turnDurationSeconds={turnView.durationSeconds}
