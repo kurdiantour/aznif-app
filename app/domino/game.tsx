@@ -17,6 +17,7 @@ import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
 import MiniScoreBoard from "@/components/game/MiniScoreBoard";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
+import { useGameSystemGestureProtection } from "@/hooks/useGameSystemGestureProtection";
 import { PLAYER_TURN_DURATION_SECONDS } from "@/domino/shared/game-shared";
 import { useGameSounds } from "@/domino/shared/presentation/use-domino-game-sounds";
 import { useDominoTileFlightCoordinator } from "@/domino/shared/presentation/use-domino-tile-flight-coordinator";
@@ -67,6 +68,7 @@ function getTeamName(
 }
 
 export default function GameScreen() {
+  useGameSystemGestureProtection();
   const { room_id, mode, practice, preview } = useLocalSearchParams();
   const router = useRouter();
 

@@ -5,7 +5,7 @@ import {
 } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { BlurView } from "expo-blur";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Animated,
   Pressable,
@@ -32,50 +32,51 @@ function getPlayerRankLabel(player: any) {
   return getRankTitleFromPoints(player.points);
 }
 
-export default function MatchMenuDrawer({
-  visible,
+export default function MatchMenuDrawer(props: MatchMenuDrawerProps) {
+  // Canonicalize membership: new player objects and turn updates must not refetch.
+  const humanPlayerIdsKey = JSON.stringify(
+    Array.from(
+      new Set<string>(
+        props.players
+          .filter(
+            (player) =>
+              player?.kind !== "bot" &&
+              typeof player?.id === "string" &&
+              player.id.length > 0,
+          )
+          .map((player) => player.id),
+      ),
+    ).sort(),
+  );
+
+  // Closing or changing membership unmounts the profile state and cancels its request.
+  return props.visible ? (
+    <MatchMenuDrawerContent
+      key={humanPlayerIdsKey}
+      {...props}
+      humanPlayerIdsKey={humanPlayerIdsKey}
+    />
+  ) : null;
+}
+
+function MatchMenuDrawerContent({
   players,
   humanPlayer,
   activePlayerId,
   translateX,
   onClose,
   onLeavePress,
-}: MatchMenuDrawerProps) {
+  humanPlayerIdsKey,
+}: MatchMenuDrawerProps & { humanPlayerIdsKey: string }) {
   const [humanProfiles, setHumanProfiles] = useState<
     Map<string, HumanPlayerProfile>
   >(new Map());
 
-  const humanPlayerIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          players
-            .filter(
-              (player) =>
-                player?.kind !== "bot" &&
-                typeof player?.id === "string" &&
-                player.id.length > 0,
-            )
-            .map((player) => player.id),
-        ),
-      ),
-    [players],
-  );
-
-  const humanPlayerIdsKey = humanPlayerIds.join("|");
-
   useEffect(() => {
     let mounted = true;
 
-    if (!visible || humanPlayerIds.length === 0) {
-      setHumanProfiles(new Map());
-
-      return () => {
-        mounted = false;
-      };
-    }
-
-    setHumanProfiles(new Map());
+    const humanPlayerIds: string[] = JSON.parse(humanPlayerIdsKey);
+    if (humanPlayerIds.length === 0) return;
 
     getHumanPlayerProfiles(humanPlayerIds)
       .then((profiles) => {
@@ -97,11 +98,7 @@ export default function MatchMenuDrawer({
     return () => {
       mounted = false;
     };
-  }, [visible, humanPlayerIdsKey]);
-
-  if (!visible) {
-    return null;
-  }
+  }, [humanPlayerIdsKey]);
 
   const myTeamId = humanPlayer?.teamId ?? players[0]?.teamId;
   const opponentTeamId =

@@ -107,12 +107,12 @@ export default function Layout() {
               <Stack.Screen name="support" />
               <Stack.Screen
                 name="domino/game"
-                options={{ autoHideHomeIndicator: true }}
+                options={{ autoHideHomeIndicator: false }}
               />
               <Stack.Screen
                 name="okey/game"
                 options={{
-                  autoHideHomeIndicator: true,
+                  autoHideHomeIndicator: false,
                   gestureEnabled: false,
                 }}
               />

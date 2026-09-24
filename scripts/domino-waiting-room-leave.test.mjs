@@ -39,12 +39,13 @@ test("queue, party and presence are released by the same transaction", () => {
 });
 
 test("Waiting Room removes disconnected and deleted players immediately", () => {
-  assert.match(screen, /row\.connected !== false/);
-  assert.match(screen, /payload\.eventType === "DELETE" \|\| changed\.connected === false/);
-  assert.match(screen, /current\.filter\(\(player\) => player\.id !== String\(changed\.id/);
-  assert.match(screen, /supabase\.rpc\("cancel_one_vs_one_matchmaking"/);
-  assert.match(screen, /supabase\.rpc\("cancel_two_vs_two_matchmaking"/);
-  assert.match(screen, /BackHandler\.addEventListener\("hardwareBackPress"/);
+  // Match the same operators and calls regardless of source formatting.
+  assert.match(screen, /row\s*\.\s*connected\s*!==\s*false\b/);
+  assert.match(screen, /payload\s*\.\s*eventType\s*===\s*"DELETE"\s*\|\|\s*changed\s*\.\s*connected\s*===\s*false\b/);
+  assert.match(screen, /current\s*\.\s*filter\s*\(\s*\(\s*player\s*\)\s*=>\s*player\s*\.\s*id\s*!==\s*String\s*\(\s*changed\s*\.\s*id\b/);
+  assert.match(screen, /supabase\s*\.\s*rpc\s*\(\s*"cancel_one_vs_one_matchmaking"/);
+  assert.match(screen, /supabase\s*\.\s*rpc\s*\(\s*"cancel_two_vs_two_matchmaking"/);
+  assert.match(screen, /BackHandler\s*\.\s*addEventListener\s*\(\s*"hardwareBackPress"/);
   assert.match(screen, /Failed to clean up Domino waiting room/);
 });
 const matcherSql = readFileSync(

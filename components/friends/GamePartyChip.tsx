@@ -22,29 +22,30 @@ type Props = {
   onCancel: () => void;
 };
 
-export function GamePartyChip({
-  party,
-  currentUserId,
-  cancelling,
-  error,
-  onCancel,
-}: Props) {
+export function GamePartyChip({ party, currentUserId, ...props }: Props) {
   const teammate = party.members.find(
     (member) => member.userId !== currentUserId,
   );
 
+  // A different teammate owns a fresh profile state and cancels the old request.
+  return teammate ? (
+    <TeammatePartyChip key={teammate.userId} teammate={teammate} {...props} />
+  ) : null;
+}
+
+function TeammatePartyChip({
+  teammate,
+  cancelling,
+  error,
+  onCancel,
+}: Omit<Props, "party" | "currentUserId"> & {
+  teammate: DominoParty["members"][number];
+}) {
   const [teammateProfile, setTeammateProfile] =
     useState<HumanPlayerProfile | null>(null);
 
   useEffect(() => {
-    if (!teammate?.userId) {
-      setTeammateProfile(null);
-      return;
-    }
-
     let mounted = true;
-
-    setTeammateProfile(null);
 
     getHumanPlayerProfile(teammate.userId)
       .then((profile) => {
@@ -66,11 +67,7 @@ export function GamePartyChip({
     return () => {
       mounted = false;
     };
-  }, [teammate?.userId]);
-
-  if (!teammate) {
-    return null;
-  }
+  }, [teammate.userId]);
 
   const teammateName =
     teammateProfile?.displayName ?? teammate.name;

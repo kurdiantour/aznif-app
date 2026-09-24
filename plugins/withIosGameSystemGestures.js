@@ -1,150 +1,51 @@
 const { withAppDelegate } = require("expo/config-plugins");
 
-const ROOT_CONTROLLER_CLASS = `
-
-private final class GameSystemGesturesRootViewController: UIViewController {
-
-  private var lastProtectedState: Bool? = nil
-
-  private var activeContentController: UIViewController? {
-
-    func resolve(_ controller: UIViewController) -> UIViewController {
-
-      if let presented = controller.presentedViewController,
-         !presented.isBeingDismissed {
-        return resolve(presented)
-      }
-
-      if let navigationController = controller as? UINavigationController,
-         let visible = navigationController.visibleViewController {
-        return resolve(visible)
-      }
-
-      if let tabController = controller as? UITabBarController,
-         let selected = tabController.selectedViewController {
-        return resolve(selected)
-      }
-
-      if let delegated = controller.childForHomeIndicatorAutoHidden,
-         delegated !== controller {
-        return resolve(delegated)
-      }
-
-      if let visibleChild = controller.children.reversed().first(
-        where: { $0.viewIfLoaded?.window != nil }
-      ) {
-        return resolve(visibleChild)
-      }
-
-      return controller
-    }
-
-    if let presented = presentedViewController,
-       !presented.isBeingDismissed {
-      return resolve(presented)
-    }
-
-    guard let visibleChild = children.reversed().first(
-      where: { $0.viewIfLoaded?.window != nil }
-    ) else {
-      return nil
-    }
-
-    return resolve(visibleChild)
-  }
-
-  private var shouldProtectBottomEdge: Bool {
-    activeContentController?.prefersHomeIndicatorAutoHidden ?? false
-  }
-
-  override var childForHomeIndicatorAutoHidden: UIViewController? {
-
-    let controller = activeContentController
-    let protect = controller?.prefersHomeIndicatorAutoHidden ?? false
-
-    if protect != lastProtectedState {
-      lastProtectedState = protect
-
-      DispatchQueue.main.async { [weak self] in
-        self?.setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
-      }
-    }
-
-    return controller
-  }
-
-  override var childForScreenEdgesDeferringSystemGestures: UIViewController? {
-    shouldProtectBottomEdge ? nil : activeContentController
-  }
-
-  override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
-    shouldProtectBottomEdge ? .bottom : []
-  }
-
-  override func viewDidAppear(_ animated: Bool) {
-    super.viewDidAppear(animated)
-
-    setNeedsUpdateOfHomeIndicatorAutoHidden()
-    setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
-  }
-
-  override func viewDidLayoutSubviews() {
-    super.viewDidLayoutSubviews()
-
-    setNeedsUpdateOfHomeIndicatorAutoHidden()
-    setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
-  }
-}
-
-`;
+const IMPORT = "import AznifGameSystemGestures";
+const LEGACY_CLASS = "private final class GameSystemGesturesRootViewController: UIViewController";
 
 function addGameSystemGesturesRootController(source) {
-
-  if (source.includes("GameSystemGesturesRootViewController")) {
-    return source;
+  // Upgrade the old inline implementation too, not just clean prebuilds.
+  const legacyStart = source.indexOf(LEGACY_CLASS);
+  if (legacyStart !== -1) {
+    const opening = source.indexOf("{", legacyStart);
+    let depth = 1;
+    let end = opening + 1;
+    for (; end < source.length && depth > 0; end++) {
+      if (source[end] === "{") depth++;
+      if (source[end] === "}") depth--;
+    }
+    if (opening === -1 || depth !== 0) {
+      throw new Error("withIosGameSystemGestures: malformed legacy root controller");
+    }
+    source = source.slice(0, legacyStart) + source.slice(end);
   }
 
-  const delegateDeclaration =
-    /class\s+ReactNativeDelegate\s*:\s*ExpoReactNativeFactoryDelegate\s*\{/;
-
-  if (!delegateDeclaration.test(source)) {
-    throw new Error(
-      "withIosGameSystemGestures: Expo ReactNativeDelegate declaration was not found in AppDelegate.swift"
-    );
+  const declaration = /class\s+ReactNativeDelegate\s*:\s*ExpoReactNativeFactoryDelegate\s*\{/;
+  if (!declaration.test(source)) {
+    throw new Error("withIosGameSystemGestures: Expo ReactNativeDelegate declaration was not found in AppDelegate.swift");
   }
-
-  const rootControllerOverride = `class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
-
+  const override = /override\s+func\s+createRootViewController\(\)\s*->\s*UIViewController\s*\{\s*(?:return\s+)?GameSystemGesturesRootViewController\(\)\s*\}/;
+  if (!override.test(source)) {
+    if (/func\s+createRootViewController\s*\(/.test(source)) {
+      throw new Error("withIosGameSystemGestures: an unknown root controller override already exists");
+    }
+    source = source.replace(declaration, `$&
   override func createRootViewController() -> UIViewController {
     GameSystemGesturesRootViewController()
   }
-
-`;
-
-  return (
-    source.replace(delegateDeclaration, rootControllerOverride) +
-    ROOT_CONTROLLER_CLASS
-  );
+`);
+  }
+  if (!source.split(/\r?\n/).includes(IMPORT)) source = `${IMPORT}\n${source}`;
+  return source;
 }
 
 module.exports = function withIosGameSystemGestures(config) {
-
-  return withAppDelegate(config, (appDelegateConfig) => {
-
-    if (appDelegateConfig.modResults.language !== "swift") {
-      throw new Error(
-        "withIosGameSystemGestures requires a Swift AppDelegate"
-      );
+  return withAppDelegate(config, (config) => {
+    if (config.modResults.language !== "swift") {
+      throw new Error("withIosGameSystemGestures requires a Swift AppDelegate");
     }
-
-    appDelegateConfig.modResults.contents =
-      addGameSystemGesturesRootController(
-        appDelegateConfig.modResults.contents
-      );
-
-    return appDelegateConfig;
+    config.modResults.contents = addGameSystemGesturesRootController(config.modResults.contents);
+    return config;
   });
 };
-
-module.exports.addGameSystemGesturesRootController =
-  addGameSystemGesturesRootController;
+module.exports.addGameSystemGesturesRootController = addGameSystemGesturesRootController;

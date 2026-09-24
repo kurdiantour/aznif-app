@@ -17,7 +17,7 @@ REVOKE ALL ON public.push_devices FROM anon,authenticated;
 GRANT SELECT,UPDATE ON public.push_devices TO service_role;
 -- Retire the old seven-argument public overload before exposing the minimal API.
 DROP FUNCTION IF EXISTS public.push_register_device(uuid,uuid,text,text,text,text,text);
-CREATE FUNCTION push_private.push_register_device(p_installation uuid,p_secret uuid,p_token text,p_platform text,p_environment text DEFAULT 'production')
+CREATE OR REPLACE FUNCTION push_private.push_register_device(p_installation uuid,p_secret uuid,p_token text,p_platform text,p_environment text DEFAULT 'production')
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE d public.push_devices; uid uuid:=auth.uid(); BEGIN
  IF uid IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
@@ -37,7 +37,7 @@ DECLARE d public.push_devices; uid uuid:=auth.uid(); BEGIN
  active=true,updated_at=now() RETURNING * INTO d;
  RETURN d.id;
 END $$;
-CREATE FUNCTION push_private.push_unregister_device(p_installation uuid,p_secret uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+CREATE OR REPLACE FUNCTION push_private.push_unregister_device(p_installation uuid,p_secret uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 BEGIN
  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
  UPDATE public.push_devices SET active=false,updated_at=now() WHERE installation_id=p_installation AND installation_secret=p_secret AND user_id=auth.uid();

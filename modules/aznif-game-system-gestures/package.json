@@ -1,0 +1,6 @@
+{
+  "name": "aznif-game-system-gestures",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iOS bottom system gesture protection for Aznif game screens"
+}

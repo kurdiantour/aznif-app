@@ -112,8 +112,7 @@ function SearchResultRow({
   useEffect(() => {
     let mounted = true;
 
-    setProfile(null);
-
+    // SearchResultRow is keyed by result.id, so a new result starts with null.
     getHumanPlayerProfile(result.id)
       .then((nextProfile) => {
         if (mounted) {
