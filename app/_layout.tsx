@@ -1,3 +1,4 @@
+import { NotificationProvider } from "@/lib/notifications/NotificationProvider";
 import { ProfileProvider } from "@/lib/profile";
 import { PresenceProvider } from "@/lib/presence";
 import { GameInvitesProvider } from "@/lib/gameInvitesProvider";
@@ -59,6 +60,7 @@ export default function Layout() {
   return (
     <SafeAreaProvider>
       <ProfileProvider>
+        <NotificationProvider>
         <WalletProvider>
         <PresenceProvider>
           <GameInvitesProvider>
@@ -125,6 +127,7 @@ export default function Layout() {
           </GameInvitesProvider>
         </PresenceProvider>
         </WalletProvider>
+        </NotificationProvider>
       </ProfileProvider>
     </SafeAreaProvider>
   );

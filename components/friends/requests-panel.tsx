@@ -35,6 +35,7 @@ function RequestCard({
     <View style={styles.requestCard}>
       <PlayerAvatar
         avatarId={request.avatarId}
+        avatarUrl={request.avatarUrl}
         size={42}
         style={styles.requestAvatar}
       />

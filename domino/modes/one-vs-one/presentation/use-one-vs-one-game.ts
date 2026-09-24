@@ -268,6 +268,7 @@ timeLeft:
         score: state.teamScores?.[row.team_id] ?? 0,
         isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
         avatarId: profile?.avatar_id,
+        avatarUrl: profile?.avatar_url,
         level: calculateLevelFromPoints(profile?.points),
         points: profile?.points,
       };

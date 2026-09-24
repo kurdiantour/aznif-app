@@ -306,6 +306,11 @@ export async function signInWithFacebook() {
   }
 }
 export async function signOut(scope: "global" | "local" = "global") {
+  // Complete device detachment before revoking this session.
+  const { unregisterPushDevice } = await import("./notifications/devices");
+  try { await unregisterPushDevice(); } catch (error) {
+    console.warn("Unable to detach push installation before logout", error);
+  }
   return supabase.auth.signOut({ scope });
 }
 

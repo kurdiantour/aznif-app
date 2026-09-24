@@ -42,7 +42,7 @@ export class SupabaseDominoOneVsOneAdapter implements DominoOneVsOneAdapter {
     if (!userIds.length) return { rows, profiles: [] };
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, username, avatar_id, points")
+      .select("id, username, avatar_id, avatar_url, points")
       .in("id", userIds);
     if (profilesError) throw profilesError;
     return { rows, profiles: profiles ?? [] };

@@ -21,6 +21,7 @@ type Profile = {
   username: string;
   player_id: string;
   avatar_id: AvatarId;
+  avatar_url?: string;
   points: number;
   coin: number;
   games_played: number;
@@ -196,6 +197,7 @@ export default function PlayerProfilePopup({
 
         <PlayerAvatar
           avatarId={profile?.avatar_id ?? player.avatarId}
+          avatarUrl={profile?.avatar_url ?? player.avatarUrl}
           size={72}
           style={styles.avatar}
         />

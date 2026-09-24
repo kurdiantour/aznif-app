@@ -230,6 +230,7 @@ export default function PlayerSeat({
 
           <PlayerAvatar
             avatarId={player.avatarId}
+            avatarUrl={player.avatarUrl}
             size={38}
             style={styles.avatar}
           />

@@ -7,6 +7,7 @@ export type FriendProfile = {
   name: string;
   playerId: string;
   avatarId: AvatarId;
+  avatarUrl?: string;
 };
 
 export type Friend = FriendProfile & {
@@ -38,6 +39,7 @@ type ProfileRow = {
   username: string | null;
   player_id: string | null;
   avatar_id: string | null;
+  avatar_url: string | null;
 };
 
 function mapProfile(row: any): FriendProfile {
@@ -46,6 +48,7 @@ function mapProfile(row: any): FriendProfile {
     name: row.username ?? "Unknown Player",
     playerId: row.player_id ?? "unknown",
     avatarId: (row.avatar_id ?? "avatar-1") as AvatarId,
+    avatarUrl: row.avatar_url ?? undefined,
   };
 }
 

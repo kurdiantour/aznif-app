@@ -298,14 +298,14 @@ serve(async (req) => {
   }
   const { data: currentProfile, error: currentProfileError } = await service
     .from("profiles")
-    .select("username, avatar_id")
+    .select("username, avatar_id, avatar_url")
     .eq("id", authData.user.id)
     .maybeSingle();
   if (currentProfileError) {
     return json({ error: "profile_lookup_failed", details: currentProfileError.message }, 500);
   }
   const displayName = currentProfile?.username ?? "Player";
-  const avatarUrl = currentProfile?.avatar_id ?? null;
+  const avatarUrl = currentProfile?.avatar_url ?? currentProfile?.avatar_id ?? null;
 
   if (["heartbeat", "reconnect"].includes(action)) {
     const { data: membership, error: membershipError } = await service
@@ -549,7 +549,7 @@ serve(async (req) => {
   if (action === "matchmake" && activeParty) {
     const teammate = partyMembers.find((member) => member.user_id !== authData.user.id);
     if (!teammate) return json({ error: "invalid_party_size" }, 409);
-    const teammateProfile = await service.from("profiles").select("username, avatar_id")
+    const teammateProfile = await service.from("profiles").select("username, avatar_id, avatar_url")
       .eq("id", teammate.user_id).maybeSingle();
     if (teammateProfile.error) return json({ error: "party_member_profile_failed" }, 500);
     const economy = TABLE_ECONOMY[String(body.tableId)];
@@ -557,7 +557,7 @@ serve(async (req) => {
       p_party_id: activeParty.id, p_leader_id: authData.user.id, p_member_id: teammate.user_id,
       p_table_id: String(body.tableId), p_leader_name: displayName, p_leader_avatar: avatarUrl,
       p_member_name: teammateProfile.data?.username ?? "Player",
-      p_member_avatar: teammateProfile.data?.avatar_id ?? null,
+      p_member_avatar: teammateProfile.data?.avatar_url ?? teammateProfile.data?.avatar_id ?? null,
       p_currency: economy.currency, p_entry_fee: economy.entryFee,
     });
     if (allocation.error || !allocation.data) {

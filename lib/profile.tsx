@@ -197,6 +197,7 @@ export async function updateCurrentProfile(
   const payload: {
     username?: string;
     avatar_id?: string;
+    avatar_url?: string | null;
   } = {};
 
   if (typeof changes.displayName === "string") {
@@ -211,7 +212,11 @@ export async function updateCurrentProfile(
     payload.avatar_id = changes.avatarId;
   }
 
-  if (!payload.username && !payload.avatar_id) {
+  if (changes.avatarUrl !== undefined) {
+    payload.avatar_url = changes.avatarUrl;
+  }
+
+  if (!payload.username && payload.avatar_id === undefined && payload.avatar_url === undefined) {
     const current = await getCurrentProfile();
 
     if (!current) {

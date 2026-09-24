@@ -205,7 +205,7 @@ export function useOkeyTableViewModel(input: {
   ), [humanPlayer.id, presentedTablePlayers, seatOrderedPlayers]);
   const profileTargetForPlayer = useCallback((playerId: string): PlayerProfileTarget | null => {
     const player = state.players.find((entry) => entry.id === playerId);
-    return player ? { id: player.id, name: player.name, avatarId: player.kind === "bot" ? "bot-avatar" : undefined } : null;
+    return player ? { id: player.id, name: player.name, avatarId: player.kind === "bot" ? "bot-avatar" : undefined, avatarUrl: player.avatarUrl ?? undefined } : null;
   }, [state.players]);
   const playerIdBySeat = useMemo(() => ({
     bottom: playerForSeat("bottom")?.id, right: playerForSeat("right")?.id,

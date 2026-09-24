@@ -6,7 +6,7 @@ import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/types/avatar";
 import { formatCurrencyAmount } from "@/lib/aznif-display";
 
-type WaitingPlayer = { playerIndex: number; avatarId?: AvatarId };
+type WaitingPlayer = { playerIndex: number; avatarId?: AvatarId; avatarUrl?: string };
 
 type Props = {
   visible: boolean;
@@ -57,7 +57,7 @@ export default function DominoWaitingPlayersPopup({
                 <View key={playerIndex} style={styles.playerSlot}>
                   <View style={[styles.player, player && styles.playerActive]}>
                     {player ? (
-                      <PlayerAvatar avatarId={player.avatarId} size={42} />
+                      <PlayerAvatar avatarId={player.avatarId} avatarUrl={player.avatarUrl} size={42} />
                     ) : (
                       <Ionicons name="person-outline" size={20} color="rgba(255,255,255,0.42)" />
                     )}

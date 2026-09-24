@@ -24,6 +24,7 @@ export type Player = {
   score: number;
   isLeader: boolean;
   avatarId?: AvatarId;
+  avatarUrl?: string;
   level?: number;
   points?: number;
 };

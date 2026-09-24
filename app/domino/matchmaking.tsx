@@ -18,6 +18,7 @@ type MatchPlayer = {
   name: string;
   level?: number;
   avatarId?: AvatarId;
+  avatarUrl?: string;
   playerIndex: number;
   seat?: string | null;
   teamId?: string | null;
@@ -236,7 +237,7 @@ export default function MatchmakingScreen() {
       if (userIds.length > 0) {
         const { data: profileRows, error: profilesError } = await supabase
           .from("profiles")
-          .select("id, username, avatar_id, points")
+          .select("id, username, avatar_id, avatar_url, points")
           .in("id", userIds);
 
         if (profilesError) {
@@ -260,6 +261,7 @@ export default function MatchmakingScreen() {
             name: profile?.username ?? `یاریزان ${index + 1}`,
             level: calculateLevelFromPoints(profile?.points),
             avatarId: profile?.avatar_id as AvatarId | undefined,
+            avatarUrl: profile?.avatar_url ?? undefined,
             playerIndex:
               typeof row.player_index === "number" ? row.player_index : index,
             seat: row.seat,

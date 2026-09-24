@@ -69,6 +69,7 @@ function FriendCard({
       <View style={[styles.avatarWrap, onlineAvailable && styles.onlineAvatarWrap]}>
         <PlayerAvatar
           avatarId={friend.avatarId}
+          avatarUrl={friend.avatarUrl}
           size={58}
           style={styles.avatar}
         />
@@ -102,6 +103,7 @@ function SearchResultRow({
     <View style={styles.searchRow}>
       <PlayerAvatar
         avatarId={result.avatarId}
+        avatarUrl={result.avatarUrl}
         size={38}
         style={styles.requestAvatar}
       />

@@ -174,6 +174,20 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleUploadAvatar(url: string) {
+    if (savingAvatar) return;
+    setSavingAvatar(true);
+
+    try {
+      await updateProfile({ avatarUrl: url });
+      setIsAvatarPickerOpen(false);
+    } catch (error) {
+      console.warn("Failed to update avatar url:", error);
+    } finally {
+      setSavingAvatar(false);
+    }
+  }
+
   async function handleOpenTelegram() {
     await Linking.openURL("https://t.me/aznifcommunity");
   }
@@ -335,6 +349,7 @@ export default function ProfileScreen() {
         visible={isAvatarPickerOpen}
         selectedAvatarId={avatarId}
         onSelect={(nextAvatarId) => void handleSelectAvatar(nextAvatarId)}
+        onUploadAvatar={handleUploadAvatar}
         onClose={() => {
           if (!savingAvatar) {
             setIsAvatarPickerOpen(false);

@@ -5,4 +5,5 @@ export type PlayerProfileTarget = {
   id: string;
   name: string;
   avatarId?: AvatarId;
+  avatarUrl?: string;
 };

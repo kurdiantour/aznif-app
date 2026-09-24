@@ -38,7 +38,7 @@ export function GamePartyChip({
   return (
     <View pointerEvents="box-none" style={styles.host}>
       <View style={styles.chip}>
-        <PlayerAvatar avatarId={teammate.avatarId} size={34} />
+        <PlayerAvatar avatarId={teammate.avatarId} avatarUrl={teammate.avatarUrl} size={34} />
 
         <View style={styles.copy}>
           <Text numberOfLines={1} style={styles.name}>

@@ -27,7 +27,7 @@ export const getDominoTwoVsTwoRoster = (roomId: string) =>
     .eq('room_id', roomId).order('player_index', { ascending: true });
 
 export const getDominoTwoVsTwoProfiles = (userIds: string[]) =>
-  supabase.from('profiles').select('id, username, avatar_id, points').in('id', userIds);
+  supabase.from('profiles').select('id, username, avatar_id, avatar_url, points').in('id', userIds);
 
 export const submitDominoTwoVsTwoMove = (
   roomId: string,
