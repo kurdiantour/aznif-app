@@ -37,6 +37,8 @@ export type OkeyMeld = {
 export type OkeyPlayer = {
   id: string;
   name: string;
+  avatarId?: string;
+  avatarUrl?: string;
   kind: OkeyPlayerKind;
   botDifficulty?: OkeyBotDifficulty;
   controlledByBot?: boolean;

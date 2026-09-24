@@ -10,8 +10,8 @@ import {
 } from "react-native";
 
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import { AVATAR_IDS, type AvatarId } from "@/types/avatar";
 import { formatCurrencyAmount } from "@/lib/aznif-display";
+import type { AvatarId } from "@/types/avatar";
 
 type Props = {
   visible: boolean;
@@ -19,7 +19,8 @@ type Props = {
   currency: "fun" | "aznif";
   members: {
     playerIndex: number;
-    avatarUrl: string | null;
+    avatarId?: AvatarId;
+    avatarUrl?: string;
   }[];
   countdownEndsAt: string | null;
   canCancel: boolean;
@@ -82,7 +83,14 @@ export default function WaitingPlayersPopup({
 
             <Text style={styles.entryFeeText}>
               تێچووی یاری:{" "}
-              <Text style={styles.entryFeeAmount}>{formatCurrencyAmount(entryFee, currency === "aznif" ? "aznif" : "Coin")}</Text>{" "}
+              <Text style={styles.entryFeeAmount}>
+                {formatCurrencyAmount(
+                  entryFee,
+                  currency === "aznif"
+                    ? "aznif"
+                    : "Coin",
+                )}
+              </Text>{" "}
               {currency === "aznif"
                 ? "ئەزنیف"
                 : "سکە"}
@@ -93,8 +101,6 @@ export default function WaitingPlayersPopup({
             چاوەڕوانی یاریزانەکان
           </Text>
 
-
-
           <View style={styles.players}>
             {[0, 2, 1, 3].map(
               (index, displayIndex) => {
@@ -104,10 +110,6 @@ export default function WaitingPlayersPopup({
                 );
 
                 const active = !!member;
-                const avatarId = member?.avatarUrl &&
-                    AVATAR_IDS.includes(member.avatarUrl as AvatarId)
-                  ? member.avatarUrl as AvatarId
-                  : undefined;
 
                 return (
                   <View
@@ -121,10 +123,11 @@ export default function WaitingPlayersPopup({
                           styles.playerActive,
                       ]}
                     >
-                      {member ? (
+                      {member?.avatarId ||
+                      member?.avatarUrl ? (
                         <PlayerAvatar
-                          avatarId={avatarId}
-                          avatarUrl={avatarId ? undefined : member.avatarUrl ?? undefined}
+                          avatarId={member.avatarId}
+                          avatarUrl={member.avatarUrl}
                           size={42}
                         />
                       ) : (
@@ -190,7 +193,10 @@ export default function WaitingPlayersPopup({
 }
 
 const styles = StyleSheet.create({
-  currencyEmoji: { fontSize: 20 },
+  currencyEmoji: {
+    fontSize: 20,
+  },
+
   overlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 1201,
@@ -244,7 +250,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  entryFeeAmount: { fontFamily: "RobotoMedium" },
+  entryFeeAmount: {
+    fontFamily: "RobotoMedium",
+  },
+
   entryFeeText: {
     color: "rgba(255,247,218,0.82)",
     fontSize: 13,
@@ -285,16 +294,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-player: {
-  width: 48,
-  height: 48,
-  borderRadius: 18,
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.18)",
-  backgroundColor: "rgba(255,255,255,0.06)",
-  alignItems: "center",
-  justifyContent: "center",
-},
+  player: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   playerActive: {
     borderColor: "rgba(248,215,116,0.72)",

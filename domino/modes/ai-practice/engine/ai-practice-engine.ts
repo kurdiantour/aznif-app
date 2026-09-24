@@ -15,10 +15,11 @@ export type AiSeatDefinition = {
 };
 
 export function createAiPracticeSeats(): AiSeatDefinition[] {
-  const botName = assignDominoBotIdentities([
+  const botIdentity = assignDominoBotIdentities([
     { id: 'p1', playerIndex: 0 },
     { id: 'p3', playerIndex: 1 },
-  ]).get('p3')!.name;
+  ]).get('p3')!;
+
   return [
     {
       id: 'p1',
@@ -30,8 +31,8 @@ export function createAiPracticeSeats(): AiSeatDefinition[] {
     },
     {
       id: 'p3',
-      name: botName,
-      avatarId: 'bot-avatar',
+      name: botIdentity.name,
+      avatarId: botIdentity.avatarId,
       seat: 'top',
       kind: 'bot',
       teamId: 'teamB',

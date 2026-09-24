@@ -31,8 +31,17 @@ type DbProfile = {
   updated_at: string;
 };
 
+export type HumanPlayerProfile = Pick<
+  Profile,
+  "id" | "playerId" | "displayName" | "avatarId" | "avatarUrl"
+>;
+
 const PROFILE_SELECT =
   "id, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+
+const HUMAN_PROFILE_SELECT =
+  "id, player_id, username, avatar_id, avatar_url";
+
 const PROFILE_LOAD_TIMEOUT_MS = 8000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -76,6 +85,82 @@ function mapDbProfile(
     createdAt: profile.created_at,
     updatedAt: profile.updated_at,
   };
+}
+
+function mapHumanPlayerProfile(
+  profile: Pick<
+    DbProfile,
+    "id" | "player_id" | "username" | "avatar_id" | "avatar_url"
+  >,
+): HumanPlayerProfile {
+  return {
+    id: profile.id,
+    playerId: profile.player_id,
+    displayName: profile.username,
+    avatarId: profile.avatar_id as Profile["avatarId"],
+    avatarUrl: profile.avatar_url ?? undefined,
+  };
+}
+
+export async function getHumanPlayerProfile(
+  userId: string,
+): Promise<HumanPlayerProfile | null> {
+  if (!userId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(HUMAN_PROFILE_SELECT)
+    .eq("id", userId)
+    .maybeSingle<Pick<
+      DbProfile,
+      "id" | "player_id" | "username" | "avatar_id" | "avatar_url"
+    >>();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return mapHumanPlayerProfile(data);
+}
+
+export async function getHumanPlayerProfiles(
+  userIds: string[],
+): Promise<Map<string, HumanPlayerProfile>> {
+  const uniqueIds = Array.from(
+    new Set(userIds.filter((userId) => typeof userId === "string" && userId)),
+  );
+
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(HUMAN_PROFILE_SELECT)
+    .in("id", uniqueIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return new Map(
+    (data ?? []).map((profile) => {
+      const mapped = mapHumanPlayerProfile(
+        profile as Pick<
+          DbProfile,
+          "id" | "player_id" | "username" | "avatar_id" | "avatar_url"
+        >,
+      );
+
+      return [mapped.id, mapped] as const;
+    }),
+  );
 }
 
 export async function getCurrentProfile(): Promise<Profile | null> {
@@ -216,7 +301,11 @@ export async function updateCurrentProfile(
     payload.avatar_url = changes.avatarUrl;
   }
 
-  if (!payload.username && payload.avatar_id === undefined && payload.avatar_url === undefined) {
+  if (
+    !payload.username &&
+    payload.avatar_id === undefined &&
+    payload.avatar_url === undefined
+  ) {
     const current = await getCurrentProfile();
 
     if (!current) {
@@ -328,17 +417,25 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     async function loadProfile() {
       try {
         setLoading(true);
+
         const nextProfile = await withTimeout(
           getCurrentProfile(),
           PROFILE_LOAD_TIMEOUT_MS,
         );
 
-        if (isMounted) setProfile(nextProfile);
+        if (isMounted) {
+          setProfile(nextProfile);
+        }
       } catch (error) {
         console.warn("[ProfileProvider] Failed to load profile:", error);
-        if (isMounted) setProfile(null);
+
+        if (isMounted) {
+          setProfile(null);
+        }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 

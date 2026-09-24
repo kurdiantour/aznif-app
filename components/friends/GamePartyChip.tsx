@@ -1,6 +1,11 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { DominoParty } from "@/lib/dominoParty";
+import {
+  getHumanPlayerProfile,
+  type HumanPlayerProfile,
+} from "@/lib/profile";
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -25,20 +30,68 @@ export function GamePartyChip({
   onCancel,
 }: Props) {
   const teammate = party.members.find(
-    (member) => member.userId !== currentUserId
+    (member) => member.userId !== currentUserId,
   );
 
-  if (!teammate) return null;
+  const [teammateProfile, setTeammateProfile] =
+    useState<HumanPlayerProfile | null>(null);
+
+  useEffect(() => {
+    if (!teammate?.userId) {
+      setTeammateProfile(null);
+      return;
+    }
+
+    let mounted = true;
+
+    setTeammateProfile(null);
+
+    getHumanPlayerProfile(teammate.userId)
+      .then((profile) => {
+        if (mounted) {
+          setTeammateProfile(profile);
+        }
+      })
+      .catch((profileError) => {
+        console.warn(
+          "[GamePartyChip] Unable to load teammate profile:",
+          profileError,
+        );
+
+        if (mounted) {
+          setTeammateProfile(null);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [teammate?.userId]);
+
+  if (!teammate) {
+    return null;
+  }
+
+  const teammateName =
+    teammateProfile?.displayName ?? teammate.name;
 
   const displayName =
-    teammate.name.length > 10
-      ? `${teammate.name.slice(0, 10)}...`
-      : teammate.name;
+    teammateName.length > 10
+      ? `${teammateName.slice(0, 10)}...`
+      : teammateName;
 
   return (
     <View pointerEvents="box-none" style={styles.host}>
       <View style={styles.chip}>
-        <PlayerAvatar avatarId={teammate.avatarId} avatarUrl={teammate.avatarUrl} size={34} />
+        {teammateProfile ? (
+          <PlayerAvatar
+            avatarId={teammateProfile.avatarId}
+            avatarUrl={teammateProfile.avatarUrl}
+            size={34}
+          />
+        ) : (
+          <View style={styles.avatarPlaceholder} />
+        )}
 
         <View style={styles.copy}>
           <Text numberOfLines={1} style={styles.name}>
@@ -65,9 +118,16 @@ export function GamePartyChip({
           ]}
         >
           {cancelling ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator
+              color="#fff"
+              size="small"
+            />
           ) : (
-            <Ionicons color="#fff" name="close" size={20} />
+            <Ionicons
+              color="#fff"
+              name="close"
+              size={20}
+            />
           )}
         </Pressable>
       </View>
@@ -94,6 +154,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 9,
+  },
+
+  avatarPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   copy: {

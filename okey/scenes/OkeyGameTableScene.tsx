@@ -1,6 +1,7 @@
 import { OkeyReturningJokerOverlay, useOkeyReturningJokerPresentation } from "@/okey/presentation/OkeyReturningJokerPresentation";
 import type { OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
 import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
+import { getHumanPlayerProfiles, type HumanPlayerProfile } from "@/lib/profile";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -156,6 +157,75 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
   const canCancelWaiting = isPreview ? false : roomLifecycle.canCancelWaiting;
   const leavingWaitingRoom = isPreview ? false : roomLifecycle.leavingWaitingRoom;
   const handleCancelWaiting = roomLifecycle.cancelWaiting;
+
+  const [waitingProfiles, setWaitingProfiles] = useState<
+    Map<string, HumanPlayerProfile>
+  >(new Map());
+
+  const waitingMemberUserIds = useMemo(
+    () =>
+      (onlineRoom?.members ?? [])
+        .map((member) => member.userId)
+        .filter(
+          (userId): userId is string =>
+            typeof userId === "string" && userId.length > 0,
+        ),
+    [onlineRoom?.members],
+  );
+
+  const waitingMemberUserIdsKey = waitingMemberUserIds.join("|");
+
+  useEffect(() => {
+    if (
+      isPreview ||
+      onlineRoom?.status !== "waiting" ||
+      waitingMemberUserIds.length === 0
+    ) {
+      setWaitingProfiles(new Map());
+      return;
+    }
+
+    let mounted = true;
+
+    getHumanPlayerProfiles(waitingMemberUserIds)
+      .then((profiles) => {
+        if (mounted) {
+          setWaitingProfiles(profiles);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "[OkeyWaitingPlayers] Unable to load human player profiles:",
+          error,
+        );
+
+        if (mounted) {
+          setWaitingProfiles(new Map());
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    isPreview,
+    onlineRoom?.status,
+    waitingMemberUserIdsKey,
+  ]);
+
+  const waitingMembers = useMemo(
+    () =>
+      (onlineRoom?.members ?? []).map((member) => {
+        const profile = waitingProfiles.get(member.userId);
+
+        return {
+          playerIndex: member.playerIndex,
+          avatarId: profile?.avatarId,
+          avatarUrl: profile?.avatarUrl,
+        };
+      }),
+    [onlineRoom?.members, waitingProfiles],
+  );
 
   const isOnlineRoomActive = isPreview || onlineRoom?.status === "playing" || onlineRoom?.status === "finished";
   const {
@@ -625,16 +695,12 @@ useEffect(() => {
     canDiscardTile, canDiscardSelectedTile, selectedTileId, setSelectedTileId,
     discardTile: startDiscardFlight, emitFeedback,
   });
-  const openOpponentProfile = useStableEvent((playerId: string) => {
-    const player = state.players.find((entry) => entry.id === playerId);
-    if (!player) return;
-    // timeLeft: turnView.playerId === player.id ? Math.max(0, Math.ceil(turnTimeLeft)) : undefined
-    setProfilePlayer({
-      id: player.id,
-      name: player.name,
-      avatarId: player.kind === "bot" ? "bot-avatar" : undefined,
-    });
-  });
+const openOpponentProfile = useStableEvent((playerId: string) => {
+  const player = profileTargetForPlayer(playerId);
+  if (!player) return;
+
+  setProfilePlayer(player);
+});
   const handleConfirmLeaveMatch = useOkeyMatchExitLifecycle({ leaveOnlineMatch, leaving, exitRoute });
   const handleDrawDeck = useStableEvent(() => startDrawFlight("deck"));
   const handleDrawDiscard = useStableEvent(() => startDrawFlight("discard"));
@@ -712,7 +778,7 @@ return (
   visible={shouldShowWaitingPlayers}
   entryFee={onlineRoom?.entryFee ?? 0}
   currency={onlineRoom?.currency ?? "fun"}
-  members={onlineRoom?.members ?? []}
+  members={waitingMembers}
   countdownEndsAt={onlineRoom?.countdownEndsAt ?? null}
   canCancel={
     !countdownInProgress &&

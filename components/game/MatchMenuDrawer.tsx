@@ -1,6 +1,11 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
+import {
+  getHumanPlayerProfiles,
+  type HumanPlayerProfile,
+} from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { BlurView } from "expo-blur";
+import { useEffect, useMemo, useState } from "react";
 import {
   Animated,
   Pressable,
@@ -36,24 +41,89 @@ export default function MatchMenuDrawer({
   onClose,
   onLeavePress,
 }: MatchMenuDrawerProps) {
+  const [humanProfiles, setHumanProfiles] = useState<
+    Map<string, HumanPlayerProfile>
+  >(new Map());
+
+  const humanPlayerIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          players
+            .filter(
+              (player) =>
+                player?.kind !== "bot" &&
+                typeof player?.id === "string" &&
+                player.id.length > 0,
+            )
+            .map((player) => player.id),
+        ),
+      ),
+    [players],
+  );
+
+  const humanPlayerIdsKey = humanPlayerIds.join("|");
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!visible || humanPlayerIds.length === 0) {
+      setHumanProfiles(new Map());
+
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setHumanProfiles(new Map());
+
+    getHumanPlayerProfiles(humanPlayerIds)
+      .then((profiles) => {
+        if (mounted) {
+          setHumanProfiles(profiles);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "[MatchMenuDrawer] Unable to load human player profiles:",
+          error,
+        );
+
+        if (mounted) {
+          setHumanProfiles(new Map());
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [visible, humanPlayerIdsKey]);
+
   if (!visible) {
     return null;
   }
 
   const myTeamId = humanPlayer?.teamId ?? players[0]?.teamId;
-  const opponentTeamId = myTeamId === "teamA" ? "teamB" : "teamA";
+  const opponentTeamId =
+    myTeamId === "teamA" ? "teamB" : "teamA";
+
   const hasAuthoritativeTeams =
-    !!myTeamId && players.some((player) => !!player?.teamId);
+    !!myTeamId &&
+    players.some((player) => !!player?.teamId);
 
   // 2v2 teammates occupy opposite indexes (0 + 2 and 1 + 3). The waiting
   // popup displays those same pairs together, so the drawer must group by
   // the authoritative team id instead of grouping adjacent array entries.
   const myTeamPlayers = hasAuthoritativeTeams
-    ? players.filter((player) => player?.teamId === myTeamId)
+    ? players.filter(
+        (player) => player?.teamId === myTeamId,
+      )
     : [players[0], players[2]].filter(Boolean);
 
   const opponentTeamPlayers = hasAuthoritativeTeams
-    ? players.filter((player) => player?.teamId === opponentTeamId)
+    ? players.filter(
+        (player) => player?.teamId === opponentTeamId,
+      )
     : [players[1], players[3]].filter(Boolean);
 
   const teams = [
@@ -106,49 +176,76 @@ export default function MatchMenuDrawer({
                   {team.title}
                 </Text>
 
-                {team.players.map((player) => (
-                  <View
-                    key={player.id}
-                    style={[styles.matchMenuPlayerRow, player.id === activePlayerId && styles.matchMenuPlayerRowActive]}
-                  >
-                    <PlayerAvatar
-                      avatarId={player.avatarId}
-                      avatarUrl={
-                        player.avatarUrl ??
-                        undefined
-                      }
-                      size={34}
-                      style={styles.matchMenuAvatar}
-                    />
+                {team.players.map((player) => {
+                  const isBot = player.kind === "bot";
+                  const humanProfile = isBot
+                    ? null
+                    : humanProfiles.get(player.id);
 
+                  return (
                     <View
-                      style={styles.matchMenuPlayerInfo}
+                      key={player.id}
+                      style={[
+                        styles.matchMenuPlayerRow,
+                        player.id === activePlayerId &&
+                          styles.matchMenuPlayerRowActive,
+                      ]}
                     >
+                      {isBot ? (
+                        <PlayerAvatar
+                          avatarId={player.avatarId}
+                          avatarUrl={
+                            player.avatarUrl ?? undefined
+                          }
+                          size={34}
+                          style={styles.matchMenuAvatar}
+                        />
+                      ) : humanProfile ? (
+                        <PlayerAvatar
+                          avatarId={humanProfile.avatarId}
+                          avatarUrl={humanProfile.avatarUrl}
+                          size={34}
+                          style={styles.matchMenuAvatar}
+                        />
+                      ) : (
+                        <View
+                          style={[
+                            styles.matchMenuAvatarPlaceholder,
+                            styles.matchMenuAvatar,
+                          ]}
+                        />
+                      )}
+
                       <View
-                        style={
-                          styles.matchMenuPlayerNameRow
-                        }
+                        style={styles.matchMenuPlayerInfo}
                       >
-                        <Text
-                          numberOfLines={1}
+                        <View
                           style={
-                            styles.matchMenuPlayerName
+                            styles.matchMenuPlayerNameRow
                           }
                         >
-                          {player.name}
+                          <Text
+                            numberOfLines={1}
+                            style={
+                              styles.matchMenuPlayerName
+                            }
+                          >
+                            {humanProfile?.displayName ??
+                              player.name}
+                          </Text>
+                        </View>
+
+                        <Text
+                          style={
+                            styles.matchMenuPlayerMeta
+                          }
+                        >
+                          {getPlayerRankLabel(player)}
                         </Text>
                       </View>
-
-                      <Text
-                        style={
-                          styles.matchMenuPlayerMeta
-                        }
-                      >
-                        {getPlayerRankLabel(player)}
-                      </Text>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ))}
           </View>
@@ -253,6 +350,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor:
       "rgba(250,204,21,0.75)",
+  },
+
+  matchMenuAvatarPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   matchMenuPlayerInfo: {

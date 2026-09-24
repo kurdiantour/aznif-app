@@ -76,7 +76,16 @@ export function handSeatToBot(state: OkeyGameState, playerIndex: number, difficu
     ...state,
     turnMessage,
     players: state.players.map((entry, index) => index === playerIndex
-      ? { ...entry, name: botName, kind: "bot", controlledByBot: true, botDifficulty: difficulty, botNumber }
+      ? {
+    ...entry,
+    name: botName,
+    avatarId: "bot-avatar",
+    avatarUrl: undefined,
+    kind: "bot",
+    controlledByBot: true,
+    botDifficulty: difficulty,
+    botNumber,
+  }
       : entry),
   };
 }

@@ -6,6 +6,10 @@ import {
   type FriendSearchResult,
 } from "@/lib/friends";
 import { sendGameInvite } from "@/lib/gameInvites";
+import {
+  getHumanPlayerProfile,
+  type HumanPlayerProfile,
+} from "@/lib/profile";
 import { usePresence } from "@/lib/presence";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
@@ -46,11 +50,19 @@ function FriendCard({
         </Pressable>
 
         <Pressable
-          style={[styles.actionButton, !onlineAvailable && styles.disabledButton]}
+          style={[
+            styles.actionButton,
+            !onlineAvailable && styles.disabledButton,
+          ]}
           disabled={!onlineAvailable || inviteBusy}
           onPress={() => onInvite(friend)}
         >
-          <Text style={[styles.buttonText, !onlineAvailable && styles.disabledButtonText]}>
+          <Text
+            style={[
+              styles.buttonText,
+              !onlineAvailable && styles.disabledButtonText,
+            ]}
+          >
             بانگهێشت
           </Text>
         </Pressable>
@@ -66,7 +78,12 @@ function FriendCard({
         </Text>
       </View>
 
-      <View style={[styles.avatarWrap, onlineAvailable && styles.onlineAvatarWrap]}>
+      <View
+        style={[
+          styles.avatarWrap,
+          onlineAvailable && styles.onlineAvatarWrap,
+        ]}
+      >
         <PlayerAvatar
           avatarId={friend.avatarId}
           avatarUrl={friend.avatarUrl}
@@ -89,8 +106,35 @@ function SearchResultRow({
   onSendChip: (result: FriendSearchResult) => void;
   busy: boolean;
 }) {
+  const [profile, setProfile] =
+    useState<HumanPlayerProfile | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setProfile(null);
+
+    getHumanPlayerProfile(result.id)
+      .then((nextProfile) => {
+        if (mounted) {
+          setProfile(nextProfile);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "[FriendsPanel] Unable to load search result profile:",
+          error,
+        );
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [result.id]);
+
   const isFriend = result.friendshipStatus === "accepted";
   const isPending = result.friendshipStatus === "pending";
+
   const label = isFriend
     ? "هاوڕێکان"
     : isPending && result.friendshipDirection === "incoming"
@@ -99,21 +143,34 @@ function SearchResultRow({
         ? "نێردراو"
         : "زیادکردن";
 
+  const resolvedResult: FriendSearchResult = {
+    ...result,
+    name: profile?.displayName ?? result.name,
+    playerId: profile?.playerId ?? result.playerId,
+    avatarId: profile?.avatarId ?? result.avatarId,
+    avatarUrl: profile?.avatarUrl,
+  };
+
   return (
     <View style={styles.searchRow}>
-      <PlayerAvatar
-        avatarId={result.avatarId}
-        avatarUrl={result.avatarUrl}
-        size={38}
-        style={styles.requestAvatar}
-      />
+      {profile ? (
+        <PlayerAvatar
+          avatarId={profile.avatarId}
+          avatarUrl={profile.avatarUrl}
+          size={38}
+          style={styles.requestAvatar}
+        />
+      ) : (
+        <View style={styles.searchAvatarPlaceholder} />
+      )}
 
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>
-          {result.name}
+          {profile?.displayName ?? result.name}
         </Text>
+
         <Text style={styles.playerId} numberOfLines={1}>
-          {result.playerId}
+          {profile?.playerId ?? result.playerId}
         </Text>
       </View>
 
@@ -124,7 +181,11 @@ function SearchResultRow({
           isPending && styles.disabledButton,
         ]}
         disabled={busy || isPending}
-        onPress={() => (isFriend ? onSendChip(result) : onAdd(result))}
+        onPress={() =>
+          isFriend
+            ? onSendChip(resolvedResult)
+            : onAdd(resolvedResult)
+        }
       >
         <Text
           style={[
@@ -186,12 +247,15 @@ export function FriendsPanel({
   const isSearchActive = searchQuery.trim().length >= 2;
   const canRunSearch = meaningfulSearchQuery.length > 0;
   const { statuses, refreshPresence } = usePresence();
+
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [searchResults, setSearchResults] = useState<FriendSearchResult[]>([]);
+  const [searchResults, setSearchResults] =
+    useState<FriendSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
+  const [inviteBusyId, setInviteBusyId] =
+    useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const nextFriends = await getFriends();
@@ -203,6 +267,7 @@ export function FriendsPanel({
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
+
     refresh()
       .catch((err) => {
         console.warn("[FriendsPanel] Unable to load friends:", err);
@@ -228,6 +293,7 @@ export function FriendsPanel({
 
     async function subscribeToFriendships() {
       const user = await getCurrentUser();
+
       if (!mounted || !user) return;
 
       channel = supabase
@@ -272,16 +338,24 @@ export function FriendsPanel({
 
   useEffect(() => {
     const ids = friends.map((friend) => friend.id);
+
     if (ids.length === 0) return;
+
     void refreshPresence(ids);
+
     const channel = supabase
       .channel(`friends-presence:${ids.slice().sort().join(":")}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "user_presence" },
+        {
+          event: "*",
+          schema: "public",
+          table: "user_presence",
+        },
         () => void refreshPresence(ids),
       )
       .subscribe();
+
     return () => {
       void supabase.removeChannel(channel);
     };
@@ -289,6 +363,7 @@ export function FriendsPanel({
 
   useEffect(() => {
     let mounted = true;
+
     const handle = setTimeout(() => {
       if (!canRunSearch) {
         setSearchResults([]);
@@ -297,17 +372,25 @@ export function FriendsPanel({
       }
 
       setSearching(true);
+
       searchFriendCandidates(meaningfulSearchQuery)
         .then((results) => {
-          if (mounted) setSearchResults(results);
+          if (mounted) {
+            setSearchResults(results);
+          }
         })
         .catch((err) => {
           if (mounted) {
-            console.warn("[FriendsPanel] Friend search failed:", err);
+            console.warn(
+              "[FriendsPanel] Friend search failed:",
+              err,
+            );
           }
         })
         .finally(() => {
-          if (mounted) setSearching(false);
+          if (mounted) {
+            setSearching(false);
+          }
         });
     }, 300);
 
@@ -326,6 +409,7 @@ export function FriendsPanel({
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     handleTransferSuccess();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, transferSuccessSignal]);
 
@@ -334,6 +418,7 @@ export function FriendsPanel({
 
     try {
       await sendFriendRequest(result.id);
+
       setSearchResults((current) =>
         current.map((item) =>
           item.id === result.id
@@ -346,7 +431,10 @@ export function FriendsPanel({
         ),
       );
     } catch (err) {
-      console.warn("[FriendsPanel] Unable to send friend request:", err);
+      console.warn(
+        "[FriendsPanel] Unable to send friend request:",
+        err,
+      );
     } finally {
       setBusyId(null);
     }
@@ -358,20 +446,25 @@ export function FriendsPanel({
       name: result.name,
       playerId: result.playerId,
       avatarId: result.avatarId,
+      avatarUrl: result.avatarUrl,
       friendshipId: "",
     });
   }
 
   async function handleInvite(friend: Friend) {
     setInviteBusyId(friend.id);
+
     try {
       await sendGameInvite(friend.id);
+
       onToast?.(`بانگهێشت بۆ ${friend.name} نێردرا.`);
     } catch (err) {
       const toastMessage = getGameInviteToast(err);
+
       if (toastMessage) {
         onToast?.(toastMessage);
       }
+
       void refreshPresence([friend.id]);
     } finally {
       setInviteBusyId(null);
@@ -388,25 +481,31 @@ export function FriendsPanel({
         {isSearchActive ? (
           <View style={styles.fullWidthSection}>
             {searching ? (
-              <ActivityIndicator color="#a855f7" style={styles.inlineLoader} />
+              <ActivityIndicator
+                color="#a855f7"
+                style={styles.inlineLoader}
+              />
             ) : null}
 
-            {!canRunSearch ? null : !searching && searchResults.length === 0 ? (
-              <Text style={styles.emptySearchText}>هیچ یاریزانێک نەدۆزرایەوە</Text>
-            ) : (
-              searchResults.map((result) => (
-                <SearchResultRow
-                  key={result.id}
-                  result={result}
-                  busy={busyId === result.id}
-                  onAdd={handleAdd}
-                  onSendChip={handleSearchTransfer}
-                />
-              ))
-            )}
+            {!canRunSearch
+              ? null
+              : !searching && searchResults.length === 0
+                ? (
+                    <Text style={styles.emptySearchText}>
+                      هیچ یاریزانێک نەدۆزرایەوە
+                    </Text>
+                  )
+                : searchResults.map((result) => (
+                    <SearchResultRow
+                      key={result.id}
+                      result={result}
+                      busy={busyId === result.id}
+                      onAdd={handleAdd}
+                      onSendChip={handleSearchTransfer}
+                    />
+                  ))}
           </View>
         ) : null}
-
 
         {!isSearchActive && loading ? (
           <ActivityIndicator
@@ -416,9 +515,13 @@ export function FriendsPanel({
           />
         ) : !isSearchActive && friends.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>هێشتا هیچ هاوڕێیەک نییە</Text>
+            <Text style={styles.emptyTitle}>
+              هێشتا هیچ هاوڕێیەک نییە
+            </Text>
+
             <Text style={styles.emptyText}>
-              بە ناوی یاریزان یان ناسنامە بگەڕێ بۆ ناردنی داواکاری هاوڕێیەتی.
+              بە ناوی یاریزان یان ناسنامە بگەڕێ بۆ ناردنی داواکاری
+              هاوڕێیەتی.
             </Text>
           </View>
         ) : !isSearchActive ? (
@@ -427,14 +530,15 @@ export function FriendsPanel({
               key={friend.id}
               friend={friend}
               onSendChip={(nextFriend) => onSendChip?.(nextFriend)}
-              onlineAvailable={statuses[friend.id] === "online_available"}
+              onlineAvailable={
+                statuses[friend.id] === "online_available"
+              }
               inviteBusy={inviteBusyId === friend.id}
               onInvite={(nextFriend) => void handleInvite(nextFriend)}
             />
           ))
         ) : null}
       </ScrollView>
-
     </View>
   );
 }
@@ -478,6 +582,13 @@ const styles = StyleSheet.create({
 
   requestAvatar: {
     borderRadius: 21,
+  },
+
+  searchAvatarPlaceholder: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   friendCard: {
@@ -620,5 +731,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 14,
   },
-
 });

@@ -66,7 +66,7 @@ async function getProfilesById(ids: string[]) {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, username, player_id, avatar_id")
+    .select("id, username, player_id, avatar_id, avatar_url")
     .in("id", uniqueIds);
 
   if (error) throw error;
@@ -96,6 +96,7 @@ function profileToFriendProfile(
     name: profile?.username ?? fallback.name,
     playerId: profile?.player_id ?? fallback.playerId,
     avatarId: (profile?.avatar_id ?? fallback.avatarId) as AvatarId,
+    avatarUrl: profile?.avatar_url ?? fallback.avatarUrl,
   };
 }
 

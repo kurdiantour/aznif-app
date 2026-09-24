@@ -1,12 +1,19 @@
-import type { AvatarId } from "@/types/avatar.ts";
 import { supabase } from "@/lib/supabase";
 
 export type GameChatType = "domino" | "okey";
 export type GameChatMode = "1v1" | "2v2";
 
 export const GAME_CHAT_EMOJIS = new Set([
-  "\u{1F642}", "\u{1F923}", "\u{1F62D}", "\u{1F60E}", "\u{1F60D}",
-  "\u{1F621}", "\u{1F631}", "\u{1F609}", "\u{1F44F}", "\u{2764}\u{FE0F}",
+  "🙂",
+  "🤣",
+  "😭",
+  "😎",
+  "😍",
+  "😡",
+  "😱",
+  "😉",
+  "👏",
+  "❤️",
 ]);
 
 export type GameChatMessage = {
@@ -16,14 +23,12 @@ export type GameChatMessage = {
   match_id: string;
   sender_user_id: string;
   sender_name: string;
-  sender_avatar_id: AvatarId | null;
-  sender_avatar_url?: string | null;
   body: string;
   created_at: string;
 };
 
 const GAME_CHAT_SELECT =
-  "id, game_type, mode, match_id, sender_user_id, sender_name, sender_avatar_id, body, created_at";
+  "id, game_type, mode, match_id, sender_user_id, sender_name, body, created_at";
 
 export async function getGameChatMessages(
   gameType: GameChatType,

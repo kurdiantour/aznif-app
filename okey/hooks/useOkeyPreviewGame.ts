@@ -19,6 +19,7 @@ function createPreviewState(): OkeyGameState {
     ...player,
     id: index === 0 ? "seat-0" : `seat-${index}`,
     name: index === 0 ? "You" : `Bot ${index}`,
+    avatarId: index === 0 ? undefined : "bot-avatar",
     kind: index === 0 ? ("human" as const) : ("bot" as const),
     controlledByBot: index !== 0,
     botDifficulty: "normal" as const,

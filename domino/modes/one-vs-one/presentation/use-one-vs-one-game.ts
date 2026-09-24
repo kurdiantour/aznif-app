@@ -23,19 +23,29 @@ import type {
   TeamId,
 } from '@/domino/types/domino-game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAvailableBranches, handContainsTile, handHasPlayableTile } from '@/domino/shared/rules/game-rule-queries';
+import {
+  getAvailableBranches,
+  handContainsTile,
+  handHasPlayableTile,
+} from '@/domino/shared/rules/game-rule-queries';
 import {
   MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN,
   PLAYER_TURN_DURATION_SECONDS,
   ROUND_TRANSITION_SYNC_MS,
 } from '@/domino/shared/game-shared';
 import { runMultiplayerAction } from '@/lib/multiplayer/core/multiplayer-action';
-import { getPlayerIndex, getRelativeSeat } from '@/lib/multiplayer/core/player-normalization';
+import {
+  getPlayerIndex,
+  getRelativeSeat,
+} from '@/lib/multiplayer/core/player-normalization';
 import { buildRoundResult } from '@/domino/shared/lifecycle/round-result';
 import type { DominoGameViewModel } from '@/domino/shared/contracts/domino-game-view-model';
 import { useRoundLifecycle } from '@/domino/shared/lifecycle/use-round-lifecycle';
 
-type UseOneVsOneResult = Omit<DominoGameViewModel, 'playTile' | 'drawTile' | 'passTurn'> & {
+type UseOneVsOneResult = Omit<
+  DominoGameViewModel,
+  'playTile' | 'drawTile' | 'passTurn'
+> & {
   loading: boolean;
   error: string | null;
   rawState: any;
@@ -45,113 +55,169 @@ type UseOneVsOneResult = Omit<DominoGameViewModel, 'playTile' | 'drawTile' | 'pa
   localPlayerTakenOver: boolean;
   drawTimeLeft: number;
   pendingMove: PendingMultiplayerMove | null;
-  playTile: (tile: DominoTileData, branch?: KozelBranch) => Promise<any>;
+  playTile: (
+    tile: DominoTileData,
+    branch?: KozelBranch,
+  ) => Promise<any>;
   drawTile: () => Promise<boolean>;
   passTurn: () => Promise<boolean>;
   leaveMatch: () => Promise<void>;
 };
 
-export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
+export function useOneVsOneGame(
+  roomId?: string,
+): UseOneVsOneResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
   const [playersRows, setPlayersRows] = useState<any[]>([]);
-  const [profileById, setProfileById] = useState<Map<string, any>>(new Map());
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [pendingMove, setPendingMove] = useState<PendingMultiplayerMove | null>(null);
+  const [profileById, setProfileById] = useState<Map<string, any>>(
+    new Map(),
+  );
+  const [currentUserId, setCurrentUserId] = useState<string | null>(
+    null,
+  );
+  const [pendingMove, setPendingMove] =
+    useState<PendingMultiplayerMove | null>(null);
+
   const matchAdapter = useMemo(
-    () => (roomId ? new SupabaseDominoOneVsOneAdapter(roomId) : null),
+    () =>
+      roomId
+        ? new SupabaseDominoOneVsOneAdapter(roomId)
+        : null,
     [roomId],
   );
 
   const latestVersionRef = useRef(-1);
-  const pendingMoveRef = useRef<PendingMultiplayerMove | null>(null);
-  const snapshotControllerRef = useRef(new DominoOneVsOneSnapshotController());
-  const timeoutSnapshotObserverRef = useRef<(state: any) => void>(() => undefined);
-  const refreshSnapshotRef = useRef<() => Promise<unknown>>(async () => undefined);
+  const pendingMoveRef =
+    useRef<PendingMultiplayerMove | null>(null);
+  const snapshotControllerRef = useRef(
+    new DominoOneVsOneSnapshotController(),
+  );
+  const timeoutSnapshotObserverRef =
+    useRef<(state: any) => void>(() => undefined);
+  const refreshSnapshotRef =
+    useRef<() => Promise<unknown>>(async () => undefined);
 
   useEffect(() => {
-    snapshotControllerRef.current = new DominoOneVsOneSnapshotController();
+    snapshotControllerRef.current =
+      new DominoOneVsOneSnapshotController();
     latestVersionRef.current = -1;
     pendingMoveRef.current = null;
     setPendingMove(null);
   }, [roomId]);
 
   const applySnapshot = useCallback((snapshot: any) => {
-    if (!snapshotControllerRef.current.apply(snapshot)) return false;
-    const version = snapshotControllerRef.current.getVersion();
+    if (!snapshotControllerRef.current.apply(snapshot)) {
+      return false;
+    }
+
+    const version =
+      snapshotControllerRef.current.getVersion();
+
     latestVersionRef.current = version;
-    const nextRawState = snapshotControllerRef.current.getSnapshot();
+
+    const nextRawState =
+      snapshotControllerRef.current.getSnapshot();
 
     timeoutSnapshotObserverRef.current(nextRawState);
     setRawState(nextRawState);
-    const reconciledPending = snapshotControllerRef.current.getPendingMove();
+
+    const reconciledPending =
+      snapshotControllerRef.current.getPendingMove();
+
     pendingMoveRef.current = reconciledPending;
     setPendingMove(reconciledPending);
+
     return true;
   }, []);
 
   const getPrivateHand = useCallback(
-    () => snapshotControllerRef.current.getSnapshot()?.myHand ?? [],
+    () =>
+      snapshotControllerRef.current.getSnapshot()?.myHand ?? [],
     [],
   );
-  const { refreshSnapshot } = useDominoOneVsOneConnectionController({
-    roomId,
-    adapter: matchAdapter,
-    loading,
-    status: rawState?.status,
-    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
-    winningTeamId: rawState?.winningTeamId ?? null,
-    rawState,
-    currentUserId,
-    players: playersRows,
-    privateHandCount: Array.isArray(rawState?.myHand) ? rawState.myHand.length : 0,
-    applySnapshot,
-    getPrivateHand,
-    setLoading,
-    setError,
-    setCurrentUserId,
-    setPlayers: setPlayersRows,
-    setProfiles: setProfileById,
-  });
+
+  const { refreshSnapshot } =
+    useDominoOneVsOneConnectionController({
+      roomId,
+      adapter: matchAdapter,
+      loading,
+      status: rawState?.status,
+      roundWinnerPlayerId:
+        rawState?.roundWinnerPlayerId ?? null,
+      winningTeamId:
+        rawState?.winningTeamId ?? null,
+      rawState,
+      currentUserId,
+      players: playersRows,
+      privateHandCount: Array.isArray(rawState?.myHand)
+        ? rawState.myHand.length
+        : 0,
+      applySnapshot,
+      getPrivateHand,
+      setLoading,
+      setError,
+      setCurrentUserId,
+      setPlayers: setPlayersRows,
+      setProfiles: setProfileById,
+    });
+
   refreshSnapshotRef.current = refreshSnapshot;
 
-  const applySuccessfulAction = useCallback(async (result: any) => {
-    if (!result?.ok) return false;
+  const applySuccessfulAction = useCallback(
+    async (result: any) => {
+      if (!result?.ok) return false;
 
-    const actionSnapshot = {
-      ...(result.room ?? {}),
-      state: result.state ?? result.room?.state ?? {},
-    };
+      const actionSnapshot = {
+        ...(result.room ?? {}),
+        state:
+          result.state ??
+          result.room?.state ??
+          {},
+      };
 
-    applySnapshot(actionSnapshot);
-    setError(null);
+      applySnapshot(actionSnapshot);
+      setError(null);
 
+      return true;
+    },
+    [applySnapshot],
+  );
 
-    return true;
-  }, [applySnapshot]);
+  const currentTurnPlayerId =
+    rawState?.currentTurnPlayerId ?? '';
 
-  const currentTurnPlayerId = rawState?.currentTurnPlayerId ?? '';
-  const roundWinnerPlayerId = rawState?.roundWinnerPlayerId ?? null;
-  const winningTeamId = rawState?.winningTeamId ?? null;
+  const roundWinnerPlayerId =
+    rawState?.roundWinnerPlayerId ?? null;
+
+  const winningTeamId =
+    rawState?.winningTeamId ?? null;
 
   const reconcileSnapshot = useCallback(
     () => refreshSnapshotRef.current(),
     [],
   );
-  const { turnTimeLeft, drawTimeLeft, acceptSnapshot } =
-    useDominoOneVsOneTimeoutController({
-      roomId,
-      adapter: matchAdapter,
-      rawState,
-      currentTurnPlayerId,
-      roundWinnerPlayerId,
-      winningTeamId,
-      currentUserId,
-      turnDurationSeconds: PLAYER_TURN_DURATION_SECONDS,
-      reconcile: reconcileSnapshot,
-    });
-  timeoutSnapshotObserverRef.current = acceptSnapshot;
+
+  const {
+    turnTimeLeft,
+    drawTimeLeft,
+    acceptSnapshot,
+  } = useDominoOneVsOneTimeoutController({
+    roomId,
+    adapter: matchAdapter,
+    rawState,
+    currentTurnPlayerId,
+    roundWinnerPlayerId,
+    winningTeamId,
+    currentUserId,
+    turnDurationSeconds:
+      PLAYER_TURN_DURATION_SECONDS,
+    reconcile: reconcileSnapshot,
+  });
+
+  timeoutSnapshotObserverRef.current =
+    acceptSnapshot;
 
   useDominoOneVsOneBotController({
     roomId,
@@ -163,33 +229,51 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     adapter: matchAdapter,
     refreshSnapshot,
   });
-  const createRoundResult = useCallback((winnerId: string) => {
-    if (playersRows.length < 2) return null;
-    const winnerTeam = playersRows.find(
-      (row) => (row.user_id ?? `bot-${row.id}`) === winnerId,
-    )?.team_id;
-    const players = playersRows.map((row) => ({
-      id: row.user_id ?? `bot-${row.id}`,
-      playerIndex: typeof row.player_index === 'number' ? row.player_index : -1,
-    }));
-    const awardedPoints = rawState?.endOfHandScoringEvent?.points ?? 0;
 
-    if (
-      !Array.isArray(rawState?.revealedFinalHands) ||
-      rawState.revealedFinalHands.length < 2
-    ) {
-      return null;
-    }
+  const createRoundResult = useCallback(
+    (winnerId: string) => {
+      if (playersRows.length < 2) {
+        return null;
+      }
 
-    return buildRoundResult({
-      winnerId,
-      winnerTeam,
-      endReason: rawState?.roundEndReason ?? undefined,
-      awardedPoints,
-      players,
-      hands: rawState.revealedFinalHands,
-    });
-  }, [playersRows, rawState]);
+      const winnerTeam = playersRows.find(
+        (row) =>
+          (row.user_id ?? `bot-${row.id}`) ===
+          winnerId,
+      )?.team_id;
+
+      const players = playersRows.map((row) => ({
+        id:
+          row.user_id ??
+          `bot-${row.id}`,
+        playerIndex:
+          typeof row.player_index === 'number'
+            ? row.player_index
+            : -1,
+      }));
+
+      const awardedPoints =
+        rawState?.endOfHandScoringEvent?.points ?? 0;
+
+      if (
+        !Array.isArray(rawState?.revealedFinalHands) ||
+        rawState.revealedFinalHands.length < 2
+      ) {
+        return null;
+      }
+
+      return buildRoundResult({
+        winnerId,
+        winnerTeam,
+        endReason:
+          rawState?.roundEndReason ?? undefined,
+        awardedPoints,
+        players,
+        hands: rawState.revealedFinalHands,
+      });
+    },
+    [playersRows, rawState],
+  );
 
   const { startNextRound } =
     useDominoOneVsOneRoundSync({
@@ -205,31 +289,49 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
         !!rawState?.currentTurnPlayerId &&
         Array.isArray(rawState?.myHand) &&
         rawState.myHand.length > 0,
-      syncIntervalMs: ROUND_TRANSITION_SYNC_MS,
+      syncIntervalMs:
+        ROUND_TRANSITION_SYNC_MS,
       applySnapshot,
       refreshSnapshot,
     });
-  const { phase, roundResult, completedFinalRevealKey, nextRoundCountdown, resetRoundPresentation } =
-    useRoundLifecycle({
-      roundWinnerPlayerId,
-      winningTeamId,
-      buildRoundResult: createRoundResult,
-      startNextRound,
-    });
 
+  const {
+    phase,
+    roundResult,
+    completedFinalRevealKey,
+    nextRoundCountdown,
+    resetRoundPresentation,
+  } = useRoundLifecycle({
+    roundWinnerPlayerId,
+    winningTeamId,
+    buildRoundResult: createRoundResult,
+    startNextRound,
+  });
 
   const myPlayerIndex = useMemo(() => {
     if (!currentUserId) return -1;
-    return getPlayerIndex(playersRows, (row) => row.user_id === currentUserId);
+
+    return getPlayerIndex(
+      playersRows,
+      (row) => row.user_id === currentUserId,
+    );
   }, [playersRows, currentUserId]);
 
   const opponentPlayerIndex = useMemo(() => {
     if (!currentUserId) return -1;
-    return getPlayerIndex(playersRows, (row) => row.user_id !== currentUserId);
+
+    return getPlayerIndex(
+      playersRows,
+      (row) => row.user_id !== currentUserId,
+    );
   }, [playersRows, currentUserId]);
 
   const localPlayerTakenOver = useMemo(
-    () => shouldExitLocalHumanAfterTakeover(currentUserId, playersRows),
+    () =>
+      shouldExitLocalHumanAfterTakeover(
+        currentUserId,
+        playersRows,
+      ),
     [playersRows, currentUserId],
   );
 
@@ -237,54 +339,113 @@ export function useOneVsOneGame(roomId?: string): UseOneVsOneResult {
     const state = rawState ?? {};
     const handCounts = state.handCounts ?? [];
 
-    const botIdentities = assignDominoBotIdentities(
-      playersRows.map((row) => ({
+    const botIdentities =
+      assignDominoBotIdentities(
+        playersRows.map((row) => ({
           id: String(row.id),
-          playerIndex: typeof row.player_index === 'number' ? row.player_index : 0,
+          playerIndex:
+            typeof row.player_index === 'number'
+              ? row.player_index
+              : 0,
         })),
-    );
+      );
 
     return playersRows.map((row) => {
-      const playerId = row.user_id ?? `bot-${row.id}`;
-      const profile = row.user_id ? profileById.get(row.user_id) : null;
+      const playerId =
+        row.user_id ?? `bot-${row.id}`;
+
+      const profile = row.user_id
+        ? profileById.get(row.user_id)
+        : null;
+
       const playerIndex =
-        typeof row.player_index === 'number' ? row.player_index : 0;
-      const isBot = row.bot_takeover || row.kind === 'bot' || !row.user_id;
+        typeof row.player_index === 'number'
+          ? row.player_index
+          : 0;
+
+      const isBot =
+        row.bot_takeover ||
+        row.kind === 'bot' ||
+        !row.user_id;
+
+      const botIdentity = isBot
+        ? botIdentities.get(String(row.id))
+        : undefined;
 
       return {
         id: playerId,
+
         name: isBot
-          ? botIdentities.get(String(row.id))!.name
+          ? botIdentity!.name
           : profile?.username ?? 'Player',
-        seat: getRelativeSeat(playerIndex, myPlayerIndex, 2),
+
+        seat: getRelativeSeat(
+          playerIndex,
+          myPlayerIndex,
+          2,
+        ),
+
         kind: row.kind,
         teamId: row.team_id,
-        isActive: playerId === state.currentTurnPlayerId,
-timeLeft:
-  playerId === state.currentTurnPlayerId
-    ? turnTimeLeft
-    : PLAYER_TURN_DURATION_SECONDS,
-        tileCount: handCounts[playerIndex] ?? 0,
-        score: state.teamScores?.[row.team_id] ?? 0,
-        isLeader: state.leaderPlayerId ? playerId === state.leaderPlayerId : false,
-        avatarId: profile?.avatar_id,
-        avatarUrl: profile?.avatar_url,
-        level: calculateLevelFromPoints(profile?.points),
+
+        isActive:
+          playerId ===
+          state.currentTurnPlayerId,
+
+        timeLeft:
+          playerId ===
+          state.currentTurnPlayerId
+            ? turnTimeLeft
+            : PLAYER_TURN_DURATION_SECONDS,
+
+        tileCount:
+          handCounts[playerIndex] ?? 0,
+
+        score:
+          state.teamScores?.[row.team_id] ?? 0,
+
+        isLeader: state.leaderPlayerId
+          ? playerId === state.leaderPlayerId
+          : false,
+
+        avatarId: isBot
+          ? botIdentity!.avatarId
+          : profile?.avatar_id,
+
+        avatarUrl: isBot
+          ? botIdentity!.avatarUrl
+          : profile?.avatar_url,
+
+        level: calculateLevelFromPoints(
+          profile?.points,
+        ),
+
         points: profile?.points,
       };
     });
-  }, [playersRows, profileById, rawState, myPlayerIndex, turnTimeLeft, drawTimeLeft]);
+  }, [
+    playersRows,
+    profileById,
+    rawState,
+    myPlayerIndex,
+    turnTimeLeft,
+    drawTimeLeft,
+  ]);
 
-  const board: KozelBoardState = rawState?.board ?? createEmptyBoard();
+  const board: KozelBoardState =
+    rawState?.board ?? createEmptyBoard();
 
   const teamScores: Record<TeamId, number> = {
-    teamA: rawState?.teamScores?.teamA ?? 0,
-    teamB: rawState?.teamScores?.teamB ?? 0,
+    teamA:
+      rawState?.teamScores?.teamA ?? 0,
+    teamB:
+      rawState?.teamScores?.teamB ?? 0,
   };
 
-  const myHand: DominoTileData[] = useMemo(() => {
-    return rawState?.myHand ?? [];
-  }, [rawState]);
+  const myHand: DominoTileData[] =
+    useMemo(() => {
+      return rawState?.myHand ?? [];
+    }, [rawState]);
 
   useEffect(() => {
     const hasAuthoritativeActiveHand =
@@ -294,7 +455,9 @@ timeLeft:
       !!rawState?.currentTurnPlayerId &&
       myHand.length > 0;
 
-    if (!hasAuthoritativeActiveHand) return;
+    if (!hasAuthoritativeActiveHand) {
+      return;
+    }
 
     resetRoundPresentation();
   }, [
@@ -306,103 +469,188 @@ timeLeft:
     resetRoundPresentation,
   ]);
 
-
   const openingDouble =
-    typeof rawState?.openingDouble === 'number' ? rawState.openingDouble : null;
+    typeof rawState?.openingDouble === 'number'
+      ? rawState.openingDouble
+      : null;
 
   const isOpeningRound = Boolean(
-    rawState?.isOpeningRound ?? rawState?.isFirstRound ?? true,
+    rawState?.isOpeningRound ??
+      rawState?.isFirstRound ??
+      true,
   );
 
-  const playabilityContext = { board, spinnerValue: rawState?.spinnerValue ?? null, isOpeningRound, openingDouble };
-  const availableBranchesForTile = (tile: DominoTileData): KozelBranch[] =>
-    getAvailableBranches(tile, playabilityContext);
+  const playabilityContext = {
+    board,
+    spinnerValue:
+      rawState?.spinnerValue ?? null,
+    isOpeningRound,
+    openingDouble,
+  };
+
+  const availableBranchesForTile = (
+    tile: DominoTileData,
+  ): KozelBranch[] =>
+    getAvailableBranches(
+      tile,
+      playabilityContext,
+    );
 
   const hasPlayableTile = useMemo(() => {
-    return handHasPlayableTile(myHand, playabilityContext);
-  }, [myHand, board, rawState, isOpeningRound, openingDouble]);
+    return handHasPlayableTile(
+      myHand,
+      playabilityContext,
+    );
+  }, [
+    myHand,
+    board,
+    rawState,
+    isOpeningRound,
+    openingDouble,
+  ]);
 
-  const playTile = async (tile: DominoTileData, branch?: KozelBranch) => {
-    if (!roomId) throw new Error('No 1v1 room id');
-    if (pendingMoveRef.current) return false;
-    const tileInMyHand = handContainsTile(myHand, tile.id);
+  const playTile = async (
+    tile: DominoTileData,
+    branch?: KozelBranch,
+  ) => {
+    if (!roomId) {
+      throw new Error('No 1v1 room id');
+    }
+
+    if (pendingMoveRef.current) {
+      return false;
+    }
+
+    const tileInMyHand =
+      handContainsTile(
+        myHand,
+        tile.id,
+      );
 
     if (!tileInMyHand) {
-      console.warn('[1v1 playTile blocked: tile not in myHand]', {
-        roomId,
-        currentUserId,
-        myPlayerIndex,
-        opponentPlayerIndex,
-        tileId: tile?.id ?? null,
-        myHandIds: myHand.map((handTile) => handTile.id),
-      });
+      console.warn(
+        '[1v1 playTile blocked: tile not in myHand]',
+        {
+          roomId,
+          currentUserId,
+          myPlayerIndex,
+          opponentPlayerIndex,
+          tileId:
+            tile?.id ?? null,
+          myHandIds: myHand.map(
+            (handTile) => handTile.id,
+          ),
+        },
+      );
 
       return false;
     }
 
-    const resolvedBranch = branch ?? availableBranchesForTile(tile)[0];
-    if (!resolvedBranch) return false;
+    const resolvedBranch =
+      branch ??
+      availableBranchesForTile(tile)[0];
 
-    const pending = snapshotControllerRef.current.beginOptimisticMove({
-      roomId,
-      tile,
-      branch: resolvedBranch,
-      baseVersion: latestVersionRef.current,
-      board,
-      spinnerValue: rawState?.spinnerValue ?? null,
-      isOpeningRound,
-    });
+    if (!resolvedBranch) {
+      return false;
+    }
+
+    const pending =
+      snapshotControllerRef.current.beginOptimisticMove({
+        roomId,
+        tile,
+        branch: resolvedBranch,
+        baseVersion:
+          latestVersionRef.current,
+        board,
+        spinnerValue:
+          rawState?.spinnerValue ?? null,
+        isOpeningRound,
+      });
+
     pendingMoveRef.current = pending;
     setPendingMove(pending);
 
     try {
-      const result = await matchAdapter!.dispatch({
-        type: 'play',
-        tile,
-        branch: resolvedBranch,
-      });
+      const result =
+        await matchAdapter!.dispatch({
+          type: 'play',
+          tile,
+          branch: resolvedBranch,
+        });
+
       await applySuccessfulAction(result);
+
       return result;
     } catch (error) {
-      if (error instanceof MultiplayerRequestError && error.ambiguous) {
+      if (
+        error instanceof MultiplayerRequestError &&
+        error.ambiguous
+      ) {
         try {
           await refreshSnapshot();
-          if (!pendingMoveRef.current) return { ok: true };
+
+          if (!pendingMoveRef.current) {
+            return { ok: true };
+          }
         } catch {
           // The original request remains unconfirmed; roll back the visual layer.
         }
       }
 
-      if (pendingMoveRef.current?.requestId === pending.requestId) {
-        snapshotControllerRef.current.clearPendingMove(pending.requestId);
+      if (
+        pendingMoveRef.current?.requestId ===
+        pending.requestId
+      ) {
+        snapshotControllerRef.current.clearPendingMove(
+          pending.requestId,
+        );
         pendingMoveRef.current = null;
         setPendingMove(null);
       }
+
       throw error;
     }
   };
 
   const drawTile = async () => {
-    if (!roomId) return false;
+    if (!roomId) {
+      return false;
+    }
+
     return runMultiplayerAction({
-      action: () => matchAdapter!.dispatch({ type: 'draw' }),
-      onSuccess: applySuccessfulAction,
-      errorLabel: '1v1 draw failed',
+      action: () =>
+        matchAdapter!.dispatch({
+          type: 'draw',
+        }),
+      onSuccess:
+        applySuccessfulAction,
+      errorLabel:
+        '1v1 draw failed',
     });
   };
 
   const passTurn = async () => {
-    if (!roomId) return false;
+    if (!roomId) {
+      return false;
+    }
 
     return runMultiplayerAction({
-      action: () => matchAdapter!.dispatch({ type: 'pass' }),
-      onSuccess: applySuccessfulAction,
-      errorLabel: '1v1 pass failed',
+      action: () =>
+        matchAdapter!.dispatch({
+          type: 'pass',
+        }),
+      onSuccess:
+        applySuccessfulAction,
+      errorLabel:
+        '1v1 pass failed',
     });
   };
 
   const leaveMatch = useCallback(async () => {
-    if (!matchAdapter) return;
+    if (!matchAdapter) {
+      return;
+    }
+
     await matchAdapter.leave();
   }, [matchAdapter]);
 
@@ -416,19 +664,45 @@ timeLeft:
     currentTurnPlayerId,
     board,
     myHand,
-    boneyardCount: rawState?.boneyardCount ?? 0,
+
+    boneyardCount:
+      rawState?.boneyardCount ?? 0,
+
     mode: '1v1',
 
-    roundWinnerPlayerId: rawState?.roundWinnerPlayerId ?? null,
-    lastPlayedTile: rawState?.lastPlayedTile ?? null,
-    lastScoringEvent: rawState?.lastScoringEvent as ScoringEvent | null,
-    endOfHandScoringEvent: rawState?.endOfHandScoringEvent as ScoringEvent | null,
-    teamScores,
-    winningTeamId: rawState?.winningTeamId ?? null,
-    matchReward: rawState?.matchReward as MatchReward | null,
+    roundWinnerPlayerId:
+      rawState?.roundWinnerPlayerId ?? null,
 
-    leaderPlayerId: rawState?.leaderPlayerId ?? players[0]?.id ?? '',
-    isFirstRound: isOpeningRound,
+    lastPlayedTile:
+      rawState?.lastPlayedTile ?? null,
+
+    lastScoringEvent:
+      rawState?.lastScoringEvent as
+        | ScoringEvent
+        | null,
+
+    endOfHandScoringEvent:
+      rawState?.endOfHandScoringEvent as
+        | ScoringEvent
+        | null,
+
+    teamScores,
+
+    winningTeamId:
+      rawState?.winningTeamId ?? null,
+
+    matchReward:
+      rawState?.matchReward as
+        | MatchReward
+        | null,
+
+    leaderPlayerId:
+      rawState?.leaderPlayerId ??
+      players[0]?.id ??
+      '',
+
+    isFirstRound:
+      isOpeningRound,
 
     availableBranchesForTile,
     playTile,
@@ -437,16 +711,26 @@ timeLeft:
     leaveMatch,
 
     canDrawTile:
-  rawState?.canDrawTile === true &&
-  !!currentUserId &&
-  currentTurnPlayerId === currentUserId &&
-  !hasPlayableTile &&
-  (rawState?.boneyardCount ?? 0) > 0 &&
-  Number(rawState?.currentTurnDrawCount ?? 0) < MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN &&
-  !rawState?.roundWinnerPlayerId &&
-  !rawState?.winningTeamId,
+      rawState?.canDrawTile === true &&
+      !!currentUserId &&
+      currentTurnPlayerId ===
+        currentUserId &&
+      !hasPlayableTile &&
+      (rawState?.boneyardCount ?? 0) >
+        0 &&
+      Number(
+        rawState?.currentTurnDrawCount ??
+          0,
+      ) <
+        MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN &&
+      !rawState?.roundWinnerPlayerId &&
+      !rawState?.winningTeamId,
+
     hasPlayableTile,
-    lastPassedPlayerId: rawState?.lastPassedPlayerId ?? null,
+
+    lastPassedPlayerId:
+      rawState?.lastPassedPlayerId ??
+      null,
 
     rawState,
     pendingMove,
@@ -454,6 +738,7 @@ timeLeft:
     opponentPlayerIndex,
     currentUserId,
     localPlayerTakenOver,
+
     phase,
     roundResult,
     completedFinalRevealKey,

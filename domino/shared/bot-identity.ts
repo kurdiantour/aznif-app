@@ -1,6 +1,10 @@
+import type { AvatarId } from '../../types/avatar.ts';
+
 export type DominoBotIdentity = {
   number: number;
   name: string;
+  avatarId: AvatarId;
+  avatarUrl?: string;
 };
 
 export type DominoBotIdentitySeat = {
@@ -14,10 +18,12 @@ const MAX_BOT_NUMBER = MIN_BOT_NUMBER + BOT_NUMBER_COUNT - 1;
 
 function hashBotIdentity(seed: string): number {
   let hash = 2166136261;
+
   for (let index = 0; index < seed.length; index += 1) {
     hash ^= seed.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
+
   return hash >>> 0;
 }
 
@@ -31,18 +37,34 @@ export function assignDominoBotIdentities(
 ): ReadonlyMap<string, DominoBotIdentity> {
   const identities = new Map<string, DominoBotIdentity>();
   const used = new Set<number>();
+
   const orderedSeats = [...seats].sort(
-    (left, right) => left.playerIndex - right.playerIndex || left.id.localeCompare(right.id),
+    (left, right) =>
+      left.playerIndex - right.playerIndex ||
+      left.id.localeCompare(right.id),
   );
 
   for (const seat of orderedSeats) {
     const seed = `${seat.id}:${seat.playerIndex}`;
-    let candidate = MIN_BOT_NUMBER + (hashBotIdentity(seed) % BOT_NUMBER_COUNT);
+
+    let candidate =
+      MIN_BOT_NUMBER + (hashBotIdentity(seed) % BOT_NUMBER_COUNT);
+
     while (used.has(candidate)) {
-      candidate = candidate >= MAX_BOT_NUMBER ? MIN_BOT_NUMBER : candidate + 1;
+      candidate =
+        candidate >= MAX_BOT_NUMBER
+          ? MIN_BOT_NUMBER
+          : candidate + 1;
     }
+
     used.add(candidate);
-    identities.set(seat.id, { number: candidate, name: `Bot ${candidate}` });
+
+    identities.set(seat.id, {
+      number: candidate,
+      name: `Bot ${candidate}`,
+      avatarId: 'bot-avatar',
+      avatarUrl: undefined,
+    });
   }
 
   return identities;
