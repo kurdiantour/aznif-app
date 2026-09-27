@@ -6,6 +6,11 @@ import {
   SendChipPopup,
   SendChipPopupContext,
 } from "@/components/friends/send-chip-popup";
+import {
+  AvatarPreviewContext,
+  AvatarPreviewPopup,
+  type AvatarPreviewData,
+} from "@/components/player/avatar-preview-popup";
 import { GlobalLeaderboardConsent } from "@/components/leaderboard/GlobalLeaderboardConsent";
 import { BottomNav } from "@/components/lobby/BottomNav";
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
@@ -38,6 +43,8 @@ export default function TabsLayout() {
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
 
+  const [avatarPreviewData, setAvatarPreviewData] = useState<AvatarPreviewData | null>(null);
+
   if (profileLoading) {
     return <View style={styles.container} />;
   }
@@ -67,45 +74,55 @@ export default function TabsLayout() {
           },
         }}
       >
-        <View style={styles.container}>
-          <LobbyHeader />
+        <AvatarPreviewContext.Provider
+          value={{
+            showPreview: (avatar) => setAvatarPreviewData(avatar),
+          }}
+        >
+          <View style={styles.container}>
+            <LobbyHeader />
 
-          <View
-            style={[
-              styles.content,
-              {
-                paddingHorizontal: isTablet
-                  ? TABLET_HORIZONTAL_INSET
-                  : MOBILE_HORIZONTAL_INSET,
-              },
-            ]}
-          >
-            <Slot />
+            <View
+              style={[
+                styles.content,
+                {
+                  paddingHorizontal: isTablet
+                    ? TABLET_HORIZONTAL_INSET
+                    : MOBILE_HORIZONTAL_INSET,
+                },
+              ]}
+            >
+              <Slot />
+            </View>
+
+            <BottomNav requireAuth={!profile} />
+
+            <GlobalLeaderboardConsent />
+
+            {ENABLE_SHOP_FEATURES ? (
+              <>
+                <InsufficientGemsPopup
+                  visible={showInsufficientGemsPopup}
+                  onClose={() => setShowInsufficientGemsPopup(false)}
+                />
+                <PurchaseConfirmationPopup
+                  confirmation={purchaseConfirmation}
+                  onClose={() => setPurchaseConfirmation(null)}
+                />
+              </>
+            ) : null}
+            <SendChipPopup
+              friend={sendChipFriend}
+              visible={!!sendChipFriend}
+              onClose={() => setSendChipFriend(null)}
+              onTransferSuccess={sendChipSuccessHandler}
+            />
+            <AvatarPreviewPopup
+              avatar={avatarPreviewData}
+              onClose={() => setAvatarPreviewData(null)}
+            />
           </View>
-
-          <BottomNav requireAuth={!profile} />
-
-          <GlobalLeaderboardConsent />
-
-          {ENABLE_SHOP_FEATURES ? (
-            <>
-              <InsufficientGemsPopup
-                visible={showInsufficientGemsPopup}
-                onClose={() => setShowInsufficientGemsPopup(false)}
-              />
-              <PurchaseConfirmationPopup
-                confirmation={purchaseConfirmation}
-                onClose={() => setPurchaseConfirmation(null)}
-              />
-            </>
-          ) : null}
-          <SendChipPopup
-            friend={sendChipFriend}
-            visible={!!sendChipFriend}
-            onClose={() => setSendChipFriend(null)}
-            onTransferSuccess={sendChipSuccessHandler}
-          />
-        </View>
+        </AvatarPreviewContext.Provider>
       </SendChipPopupContext.Provider>
     </ShopPopupContext.Provider>
   );

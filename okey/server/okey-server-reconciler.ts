@@ -1,38 +1,30 @@
 import { isActiveOkeyPlayer, isEliminatedOkeyPlayer } from "../engine/okeyengine-eliminated.ts";
+
 import {
     createOkeyCommandActionEvents,
     type OkeyActionEvent,
     type OkeyActionEventDraft,
 } from "./okey-action-events.ts";
-import { commitAuthoritativeOkeyAction } from "./okey-authoritative-commit-gateway.ts";
+
 import {
     createAuthoritativeOkeyMatch,
     deriveOkeyDailyQuestGameplayEvents,
     getNextOkeyMatchTurnDeadline,
     getOkeyMatchTurnDeadlineAfterTransition,
-    OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
     projectOkeyMatchPublicState,
-    settleAuthoritativeOkeyRound,
     type OkeyAuthoritativeCommand,
     type OkeyAuthoritativeMatchState,
     type OkeyMatchServerProjection,
     type OkeyServerPlayerIdentity
 } from "./okey-authoritative.ts";
-import { selectOkeyBotIntent } from "./okey-bot-executor.ts";
+
 import {
-    evaluateOkeyServerLifecycle,
     executeOkeyAuthoritativePipeline,
     executeOkeyServerLifecycle,
-    generateOkeyReconcilerCommandId,
-    reduceAuthoritativeOkeyTransition,
-    type OkeyAuthoritativeExecutionInput,
-    type OkeyAuthoritativeSnapshotBundle,
     type OkeyAuthoritativeTransition,
-    type OkeyLifecycleDecision,
-    type OkeyServerLifecycleInput,
-    type OkeyServerLifecycleResult,
     type OkeyTurnCommit,
 } from "./okey-turn-engine.ts";
+
 
 export {
     evaluateOkeyServerLifecycle,
@@ -47,6 +39,7 @@ export {
     type OkeyServerLifecycleResult,
 } from "./okey-turn-engine.ts";
 
+
 /** Returns the next official lifecycle time. Bot ownership is immediate and never UI-paced. */
 export function getOkeyLifecycleRunAt(
   state: OkeyAuthoritativeMatchState,
@@ -55,14 +48,21 @@ export function getOkeyLifecycleRunAt(
 ): string | null {
   if (state.matchFinished) return null;
   if (state.roundState.phase === 'finished') return state.nextRoundEligibleAt ?? null;
+
   const currentPlayer = state.roundState.players[state.roundState.currentPlayerIndex];
+
   if (isEliminatedOkeyPlayer(currentPlayer)) return new Date(nowMs).toISOString();
-  if (isActiveOkeyPlayer(currentPlayer) &&
-      (currentPlayer.controlledByBot === true || currentPlayer.kind === 'bot')) {
+
+  if (
+    isActiveOkeyPlayer(currentPlayer) &&
+    (currentPlayer.controlledByBot === true || currentPlayer.kind === 'bot')
+  ) {
     return new Date(nowMs).toISOString();
   }
+
   return turnDeadlineAt;
 }
+
 
 type OkeyHumanAuthoritativeBundle = {
   state: OkeyAuthoritativeMatchState;
@@ -71,6 +71,7 @@ type OkeyHumanAuthoritativeBundle = {
   turn_deadline_at: string | null;
   command_applied: boolean;
 };
+
 
 type OkeyHumanCommandInput = {
   action: "command" | "manual-leave";
@@ -82,6 +83,7 @@ type OkeyHumanCommandInput = {
   commandReceivedAtMs: number;
   bundle: OkeyHumanAuthoritativeBundle;
 };
+
 
 type OkeyHumanCommandResult =
   | {
@@ -102,10 +104,12 @@ type OkeyHumanCommandResult =
       commit?: OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>;
     };
 
+
 type OkeyHumanCommandDependencies = {
   client: any;
   deterministicCommandId: (source: string) => Promise<string>;
   reloadManualLeaveBundle?: () => Promise<OkeyHumanAuthoritativeBundle | null>;
+
   broadcastStateUpdate?: (input: {
     matchId: string;
     commandId: string;
@@ -113,7 +117,9 @@ type OkeyHumanCommandDependencies = {
     publicProjection: OkeyMatchServerProjection;
     actionEvents: OkeyActionEvent[];
   }) => Promise<void>;
+
   now?: () => number;
+
   scheduleLifecycleAlarm?: (input: {
     matchId: string;
     state: OkeyAuthoritativeMatchState;
@@ -121,6 +127,7 @@ type OkeyHumanCommandDependencies = {
     runAt: string;
   }) => Promise<void>;
 };
+
 
 async function settleAuthoritativeOkeyMatchForViewer(input: {
   client: any;
@@ -132,25 +139,37 @@ async function settleAuthoritativeOkeyMatchForViewer(input: {
   if (!input.state.matchFinished) return { settlement: null, error: null };
 
   const winnerTeamId = input.state.matchWinnerTeamId;
+
   if (!winnerTeamId && input.state.leaveTerminationReason !== "no-humans") {
     return { settlement: null, error: new Error("winner_team_not_found") };
   }
+
   const { data: settlement, error } = await input.client.rpc("okey_settle_match", {
     p_match_id: input.matchId,
     p_winner_team_id: winnerTeamId,
   });
+
   if (error) return { settlement: null, error: new Error(error.message) };
 
   let playerReward: { pointDelta: number; gemDelta: number } | null = null;
-  if (settlement && typeof settlement === "object" &&
-      (settlement as { currency?: unknown }).currency === "fun") {
+
+  if (
+    settlement &&
+    typeof settlement === "object" &&
+    (settlement as { currency?: unknown }).currency === "fun"
+  ) {
     const { data: rewardRow, error: rewardError } = await input.client
-      .schema("okey").from("fun_match_rewards")
+      .schema("okey")
+      .from("fun_match_rewards")
       .select("point_delta, gem_delta")
       .eq("match_id", input.matchId)
       .eq("user_id", input.actorUserId)
       .maybeSingle();
-    if (rewardError) return { settlement: null, error: new Error(rewardError.message) };
+
+    if (rewardError) {
+      return { settlement: null, error: new Error(rewardError.message) };
+    }
+
     if (rewardRow) {
       playerReward = {
         pointDelta: Number(rewardRow.point_delta ?? 0),
@@ -158,13 +177,16 @@ async function settleAuthoritativeOkeyMatchForViewer(input: {
       };
     }
   }
+
   return {
-    settlement: settlement && typeof settlement === "object"
-      ? { ...settlement, playerReward }
-      : settlement,
+    settlement:
+      settlement && typeof settlement === "object"
+        ? { ...settlement, playerReward }
+        : settlement,
     error: null,
   };
 }
+
 
 /** Owns the complete authoritative Human/Manual-Leave command lifecycle. */
 export async function reconcileAuthoritativeHumanCommand(
@@ -173,8 +195,11 @@ export async function reconcileAuthoritativeHumanCommand(
 ): Promise<OkeyHumanCommandResult> {
   const now = dependencies.now ?? Date.now;
   const initialState = input.bundle.state;
-  if ((initialState.manualLeftPlayerIds ?? []).includes(input.actorUserId) &&
-      !(input.action === "manual-leave" && input.bundle.command_applied)) {
+
+  if (
+    (initialState.manualLeftPlayerIds ?? []).includes(input.actorUserId) &&
+    !(input.action === "manual-leave" && input.bundle.command_applied)
+  ) {
     return { ok: false, error: "manual_leave_is_final", status: 403 };
   }
 
@@ -186,9 +211,14 @@ export async function reconcileAuthoritativeHumanCommand(
       state: initialState,
       now,
     });
+
     if (settled.error) {
-      console.error("Okey settlement recovery failed during duplicate", settled.error);
+      console.error(
+        "Okey settlement recovery failed during duplicate",
+        settled.error,
+      );
     }
+
     return {
       ok: true,
       commit: {
@@ -207,8 +237,11 @@ export async function reconcileAuthoritativeHumanCommand(
     };
   }
 
-  if (input.action === "command" && input.clientExpectedVersion !== null &&
-      input.clientExpectedVersion !== Number(input.bundle.version)) {
+  if (
+    input.action === "command" &&
+    input.clientExpectedVersion !== null &&
+    input.clientExpectedVersion !== Number(input.bundle.version)
+  ) {
     return {
       ok: false,
       error: "version_conflict",
@@ -216,19 +249,34 @@ export async function reconcileAuthoritativeHumanCommand(
       details: `Client expected version ${input.clientExpectedVersion} does not match database version ${input.bundle.version}`,
     };
   }
+
   if (input.action === "command" && !input.command) {
     return { ok: false, error: "invalid_command", status: 400 };
   }
 
   let workingBundle = input.bundle;
   const maxCommitAttempts = input.action === "manual-leave" ? 3 : 1;
+
   for (let attempt = 1; attempt <= maxCommitAttempts; attempt += 1) {
     if (attempt > 1) {
       const freshBundle = await dependencies.reloadManualLeaveBundle?.();
-      if (!freshBundle) return { ok: false, error: "manual_leave_retry_fetch_failed", status: 409 };
+
+      if (!freshBundle) {
+        return {
+          ok: false,
+          error: "manual_leave_retry_fetch_failed",
+          status: 409,
+        };
+      }
+
       workingBundle = freshBundle;
-      if (workingBundle.command_applied ||
-          (workingBundle.state.manualLeftPlayerIds ?? []).includes(input.actorUserId)) {
+
+      if (
+        workingBundle.command_applied ||
+        (workingBundle.state.manualLeftPlayerIds ?? []).includes(
+          input.actorUserId,
+        )
+      ) {
         return {
           ok: true,
           commit: {
@@ -248,31 +296,59 @@ export async function reconcileAuthoritativeHumanCommand(
       }
     }
 
-    if (input.action === "command" && workingBundle.turn_deadline_at &&
-        Date.parse(workingBundle.turn_deadline_at) <= input.commandReceivedAtMs) {
-      return { ok: false, error: "turn_deadline_expired", status: 409 };
+    if (
+      input.action === "command" &&
+      workingBundle.turn_deadline_at &&
+      Date.parse(workingBundle.turn_deadline_at) <= input.commandReceivedAtMs
+    ) {
+      return {
+        ok: false,
+        error: "turn_deadline_expired",
+        status: 409,
+      };
     }
 
     const workingState = workingBundle.state;
     const playerIndex = Number(workingBundle.player_index);
-    const acceptedCommand = input.action === "manual-leave"
-      ? { type: "manual-leave" as const }
-      : input.command!;
+
+    const acceptedCommand =
+      input.action === "manual-leave"
+        ? { type: "manual-leave" as const }
+        : input.command!;
+
     const commandType = acceptedCommand.type;
+
     const transition: OkeyAuthoritativeTransition<
       OkeyAuthoritativeCommand,
       OkeyAuthoritativeMatchState["roundState"]
-    > = input.action === "manual-leave"
-      ? { type: "manual-leave", actorPlayerIndex: playerIndex }
-      : { type: "human-command", actorPlayerIndex: playerIndex, command: input.command! };
-    const expectedVersion = input.action === "manual-leave"
-      ? Number(workingBundle.version)
-      : (input.clientExpectedVersion ?? Number(workingBundle.version));
-    const nextVersion = expectedVersion + 1;
-    const actingPlayer = workingState.roundState.players[workingState.roundState.currentPlayerIndex] ?? null;
-    let gameplayEvents: ReturnType<typeof deriveOkeyDailyQuestGameplayEvents> = [];
+    > =
+      input.action === "manual-leave"
+        ? { type: "manual-leave", actorPlayerIndex: playerIndex }
+        : {
+            type: "human-command",
+            actorPlayerIndex: playerIndex,
+            command: input.command!,
+          };
+
+    const expectedVersion =
+      input.action === "manual-leave"
+        ? Number(workingBundle.version)
+        : input.clientExpectedVersion ?? Number(workingBundle.version);
+
+    const actingPlayer =
+      workingState.roundState.players[
+        workingState.roundState.currentPlayerIndex
+      ] ?? null;
+
+    let gameplayEvents: ReturnType<
+      typeof deriveOkeyDailyQuestGameplayEvents
+    > = [];
+
     let committedSettlement: unknown = null;
-    let committedBeforeSettlement: OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent> | null = null;
+
+    let committedBeforeSettlement:
+      | OkeyTurnCommit<OkeyAuthoritativeMatchState, OkeyActionEvent>
+      | null = null;
 
     try {
       const execution = await executeOkeyAuthoritativePipeline({
@@ -285,36 +361,65 @@ export async function reconcileAuthoritativeHumanCommand(
         commandId: input.commandId,
         commandType,
         expectedVersion,
-        resolveDeadline: (nextState) => getOkeyMatchTurnDeadlineAfterTransition(
-          workingState,
-          nextState,
-          workingBundle.turn_deadline_at,
-          input.commandReceivedAtMs,
-        ),
+
+        resolveDeadline: (nextState) =>
+          getOkeyMatchTurnDeadlineAfterTransition(
+            workingState,
+            nextState,
+            workingBundle.turn_deadline_at,
+            input.commandReceivedAtMs,
+          ),
+
         createActionEvents: (nextState) => {
-          let actionEvents: OkeyActionEventDraft[] = acceptedCommand.type === "manual-leave"
-            ? [{
-                type: "leave",
-                actorPlayerId: workingState.roundState.players[playerIndex]?.id ?? null,
-                payload: {},
-              }]
-            : createOkeyCommandActionEvents(
-                acceptedCommand,
-                actingPlayer?.id ?? "",
-                workingState.roundState,
-              );
-          const previousDiscard = workingState.roundState.discardPile.at(-1) ?? null;
+          let actionEvents: OkeyActionEventDraft[] =
+            acceptedCommand.type === "manual-leave"
+              ? [
+                  {
+                    type: "leave",
+                    actorPlayerId:
+                      workingState.roundState.players[playerIndex]?.id ?? null,
+                    payload: {},
+                  },
+                ]
+              : createOkeyCommandActionEvents(
+                  acceptedCommand,
+                  actingPlayer?.id ?? "",
+                  workingState.roundState,
+                );
+
+          const previousDiscard =
+            workingState.roundState.discardPile.at(-1) ?? null;
+
           actionEvents = actionEvents.map((event) =>
-            event.type === "draw" && event.payload.source === "discard" && previousDiscard
-              ? { ...event, payload: { ...event.payload, tile: previousDiscard } }
-              : event
+            event.type === "draw" &&
+            event.payload.source === "discard" &&
+            previousDiscard
+              ? {
+                  ...event,
+                  payload: {
+                    ...event.payload,
+                    tile: previousDiscard,
+                  },
+                }
+              : event,
           );
-          const committedDiscard = nextState.roundState.discardPile.at(-1) ?? null;
+
+          const committedDiscard =
+            nextState.roundState.discardPile.at(-1) ?? null;
+
           actionEvents = actionEvents.map((event) =>
             event.type === "discard" && committedDiscard
-              ? { ...event, payload: { ...event.payload, tileId: committedDiscard.id, tile: committedDiscard } }
-              : event
+              ? {
+                  ...event,
+                  payload: {
+                    ...event.payload,
+                    tileId: committedDiscard.id,
+                    tile: committedDiscard,
+                  },
+                }
+              : event,
           );
+
           gameplayEvents = deriveOkeyDailyQuestGameplayEvents(
             workingState,
             nextState,
@@ -322,12 +427,16 @@ export async function reconcileAuthoritativeHumanCommand(
             acceptedCommand,
             input.commandId,
           );
+
           return actionEvents;
         },
+
         gameplayEvents: () => gameplayEvents,
         commitFailureCode: "commit_failed",
+
         settle: async (committed) => {
           committedBeforeSettlement = committed;
+
           const settled = await settleAuthoritativeOkeyMatchForViewer({
             client: dependencies.client,
             matchId: input.matchId,
@@ -335,14 +444,22 @@ export async function reconcileAuthoritativeHumanCommand(
             state: committed.state,
             now,
           });
+
           if (settled.error) throw settled.error;
+
           committedSettlement = settled.settlement;
         },
+
         broadcast: dependencies.broadcastStateUpdate,
         broadcastFailureMessage: "Okey match broadcast failed",
       });
+
       const committed = execution.committed;
-      if (!committed.state.matchFinished && dependencies.scheduleLifecycleAlarm) {
+
+      if (
+        !committed.state.matchFinished &&
+        dependencies.scheduleLifecycleAlarm
+      ) {
         await dependencies.scheduleLifecycleAlarm({
           matchId: input.matchId,
           state: committed.state,
@@ -354,6 +471,7 @@ export async function reconcileAuthoritativeHumanCommand(
           )!,
         });
       }
+
       return {
         ok: true,
         commit: committed,
@@ -367,7 +485,15 @@ export async function reconcileAuthoritativeHumanCommand(
     } catch (error) {
       const details = error instanceof Error ? error.message : String(error);
       const conflict = details.includes("version_conflict");
-      if (input.action === "manual-leave" && conflict && attempt < maxCommitAttempts) continue;
+
+      if (
+        input.action === "manual-leave" &&
+        conflict &&
+        attempt < maxCommitAttempts
+      ) {
+        continue;
+      }
+
       if (committedBeforeSettlement) {
         return {
           ok: false,
@@ -377,11 +503,23 @@ export async function reconcileAuthoritativeHumanCommand(
           commit: committedBeforeSettlement,
         };
       }
-      return { ok: false, error: conflict ? "version_conflict" : "commit_failed", status: conflict ? 409 : 500, details };
+
+      return {
+        ok: false,
+        error: conflict ? "version_conflict" : "commit_failed",
+        status: conflict ? 409 : 500,
+        details,
+      };
     }
   }
-  return { ok: false, error: "manual_leave_retry_exhausted", status: 409 };
+
+  return {
+    ok: false,
+    error: "manual_leave_retry_exhausted",
+    status: 409,
+  };
 }
+
 
 type OkeyMatchStartReconcileResult<TRoom = any> = {
   state: OkeyAuthoritativeMatchState;
@@ -392,6 +530,7 @@ type OkeyMatchStartReconcileResult<TRoom = any> = {
   room: TRoom | null;
   error?: string | null;
 };
+
 
 /**
  * Authoritative Server Reconciler for Waiting -> Playing transition.
@@ -415,10 +554,12 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
   }) => Promise<{ data: TRoom | null; error: any }>;
 }): Promise<OkeyMatchStartReconcileResult<TRoom>> {
   const getNow = options.now ?? Date.now;
+
   const state = createAuthoritativeOkeyMatch(
     options.members,
     options.startingPlayerIndex ?? 0,
   );
+
   const deadline = getNextOkeyMatchTurnDeadline(state, getNow());
   const projection = projectOkeyMatchPublicState(state, 0, deadline);
 
@@ -431,6 +572,7 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
       projection,
       turnDeadlineAt: deadline,
     });
+
     startedData = actionResult.data;
     startedError = actionResult.error;
   } else {
@@ -440,6 +582,7 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
       p_projection: projection,
       p_turn_deadline_at: deadline,
     });
+
     startedData = (rpcResult.data ? true : null) as unknown as TRoom;
     startedError = rpcResult.error;
   }
@@ -466,12 +609,14 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
   };
 }
 
+
 type OkeyServerLifecycleAlarmOptions = {
   client: any;
   matchId: string;
   requesterUserId?: string;
   initialVersion?: number;
   runAt?: string | null;
+
   broadcastStateUpdate?: (input: {
     matchId: string;
     commandId: string;
@@ -479,8 +624,10 @@ type OkeyServerLifecycleAlarmOptions = {
     publicProjection: OkeyMatchServerProjection;
     actionEvents: OkeyActionEvent[];
   }) => Promise<void>;
+
   deterministicCommandId?: (source: string) => Promise<string>;
   now?: () => number;
+
   scheduleLifecycleAlarm?: (input: {
     matchId: string;
     state: OkeyAuthoritativeMatchState;
@@ -488,6 +635,7 @@ type OkeyServerLifecycleAlarmOptions = {
     runAt: string;
   }) => Promise<void>;
 };
+
 
 type OkeyServerLifecycleAlarmResult = {
   ok: boolean;
@@ -508,6 +656,7 @@ type OkeyServerLifecycleAlarmResult = {
     | "not_eligible";
 };
 
+
 /** One-shot executor: fetch latest bundle, validate due state, reconcile once via executeOkeyServerLifecycle. */
 export async function reconcileAuthoritativeServerLifecycleAlarm(
   options: OkeyServerLifecycleAlarmOptions,
@@ -520,6 +669,7 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
       p_match_id: matchId,
     })
     .single();
+
   if (bundleError || !bundleRaw) {
     return {
       ok: false,
@@ -534,23 +684,47 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
   const state = bundleRaw.state as OkeyAuthoritativeMatchState;
   const version = Number(bundleRaw.version);
   const turnDeadlineAt = bundleRaw.turn_deadline_at as string | null;
-  const baseResult = { state, version, attempts: 1, turnDeadlineAt };
 
-  if (options.initialVersion !== undefined && version !== Number(options.initialVersion)) {
-    return { ok: true, executed: false, ...baseResult, reason: "already_transitioned" };
+  const baseResult = {
+    state,
+    version,
+    attempts: 1,
+    turnDeadlineAt,
+  };
+
+  if (
+    options.initialVersion !== undefined &&
+    version !== Number(options.initialVersion)
+  ) {
+    return {
+      ok: true,
+      executed: false,
+      ...baseResult,
+      reason: "already_transitioned",
+    };
   }
+
   if (state.matchFinished) {
-    return { ok: true, executed: false, ...baseResult, reason: "match_finished" };
+    return {
+      ok: true,
+      executed: false,
+      ...baseResult,
+      reason: "match_finished",
+    };
   }
 
   const requestedAt = options.runAt;
   const requestedAtMs = requestedAt ? Date.parse(requestedAt) : NaN;
+
   if (Number.isFinite(requestedAtMs) && getNow() < requestedAtMs) {
     return {
       ok: true,
       executed: false,
       ...baseResult,
-      nextRunAt: getOkeyLifecycleRunAt(state, turnDeadlineAt, getNow()) ?? requestedAt ?? null,
+      nextRunAt:
+        getOkeyLifecycleRunAt(state, turnDeadlineAt, getNow()) ??
+        requestedAt ??
+        null,
       reason: "not_eligible",
     };
   }
@@ -574,8 +748,14 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
       version: reconciled.version,
       attempts: 1,
       turnDeadlineAt: reconciled.turnDeadlineAt,
-      nextRunAt: getOkeyLifecycleRunAt(reconciled.state, reconciled.turnDeadlineAt, getNow()),
-      reason: reconciled.state.matchFinished ? "match_finished" : "not_eligible",
+      nextRunAt: getOkeyLifecycleRunAt(
+        reconciled.state,
+        reconciled.turnDeadlineAt,
+        getNow(),
+      ),
+      reason: reconciled.state.matchFinished
+        ? "match_finished"
+        : "not_eligible",
     };
   }
 
@@ -598,7 +778,10 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
     reason,
   };
 
-  if (!reconciled.state.matchFinished && options.scheduleLifecycleAlarm) {
+  if (
+    !reconciled.state.matchFinished &&
+    options.scheduleLifecycleAlarm
+  ) {
     await options.scheduleLifecycleAlarm({
       matchId,
       state: reconciled.state,
@@ -613,4 +796,3 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
 
   return result;
 }
-

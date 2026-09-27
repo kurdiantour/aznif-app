@@ -3,12 +3,14 @@ import { createClient } from "npm:@supabase/supabase-js@2.106.1";
 import { handleImmediatePush } from "../_shared/push-immediate.ts";
 const url = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const pushSendSecret = Deno.env.get("PUSH_SEND_SECRET");
 const service = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 Deno.serve(req => handleImmediatePush(req, {
   async authorize(header) {
+    if (!pushSendSecret) throw new Error("PUSH_SEND_SECRET is not configured");
     const token = /^Bearer (\S+)$/i.exec(header)?.[1];
     if (!token) return 401;
-    return token === serviceKey ? null : 401;
+    return token === pushSendSecret ? null : 401;
   },
   async list(input, cursor) {
     let query = service.from("push_devices").select("id,user_id,expo_push_token").eq("active", true).eq("environment", input.environment).order("id").limit(100);

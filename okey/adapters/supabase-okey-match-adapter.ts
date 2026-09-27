@@ -138,12 +138,6 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
     return this.snapshot;
   }
 
-  private requireSnapshot(): OkeyMatchServerProjection {
-    const snapshot = this.getSnapshot();
-    if (!snapshot) throw new Error("okey_snapshot_unavailable");
-    return snapshot;
-  }
-
   subscribe(
     listener: (snapshot: OkeyMatchServerProjection) => void,
   ): () => void {
@@ -851,4 +845,3 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
     this.channel = null;
   }
 }
-

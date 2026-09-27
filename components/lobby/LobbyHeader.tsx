@@ -1,8 +1,5 @@
+import { FeedbackPopup } from "@/components/lobby/FeedbackPopup";
 import { AvatarProgressRing } from "@/components/player/AvatarProgressRing";
-import {
-  ENABLE_GOLD_PURCHASES,
-  ENABLE_SHOP_FEATURES,
-} from "@/lib/platformFeatures";
 import { getFriendRequests } from "@/lib/friends";
 import { useProfile } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
@@ -30,6 +27,7 @@ export function LobbyHeader() {
   const coinBalance = rawCoinBalance?.toLocaleString() ?? "...";
   const gemBalance = rawGemBalance?.toLocaleString() ?? "...";
   const [friendRequestCount, setFriendRequestCount] = useState(0);
+  const [feedbackVisible, setFeedbackVisible] = useState(false);
 
 const refreshFriendRequestCount = useCallback(async () => {
   if (loading || !profile?.id) {
@@ -94,6 +92,7 @@ useEffect(() => {
   }, [loading, profile?.id, refreshFriendRequestCount]);
 
   return (
+    <>
       <View>
         <View style={[
           styles.topBar,
@@ -144,28 +143,7 @@ useEffect(() => {
               </LinearGradient>
 
 
-              {ENABLE_SHOP_FEATURES && ENABLE_GOLD_PURCHASES ? (
-                <Pressable onPress={() => router.push("/buy-gold")}>
-                  <LinearGradient
-                    colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.balancePillSecondary, isCompact && styles.balancePillCompact]}
-                  >
-                    <View style={styles.balanceIconCircleGold}>
-                      <Text style={styles.currencyEmoji}>{"\u{1F48E}"}</Text>
-                    </View>
-
-<Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
-  {gemBalance}{" "}
-  <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
-</Text>
-                    <View style={styles.plusButton}>
-                      <Ionicons name="add" size={15} color="#ffffff" />
-                    </View>
-                  </LinearGradient>
-                </Pressable>
-              ) : (
+              <Pressable onPress={() => router.push("/(tabs)/buy-gold")}>
                 <LinearGradient
                   colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
                   start={{ x: 0, y: 0 }}
@@ -177,10 +155,14 @@ useEffect(() => {
                   </View>
 
                   <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
-                    {gemBalance} <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
+                    {gemBalance}{" "}
+                    <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
                   </Text>
+                  <View style={styles.plusButton}>
+                    <Ionicons name="add" size={15} color="#ffffff" />
+                  </View>
                 </LinearGradient>
-              )}
+              </Pressable>
             </View>
             ) : loading ? (
               <View style={styles.authPlaceholder} />
@@ -210,6 +192,15 @@ useEffect(() => {
 
             <Pressable
               style={styles.topIcon}
+              accessibilityRole="button"
+              accessibilityLabel="Feedback"
+              onPress={() => setFeedbackVisible(true)}
+            >
+              <Ionicons name="create" size={19} color="#FFD45C" />
+            </Pressable>
+
+            <Pressable
+              style={styles.topIcon}
               onPress={() => router.push("/settings")}
             >
               <Ionicons name="settings-outline" size={19} color="#ffffff" />
@@ -229,6 +220,11 @@ useEffect(() => {
           style={styles.headerGradientLine}
         />
       </View>
+      <FeedbackPopup
+        visible={feedbackVisible}
+        onClose={() => setFeedbackVisible(false)}
+      />
+    </>
   );
 }
 

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { formatCurrencyAmount } from "@/lib/aznif-display";
 import type { DailyQuest } from "@/lib/dailyQuests";
@@ -33,6 +33,9 @@ function rewardText(quest: DailyQuest) {
 
 export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt,
   loading = false, error, claimingId, onClaim, onRetry, onClose }: Props) {
+  const [mounted, setMounted] = useState(visible);
+  const [progress] = useState(() => new Animated.Value(visible ? 1 : 0));
+  const closing = useRef(false);
   const [timeLeft, setTimeLeft] = useState(() => countdown(nextResetAt));
   const [rewardRainEvent, setRewardRainEvent] = useState<RewardRainEvent | null>(null);
   const rewardRainSequence = useRef(0);
@@ -57,6 +60,51 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
     [claimingId, onClaim, playRewardRain],
   );
 
+  const close = useCallback(() => {
+    if (closing.current) return;
+
+    setRewardRainEvent(null);
+    closing.current = true;
+
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: 190,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) return;
+
+      setMounted(false);
+      closing.current = false;
+      onClose();
+    });
+  }, [onClose, progress]);
+
+  useEffect(() => {
+    if (!visible) {
+      if (mounted && !closing.current) {
+        close();
+      }
+
+      return;
+    }
+
+    closing.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRewardRainEvent(null);
+    setMounted(true);
+
+    progress.stopAnimation();
+    progress.setValue(0);
+
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 310,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [close, mounted, progress, visible]);
+
   useEffect(() => {
     if (!visible) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -68,14 +116,30 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
     return () => clearInterval(interval);
   }, [nextResetAt, visible]);
 
-  if (!visible) return null;
+  if (!mounted) return null;
+
+  const overlayOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const scale = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [16, 0],
+  });
 
   return (
-    <View style={styles.overlay}>
-      <View pointerEvents="none" style={styles.backdrop} />
-      <View style={styles.box}>
+    <Animated.View
+      pointerEvents="box-none"
+      style={[styles.overlay, { opacity: overlayOpacity }]}
+    >
+      <View style={styles.backdrop} />
+      <Animated.View style={[styles.box, { transform: [{ translateY }, { scale }] }]} >
         <View pointerEvents="none" style={styles.topGlow} />
-        <Pressable onPress={onClose} hitSlop={10} style={styles.close}>
+        <Pressable onPress={close} hitSlop={10} style={styles.close}>
           <Ionicons name="close" size={20} color="#f8d675" />
         </Pressable>
         <View style={styles.headingIcon}><Ionicons name="clipboard" size={22} color="#ffd45c" /></View>
@@ -133,9 +197,9 @@ export default function ConnectedDailyQuestsModal({ visible, quests, nextResetAt
         <View style={styles.timer}><Ionicons name="time-outline" size={15} color="#cdb980" />
           <Text style={styles.timerLabel}>نوێبوونەوەی ئەرکەکان</Text><Text style={styles.timerValue}>{timeLeft}</Text>
         </View>
-      </View>
+      </Animated.View>
       <RewardRain event={rewardRainEvent} />
-    </View>
+    </Animated.View>
   );
 }
 

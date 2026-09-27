@@ -24,7 +24,7 @@
     "test:shop:db": "node --test scripts/shop-database.test.mjs scripts/shop-assets.test.mjs scripts/shop-fresh-install.test.mjs scripts/shop-match-integration.test.mjs",
     "test:shop:ui": "jest --config jest.shop.config.cjs --runInBand",
     "test:shop": "npm run test:shop:db && npm run test:shop:ui",
-    "test:notifications": "node --test scripts/notifications-database.test.mjs && node --import ./scripts/test-typescript-loader.mjs --test scripts/notifications-contract.test.mjs && jest --config jest.notifications.config.cjs --runInBand"
+    "test:notifications": "node --test scripts/notifications-database.test.mjs && node --import ./scripts/test-typescript-loader.mjs --test scripts/notifications-contract.test.mjs scripts/notifications-edge.test.mjs && jest --config jest.notifications.config.cjs --runInBand"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -36,9 +36,7 @@
     "expo": "~57.0.21",
     "expo-asset": "~57.0.16",
     "expo-audio": "~57.0.4",
-    "expo-blob": "^57.0.2",
     "expo-blur": "~57.0.2",
-    "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.17",
     "expo-crypto": "~57.0.3",
     "expo-device": "~57.0.2",
@@ -67,7 +65,8 @@
     "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^1.1.0",
     "react-native-web": "^0.21.0",
-    "react-native-worklets": "0.10.1"
+    "react-native-worklets": "0.10.1",
+    "react-native-purchases": "^8.2.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
