@@ -22,5 +22,5 @@ export function getShopDisplayItems(state: ShopState | null): ShopDisplayItem[] 
     const shopPreview = getBundledPreview(item.category, item.asset_key);
     // Missing assets on an old app must never be sold using a misleading fallback.
     return shopPreview === undefined ? [] : [{ ...item, category: item.category, images: { shopPreview } }];
-  }).sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
+  }).sort((a, b) => (a.price_gem ?? 0) - (b.price_gem ?? 0) || a.id.localeCompare(b.id));
 }

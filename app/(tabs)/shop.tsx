@@ -235,21 +235,23 @@ function ShopContent() {
                 ]}
               >
                 <View style={styles.cardTopRow}>
-                  <View style={styles.priceBadge}>
-                    <Text style={styles.priceEmoji}>
-                      {"\u{1F48E}"}
-                    </Text>
+                  {!isOwned && (
+                    <View style={styles.priceBadge}>
+                      <Text style={styles.priceEmoji}>
+                        {"\u{1F48E}"}
+                      </Text>
 
-                    <Text style={styles.priceText}>
-                      {item.access_kind ===
-                      "temporary"
-                        ? "بەخۆڕایی کاتی"
-                        : item.price_gem === 0
-                          ? "بەخۆڕایی"
-                          : item.price_gem?.toLocaleString() ??
-                            "—"}
-                    </Text>
-                  </View>
+                      <Text style={styles.priceText}>
+                        {item.access_kind ===
+                        "temporary"
+                          ? "بەخۆڕایی کاتی"
+                          : item.price_gem === 0
+                            ? "بەخۆڕایی"
+                            : item.price_gem?.toLocaleString() ??
+                              "—"}
+                      </Text>
+                    </View>
+                  )}
 
                   <Pressable
                     disabled={
@@ -288,21 +290,23 @@ function ShopContent() {
                       />
                     ) : null}
 
-                    <Text
-                      style={
-                        styles.tableActionLabel
-                      }
-                    >
-                      {isEquipped
-                        ? "بەکارهاتووە"
-                        : isOwned
-                          ? "کڕدراوە"
-                          : canUse
-                            ? "بەکاری بهێنە"
-                            : "بیکڕە"}
-                    </Text>
-                  </Pressable>
-                </View>
+<Text
+  style={
+    styles.tableActionLabel
+  }
+>
+  {isEquipped
+    ? "بەکارهاتووە"
+    : item.is_default
+      ? "بەخۆڕایی"
+      : isOwned
+        ? "کڕدراوە"
+        : canUse
+          ? "بەکاری بهێنە"
+          : "بیکڕە"}
+</Text>
+</Pressable>
+</View>
 
                 <ItemPreview
                   item={item}

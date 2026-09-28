@@ -43,9 +43,10 @@ export type AiPracticeGameState = GameState & {
   lastPassedPlayerId: string | null;
 };
 
-export function useAiPracticeGame(): AiPracticeGameState {
-  const seats = useMemo(() => createAiPracticeSeats(), []);
-  const initialDeal = useMemo(() => createAiPracticeDeal(seats.length), [seats.length]);
+export function useAiPracticeGame(humanUserId: string | null): AiPracticeGameState {
+  // The screen mounts a fresh game per account; null disables this hook in other modes.
+  const seats = useMemo(() => humanUserId ? createAiPracticeSeats(humanUserId) : [], [humanUserId]);
+  const initialDeal = useMemo(() => createAiPracticeDeal(2), []);
   const initialOpening = useMemo(
     () => findAiOpeningDoubleAndStarter(initialDeal.hands),
     [initialDeal.hands],
@@ -103,6 +104,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
   );
 
   const canDrawTile =
+    !!humanUserId &&
     currentIndex === 0 &&
     !!board.centerTile &&
     !roundWinnerPlayerId &&
@@ -236,6 +238,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
   });
 
   const applyAuthoritativeTransition = (transition: AiPracticeTransition) => {
+    if (!humanUserId) return false;
     if (!transition.accepted) return false;
     const next = transition.state;
     setBoard(next.board);
@@ -274,7 +277,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
   };
 
   const passTurnInternal = (playerIndex: number, force = false) =>
-    applyAuthoritativeTransition(
+    !!humanUserId && applyAuthoritativeTransition(
       reduceAiPracticePass(authoritativeState(), playerIndex, force),
     );
 
@@ -282,16 +285,16 @@ export function useAiPracticeGame(): AiPracticeGameState {
     tile: DominoTileData,
     playerIndex: number,
     preferredBranch?: KozelBranch,
-  ) => applyAuthoritativeTransition(
+  ) => !!humanUserId && applyAuthoritativeTransition(
     reduceAiPracticePlay(authoritativeState(), tile, playerIndex, preferredBranch),
   );
   const drawOneTileForPlayer = (playerIndex: number) =>
-    applyAuthoritativeTransition(
+    !!humanUserId && applyAuthoritativeTransition(
       reduceAiPracticeHumanDraw(authoritativeState(), playerIndex),
     );
 
   const drawUntilPlayableForBot = (playerIndex: number) =>
-    applyAuthoritativeTransition(
+    !!humanUserId && applyAuthoritativeTransition(
       reduceAiPracticeBotDraw(authoritativeState(), playerIndex),
     );
   const playTile = (tile: DominoTileData, branch?: KozelBranch) => {
@@ -308,7 +311,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
   useAiPracticeTurnLifecycle({
     timeLeft,
-    terminal: Boolean(roundWinnerPlayerId || winningTeamId),
+    terminal: !humanUserId || Boolean(roundWinnerPlayerId || winningTeamId),
     pausedForDraw: canDrawTile,
     durationSeconds: PLAYER_TURN_DURATION_SECONDS,
     setTimeLeft,
@@ -381,7 +384,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
 
   return {
     players,
-    currentTurnPlayerId: players[currentIndex]?.id ?? 'p1',
+    currentTurnPlayerId: players[currentIndex]?.id ?? humanUserId ?? '',
     board,
     myHand: hands[0] ?? [],
     boneyardCount: boneyard.length,
@@ -391,7 +394,7 @@ export function useAiPracticeGame(): AiPracticeGameState {
     lastScoringEvent,
     teamScores,
     winningTeamId,
-    leaderPlayerId: players[leaderIndex]?.id ?? 'p1',
+    leaderPlayerId: players[leaderIndex]?.id ?? humanUserId ?? '',
     isFirstRound: isOpeningRound,
     availableBranchesForTile,
     playTile,

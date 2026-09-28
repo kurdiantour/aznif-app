@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createAiPracticeSeats } from '../engine/ai-practice-engine.ts';
 import { applyMove, createEmptyBoard } from '../../../core/engine/kozel-engine.ts';
 import {
   reduceAiPracticeBlocked,
@@ -8,10 +9,21 @@ import {
   reduceAiPracticePass,
 } from '../authoritative/ai-practice-command-reducer.ts';
 
-const seats = [
-  { id: 'human', teamId: 'teamA', kind: 'human' },
-  { id: 'bot', teamId: 'teamB', kind: 'bot' },
-];
+const humanUserId = '12345678-1234-4234-8234-123456789abc';
+const seats = createAiPracticeSeats(humanUserId);
+
+test('AI Practice uses the account UUID while keeping hand ownership at index zero', () => {
+  assert.equal(seats[0].id, humanUserId);
+  assert.equal(seats[0].kind, 'human');
+  assert.equal(seats[0].seat, 'bottom');
+  const state = base();
+  const passed = reduceAiPracticePass(state, 0, true);
+  assert.equal(passed.accepted, true);
+  assert.equal(passed.lastPassedPlayerId, humanUserId);
+  assert.equal(passed.state.currentIndex, 1);
+  assert.equal(passed.state.hands, state.hands);
+});
+
 const base = () => ({
   seats,
   currentIndex: 0,
@@ -77,7 +89,7 @@ test('AI Practice blocked round commits final match outcome with the round winne
 
   const result = reduceAiPracticeBlocked(state, 0);
   assert.equal(result.accepted, true);
-  assert.equal(result.state.roundWinnerPlayerId, 'bot');
+  assert.equal(result.state.roundWinnerPlayerId, seats[1].id);
   assert.equal(result.state.winningTeamId, 'teamB');
   assert.ok(result.state.teamScores.teamB >= 350);
 });

@@ -68,6 +68,22 @@ function getTeamName(
 }
 
 export default function GameScreen() {
+  const { practice, preview } = useLocalSearchParams();
+  const { session, authLoading } = useProfile();
+  const isPractice = practice === "true" && !(__DEV__ && preview === "true");
+
+  if (isPractice && authLoading) {
+    return <View style={styles.centerScreen} />;
+  }
+  if (isPractice && !session?.user.id) {
+    return <Redirect href="/login" />;
+  }
+
+  const practiceUserId = isPractice ? session!.user.id : null;
+  return <DominoGameScreen key={practiceUserId ?? "non-practice"} practiceUserId={practiceUserId} />;
+}
+
+function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null }) {
   useGameSystemGestureProtection();
   const { room_id, mode, practice, preview } = useLocalSearchParams();
   const router = useRouter();
@@ -82,7 +98,7 @@ export default function GameScreen() {
   const isTwoVsTwoPreview = __DEV__ && preview === "true";
   const isLocalGame = isPracticeMode || isTwoVsTwoPreview;
 
-  const practiceGame = useAiPracticeGame();
+  const practiceGame = useAiPracticeGame(practiceUserId);
   const previewGame = useLocalTwoVsTwoPreviewGame(isTwoVsTwoPreview);
 
   const oneVsOneGame = useOneVsOneGame(
@@ -1206,7 +1222,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     alignSelf: "stretch",
-    marginBottom: -32,
+    marginTop: -10,
+    marginBottom: -42,
   },
 
   bottomHudRow: {

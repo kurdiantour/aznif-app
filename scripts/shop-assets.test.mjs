@@ -46,7 +46,7 @@ test('multiplayer winner is driven by database price_gem and per-player sets are
 test('local registries contain current Okey and Domino asset keys without commercial prices', () => {
   const okey = read('constants/catalog/okey-sets.ts');
   const domino = read('constants/catalog/domino-sets.ts');
-  for (const id of ['table-classic','table-midnight','table-royal','table-emerald-ivory','table-zagros']) assert.match(okey, new RegExp(`"${id}"`));
+  for (const id of ['table-classic','table-midnight','table-royal','table-emerald-ivory','table-zagros','table-goizha']) assert.match(okey, new RegExp(`"${id}"`));
   for (const id of ['domino-classic','domino-emerald-ivory']) assert.match(domino, new RegExp(`"${id}"`));
   assert.doesNotMatch(okey, /price_(?:gem|gold)|price\s*:/i);
   assert.doesNotMatch(domino, /price_(?:gem|gold)|price\s*:/i);

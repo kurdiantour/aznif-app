@@ -385,6 +385,68 @@ const ZAGROS_TILES: OkeyTileImages = {
   back: require("@/assets/cosmetics/okey/zagros/tiles/back.webp"),
 };
 
+const GOIZHA_TILES: OkeyTileImages = {
+  red_1: require("@/assets/cosmetics/okey/goizha/tiles/red-1.webp"),
+  red_2: require("@/assets/cosmetics/okey/goizha/tiles/red-2.webp"),
+  red_3: require("@/assets/cosmetics/okey/goizha/tiles/red-3.webp"),
+  red_4: require("@/assets/cosmetics/okey/goizha/tiles/red-4.webp"),
+  red_5: require("@/assets/cosmetics/okey/goizha/tiles/red-5.webp"),
+  red_6: require("@/assets/cosmetics/okey/goizha/tiles/red-6.webp"),
+  red_7: require("@/assets/cosmetics/okey/goizha/tiles/red-7.webp"),
+  red_8: require("@/assets/cosmetics/okey/goizha/tiles/red-8.webp"),
+  red_9: require("@/assets/cosmetics/okey/goizha/tiles/red-9.webp"),
+  red_10: require("@/assets/cosmetics/okey/goizha/tiles/red-10.webp"),
+  red_11: require("@/assets/cosmetics/okey/goizha/tiles/red-11.webp"),
+  red_12: require("@/assets/cosmetics/okey/goizha/tiles/red-12.webp"),
+  red_13: require("@/assets/cosmetics/okey/goizha/tiles/red-13.webp"),
+
+  blue_1: require("@/assets/cosmetics/okey/goizha/tiles/blue-1.webp"),
+  blue_2: require("@/assets/cosmetics/okey/goizha/tiles/blue-2.webp"),
+  blue_3: require("@/assets/cosmetics/okey/goizha/tiles/blue-3.webp"),
+  blue_4: require("@/assets/cosmetics/okey/goizha/tiles/blue-4.webp"),
+  blue_5: require("@/assets/cosmetics/okey/goizha/tiles/blue-5.webp"),
+  blue_6: require("@/assets/cosmetics/okey/goizha/tiles/blue-6.webp"),
+  blue_7: require("@/assets/cosmetics/okey/goizha/tiles/blue-7.webp"),
+  blue_8: require("@/assets/cosmetics/okey/goizha/tiles/blue-8.webp"),
+  blue_9: require("@/assets/cosmetics/okey/goizha/tiles/blue-9.webp"),
+  blue_10: require("@/assets/cosmetics/okey/goizha/tiles/blue-10.webp"),
+  blue_11: require("@/assets/cosmetics/okey/goizha/tiles/blue-11.webp"),
+  blue_12: require("@/assets/cosmetics/okey/goizha/tiles/blue-12.webp"),
+  blue_13: require("@/assets/cosmetics/okey/goizha/tiles/blue-13.webp"),
+
+  black_1: require("@/assets/cosmetics/okey/goizha/tiles/black-1.webp"),
+  black_2: require("@/assets/cosmetics/okey/goizha/tiles/black-2.webp"),
+  black_3: require("@/assets/cosmetics/okey/goizha/tiles/black-3.webp"),
+  black_4: require("@/assets/cosmetics/okey/goizha/tiles/black-4.webp"),
+  black_5: require("@/assets/cosmetics/okey/goizha/tiles/black-5.webp"),
+  black_6: require("@/assets/cosmetics/okey/goizha/tiles/black-6.webp"),
+  black_7: require("@/assets/cosmetics/okey/goizha/tiles/black-7.webp"),
+  black_8: require("@/assets/cosmetics/okey/goizha/tiles/black-8.webp"),
+  black_9: require("@/assets/cosmetics/okey/goizha/tiles/black-9.webp"),
+  black_10: require("@/assets/cosmetics/okey/goizha/tiles/black-10.webp"),
+  black_11: require("@/assets/cosmetics/okey/goizha/tiles/black-11.webp"),
+  black_12: require("@/assets/cosmetics/okey/goizha/tiles/black-12.webp"),
+  black_13: require("@/assets/cosmetics/okey/goizha/tiles/black-13.webp"),
+
+  yellow_1: require("@/assets/cosmetics/okey/goizha/tiles/yellow-1.webp"),
+  yellow_2: require("@/assets/cosmetics/okey/goizha/tiles/yellow-2.webp"),
+  yellow_3: require("@/assets/cosmetics/okey/goizha/tiles/yellow-3.webp"),
+  yellow_4: require("@/assets/cosmetics/okey/goizha/tiles/yellow-4.webp"),
+  yellow_5: require("@/assets/cosmetics/okey/goizha/tiles/yellow-5.webp"),
+  yellow_6: require("@/assets/cosmetics/okey/goizha/tiles/yellow-6.webp"),
+  yellow_7: require("@/assets/cosmetics/okey/goizha/tiles/yellow-7.webp"),
+  yellow_8: require("@/assets/cosmetics/okey/goizha/tiles/yellow-8.webp"),
+  yellow_9: require("@/assets/cosmetics/okey/goizha/tiles/yellow-9.webp"),
+  yellow_10: require("@/assets/cosmetics/okey/goizha/tiles/yellow-10.webp"),
+  yellow_11: require("@/assets/cosmetics/okey/goizha/tiles/yellow-11.webp"),
+  yellow_12: require("@/assets/cosmetics/okey/goizha/tiles/yellow-12.webp"),
+  yellow_13: require("@/assets/cosmetics/okey/goizha/tiles/yellow-13.webp"),
+
+  fake_joker_1: require("@/assets/cosmetics/okey/goizha/tiles/fake-joker-1.webp"),
+  fake_joker_2: require("@/assets/cosmetics/okey/goizha/tiles/fake-joker-2.webp"),
+  back: require("@/assets/cosmetics/okey/goizha/tiles/back.webp"),
+};
+
 export const OKEY_ASSET_REGISTRY = {
   "table-classic": {
     assets: {
@@ -444,6 +506,18 @@ export const OKEY_ASSET_REGISTRY = {
     images: {
       game: require("@/assets/cosmetics/okey/zagros/table.webp"),
       shopPreview: require("@/assets/cosmetics/okey/zagros/shop-preview.webp"),
+    },
+  },
+  "table-goizha": {
+    assets: {
+      table: require("@/assets/cosmetics/okey/goizha/table.webp"),
+      playerRack: require("@/assets/cosmetics/okey/goizha/player-rack.webp"),
+      opponentRack: require("@/assets/cosmetics/okey/goizha/opponent-rack.webp"),
+      tiles: GOIZHA_TILES,
+    },
+    images: {
+      game: require("@/assets/cosmetics/okey/goizha/table.webp"),
+      shopPreview: require("@/assets/cosmetics/okey/goizha/shop-preview.webp"),
     },
   },
  } as const satisfies Record<string, TableCatalogItem>;
