@@ -42,6 +42,10 @@ test('fresh install: entire migration chain and signup under Auth role', async (
     assert.equal((await db.query('SELECT count(*)::int AS n FROM public.user_shop_items WHERE user_id=\'11111111-1111-4111-8111-111111111111\'')).rows[0].n, 2);
     assert.equal((await db.query('SELECT count(*)::int AS n FROM public.user_equipped_shop_items WHERE user_id=\'11111111-1111-4111-8111-111111111111\'')).rows[0].n, 2);
     assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname='trigger_handle_new_user_wallets'")).rows[0].n, 0);
+    assert.equal((await db.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.multiplayer_match_stat_results'::regclass")).rows[0].relrowsecurity, true);
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN ('record_one_vs_one_match_stats','record_two_vs_two_match_stats')")).rows[0].n, 0);
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN ('capture_one_vs_one_final_match_stats','capture_two_vs_two_final_match_stats') AND tgdeferrable AND tginitdeferred")).rows[0].n, 2);
+    assert.equal((await db.query("SELECT has_function_privilege('authenticated','multiplayer_private.record_player_results(text,uuid,bigint,text,jsonb)','EXECUTE') AS allowed")).rows[0].allowed,false);
     console.log(`Executed ${files.length} application migrations without rewriting or skipping SQL.`);
   } finally { await db.close(); }
 });

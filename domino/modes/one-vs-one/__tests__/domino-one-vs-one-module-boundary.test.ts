@@ -50,7 +50,7 @@ test("1v1 screen and preload contain no direct persistence endpoint", () => {
   const preload = readFileSync("lib/game/gameLaunchPreload.ts", "utf8");
   assert.doesNotMatch(preload, /one_vs_one_(rooms|players|moves)/);
   assert.doesNotMatch(preload, /(start|get)_one_vs_one/);
-  assert.match(preload, /SupabaseDominoOneVsOneAdapter\(roomId\)\.prepareLaunch\(\)/);
+  assert.match(preload, /SupabaseDominoOneVsOneAdapter\(\s*roomId\s*,?\s*\)\.prepareLaunch\(\)/);
 });
 test("timeout takeover is strike-driven and has no heartbeat or worker watchdog", () => {
   const hook = readFileSync("domino/modes/one-vs-one/presentation/use-one-vs-one-game.ts", "utf8");
@@ -111,7 +111,7 @@ test("1v1 presentation preserves the authoritative Qapat end reason", () => {
   );
   assert.match(
     presentation,
-    /buildRoundResult\(\{[\s\S]*?endReason: rawState\?\.roundEndReason \?\? undefined/,
+    /buildRoundResult\(\{[\s\S]*?endReason:\s*rawState\?\.roundEndReason\s*\?\?\s*undefined/,
   );
 });
 
