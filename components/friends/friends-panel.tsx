@@ -1,3 +1,4 @@
+import { getAuthState, hasReadySession, subscribeAuthState } from "@/lib/auth-state";
 import {
   getFriends,
   searchFriendCandidates,
@@ -14,7 +15,7 @@ import { usePresence } from "@/lib/presence";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "expo-router/react-navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -450,23 +451,37 @@ export function FriendsPanel({
     });
   }
 
+  const inviteOperation = useRef<object | null>(null);
+  const inviteMounted = useRef(false);
+  useEffect(() => {
+    inviteMounted.current = true;
+    let generation = getAuthState().generation;
+    const unsubscribe = subscribeAuthState(() => {
+      if (generation === getAuthState().generation) return;
+      generation = getAuthState().generation;
+      inviteOperation.current = null;
+      setInviteBusyId(null);
+    });
+    return () => { inviteMounted.current = false; unsubscribe(); };
+  }, []);
   async function handleInvite(friend: Friend) {
+    if (!hasReadySession() || inviteOperation.current) return;
+    const generation = getAuthState().generation;
+    const token = {};
+    inviteOperation.current = token;
+    const current = () => inviteMounted.current && getAuthState().generation === generation;
     setInviteBusyId(friend.id);
-
     try {
       await sendGameInvite(friend.id);
-
-      onToast?.(`بانگهێشت بۆ ${friend.name} نێردرا.`);
+      if (current()) onToast?.(`بانگهێشت بۆ ${friend.name} نێردرا.`);
     } catch (err) {
+      if (!current()) return;
       const toastMessage = getGameInviteToast(err);
-
-      if (toastMessage) {
-        onToast?.(toastMessage);
-      }
-
-      void refreshPresence([friend.id]);
+      if (toastMessage) onToast?.(toastMessage);
+      if (hasReadySession()) void refreshPresence([friend.id]);
     } finally {
-      setInviteBusyId(null);
+      if (inviteOperation.current === token) inviteOperation.current = null;
+      if (current()) setInviteBusyId(null);
     }
   }
 

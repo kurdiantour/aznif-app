@@ -1,72 +1,39 @@
+import { hasReadySession } from "@/lib/auth-state";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
-
-import {
-  claimDailyGift,
-  getDailyGiftStatus,
-  type DailyGiftStatus,
-} from "@/lib/dailyGift";
+import { getDailyGiftStatus, claimDailyGift } from "@/lib/dailyGift";
 import { notifyWalletRefresh } from "@/lib/walletEvents";
+import { useUserResource } from "./useUserResource";
 
 export function useDailyGift() {
-  const [status, setStatus] = useState<DailyGiftStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [claiming, setClaiming] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const claimInFlight = useRef(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const next = await getDailyGiftStatus();
-      setStatus(next);
-      setError(null);
-      return next;
-    } catch (reason) {
-      setError(reason instanceof Error ? reason : new Error(String(reason)));
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const { data: status, error: loadError, loading, refresh, accept, current, generation } = useUserResource(getDailyGiftStatus);
+  const [mutation, setMutation] = useState<{ generation: number; id: string | null; error: Error | null } | null>(null);
+  const inFlight = useRef<number | null>(null);
   const claim = useCallback(async () => {
-    if (claimInFlight.current || !status?.canClaim) return null;
-
-    claimInFlight.current = true;
-    setClaiming(true);
+    if (!current() || !hasReadySession() || inFlight.current === generation || !status?.canClaim) return null;
+    inFlight.current = generation;
+    setMutation({ generation, id: "gift", error: null });
     try {
       const result = await claimDailyGift();
-      setStatus(result);
-      setError(null);
+      if (!current()) return null;
+      accept(result);
       notifyWalletRefresh();
       return result;
-    } catch (reason) {
-      setError(reason instanceof Error ? reason : new Error(String(reason)));
+    } catch (cause) {
+      if (current()) setMutation({ generation, id: null, error: cause instanceof Error ? cause : new Error(String((cause as { message?: string })?.message ?? cause)) });
       return null;
     } finally {
-      claimInFlight.current = false;
-      setClaiming(false);
+      if (inFlight.current === generation) inFlight.current = null;
+      if (current()) setMutation((previous) => previous?.generation === generation ? { ...previous, id: null } : previous);
     }
-  }, [status?.canClaim]);
-
-  useEffect(() => {
-    void refresh();
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") void refresh();
-    });
-    return () => subscription.remove();
-  }, [refresh]);
-
+  }, [current, generation, status, accept]);
   useEffect(() => {
     if (!status?.nextResetAt) return;
-    const delay = new Date(status.nextResetAt).getTime() - Date.now() + 1_000;
-    if (!Number.isFinite(delay) || delay <= 0) {
-      void refresh();
-      return;
-    }
-    const timeout = setTimeout(() => void refresh(), Math.min(delay, 2_147_483_647));
-    return () => clearTimeout(timeout);
-  }, [refresh, status?.nextResetAt]);
-
-  return { status, loading, claiming, error, refresh, claim };
+    const delay = new Date(status.nextResetAt).getTime() - Date.now() + 1000;
+    if (!Number.isFinite(delay)) return;
+    const timer = setTimeout(() => { void refresh(); }, Math.min(Math.max(delay, 1000), 2147483647));
+    return () => clearTimeout(timer);
+  }, [status?.nextResetAt, refresh]);
+  const ownMutation = mutation?.generation === generation ? mutation : null;
+  const error = ownMutation?.error ?? loadError;
+  return { status, loading, claiming: !!ownMutation?.id, error, refresh, claim };
 }

@@ -1,68 +1,39 @@
+import { hasReadySession } from "@/lib/auth-state";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
-
-import { claimDailyQuestReward, getDailyQuests, type DailyQuestsStatus } from "@/lib/dailyQuests";
+import { getDailyQuests, claimDailyQuestReward } from "@/lib/dailyQuests";
 import { notifyWalletRefresh } from "@/lib/walletEvents";
+import { useUserResource } from "./useUserResource";
 
 export function useDailyQuests() {
-  const [status, setStatus] = useState<DailyQuestsStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [claimingId, setClaimingId] = useState<string | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const claimInFlight = useRef(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const next = await getDailyQuests();
-      setStatus(next);
-      setError(null);
-      return next;
-    } catch (reason) {
-      setError(reason instanceof Error ? reason : new Error(String(reason)));
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const { data: status, error: loadError, loading, refresh, accept, current, generation } = useUserResource(getDailyQuests);
+  const [mutation, setMutation] = useState<{ generation: number; id: string | null; error: Error | null } | null>(null);
+  const inFlight = useRef<number | null>(null);
   const claim = useCallback(async (instanceId: string) => {
-    if (claimInFlight.current) return null;
-    const quest = status?.quests.find((item) => item.instanceId === instanceId);
-    if (!quest?.canClaim) return null;
-    claimInFlight.current = true;
-    setClaimingId(instanceId);
+    if (!current() || !hasReadySession() || inFlight.current === generation || !status?.quests.some((quest) => quest.instanceId === instanceId && quest.canClaim)) return null;
+    inFlight.current = generation;
+    setMutation({ generation, id: instanceId, error: null });
     try {
       const result = await claimDailyQuestReward(instanceId);
-      setStatus(result.dailyQuests);
-      setError(null);
+      if (!current()) return null;
+      accept(result.dailyQuests);
       notifyWalletRefresh();
       return result;
-    } catch (reason) {
-      setError(reason instanceof Error ? reason : new Error(String(reason)));
+    } catch (cause) {
+      if (current()) setMutation({ generation, id: null, error: cause instanceof Error ? cause : new Error(String((cause as { message?: string })?.message ?? cause)) });
       return null;
     } finally {
-      claimInFlight.current = false;
-      setClaimingId(null);
+      if (inFlight.current === generation) inFlight.current = null;
+      if (current()) setMutation((previous) => previous?.generation === generation ? { ...previous, id: null } : previous);
     }
-  }, [status?.quests]);
-
-  useEffect(() => {
-    void refresh();
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void refresh();
-    });
-    return () => subscription.remove();
-  }, [refresh]);
-
+  }, [current, generation, status, accept]);
   useEffect(() => {
     if (!status?.nextResetAt) return;
-    const delay = new Date(status.nextResetAt).getTime() - Date.now() + 1_000;
-    if (!Number.isFinite(delay) || delay <= 0) { void refresh(); return; }
-    const timeout = setTimeout(() => void refresh(), Math.min(delay, 2_147_483_647));
-    return () => clearTimeout(timeout);
-  }, [refresh, status?.nextResetAt]);
-
-  const claimableCount = status?.quests.filter((quest) => quest.canClaim).length ?? 0;
-  return { status, loading, claimingId, error, claimableCount, refresh, claim };
+    const delay = new Date(status.nextResetAt).getTime() - Date.now() + 1000;
+    if (!Number.isFinite(delay)) return;
+    const timer = setTimeout(() => { void refresh(); }, Math.min(Math.max(delay, 1000), 2147483647));
+    return () => clearTimeout(timer);
+  }, [status?.nextResetAt, refresh]);
+  const ownMutation = mutation?.generation === generation ? mutation : null;
+  const error = ownMutation?.error ?? loadError;
+  return { status, loading, claimingId: ownMutation?.id ?? null, error, refresh, claim, claimableCount: status?.quests.filter((quest) => quest.canClaim).length ?? 0 };
 }
-

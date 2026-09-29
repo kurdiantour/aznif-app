@@ -1,0 +1,61 @@
+import { act, renderHook } from "@testing-library/react-native";
+import type { Session } from "@supabase/supabase-js";
+import { getAuthState, publishAuthState } from "@/lib/auth-state";
+import { useDailyGift } from "@/hooks/useDailyGift";
+import { useDailyQuests } from "@/hooks/useDailyQuests";
+const mockGift = jest.fn();
+const mockQuests = jest.fn();
+const mockGiftClaim = jest.fn();
+const mockQuestClaim = jest.fn();
+const mockWallet = jest.fn();
+jest.mock("@/lib/dailyGift", () => ({ getDailyGiftStatus: () => mockGift(), claimDailyGift: () => mockGiftClaim() }));
+jest.mock("@/lib/dailyQuests", () => ({ getDailyQuests: () => mockQuests(), claimDailyQuestReward: () => mockQuestClaim() }));
+jest.mock("@/lib/walletEvents", () => ({ notifyWalletRefresh: () => mockWallet() }));
+const signIn = (id: string) => publishAuthState({ access_token: id, user: { id } } as Session, true, true);
+const settle = async () => { await act(async () => { await Promise.resolve(); }); };
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockGift.mockResolvedValue({ canClaim: true });
+  mockQuests.mockResolvedValue({ quests: [{ instanceId: "quest", canClaim: true }] });
+  signIn("alice");
+});
+afterEach(() => publishAuthState(null, false, false));
+test.each(["gift", "quests"])("late %s claim cannot update the next account or its wallet", async (kind) => {
+  let resolve!: (value: unknown) => void;
+  const claim = kind === "gift" ? mockGiftClaim : mockQuestClaim;
+  claim.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const ui = renderHook(() => ({ gift: useDailyGift(), quests: useDailyQuests() }));
+  await settle();
+  let pending!: Promise<unknown>;
+  act(() => { pending = kind === "gift" ? ui.result.current.gift.claim() : ui.result.current.quests.claim("quest"); });
+  act(() => signIn("bob"));
+  await settle();
+  await act(async () => { resolve({ canClaim: false, dailyQuests: { quests: [] } }); await pending; });
+  expect(ui.result.current.gift.status?.canClaim).toBe(true);
+  expect(ui.result.current.quests.claimableCount).toBe(1);
+  expect(mockWallet).not.toHaveBeenCalled();
+  expect(ui.result.current.gift.claiming).toBe(false);
+  expect(ui.result.current.quests.claimingId).toBeNull();
+  ui.unmount();
+});
+
+
+test("a claim completing in background clears busy state for the same session on resume", async () => {
+  let resolve!: (value: unknown) => void;
+  mockGiftClaim.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  const ui = renderHook(() => useDailyGift());
+  await settle();
+  let pending!: Promise<unknown>;
+  act(() => { pending = ui.result.current.claim(); });
+  const original = getAuthState().session;
+  const generation = getAuthState().generation;
+  act(() => publishAuthState(original, false, false));
+  await act(async () => { resolve({ canClaim: false }); await pending; });
+  mockGift.mockResolvedValue({ canClaim: false });
+  act(() => publishAuthState(original, true, true));
+  await settle();
+  expect(getAuthState().generation).toBe(generation);
+  expect(ui.result.current.claiming).toBe(false);
+  expect(ui.result.current.status?.canClaim).toBe(false);
+  ui.unmount();
+});

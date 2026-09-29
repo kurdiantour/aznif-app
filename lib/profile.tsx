@@ -1,4 +1,6 @@
 import type { Profile, ProfileUpdate } from "@/types/profile";
+import { AppState, Platform } from "react-native";
+import { getAuthState, publishAuthState, useAuthState, hasReadySession } from "./auth-state";
 import type { Session } from "@supabase/supabase-js";
 import {
   createContext,
@@ -6,14 +8,15 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { calculateLevelFromPoints } from "./progression";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import {
-  getCurrentUser,
   getOrCreateProfile,
   updateMyProfile,
+  type ProfileRequestScope,
 } from "./supabaseAuth";
 
 type DbProfile = {
@@ -163,14 +166,27 @@ export async function getHumanPlayerProfiles(
   );
 }
 
-export async function getCurrentProfile(): Promise<Profile | null> {
-  const user = await getCurrentUser();
+function captureProfileScope(): ProfileRequestScope {
+  const auth = getAuthState();
+  if (!hasReadySession(auth) || !auth.session) throw new Error("User is not authenticated");
+  return {
+    user: auth.session.user,
+    assertCurrent: () => {
+      const current = getAuthState();
+      if (current.generation !== auth.generation || current.userId !== auth.userId) {
+        throw new Error("Session changed during profile request.");
+      }
+    },
+  };
+}
 
-  if (!user) {
-    return null;
-  }
-
-  const dbProfile = await getOrCreateProfile();
+export async function getCurrentProfile(scope?: ProfileRequestScope): Promise<Profile | null> {
+  if (!scope && !hasReadySession()) return null;
+  const request = scope ?? captureProfileScope();
+  request.assertCurrent();
+  const user = request.user;
+  const dbProfile = await getOrCreateProfile(request);
+  request.assertCurrent();
 
   if (!dbProfile) {
     return null;
@@ -182,6 +198,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .eq("user_id", user.id)
     .maybeSingle();
 
+  request.assertCurrent();
   if (walletError) throw walletError;
 
   return mapDbProfile(
@@ -272,12 +289,11 @@ export async function getProfileById(id: string): Promise<Profile> {
 
 export async function updateCurrentProfile(
   changes: ProfileUpdate,
+  scope?: ProfileRequestScope,
 ): Promise<Profile> {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    throw new Error("User is not authenticated");
-  }
+  const request = scope ?? captureProfileScope();
+  request.assertCurrent();
+  const user = request.user;
 
   const payload: {
     username?: string;
@@ -306,7 +322,7 @@ export async function updateCurrentProfile(
     payload.avatar_id === undefined &&
     payload.avatar_url === undefined
   ) {
-    const current = await getCurrentProfile();
+    const current = await getCurrentProfile(request);
 
     if (!current) {
       throw new Error("Unable to refresh profile.");
@@ -315,7 +331,8 @@ export async function updateCurrentProfile(
     return current;
   }
 
-  const dbProfile = await updateMyProfile(payload);
+  const dbProfile = await updateMyProfile(payload, request);
+  request.assertCurrent();
 
   const { data: wallet, error: walletError } = await supabase
     .from("wallets")
@@ -323,6 +340,7 @@ export async function updateCurrentProfile(
     .eq("user_id", user.id)
     .maybeSingle();
 
+  request.assertCurrent();
   if (walletError) throw walletError;
 
   return mapDbProfile(
@@ -346,121 +364,134 @@ type ProfileContextValue = {
 const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(false);
+  const auth = useAuthState();
+  const [stored, setStored] = useState<{ generation: number; profile: Profile | null } | null>(null);
+  const [pending, setPending] = useState<number | null>(null);
+  const mounted = useRef(false);
+  const sequence = useRef(0);
+  const inFlight = useRef<{ generation: number; promise: Promise<Profile | null> } | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [authError, setAuthError] = useState<Error | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
-
-    if (!isSupabaseConfigured) {
-      setSession(null);
+    let mounted = true;
+    let revision = 0;
+    let active = AppState.currentState === "active";
+    publishAuthState(null, false, active);
+    if (!isSupabaseConfigured) return;
+    const accept = (next: Session | null) => {
+      publishAuthState(next, true, active);
+      setSession(next);
+      setAuthError(null);
       setAuthLoading(false);
-      return;
-    }
-
-    async function restoreSession() {
+    };
+    async function restore() {
+      const request = ++revision;
+      publishAuthState(getAuthState().session, false, active);
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
-
-        if (isMounted) {
-          setSession(data.session);
-          setAuthError(null);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setAuthError(
-            error instanceof Error
-              ? error
-              : new Error("Unable to restore auth session."),
-          );
-        }
-      } finally {
-        if (isMounted) {
+        if (mounted && request === revision) accept(data.session);
+      } catch (cause) {
+        if (mounted && request === revision) {
+          publishAuthState(null, false, active);
+          setAuthError(cause instanceof Error ? cause : new Error("Unable to restore auth session."));
           setAuthLoading(false);
         }
       }
     }
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) {
-        return;
-      }
-
-      setSession(nextSession);
-      setAuthError(null);
-      setAuthLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!mounted) return;
+      revision++;
+      accept(next);
     });
-
-    void restoreSession();
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (!session?.user) {
-      setProfile(null);
-      setLoading(false);
-      return;
-    }
-
-    async function loadProfile() {
-      try {
-        setLoading(true);
-
-        const nextProfile = await withTimeout(
-          getCurrentProfile(),
-          PROFILE_LOAD_TIMEOUT_MS,
-        );
-
-        if (isMounted) {
-          setProfile(nextProfile);
-        }
-      } catch (error) {
-        console.warn("[ProfileProvider] Failed to load profile:", error);
-
-        if (isMounted) {
-          setProfile(null);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+    const autoRefresh = () => {
+      if (Platform.OS !== "web") {
+        if (active) void supabase.auth.startAutoRefresh();
+        else void supabase.auth.stopAutoRefresh();
       }
-    }
-
-    void loadProfile();
-
-    return () => {
-      isMounted = false;
     };
-  }, [session?.user.id]);
-
-  const refreshProfile = useCallback(async () => {
-    const nextProfile = await getCurrentProfile();
-
-    setProfile(nextProfile);
-
-    return nextProfile;
+    void restore();
+    autoRefresh();
+    const app = AppState.addEventListener("change", (next) => {
+      if (active === (next === "active")) return;
+      active = next === "active";
+      publishAuthState(getAuthState().session, false, active);
+      autoRefresh();
+      if (active) void restore();
+    });
+    return () => {
+      mounted = false;
+      revision++;
+      publishAuthState(null, false, false);
+      app.remove();
+      subscription.unsubscribe();
+      if (Platform.OS !== "web") void supabase.auth.stopAutoRefresh();
+    };
   }, []);
+
+  const isCurrent = useCallback((generation: number, request: number) =>
+    mounted.current && getAuthState().generation === generation && sequence.current === request, []);
+
+  const refreshProfile = useCallback((): Promise<Profile | null> => {
+    if (!mounted.current || !hasReadySession() || getAuthState().generation !== auth.generation) return Promise.resolve(null);
+    if (inFlight.current?.generation === auth.generation) return inFlight.current.promise;
+    const scope = captureProfileScope();
+    const request = ++sequence.current;
+    setPending(auth.generation);
+    const promise = Promise.resolve().then(async () => {
+      try {
+        scope.assertCurrent();
+        const next = await withTimeout(getCurrentProfile(scope), PROFILE_LOAD_TIMEOUT_MS);
+        if (!isCurrent(auth.generation, request)) return null;
+        setStored({ generation: auth.generation, profile: next });
+        return next;
+      } catch (error) {
+        if (isCurrent(auth.generation, request)) {
+          console.warn("[ProfileProvider] Failed to load profile:", error);
+          setStored(previous => previous?.generation === auth.generation ? previous : { generation: auth.generation, profile: null });
+        }
+        return null;
+      } finally {
+        if (isCurrent(auth.generation, request)) setPending(null);
+        if (inFlight.current?.promise === promise) inFlight.current = null;
+      }
+    });
+    inFlight.current = { generation: auth.generation, promise };
+    return promise;
+  }, [auth.generation, isCurrent]);
+
+  const ready = hasReadySession(auth);
+  useEffect(() => {
+    mounted.current = true;
+    if (ready) void Promise.resolve().then(refreshProfile);
+    return () => {
+      mounted.current = false;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      sequence.current++;
+      inFlight.current = null;
+    };
+  }, [ready, refreshProfile]);
 
   const updateProfile = useCallback(async (changes: ProfileUpdate) => {
-    const nextProfile = await updateCurrentProfile(changes);
+    if (!mounted.current || getAuthState().generation !== auth.generation) throw new Error("Session changed during profile request.");
+    const scope = captureProfileScope();
+    // A write supersedes reads already in flight.
+    const request = ++sequence.current;
+    inFlight.current = null;
+    try {
+      const next = await updateCurrentProfile(changes, scope);
+      if (!isCurrent(auth.generation, request)) throw new Error("Profile request was superseded.");
+      setStored({ generation: auth.generation, profile: next });
+      return next;
+    } finally {
+      if (isCurrent(auth.generation, request)) setPending(null);
+    }
+  }, [auth.generation, isCurrent]);
 
-    setProfile(nextProfile);
-
-    return nextProfile;
-  }, []);
+  const profile = stored?.generation === auth.generation && stored.profile?.id === auth.userId ? stored.profile : null;
+  const loading = !!auth.userId && (pending === auth.generation || stored?.generation !== auth.generation);
 
   return (
     <ProfileContext.Provider

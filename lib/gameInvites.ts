@@ -1,3 +1,4 @@
+import { getAuthState, requireReadySession } from "./auth-state";
 import type { AvatarId } from "@/types/avatar.ts";
 
 import { supabase } from "./supabase";
@@ -17,8 +18,10 @@ export type GameInvite = {
 };
 
 export async function getPendingGameInvites(): Promise<GameInvite[]> {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc("get_pending_game_invites");
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Party request.");
   if (error) throw error;
 
   return (data ?? []).map((row: any) => ({
@@ -46,10 +49,12 @@ export async function getPendingGameInvites(): Promise<GameInvite[]> {
 }
 
 export async function sendGameInvite(recipientId: string) {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc("send_game_invite", {
     p_recipient_id: recipientId,
   });
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Party request.");
   if (error) throw new Error(error.message);
 
   return data;
@@ -59,11 +64,13 @@ export async function respondGameInvite(
   inviteId: string,
   accept: boolean,
 ) {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc("respond_game_invite", {
     p_invite_id: inviteId,
     p_accept: accept,
   });
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Party request.");
   if (error) throw error;
 
   return data as {
@@ -74,10 +81,12 @@ export async function respondGameInvite(
 }
 
 export async function cancelGameInvite(inviteId: string) {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc("cancel_game_invite", {
     p_invite_id: inviteId,
   });
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Party request.");
   if (error) throw error;
 
   return data;

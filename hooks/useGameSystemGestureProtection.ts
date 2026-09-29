@@ -10,18 +10,33 @@ type GameSystemGestures = {
 
 /** Protect the bottom edge for the focused game, independently of tile gestures. */
 export function useGameSystemGestureProtection() {
-  useFocusEffect(useCallback(() => {
-    if (Platform.OS !== "ios") return;
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "ios") return;
 
-    // A native rebuild is required; an old binary must not silently claim protection.
-    const native = requireNativeModule<GameSystemGestures>("AznifGameSystemGestures");
-    const token = randomUUID();
-    const reportError = (error: unknown) => {
-      console.error("Failed to update iOS game system gesture protection", error);
-    };
-    void native.setProtected(token, true).catch(reportError);
-    return () => {
-      void native.setProtected(token, false).catch(reportError);
-    };
-  }, []));
+      let native: GameSystemGestures;
+
+      try {
+        native =
+          requireNativeModule<GameSystemGestures>("AznifGameSystemGestures");
+      } catch {
+        return;
+      }
+
+      const token = randomUUID();
+
+      const reportError = (error: unknown) => {
+        console.error(
+          "Failed to update iOS game system gesture protection",
+          error,
+        );
+      };
+
+      void native.setProtected(token, true).catch(reportError);
+
+      return () => {
+        void native.setProtected(token, false).catch(reportError);
+      };
+    }, []),
+  );
 }

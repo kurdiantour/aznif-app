@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,11 +10,6 @@ import { getAvailableGemPackages } from "@/lib/commerce-data";
 
 export default function BuyGoldScreen() {
   const packages = getAvailableGemPackages();
-
-  const handlePurchase = (productId: string) => {
-    // Placeholder for future IAP logic
-    console.log("Initiating purchase for product:", productId);
-  };
 
   return (
     <View style={styles.screen}>
@@ -112,16 +106,10 @@ export default function BuyGoldScreen() {
                   </Text>
                 </View>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.finalGems} gems $${item.finalPriceUsd}`}
-                  onPress={() => {
-                    handlePurchase(item.id);
-                  }}
-                  style={({ pressed }) => [
+                <View
+                  style={[
                     styles.buyButton,
                     isPopular && styles.buyButtonPopular,
-                    pressed && styles.buyButtonPressed,
                   ]}
                 >
                   <LinearGradient
@@ -154,7 +142,7 @@ export default function BuyGoldScreen() {
                       </Text>
                     )}
                   </LinearGradient>
-                </Pressable>
+                </View>
               </LinearGradient>
             </View>
           );
@@ -333,10 +321,6 @@ const styles = StyleSheet.create({
 
   buyButtonPopular: {
     borderColor: "rgba(216,180,254,0.30)",
-  },
-
-  buyButtonPressed: {
-    opacity: 0.72,
   },
 
   buyButtonGradient: {

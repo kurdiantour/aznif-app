@@ -1,6 +1,10 @@
 import { Redirect, Slot, usePathname } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import {
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import {
   SendChipPopup,
@@ -15,7 +19,6 @@ import { GlobalLeaderboardConsent } from "@/components/leaderboard/GlobalLeaderb
 import { BottomNav } from "@/components/lobby/BottomNav";
 import { LobbyHeader } from "@/components/lobby/LobbyHeader";
 import {
-  InsufficientGemsPopup,
   PurchaseConfirmationPopup,
   ShopPopupContext,
 } from "@/components/shop/InsufficientGemsPopup";
@@ -30,26 +33,34 @@ import { useProfile } from "@/lib/profile";
 export default function TabsLayout() {
   const { profile, loading: profileLoading } = useProfile();
   const pathname = usePathname();
-  const [sendChipFriend, setSendChipFriend] = useState<Friend | null>(null);
-  const [sendChipSuccessHandler, setSendChipSuccessHandler] = useState<
-    (() => void) | undefined
-  >(undefined);
-  const [showInsufficientGemsPopup, setShowInsufficientGemsPopup] =
-    useState(false);
-  const [purchaseConfirmation, setPurchaseConfirmation] = useState<{
-    price: number;
-    onConfirm: () => void | Promise<void>;
-  } | null>(null);
+
+  const [sendChipFriend, setSendChipFriend] =
+    useState<Friend | null>(null);
+
+  const [
+    sendChipSuccessHandler,
+    setSendChipSuccessHandler,
+  ] = useState<(() => void) | undefined>(undefined);
+
+  const [purchaseConfirmation, setPurchaseConfirmation] =
+    useState<{
+      price: number;
+      onConfirm: () => void | Promise<void>;
+    } | null>(null);
+
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
 
-  const [avatarPreviewData, setAvatarPreviewData] = useState<AvatarPreviewData | null>(null);
+  const [avatarPreviewData, setAvatarPreviewData] =
+    useState<AvatarPreviewData | null>(null);
 
   if (profileLoading) {
     return <View style={styles.container} />;
   }
 
-  const isGuestAllowedRoute = pathname.includes("/play") || pathname.includes("/lobby");
+  const isGuestAllowedRoute =
+    pathname.includes("/play") ||
+    pathname.includes("/lobby");
 
   if (!profile && !isGuestAllowedRoute) {
     return <Redirect href="/login" />;
@@ -58,25 +69,30 @@ export default function TabsLayout() {
   return (
     <ShopPopupContext.Provider
       value={{
-        showInsufficientGems: () => {
-          if (ENABLE_SHOP_FEATURES) setShowInsufficientGemsPopup(true);
-        },
         showPurchaseConfirmation: (confirmation) => {
-          if (ENABLE_SHOP_FEATURES) setPurchaseConfirmation(confirmation);
+          if (ENABLE_SHOP_FEATURES) {
+            setPurchaseConfirmation(confirmation);
+          }
         },
       }}
     >
       <SendChipPopupContext.Provider
         value={{
-          showSendChipPopup: (friend, onTransferSuccess) => {
+          showSendChipPopup: (
+            friend,
+            onTransferSuccess,
+          ) => {
             setSendChipFriend(friend);
-            setSendChipSuccessHandler(() => onTransferSuccess);
+            setSendChipSuccessHandler(
+              () => onTransferSuccess,
+            );
           },
         }}
       >
         <AvatarPreviewContext.Provider
           value={{
-            showPreview: (avatar) => setAvatarPreviewData(avatar),
+            showPreview: (avatar) =>
+              setAvatarPreviewData(avatar),
           }}
         >
           <View style={styles.container}>
@@ -100,26 +116,30 @@ export default function TabsLayout() {
             <GlobalLeaderboardConsent />
 
             {ENABLE_SHOP_FEATURES ? (
-              <>
-                <InsufficientGemsPopup
-                  visible={showInsufficientGemsPopup}
-                  onClose={() => setShowInsufficientGemsPopup(false)}
-                />
-                <PurchaseConfirmationPopup
-                  confirmation={purchaseConfirmation}
-                  onClose={() => setPurchaseConfirmation(null)}
-                />
-              </>
+              <PurchaseConfirmationPopup
+                confirmation={purchaseConfirmation}
+                onClose={() =>
+                  setPurchaseConfirmation(null)
+                }
+              />
             ) : null}
+
             <SendChipPopup
               friend={sendChipFriend}
               visible={!!sendChipFriend}
-              onClose={() => setSendChipFriend(null)}
-              onTransferSuccess={sendChipSuccessHandler}
+              onClose={() =>
+                setSendChipFriend(null)
+              }
+              onTransferSuccess={
+                sendChipSuccessHandler
+              }
             />
+
             <AvatarPreviewPopup
               avatar={avatarPreviewData}
-              onClose={() => setAvatarPreviewData(null)}
+              onClose={() =>
+                setAvatarPreviewData(null)
+              }
             />
           </View>
         </AvatarPreviewContext.Provider>
@@ -140,4 +160,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

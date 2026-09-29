@@ -44,16 +44,15 @@ export function SendChipPopup({
   const [error, setError] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
+  useEffect(() => {
+    if (visible) return;
 
-useEffect(() => {
-  if (visible) return;
-
-  Keyboard.dismiss();
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  setAmount("");
-  setError(null);
-  setSubmitting(false);
-}, [visible]);
+    Keyboard.dismiss();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAmount("");
+    setError(null);
+    setSubmitting(false);
+  }, [visible]);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
@@ -79,9 +78,7 @@ useEffect(() => {
   );
 
   const isSendDisabled =
-    submitting ||
-    !parsedAmount ||
-    parsedAmount <= 0;
+    submitting || !parsedAmount || parsedAmount <= 0;
 
   const handleBackdropPress = () => {
     if (keyboardVisible) {
@@ -97,7 +94,6 @@ useEffect(() => {
 
     Keyboard.dismiss();
     setError(null);
-
     setSubmitting(true);
 
     try {
@@ -128,23 +124,28 @@ useEffect(() => {
       />
 
       <Pressable
-        style={styles.cardShell}
+        style={styles.card}
         onPress={() => {}}
       >
         <LinearGradient
-          colors={["#22114a", "#0b1027"]}
-          style={styles.popup}
+          colors={[
+            "rgba(2,6,23,0.92)",
+            "rgba(9,18,40,0.86)",
+          ]}
+          style={styles.gradient}
         >
-          <Text style={styles.title}>
-            گواستنەوەی ئەزنیف بۆ
-          </Text>
+          <View style={styles.headerPanel}>
+            <Text style={styles.title}>
+              گواستنەوەی ئەزنیف بۆ
+            </Text>
 
-          <Text
-            style={styles.playerId}
-            numberOfLines={1}
-          >
-            ( {friend.name} )
-          </Text>
+            <Text
+              style={styles.playerId}
+              numberOfLines={1}
+            >
+              ( {friend.name} )
+            </Text>
+          </View>
 
           <TextInput
             value={amount}
@@ -153,7 +154,7 @@ useEffect(() => {
               setError(null);
             }}
             placeholder="0"
-            placeholderTextColor="rgba(255,255,255,0.22)"
+            placeholderTextColor="rgba(255,255,255,0.28)"
             keyboardType="number-pad"
             returnKeyType="done"
             blurOnSubmit
@@ -167,28 +168,29 @@ useEffect(() => {
             </Text>
           ) : null}
 
-          <View style={styles.footer}>
-            <Pressable
-              style={[
-                styles.sendButton,
-                isSendDisabled &&
-                  styles.sendButtonDisabled,
-              ]}
-              onPress={handleSend}
-              disabled={isSendDisabled}
-            >
-              {submitting ? (
-                <ActivityIndicator
-                  color="#ffffff"
-                  size="small"
-                />
-              ) : (
-                <Text style={styles.sendText}>
-                  بینێرە
-                </Text>
-              )}
-            </Pressable>
-          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.sendButton,
+              isSendDisabled &&
+                styles.sendButtonDisabled,
+              pressed &&
+                !isSendDisabled &&
+                styles.buttonPressed,
+            ]}
+            onPress={handleSend}
+            disabled={isSendDisabled}
+          >
+            {submitting ? (
+              <ActivityIndicator
+                color="#ffffff"
+                size="small"
+              />
+            ) : (
+              <Text style={styles.sendText}>
+                بینێرە
+              </Text>
+            )}
+          </Pressable>
         </LinearGradient>
       </Pressable>
     </View>
@@ -198,123 +200,115 @@ useEffect(() => {
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFill,
-
-    zIndex: 9999,
-    elevation: 9999,
-
+    zIndex: 5000,
+    elevation: 5000,
     alignItems: "center",
     justifyContent: "center",
-
-    backgroundColor: "rgba(2, 4, 15, 0.78)",
+    backgroundColor: "rgba(2, 6, 23, 0.82)",
+    paddingHorizontal: 16,
   },
 
-  cardShell: {
-    width: 360,
-    maxWidth: "88%",
-  },
-
-  popup: {
+  card: {
     width: "100%",
-
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 18,
-
-    alignItems: "center",
-
-    borderRadius: 16,
-
+    maxWidth: 390,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(4,10,25,0.86)",
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
     shadowOffset: {
       width: 0,
       height: 8,
     },
+    elevation: 20,
+  },
 
-    elevation: 16,
+  gradient: {
+    width: "100%",
+    padding: 12,
+  },
+
+  headerPanel: {
+    minHeight: 92,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.22)",
+    backgroundColor: "rgba(15,23,42,0.66)",
   },
 
   title: {
+    width: "100%",
     color: "#ffffff",
-
-    fontSize: 16,
+    fontSize: 19,
+    lineHeight: 28,
     fontFamily: "SpedaBold",
-
     textAlign: "center",
     writingDirection: "rtl",
   },
 
   playerId: {
-    marginTop: 7,
-    marginBottom: 16,
-
-    color: "#ffffff",
-
-    fontSize: 15,
-    lineHeight: 20,
-
+    width: "100%",
+    marginTop: 6,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 14,
+    lineHeight: 22,
     textAlign: "center",
   },
 
   input: {
     width: "100%",
-    height: 36,
-
-    borderRadius: 8,
+    height: 46,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
-
-    backgroundColor: "rgba(0,0,0,0.22)",
+    backgroundColor: "rgba(0,0,0,0.18)",
     color: "#ffffff",
-
     paddingHorizontal: 14,
     paddingVertical: 0,
-
     fontSize: 16,
-
     textAlign: "center",
   },
 
   errorText: {
-    marginTop: 12,
-
+    marginTop: 10,
     color: "#ff8a8a",
-
     fontSize: 12,
     fontFamily: "SpedaBold",
-
     textAlign: "center",
     writingDirection: "rtl",
   },
 
-  footer: {
-    width: "100%",
-    marginTop: 18,
-  },
-
   sendButton: {
     width: "100%",
-    height: 40,
-
-    borderRadius: 10,
-    backgroundColor: "#7c3aed",
-
+    minHeight: 48,
+    marginTop: 12,
+    borderRadius: 6,
+    backgroundColor: "#2563eb",
     alignItems: "center",
     justifyContent: "center",
   },
 
   sendButtonDisabled: {
-    opacity: 0.35,
+    backgroundColor: "rgba(37,99,235,0.32)",
+    opacity: 0.55,
+  },
+
+  buttonPressed: {
+    opacity: 0.86,
   },
 
   sendText: {
     color: "#ffffff",
-
     fontSize: 13,
     fontFamily: "SpedaBold",
-
     textAlign: "center",
     writingDirection: "rtl",
   },

@@ -1,3 +1,4 @@
+import { getAuthState, requireReadySession, subscribeAuthState } from "./auth-state";
 import { supabase } from "./supabase";
 import { createShopState, projectShopState } from "./shop-state";
 import type { ShopCategory, ShopSnapshot, ShopState } from "./shop-types";
@@ -25,7 +26,7 @@ let cacheUserId: string | null = null;
 let cacheGeneration = 0;
 let observingAuth = false;
 
-function useCacheAccount(userId: string | null) {
+function setCacheAccount(userId: string | null) {
   if (cacheUserId === userId) return;
   cacheUserId = userId;
   cachedShopState = null;
@@ -49,13 +50,18 @@ export function subscribeShopChanges(listener: () => void) {
 export async function getMyShopState(): Promise<ShopState> {
   if (!observingAuth) {
     observingAuth = true;
-    supabase.auth.onAuthStateChange((_event, session) => {
-      useCacheAccount(session?.user.id ?? null);
+    let authGeneration = getAuthState().generation;
+    subscribeAuthState(() => {
+      if (getAuthState().generation === authGeneration) return;
+      authGeneration = getAuthState().generation;
+      cacheGeneration++;
+      cachedShopState = null;
+      setCacheAccount(getAuthState().userId);
     });
   }
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user.id ?? null;
-  useCacheAccount(userId);
+  const auth = requireReadySession();
+  const userId = auth.userId;
+  setCacheAccount(userId);
   const generation = cacheGeneration;
   const requestedAt = performance.now();
 
@@ -79,6 +85,7 @@ export async function getMyShopState(): Promise<ShopState> {
     cachedShopState = state;
   }
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Shop request.");
   return state;
 }
 
@@ -86,6 +93,7 @@ export async function purchaseOrEquipShopItem(
   itemId: string,
   expectedPrice: number | null = null,
 ): Promise<PurchaseOrEquipResult> {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc(
     "purchase_or_equip_shop_item",
     {
@@ -96,6 +104,7 @@ export async function purchaseOrEquipShopItem(
 
   if (error) throw error;
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Shop request.");
   const result = Array.isArray(data) ? data[0] : data;
 
   if (!result) {
@@ -108,7 +117,8 @@ export async function purchaseOrEquipShopItem(
     // Do not invent equipment/ownership from an item id. Re-read the DB result.
     try { await getMyShopState(); } catch { /* The normal Shop refresh can retry. */ }
   }
-  listeners.forEach((listener) => listener());
+  if (getAuthState().generation === auth.generation) listeners.forEach((listener) => listener());
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Shop request.");
   return result as PurchaseOrEquipResult;
 }

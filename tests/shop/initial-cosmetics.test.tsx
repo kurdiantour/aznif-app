@@ -1,3 +1,5 @@
+import { publishAuthState } from "@/lib/auth-state";
+import type { Session } from "@supabase/supabase-js";
 import React from "react";
 import { act, renderHook } from "@testing-library/react-native";
 import { getCachedShopState, getMyShopState, purchaseOrEquipShopItem } from "@/lib/shop";
@@ -36,6 +38,7 @@ const snapshot = (key = "table-zagros") => ({
 });
 function changeUser(user: string) {
   mockUser = user;
+  publishAuthState({ access_token: user, user: { id: user } } as Session, true, true);
   [...mockAuthListeners].forEach(cb => cb("SIGNED_IN", { user: { id: user } }));
 }
 beforeEach(() => {
@@ -85,7 +88,7 @@ test("account switch and a late response cannot expose another user's cached equ
   changeUser("bob");
   expect(getCachedShopState()).toBeNull();
   finish({ data: snapshot(), error: null });
-  await pending;
+  await expect(pending).rejects.toThrow("Session changed");
   expect(getCachedShopState()).toBeNull();
 });
 

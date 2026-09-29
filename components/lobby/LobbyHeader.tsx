@@ -16,7 +16,14 @@ import { useAppLayout } from "@/hooks/useAppLayout";
 let friendRequestHeaderChannelSequence = 0;
 
 export function LobbyHeader() {
-  const { isCompact, isCompactWidth, isCompactHeight, isLandscape, insets } = useAppLayout();
+  const {
+    isCompact,
+    isCompactWidth,
+    isCompactHeight,
+    isLandscape,
+    insets,
+  } = useAppLayout();
+
   const { profile, loading } = useProfile();
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
@@ -24,34 +31,36 @@ export function LobbyHeader() {
     coinBalance: rawCoinBalance,
     gemBalance: rawGemBalance,
   } = useWallet();
+
   const coinBalance = rawCoinBalance?.toLocaleString() ?? "...";
   const gemBalance = rawGemBalance?.toLocaleString() ?? "...";
+
   const [friendRequestCount, setFriendRequestCount] = useState(0);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
 
-const refreshFriendRequestCount = useCallback(async () => {
-  if (loading || !profile?.id) {
-    return;
-  }
+  const refreshFriendRequestCount = useCallback(async () => {
+    if (loading || !profile?.id) {
+      return;
+    }
 
-  try {
-    const requests = await getFriendRequests();
-    setFriendRequestCount(requests.length);
-  } catch (error) {
-    console.log("[LobbyHeader] Failed to load friend requests:", error);
-    setFriendRequestCount(0);
-  }
-}, [loading, profile?.id]);
+    try {
+      const requests = await getFriendRequests();
+      setFriendRequestCount(requests.length);
+    } catch (error) {
+      console.log("[LobbyHeader] Failed to load friend requests:", error);
+      setFriendRequestCount(0);
+    }
+  }, [loading, profile?.id]);
 
-useEffect(() => {
-  const timeoutId = setTimeout(() => {
-    void refreshFriendRequestCount();
-  }, 0);
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void refreshFriendRequestCount();
+    }, 0);
 
-  return () => {
-    clearTimeout(timeoutId);
-  };
-}, [refreshFriendRequestCount]);
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [refreshFriendRequestCount]);
 
   useEffect(() => {
     let mounted = true;
@@ -85,6 +94,7 @@ useEffect(() => {
 
     return () => {
       mounted = false;
+
       if (channel) {
         void supabase.removeChannel(channel);
       }
@@ -94,15 +104,23 @@ useEffect(() => {
   return (
     <>
       <View>
-        <View style={[
-          styles.topBar,
-          { 
-            paddingTop: Math.max(0, insets.top - 14),
-            paddingHorizontal: isCompactWidth ? 16 : (isLandscape ? 20 : 30),
-            rowGap: isCompact ? 4 : 8,
-          },
-          (isLandscape || isCompactHeight) && { flexWrap: "nowrap" }
-        ]}>
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: Math.max(0, insets.top - 14),
+              paddingHorizontal: isCompactWidth
+                ? 16
+                : isLandscape
+                  ? 20
+                  : 30,
+              rowGap: isCompact ? 4 : 8,
+            },
+            (isLandscape || isCompactHeight) && {
+              flexWrap: "nowrap",
+            },
+          ]}
+        >
           <Pressable
             style={[styles.userBox, isCompact && { width: 140 }]}
             onPress={() => router.push(profile ? "/profile" : "/login")}
@@ -127,43 +145,81 @@ useEffect(() => {
 
           <View style={styles.topRight}>
             {profile ? (
-            <View style={[styles.balanceGroup, isCompactWidth && { gap: 4 }, (isLandscape || isCompactHeight) && { flexWrap: "nowrap" }]}>
-              <LinearGradient
-                colors={["rgba(245,197,66,0.24)", "rgba(255,255,255,0.06)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.balancePillCoin, isCompact && styles.balancePillCompact]}
+              <View
+                style={[
+                  styles.balanceGroup,
+                  isCompactWidth && { gap: 4 },
+                  (isLandscape || isCompactHeight) && {
+                    flexWrap: "nowrap",
+                  },
+                ]}
               >
-                <View style={styles.balanceIconCircleCoin}>
-                  <Text style={styles.currencyEmoji}>{"\u{1FA99}"}</Text>
-                </View>
-                <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
-  {coinBalance} <Text style={styles.balanceTextKurdish}>سکە</Text>
-</Text>
-              </LinearGradient>
-
-
-              <Pressable onPress={() => router.push("/(tabs)/buy-gold")}>
                 <LinearGradient
-                  colors={["rgba(168,85,247,0.24)", "rgba(255,255,255,0.06)"]}
+                  colors={[
+                    "rgba(245,197,66,0.24)",
+                    "rgba(255,255,255,0.06)",
+                  ]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={[styles.balancePillSecondary, isCompact && styles.balancePillCompact]}
+                  style={[
+                    styles.balancePillCoin,
+                    isCompact && styles.balancePillCompact,
+                  ]}
                 >
-                  <View style={styles.balanceIconCircleGold}>
-                    <Text style={styles.currencyEmoji}>{"\u{1F48E}"}</Text>
+                  <View style={styles.balanceIconCircleCoin}>
+                    <Text style={styles.currencyEmoji}>
+                      {"\u{1FA99}"}
+                    </Text>
                   </View>
 
-                  <Text style={[styles.balanceText, isCompact && { flexShrink: 1 }]} adjustsFontSizeToFit numberOfLines={1}>
-                    {gemBalance}{" "}
-                    <Text style={styles.balanceTextKurdish}>گەوهەر</Text>
+                  <Text
+                    style={[
+                      styles.balanceText,
+                      isCompact && { flexShrink: 1 },
+                    ]}
+                    adjustsFontSizeToFit
+                    numberOfLines={1}
+                  >
+                    {coinBalance}{" "}
+                    <Text style={styles.balanceTextKurdish}>
+                      سکە
+                    </Text>
                   </Text>
-                  <View style={styles.plusButton}>
-                    <Ionicons name="add" size={15} color="#ffffff" />
-                  </View>
                 </LinearGradient>
-              </Pressable>
-            </View>
+
+                <LinearGradient
+                  colors={[
+                    "rgba(168,85,247,0.24)",
+                    "rgba(255,255,255,0.06)",
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                    styles.balancePillSecondary,
+                    isCompact && styles.balancePillCompact,
+                  ]}
+                >
+                  <View style={styles.balanceIconCircleGold}>
+                    <Text style={styles.currencyEmoji}>
+                      {"\u{1F48E}"}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.balanceText,
+                      isCompact && { flexShrink: 1 },
+                    ]}
+                    adjustsFontSizeToFit
+                    numberOfLines={1}
+                  >
+                    {gemBalance}{" "}
+                    <Text style={styles.balanceTextKurdish}>
+                      گەوهەر
+                    </Text>
+                  </Text>
+                </LinearGradient>
+              </View>
             ) : loading ? (
               <View style={styles.authPlaceholder} />
             ) : (
@@ -171,7 +227,9 @@ useEffect(() => {
                 style={styles.signInButton}
                 onPress={() => router.push("/login")}
               >
-                <Text style={styles.signInText}>چوونەژوورەوە</Text>
+                <Text style={styles.signInText}>
+                  چوونەژوورەوە
+                </Text>
               </Pressable>
             )}
 
@@ -180,15 +238,17 @@ useEffect(() => {
               onPress={() => router.push("/invite-friends")}
             >
               <Ionicons name="people" size={19} color="#ffffff" />
+
               {!loading && profile?.id && friendRequestCount > 0 ? (
                 <View style={styles.friendRequestBadge}>
                   <Text style={styles.friendRequestBadgeText}>
-                    {friendRequestCount > 9 ? "9+" : friendRequestCount}
+                    {friendRequestCount > 9
+                      ? "9+"
+                      : friendRequestCount}
                   </Text>
                 </View>
               ) : null}
             </Pressable>
-
 
             <Pressable
               style={styles.topIcon}
@@ -196,14 +256,22 @@ useEffect(() => {
               accessibilityLabel="Feedback"
               onPress={() => setFeedbackVisible(true)}
             >
-              <Ionicons name="create" size={19} color="#FFD45C" />
+              <Ionicons
+                name="create"
+                size={19}
+                color="#FFD45C"
+              />
             </Pressable>
 
             <Pressable
               style={styles.topIcon}
               onPress={() => router.push("/settings")}
             >
-              <Ionicons name="settings-outline" size={19} color="#ffffff" />
+              <Ionicons
+                name="settings-outline"
+                size={19}
+                color="#ffffff"
+              />
             </Pressable>
           </View>
         </View>
@@ -220,6 +288,7 @@ useEffect(() => {
           style={styles.headerGradientLine}
         />
       </View>
+
       <FeedbackPopup
         visible={feedbackVisible}
         onClose={() => setFeedbackVisible(false)}
@@ -387,19 +456,7 @@ const styles = StyleSheet.create({
   },
 
   balanceTextKurdish: {
-  fontFamily: "SpedaBold",
-},
-
-  plusButton: {
-    width: 23,
-    height: 23,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+    fontFamily: "SpedaBold",
   },
 
   topIcon: {
@@ -441,7 +498,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(248, 215, 116, 0.34)",
+    borderColor: "rgba(248, 215, 116,0.34)",
     backgroundColor: "rgba(248, 215, 116, 0.1)",
     alignItems: "center",
     justifyContent: "center",

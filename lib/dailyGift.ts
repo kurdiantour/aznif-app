@@ -1,3 +1,4 @@
+import { requireReadySession } from "./auth-state";
 import { supabase } from "./supabase";
 
 export type DailyGiftCardStatus = "done" | "current" | "lock";
@@ -39,12 +40,14 @@ function parseStatus(value: unknown): DailyGiftStatus {
 }
 
 export async function getDailyGiftStatus(): Promise<DailyGiftStatus> {
+  requireReadySession();
   const { data, error } = await supabase.rpc("get_daily_gift_status");
   if (error) throw error;
   return parseStatus(data);
 }
 
 export async function claimDailyGift(): Promise<DailyGiftClaimResult> {
+  requireReadySession();
   const { data, error } = await supabase.rpc("claim_daily_gift");
   if (error) throw error;
   const status = parseStatus(data);
@@ -73,6 +76,7 @@ export type OpenChestResult = {
 };
 
 export async function openSpecialChest(): Promise<OpenChestResult> {
+  requireReadySession();
   const { data, error } = await supabase.rpc("open_special_chest");
   if (error) throw error;
   return data as OpenChestResult;

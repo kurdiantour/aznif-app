@@ -1,3 +1,4 @@
+import { requireReadySession } from "./auth-state";
 import { supabase } from "./supabase";
 
 export type DailyQuestRewardType = "coin" | "gem" | "mc";
@@ -63,12 +64,14 @@ function parseStatus(value: unknown): DailyQuestsStatus {
 }
 
 export async function getDailyQuests(): Promise<DailyQuestsStatus> {
+  requireReadySession();
   const { data, error } = await supabase.rpc("get_daily_quests");
   if (error) throw error;
   return parseStatus(data);
 }
 
 export async function claimDailyQuestReward(instanceId: string): Promise<DailyQuestClaimResult> {
+  requireReadySession();
   const { data, error } = await supabase.rpc("claim_daily_quest_reward", {
     p_quest_instance_id: instanceId,
   });

@@ -67,7 +67,6 @@ export function FeedbackPopup({ visible, onClose }: Props) {
     }
 
     closing.current = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     setIsSubmitting(false);
     setMessage("");

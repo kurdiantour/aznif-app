@@ -1,3 +1,4 @@
+import { AppState } from "react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import {
   afterEach,
@@ -36,6 +37,8 @@ jest.mock("@/lib/supabase", () => ({
   isSupabaseConfigured: true,
   supabase: {
     auth: {
+      startAutoRefresh: jest.fn(),
+      stopAutoRefresh: jest.fn(),
       getSession: () => mockGetSession(),
       onAuthStateChange: (listener: AuthStateListener) => {
         mockAuthStateListener = listener;
@@ -96,6 +99,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 describe("ProfileProvider auth lifecycle", () => {
   beforeEach(() => {
+    Object.defineProperty(AppState, "currentState", { configurable: true, value: "active" });
     jest.spyOn(console, "warn").mockImplementation(() => undefined);
 
     mockAuthStateListener = null;
@@ -209,7 +213,7 @@ describe("ProfileProvider auth lifecycle", () => {
       expect(result.current.authLoading).toBe(false);
     });
 
-    act(() => {
+    await act(async () => {
       mockAuthStateListener?.("TOKEN_REFRESHED", refreshedSession);
     });
 
@@ -235,7 +239,7 @@ describe("ProfileProvider auth lifecycle", () => {
       expect(result.current.authLoading).toBe(false);
     });
 
-    act(() => {
+    await act(async () => {
       mockAuthStateListener?.("SIGNED_OUT", null);
     });
 

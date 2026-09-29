@@ -322,8 +322,11 @@ export async function getCurrentUser(): Promise<User | null> {
   return data.session?.user ?? null;
 }
 
-export async function getOrCreateProfile(): Promise<Profile | null> {
-  const user = await getCurrentUser();
+export type ProfileRequestScope = { user: User; assertCurrent: () => void };
+
+export async function getOrCreateProfile(scope?: ProfileRequestScope): Promise<Profile | null> {
+  const user = scope ? scope.user : await getCurrentUser();
+  scope?.assertCurrent();
   if (!user) return null;
 
   const existing = await supabase
@@ -332,6 +335,7 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
     .eq("id", user.id)
     .maybeSingle<Profile>();
 
+  scope?.assertCurrent();
   if (existing.error) {
     throw existing.error;
   }
@@ -343,6 +347,7 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
   const oauthProfile = oauthProfileFromUser(user);
 
   for (let attempt = 0; attempt < PROFILE_CREATE_RETRIES; attempt += 1) {
+    scope?.assertCurrent();
     const { data, error } = await supabase
       .from("profiles")
       .insert({
@@ -356,6 +361,7 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
       .select(PROFILE_SELECT)
       .single<Profile>();
 
+    scope?.assertCurrent();
     if (!error) {
       return data;
     }
@@ -369,12 +375,14 @@ export async function getOrCreateProfile(): Promise<Profile | null> {
     }
   }
 
+  scope?.assertCurrent();
   const { data, error } = await supabase
     .from("profiles")
     .select(PROFILE_SELECT)
     .eq("id", user.id)
     .maybeSingle<Profile>();
 
+  scope?.assertCurrent();
   if (error) {
     throw error;
   }
@@ -386,8 +394,9 @@ export async function updateMyProfile(input: {
   username?: string;
   avatar_id?: string;
   avatar_url?: string | null;
-}): Promise<Profile> {
-  const user = await getCurrentUser();
+}, scope?: ProfileRequestScope): Promise<Profile> {
+  const user = scope ? scope.user : await getCurrentUser();
+  scope?.assertCurrent();
 
   if (!user) {
     throw new Error("User is not authenticated");
@@ -408,6 +417,7 @@ export async function updateMyProfile(input: {
     payload.avatar_url = input.avatar_url;
   }
 
+  scope?.assertCurrent();
   const { data, error } = await supabase
     .from("profiles")
     .update(payload)
@@ -415,6 +425,7 @@ export async function updateMyProfile(input: {
     .select(PROFILE_SELECT)
     .single<Profile>();
 
+  scope?.assertCurrent();
   if (error) throw error;
 
   return data;

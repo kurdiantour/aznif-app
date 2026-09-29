@@ -1,21 +1,19 @@
 import { act, renderHook } from "@testing-library/react-native";
-import { AppState } from "react-native";
+import { getAuthState, publishAuthState } from "@/lib/auth-state";
+import type { Session } from "@supabase/supabase-js";
 import { useShopState } from "@/hooks/useShopState";
 import { createShopState } from "@/lib/shop-state";
 import type { ShopSnapshot } from "@/lib/shop-types";
 
 const mockGet = jest.fn();
 let mockChanged: () => void;
-let mockAuth: (event: string, session: { user: { id: string } } | null) => void;
 const mockUnsubscribe = jest.fn();
 jest.mock("@/lib/shop", () => ({
   getCachedShopState: () => null,
   getMyShopState: () => mockGet(),
   subscribeShopChanges: (callback: () => void) => { mockChanged = callback; return mockUnsubscribe; },
 }));
-jest.mock("@/lib/supabase", () => ({ supabase: { auth: {
-  onAuthStateChange: (callback: typeof mockAuth) => { mockAuth = callback; return { data: { subscription: { unsubscribe: jest.fn() } } }; },
-} } }));
+
 
 const data: ShopSnapshot = {
   server_now: "2026-09-20T00:00:00Z", next_change_at: "2026-09-20T00:00:01Z", equipped: { tables: "promo" },
@@ -28,7 +26,7 @@ const data: ShopSnapshot = {
       available_from: null, available_until: null, free_from: "2026-09-19T00:00:00Z", free_until: "2026-09-20T00:00:01Z" },
   ],
 };
-beforeEach(() => { jest.useFakeTimers(); mockGet.mockReset(); mockUnsubscribe.mockClear(); });
+beforeEach(() => { jest.useFakeTimers(); publishAuthState({ access_token: "alice", user: { id: "alice" } } as Session, true, true); mockGet.mockReset(); mockUnsubscribe.mockClear(); });
 afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
 const settle = async () => { await act(async () => { await Promise.resolve(); }); };
 
@@ -50,22 +48,20 @@ test("auth switch discards prior user's equipment and rejects an old in-flight r
   const fresh = { ...data, equipped: { tables: "default" } };
   mockGet.mockResolvedValue(createShopState(fresh, performance.now()));
   const { result } = renderHook(() => useShopState());
-  await act(async () => { mockAuth("SIGNED_IN", { user: { id: "new-user" } }); });
+  await settle();
+  await act(async () => { publishAuthState({ access_token: "bob", user: { id: "bob" } } as Session, true, true); });
   await act(async () => { resolveOld(createShopState(data, performance.now())); });
   expect(result.current.state?.equippedByCategory.tables).toBe("default");
 });
 
 test("purchase notification and foreground both refresh shared state", async () => {
-  let onChange: (status: string) => void = () => {};
-  jest.spyOn(AppState, "addEventListener").mockImplementation((_event, callback) => {
-    onChange = callback as typeof onChange; return { remove: jest.fn() };
-  });
   mockGet.mockResolvedValue(createShopState(data, performance.now()));
   renderHook(() => useShopState());
   await settle();
   const initial = mockGet.mock.calls.length;
   await act(async () => { mockChanged(); });
-  await act(async () => { onChange("active"); });
+  act(() => publishAuthState(getAuthState().session, false, false));
+  await act(async () => { publishAuthState(getAuthState().session, true, true); });
   expect(mockGet.mock.calls.length).toBe(initial + 2);
 });
 
@@ -73,4 +69,35 @@ test("disabled personal hook performs no reads or subscriptions for multiplayer"
   renderHook(() => useShopState(false));
   await settle();
   expect(mockGet).not.toHaveBeenCalled();
+});
+
+
+test("shop has no periodic polling when no promotion boundary is pending", async () => {
+  const interval = jest.spyOn(global, "setInterval");
+  const permanent = { ...data, next_change_at: null, equipped: { tables: "default" }, items: [data.items[0]] };
+  mockGet.mockResolvedValue(createShopState(permanent, performance.now()));
+  const ui = renderHook(() => useShopState());
+  await settle();
+  expect(mockGet).toHaveBeenCalledTimes(1);
+  expect(interval).not.toHaveBeenCalled();
+  await act(async () => { jest.advanceTimersByTime(180000); });
+  expect(mockGet).toHaveBeenCalledTimes(1);
+  ui.unmount();
+});
+
+
+test("resume expires a promotion from the retained snapshot even if the refresh fails", async () => {
+  mockGet.mockResolvedValueOnce(createShopState(data, performance.now())).mockRejectedValue(new Error("offline"));
+  const ui = renderHook(() => useShopState());
+  await settle();
+  const original = getAuthState().session;
+  const generation = getAuthState().generation;
+  act(() => publishAuthState(original, false, false));
+  await act(async () => { jest.advanceTimersByTime(5000); });
+  act(() => publishAuthState(original, true, true));
+  await settle();
+  expect(getAuthState().generation).toBe(generation);
+  expect(ui.result.current.state?.equippedByCategory.tables).toBe("default");
+  expect(ui.result.current.error).toBe("offline");
+  ui.unmount();
 });

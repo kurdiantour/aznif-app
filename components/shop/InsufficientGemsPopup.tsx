@@ -1,6 +1,13 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { createContext } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+import { useWallet } from "@/lib/wallet-context";
 
 type PurchaseConfirmation = {
   price: number;
@@ -8,50 +15,15 @@ type PurchaseConfirmation = {
 };
 
 export type ShopPopupController = {
-  showInsufficientGems: () => void;
-  showPurchaseConfirmation: (confirmation: PurchaseConfirmation) => void;
+  showPurchaseConfirmation: (
+    confirmation: PurchaseConfirmation,
+  ) => void;
 };
 
-export const ShopPopupContext = createContext<ShopPopupController>({
-  showInsufficientGems: () => {},
-  showPurchaseConfirmation: () => {},
-});
-
-type InsufficientGemsPopupProps = {
-  visible: boolean;
-  onClose: () => void;
-};
-
-export function InsufficientGemsPopup({
-  visible,
-  onClose,
-}: InsufficientGemsPopupProps) {
-  if (!visible) return null;
-
-  return (
-    <View style={styles.backdrop}>
-      <LinearGradient
-        colors={["#24134b", "#090d21"]}
-        style={styles.popup}
-      >
-        <Text style={styles.title}>گەوهەری زیاتر پێویستە</Text>
-
-        <View style={styles.singleButtonRow}>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.singleButton,
-              styles.primaryButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.buttonText}>تێگەیشتم</Text>
-          </Pressable>
-        </View>
-      </LinearGradient>
-    </View>
-  );
-}
+export const ShopPopupContext =
+  createContext<ShopPopupController>({
+    showPurchaseConfirmation: () => {},
+  });
 
 type PurchaseConfirmationPopupProps = {
   confirmation: PurchaseConfirmation | null;
@@ -62,141 +34,209 @@ export function PurchaseConfirmationPopup({
   confirmation,
   onClose,
 }: PurchaseConfirmationPopupProps) {
+  const { gemBalance } = useWallet();
+
   if (!confirmation) return null;
 
+  const balanceIsKnown = gemBalance !== null;
+
+  const hasEnoughGems =
+    balanceIsKnown &&
+    gemBalance >= confirmation.price;
+
+  const hasInsufficientGems =
+    balanceIsKnown &&
+    gemBalance < confirmation.price;
+
   const handleConfirm = () => {
+    if (!hasEnoughGems) return;
+
     onClose();
     void confirmation.onConfirm();
   };
 
   return (
-    <View style={styles.backdrop}>
+    <View style={confirmationStyles.overlay}>
       <LinearGradient
-        colors={["#24134b", "#090d21"]}
-        style={styles.popup}
-      >
-        <Text style={styles.title}>دڵنیایت لەم کڕینە؟</Text>
+        colors={[
+          "rgba(2, 6, 23, 0.92)",
+          "rgba(9, 18, 40, 0.86)",
+        ]}
+        style={StyleSheet.absoluteFill}
+      />
 
-        <Text style={styles.message}>
-          {confirmation.price.toLocaleString()} گەوهەر لە هەژمارەکەت کەم
-          دەبێتەوە
-        </Text>
+      <View style={confirmationStyles.fixedContent}>
+        <View style={confirmationStyles.card}>
+          <View style={confirmationStyles.headerPanel}>
+            <Text style={confirmationStyles.title}>
+              {hasInsufficientGems
+                ? "گەوهەری پێویستت نییە"
+                : "دڵنیایت لەم کڕینە؟"}
+            </Text>
 
-        <View style={styles.buttonRow}>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.actionButton,
-              styles.secondaryButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.buttonText}>داخستن</Text>
-          </Pressable>
+            <Text style={confirmationStyles.subtitle}>
+              {hasInsufficientGems
+                ? `بۆ بەدەستهێنانی ئەم سێتە ${confirmation.price.toLocaleString()} گەوهەر پێویستە`
+                : `${confirmation.price.toLocaleString()} گەوهەر لە هەژمارەکەت کەم دەبێتەوە`}
+            </Text>
+          </View>
 
-          <Pressable
-            onPress={handleConfirm}
-            style={({ pressed }) => [
-              styles.actionButton,
-              styles.primaryButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.buttonText}>کڕین</Text>
-          </Pressable>
+          <View style={confirmationStyles.form}>
+            <Pressable
+              disabled={!hasEnoughGems}
+              onPress={handleConfirm}
+              style={({ pressed }) => [
+                confirmationStyles.primaryButton,
+                !hasEnoughGems &&
+                  confirmationStyles.primaryButtonDisabled,
+                pressed &&
+                  hasEnoughGems &&
+                  confirmationStyles.buttonPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  confirmationStyles.primaryText,
+                  !hasEnoughGems &&
+                    confirmationStyles.primaryTextDisabled,
+                ]}
+              >
+                بەدەستی بهێنە
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                confirmationStyles.secondaryButton,
+                pressed &&
+                  confirmationStyles.buttonPressed,
+              ]}
+              onPress={onClose}
+            >
+              <Text style={confirmationStyles.secondaryText}>
+                {hasInsufficientGems
+                  ? "تێگەیشتم"
+                  : "پاشگەزبوونەوە"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </LinearGradient>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
+const confirmationStyles = StyleSheet.create({
+  overlay: {
     ...StyleSheet.absoluteFill,
-    zIndex: 1000,
-    elevation: 1000,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    zIndex: 5000,
+    elevation: 5000,
   },
 
-  popup: {
-    width: 360,
-    height: 180,
-    maxWidth: "88%",
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+  fixedContent: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+
+  card: {
+    width: "100%",
+    maxWidth: 390,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(4, 10, 25, 0.86)",
+    padding: 12,
+  },
+
+  headerPanel: {
+    minHeight: 92,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.22)",
+    backgroundColor: "rgba(15, 23, 42, 0.66)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
   },
 
   title: {
+    width: "100%",
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 19,
+    lineHeight: 28,
     fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
   },
 
-  message: {
-    marginTop: 7,
-    color: "#d9d5e8",
+  subtitle: {
+    width: "100%",
+    color: "#b6c2d8",
     fontSize: 14,
-    lineHeight: 20,
-    fontFamily: "SpedaBold",
+    lineHeight: 22,
+    fontFamily: "SpedaRegular",
     textAlign: "center",
     writingDirection: "rtl",
+    marginTop: 6,
   },
 
-  singleButtonRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 18,
-  },
-
-  buttonRow: {
-    width: "100%",
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-  },
-
-  singleButton: {
-    width: "48%",
-    height: 40,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  actionButton: {
-    flex: 1,
-    height: 40,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
+  form: {
+    gap: 9,
   },
 
   primaryButton: {
-    backgroundColor: "#7c3aed",
+    minHeight: 48,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    backgroundColor: "#2563eb",
+    marginTop: 4,
+  },
+
+  primaryButtonDisabled: {
+    backgroundColor: "rgba(37, 99, 235, 0.32)",
+    opacity: 0.55,
+  },
+
+  primaryText: {
+    color: "#ffffff",
+    fontFamily: "SpedaBold",
+    fontSize: 15,
+    textAlign: "center",
+    writingDirection: "rtl",
+  },
+
+  primaryTextDisabled: {
+    color: "rgba(255, 255, 255, 0.62)",
   },
 
   secondaryButton: {
-    backgroundColor: "#4b5563",
+    minHeight: 46,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248, 215, 116, 0.34)",
+    backgroundColor: "rgba(248, 215, 116, 0.1)",
   },
 
-  buttonPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.98 }],
-  },
-
-  buttonText: {
+  secondaryText: {
     color: "#ffffff",
     fontFamily: "SpedaBold",
     fontSize: 13,
     textAlign: "center",
     writingDirection: "rtl",
+  },
+
+  buttonPressed: {
+    opacity: 0.8,
   },
 });

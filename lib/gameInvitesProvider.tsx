@@ -1,25 +1,9 @@
 import { GameInvitePopup } from "@/components/friends/GameInvitePopup";
-import {
-  cancelMyGameParty,
-  getMyDominoParty,
-  type DominoParty,
-} from "@/lib/dominoParty";
-import { useProfile } from "@/lib/profile";
+import { cancelMyGameParty, getMyDominoParty, type DominoParty } from "./dominoParty";
+import { getAuthState, hasReadySession, subscribeAuthState, useAuthState } from "./auth-state";
 import { usePathname, useRouter } from "expo-router";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type PropsWithChildren,
-} from "react";
-
-import {
-  getPendingGameInvites,
-  respondGameInvite,
-  type GameInvite,
-} from "./gameInvites";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type PropsWithChildren } from "react";
+import { getPendingGameInvites, respondGameInvite, type GameInvite } from "./gameInvites";
 import { supabase } from "./supabase";
 import { getCachedShopState, getMyShopState } from "./shop";
 
@@ -30,301 +14,198 @@ type GamePartyContextValue = {
   cancellingParty: boolean;
   partyError: string | null;
 };
-
 const GamePartyContext = createContext<GamePartyContextValue | null>(null);
+type Snapshot = { generation: number; party: DominoParty | null; invites: GameInvite[]; live: boolean; revision: number; navigable: boolean };
+type Operation = { generation: number; kind: "respond" | "cancel"; busy: boolean; error: string | null };
 
 export function GameInvitesProvider({ children }: PropsWithChildren) {
-  const { profile } = useProfile();
+  const auth = useAuthState();
+  const ready = hasReadySession(auth);
   const pathname = usePathname();
   const router = useRouter();
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [operation, setOperation] = useState<Operation | null>(null);
+  const mounted = useRef(false);
+  const revision = useRef(0);
+  const epoch = useRef(0);
+  const pending = useRef<{ generation: number; promise: Promise<DominoParty | null> } | null>(null);
+  const mutation = useRef<object | null>(null);
+  const dirty = useRef(false);
+  const live = useRef(false);
+  const handled = useRef(new Map<string, number>());
+  const current = useCallback(() => mounted.current && getAuthState().generation === auth.generation, [auth.generation]);
+  const party = snapshot?.generation === auth.generation ? snapshot.party : null;
+  const invites = snapshot?.generation === auth.generation && ready ? snapshot.invites : [];
+  const ownOperation = operation?.generation === auth.generation ? operation : null;
 
-  const [invites, setInvites] = useState<GameInvite[]>([]);
-  const [party, setParty] = useState<DominoParty | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [cancellingParty, setCancellingParty] = useState(false);
-  const [partyError, setPartyError] = useState<string | null>(null);
-
-  const refreshInvites = useCallback(async () => {
-    if (!profile?.id) {
-      setInvites([]);
-      return;
-    }
-
-    try {
-      setInvites(await getPendingGameInvites());
-    } catch (reason) {
-      console.warn("Unable to load game invites", reason);
-    }
-  }, [profile?.id]);
-
-  const refreshParty = useCallback(async () => {
-    if (!profile?.id) {
-      setParty(null);
-      return null;
-    }
-
-    try {
-      const nextParty = await getMyDominoParty();
-      if (nextParty?.currentGame === "okey" && nextParty.flowStatus === "matchmaking" &&
-          !getCachedShopState(profile.id)) {
-        await getMyShopState();
-      }
-      setParty(nextParty);
-      return nextParty;
-    } catch (reason) {
-      console.warn("Unable to load Domino party", reason);
-      return null;
-    }
-  }, [profile?.id]);
-
-  const followPartyFlow = useCallback(
-    (nextParty: DominoParty | null) => {
-      if (!profile?.id || !nextParty || nextParty.leaderId === profile.id) {
-        return;
-      }
-
-      if (
-        nextParty.flowStatus !== "matchmaking" ||
-        !nextParty.currentRoomId ||
-        !nextParty.currentCurrency ||
-        nextParty.currentEntryFee == null
-      ) {
-        return;
-      }
-
-      if (nextParty.currentGame === "okey") {
-        if (
-          !nextParty.currentTableId ||
-          pathname.startsWith("/okey/game")
-        ) {
-          return;
-        }
-
-        router.replace({
-          pathname: "/okey/game",
-          params: {
-            mode: nextParty.currentCurrency,
-            table: nextParty.currentTableId,
-            tableId: nextParty.currentTableId,
-            matchId: nextParty.currentRoomId,
-          },
-        });
-
-        return;
-      }
-
-      if (
-        !nextParty.currentMode ||
-        pathname.startsWith("/domino/matchmaking") ||
-        pathname.startsWith("/domino/game")
-      ) {
-        return;
-      }
-
-      router.replace({
-        pathname: "/domino/matchmaking",
-        params: {
-          mode: nextParty.currentMode,
-          matchmaking_status: "searching",
-          room_id: nextParty.currentRoomId,
-          matchType: "squad",
-          playMode: nextParty.currentCurrency,
-          entryFee: String(nextParty.currentEntryFee),
-        },
-      });
-    },
-    [pathname, profile?.id, router],
-  );
-
-  useEffect(() => {
-    if (!profile?.id) return;
-
-    void refreshInvites();
-
-    void refreshParty().then((nextParty) => {
-      if (
-        nextParty &&
-        Date.now() - Date.parse(nextParty.updatedAt) <= 30_000
-      ) {
-        followPartyFlow(nextParty);
-      }
-    });
-
-    const channel = supabase
-      .channel(`game-invites:${profile.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "game_invites",
-        },
-        () => {
-          void refreshInvites();
-          void refreshParty().then(followPartyFlow);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [
-    followPartyFlow,
-    profile?.id,
-    refreshInvites,
-    refreshParty,
-  ]);
-
-  useEffect(() => {
-    if (!profile?.id || !party?.id) return;
-
-    const channel = supabase
-      .channel(`domino-party:${party.id}:${profile.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "domino_parties",
-          filter: `id=eq.${party.id}`,
-        },
-        () => {
-          void refreshParty().then(followPartyFlow);
-        },
-      )
-      .subscribe((status: string) => {
-        if (status !== "SUBSCRIBED") return;
-
-        void refreshParty().then((nextParty) => {
-          if (
-            nextParty &&
-            Date.now() - Date.parse(nextParty.updatedAt) <= 30_000
-          ) {
-            followPartyFlow(nextParty);
+  // One shared queue: events during a read schedule a trailing read, never a parallel one.
+  const refresh = useCallback((invalidate = false, fromEvent = invalidate): Promise<DominoParty | null> => {
+    if (!current() || !hasReadySession()) return Promise.resolve(null);
+    if (invalidate) { revision.current++; dirty.current = true; live.current = live.current || fromEvent; }
+    if (mutation.current) { dirty.current = true; return Promise.resolve(null); }
+    if (pending.current?.generation === auth.generation) return pending.current.promise;
+    const requestEpoch = epoch.current;
+    const valid = () => current() && epoch.current === requestEpoch;
+    const promise = Promise.resolve().then(async () => {
+      let result: DominoParty | null = null;
+      do {
+        if (!valid() || !hasReadySession() || mutation.current) return null;
+        dirty.current = false;
+        const request = revision.current;
+        const eventDriven = live.current;
+        live.current = false;
+        try {
+          // Wait for both reads, even if one fails, so a trailing refresh cannot overlap it.
+          const [invitesResult, partyResult] = await Promise.allSettled([getPendingGameInvites(), getMyDominoParty()]);
+          if (!valid() || !hasReadySession()) return null;
+          if (request !== revision.current) continue;
+          let nextParty = partyResult.status === "fulfilled" ? partyResult.value : undefined;
+          if (invitesResult.status === "rejected") console.warn("Unable to load game invites", invitesResult.reason);
+          if (partyResult.status === "rejected") console.warn("Unable to load party", partyResult.reason);
+          if (nextParty?.currentGame === "okey" && nextParty.flowStatus === "matchmaking" && !getCachedShopState(auth.userId)) {
+            try { await getMyShopState(); }
+            catch (error) {
+              if (valid()) console.warn("Unable to preload party cosmetics", error);
+              nextParty = undefined;
+            }
           }
-        });
-      });
+          if (!valid() || !hasReadySession()) return null;
+          if (request !== revision.current) continue;
+          result = nextParty && nextParty.members.some(member => member.userId === auth.userId) ? nextParty : null;
+          const nextInvites = invitesResult.status === "fulfilled"
+            ? invitesResult.value.filter(invite => invite.recipientId === auth.userId && invite.status === "pending" && Date.parse(invite.expiresAt) > Date.now())
+            : undefined;
+          const nextSnapshotParty = result;
+          setSnapshot(previous => ({
+            generation: auth.generation,
+            party: nextParty !== undefined ? nextSnapshotParty : previous?.generation === auth.generation ? previous.party : null,
+            invites: nextInvites ?? (previous?.generation === auth.generation ? previous.invites : []),
+            live: eventDriven,
+            revision: request,
+            navigable: nextParty !== undefined,
+          }));
+        } catch (error) {
+          if (!valid()) return null;
+          console.warn("Unable to refresh game invites/party", error);
+        }
+      } while (dirty.current && valid());
+      return result;
+    }).finally(() => { if (pending.current?.promise === promise) pending.current = null; });
+    pending.current = { generation: auth.generation, promise };
+    return promise;
+  }, [auth.generation, auth.userId, current]);
+  const refreshParty = useCallback(() => refresh(), [refresh]);
 
-    return () => {
-      void supabase.removeChannel(channel);
+  useEffect(() => {
+    mounted.current = true;
+    let observed = getAuthState();
+    const unsubscribe = subscribeAuthState(() => {
+      const next = getAuthState();
+      if (next.userId !== observed.userId) handled.current.clear();
+      if (next.generation !== observed.generation || !hasReadySession(next)) {
+        epoch.current++;
+        revision.current++;
+        pending.current = null;
+        dirty.current = false;
+        live.current = false;
+        if (next.generation !== observed.generation) mutation.current = null;
+      }
+      observed = next;
+    });
+    const invalidateOnUnmount = () => {
+      mounted.current = false;
+      epoch.current++;
+      revision.current++;
+      pending.current = null;
+      unsubscribe();
     };
-  }, [
-    followPartyFlow,
-    party?.id,
-    profile?.id,
-    refreshParty,
-  ]);
+    return invalidateOnUnmount;
+  }, []);
 
-  const cancelParty = useCallback(async () => {
-    if (cancellingParty) return;
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    void refresh();
+    const channel = supabase.channel(`game-invites:${auth.userId}:${auth.generation}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_invites", filter: `recipient_id=eq.${auth.userId}` }, () => {
+        if (active && current()) void refresh(true);
+      }).on("postgres_changes", { event: "*", schema: "public", table: "game_invites", filter: `sender_id=eq.${auth.userId}` }, () => {
+        if (active && current()) void refresh(true);
+      }).subscribe((status: string) => {
+        if (status === "SUBSCRIBED" && active && current()) void refresh(true, false);
+      });
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [ready, auth.userId, auth.generation, current, refresh]);
 
-    setCancellingParty(true);
-    setPartyError(null);
+  useEffect(() => {
+    if (!ready || !party?.id) return;
+    let active = true;
+    const channel = supabase.channel(`domino-party:${party.id}:${auth.userId}:${auth.generation}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "domino_parties", filter: `id=eq.${party.id}` }, () => {
+        if (active && current()) void refresh(true);
+      }).subscribe((status: string) => {
+        if (status === "SUBSCRIBED" && active && current()) void refresh(true, false);
+      });
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [ready, party?.id, auth.userId, auth.generation, current, refresh]);
 
-    try {
-      await cancelMyGameParty();
-
-      setParty(null);
-
-      await Promise.all([
-        refreshParty(),
-        refreshInvites(),
-      ]);
-    } catch (reason) {
-      setPartyError(
-        reason instanceof Error
-          ? reason.message
-          : "نەتوانرا پارتی هەڵبوەشێندرێتەوە.",
-      );
-
-      await refreshParty();
-    } finally {
-      setCancellingParty(false);
+  useEffect(() => {
+    if (!ready || !hasReadySession() || !current() || mutation.current || dirty.current || !snapshot?.navigable || snapshot.revision !== revision.current || !party || !party.members.some(member => member.userId === auth.userId) || party.leaderId === auth.userId) return;
+    if (party.flowStatus !== "matchmaking" || !party.currentRoomId || !party.currentCurrency || !Number.isFinite(party.currentEntryFee) || party.currentEntryFee === null || party.currentEntryFee < 0) return;
+    if (!Number.isSafeInteger(party.commandVersion) || party.commandVersion < 0) return;
+    const age = Date.now() - Date.parse(party.updatedAt);
+    if (!Number.isFinite(age) || age < 0 || (!snapshot?.live && age > 30_000)) return;
+    if ((handled.current.get(party.id) ?? -1) >= party.commandVersion) return;
+    if (party.currentGame === "okey") {
+      if (!party.currentTableId || pathname.startsWith("/okey/game")) return;
+      handled.current.set(party.id, party.commandVersion);
+      router.replace({ pathname: "/okey/game", params: { mode: party.currentCurrency, table: party.currentTableId, tableId: party.currentTableId, matchId: party.currentRoomId } });
+    } else if (party.currentGame === "domino") {
+      if (!party.currentMode || pathname.startsWith("/domino/matchmaking") || pathname.startsWith("/domino/game")) return;
+      handled.current.set(party.id, party.commandVersion);
+      router.replace({ pathname: "/domino/matchmaking", params: { mode: party.currentMode, matchmaking_status: "searching", room_id: party.currentRoomId, matchType: "squad", playMode: party.currentCurrency, entryFee: String(party.currentEntryFee) } });
     }
-  }, [
-    cancellingParty,
-    refreshInvites,
-    refreshParty,
-  ]);
+  }, [ready, current, party, auth.userId, snapshot?.live, snapshot?.revision, snapshot?.navigable, pathname, router]);
 
-  const respond = async (accept: boolean) => {
-    const invite = invites[0];
-
-    if (!invite) return;
-
-    setBusy(true);
-    setError(null);
-
+  const runMutation = useCallback(async (kind: Operation["kind"], action: () => Promise<unknown>, inviteId?: string) => {
+    if (!current() || !hasReadySession() || mutation.current) return;
+    const token = {};
+    mutation.current = token;
+    revision.current++;
+    setOperation({ generation: auth.generation, kind, busy: true, error: null });
     try {
-      await respondGameInvite(invite.id, accept);
-
-      setInvites((current) =>
-        current.filter((item) => item.id !== invite.id),
-      );
-
-      await refreshParty();
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Unable to respond to the game invite.",
-      );
-
-      void refreshInvites();
+      await action();
+      if (!current()) return;
+      setSnapshot(previous => previous?.generation === auth.generation ? { ...previous, party: kind === "cancel" ? null : previous.party, invites: kind === "respond" ? previous.invites.filter(item => item.id !== inviteId) : previous.invites } : previous);
+    } catch (cause) {
+      if (current()) setOperation({ generation: auth.generation, kind, busy: false, error: cause instanceof Error ? cause.message : "Unable to update party." });
     } finally {
-      setBusy(false);
+      if (mutation.current === token) mutation.current = null;
+      if (current()) {
+        setOperation(previous => previous?.generation === auth.generation ? { ...previous, busy: false } : previous);
+        void refresh(true);
+      }
     }
+  }, [auth.generation, current, refresh]);
+  const cancelParty = useCallback(() => runMutation("cancel", cancelMyGameParty), [runMutation]);
+  const invite = invites[0] ?? null;
+  const respond = (accept: boolean) => {
+    if (!invite || Date.parse(invite.expiresAt) <= Date.now()) return;
+    void runMutation("respond", () => respondGameInvite(invite.id, accept), invite.id);
   };
+  const expire = useCallback(() => {
+    if (!current() || !invite) return;
+    setSnapshot(previous => previous?.generation === auth.generation ? { ...previous, invites: previous.invites.filter(item => item.id !== invite.id) } : previous);
+    void refresh(true);
+  }, [auth.generation, current, invite, refresh]);
 
-  const expireCurrentInvite = useCallback(() => {
-    const invite = invites[0];
-
-    if (!invite) return;
-
-    setInvites((current) =>
-      current.filter((item) => item.id !== invite.id),
-    );
-
-    setError(null);
-
-    void refreshInvites();
-  }, [invites, refreshInvites]);
-
-  return (
-    <GamePartyContext.Provider
-      value={{
-        party,
-        refreshParty,
-        cancelParty,
-        cancellingParty,
-        partyError,
-      }}
-    >
-      {children}
-
-      <GameInvitePopup
-        invite={invites[0] ?? null}
-        busy={busy}
-        error={error}
-        onAccept={() => void respond(true)}
-        onDecline={() => void respond(false)}
-        onExpire={expireCurrentInvite}
-      />
-    </GamePartyContext.Provider>
-  );
+  return <GamePartyContext.Provider value={{ party, refreshParty, cancelParty, cancellingParty: ownOperation?.kind === "cancel" && ownOperation.busy, partyError: ownOperation?.kind === "cancel" ? ownOperation.error : null }}>
+    {children}
+    <GameInvitePopup key={`${auth.generation}:${invite?.id ?? "none"}`} invite={invite} busy={ownOperation?.busy ?? false} error={ownOperation?.kind === "respond" ? ownOperation.error : null} onAccept={() => respond(true)} onDecline={() => respond(false)} onExpire={expire} />
+  </GamePartyContext.Provider>;
 }
-
 export function useGameParty() {
   const context = useContext(GamePartyContext);
-
-  if (!context) {
-    throw new Error(
-      "useGameParty must be used within GameInvitesProvider",
-    );
-  }
-
+  if (!context) throw new Error("useGameParty must be used within GameInvitesProvider");
   return context;
 }

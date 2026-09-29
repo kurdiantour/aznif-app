@@ -1,3 +1,4 @@
+import { getAuthState, requireReadySession } from "./auth-state";
 import type { AvatarId } from "@/types/avatar";
 import { supabase } from "./supabase";
 
@@ -13,13 +14,13 @@ export type DominoParty = {
   currentTableId: string | null;
   commandVersion: number;
   updatedAt: string;
-  members: Array<{
+  members: {
     userId: string;
     role: "leader" | "member";
     avatarId?: AvatarId;
     avatarUrl?: string;
     name: string;
-  }>;
+  }[];
 };
 
 function mapParty(row: any): DominoParty | null {
@@ -70,16 +71,20 @@ function mapParty(row: any): DominoParty | null {
 }
 
 export async function getMyDominoParty(): Promise<DominoParty | null> {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc("get_my_domino_party");
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Party request.");
   if (error) throw error;
 
   return mapParty(data);
 }
 
 export async function cancelMyGameParty() {
+  const auth = requireReadySession();
   const { data, error } = await supabase.rpc("cancel_game_party");
 
+  if (getAuthState().generation !== auth.generation) throw new Error("Session changed during Party request.");
   if (error) throw error;
 
   return data as {
