@@ -276,9 +276,16 @@ export function useOkeyMultiplayerGame(matchId?: string, currentUserId: string |
   const currentRoundResult = showRoundResultPopup || matchFinished
     ? roundResults.at(-1) ?? null : roundResults.find((result) => result.round === currentRound) ?? null;
 
-  return {
-    state, onlineProjection: presentedProjection, authoritativeProjection: projection, onlineAdapter: adapter,
-    leaveOnlineMatch: confirmExit, requestExit, cancelExit,
+    return {
+    state,
+    loading,
+    error,
+    onlineProjection: presentedProjection,
+    authoritativeProjection: projection,
+    onlineAdapter: adapter,
+    leaveOnlineMatch: confirmExit,
+    requestExit,
+    cancelExit,
     exitConfirmationVisible, leaving,
     isAppActive, lifecycleResumeToken: resumeCount,
     currentRound, maxRounds: presentedProjection?.maxRounds ?? OKEY_RULESET_V1.match.roundCount,

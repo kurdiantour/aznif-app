@@ -1,5 +1,5 @@
 import type { ImageSourcePropType } from "react-native";
-import { OKEY_ASSET_REGISTRY, isTableId } from "./tables";
+import { OKEY_ASSET_REGISTRY, isTableId } from "./okey-sets";
 import { DOMINO_ASSET_REGISTRY, isDominoSetId } from "./domino-sets";
 import type { ShopCatalogRow, ShopCategory, ShopState } from "@/lib/shop-types";
 

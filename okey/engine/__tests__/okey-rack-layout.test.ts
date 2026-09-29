@@ -5,7 +5,6 @@ import {
   findKonkanRackLayoutCandidates,
   getOpenableRackLayout,
   getOrderedKonkanRunCandidates,
-  getRackDisplayScore,
 } from "../okey-rack-layout.ts";
 import type { OkeyTile } from "../../types/okey.ts";
 
@@ -76,11 +75,10 @@ test("does not use a joker outside an incomplete group", () => {
   assert.equal(result.score, 27);
 });
 
-test("keeps displayed and Open scores aligned to arranged complete melds", () => {
+test("keeps Open score aligned to arranged complete melds", () => {
   const groups = [[...validRun, tile("attached-score", "black", 12)], validSet, [looseTile]];
   const openable = getOpenableRackLayout(groups, okeyTile);
 
-  assert.equal(getRackDisplayScore(groups, okeyTile), openable.score);
   assert.equal(openable.score, 39);
 });
 

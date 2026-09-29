@@ -55,16 +55,19 @@ export default function LeaderboardScreen() {
   const [currentRank, setCurrentRank] = useState<number | null>(null);
 
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
-  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
+  const [fetchedProfile, setFetchedProfile] = useState<Profile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const { showPreview } = useContext(AvatarPreviewContext);
-  const [friendship, setFriendship] = useState<{ id: string | null; status: "pending" | "accepted" | "rejected" | null; direction: "incoming" | "outgoing" | null } | null>(null);
+  const [rawFriendship, setRawFriendship] = useState<{ id: string | null; status: "pending" | "accepted" | "rejected" | null; direction: "incoming" | "outgoing" | null } | null>(null);
   const [friendActionLoading, setFriendActionLoading] = useState(false);
+
+  const activePlayerId = selectedPlayerId ?? profile?.id ?? null;
+  const selectedProfile = activePlayerId === profile?.id ? profile : fetchedProfile;
+  const friendship = !profile || !activePlayerId || profile.id === activePlayerId ? null : rawFriendship;
 
   useEffect(() => {
     let isMounted = true;
-    if (!profile || !selectedPlayerId || profile.id === selectedPlayerId) {
-      setFriendship(null);
+    if (!profile || !activePlayerId || profile.id === activePlayerId) {
       return;
     }
 
@@ -72,45 +75,35 @@ export default function LeaderboardScreen() {
       const { data } = await supabase
         .from("friendships")
         .select("id, status, requester_id")
-        .or(`and(requester_id.eq.${profile.id},addressee_id.eq.${selectedPlayerId}),and(requester_id.eq.${selectedPlayerId},addressee_id.eq.${profile.id})`)
+        .or(`and(requester_id.eq.${profile.id},addressee_id.eq.${activePlayerId}),and(requester_id.eq.${activePlayerId},addressee_id.eq.${profile.id})`)
         .maybeSingle();
 
       if (isMounted) {
         if (data) {
-          setFriendship({
+          setRawFriendship({
             id: data.id,
             status: data.status,
             direction: data.requester_id === profile.id ? "outgoing" : "incoming",
           });
         } else {
-          setFriendship({ id: null, status: null, direction: null });
+          setRawFriendship({ id: null, status: null, direction: null });
         }
       }
     };
     void checkFriendship();
 
     return () => { isMounted = false; };
-  }, [profile, selectedPlayerId]);
-
-  useEffect(() => {
-    if (profile && !selectedPlayerId) {
-      setSelectedPlayerId(profile.id);
-    }
-  }, [profile, selectedPlayerId]);
+  }, [profile, activePlayerId]);
 
   useEffect(() => {
     let isMounted = true;
-    if (!selectedPlayerId) return;
-
-    if (selectedPlayerId === profile?.id) {
-      setSelectedProfile(profile);
-    }
+    if (!activePlayerId || activePlayerId === profile?.id) return;
 
     const loadProfile = async () => {
       setLoadingProfile(true);
       try {
-        const data = await getProfileById(selectedPlayerId);
-        if (isMounted) setSelectedProfile(data);
+        const data = await getProfileById(activePlayerId);
+        if (isMounted) setFetchedProfile(data);
       } catch (err) {
         console.warn("Failed to load selected profile:", err);
       } finally {
@@ -123,7 +116,7 @@ export default function LeaderboardScreen() {
     return () => {
       isMounted = false;
     };
-  }, [selectedPlayerId, profile]);
+  }, [activePlayerId, profile?.id]);
 
   const loadPlayers = useCallback(() => {
     let isMounted = true;
@@ -179,16 +172,16 @@ export default function LeaderboardScreen() {
   );
 
   const handleFriendAction = async () => {
-    if (!profile || !selectedPlayerId) return;
+    if (!profile || !activePlayerId || activePlayerId === profile.id) return;
 
     setFriendActionLoading(true);
     try {
       if (!friendship || friendship.status === null || friendship.status === "rejected") {
-        await sendFriendRequest(selectedPlayerId);
-        setFriendship({ id: "temp", status: "pending", direction: "outgoing" });
+        await sendFriendRequest(activePlayerId);
+        setRawFriendship({ id: "temp", status: "pending", direction: "outgoing" });
       } else if (friendship.status === "pending" && friendship.direction === "incoming" && friendship.id) {
         await respondFriendRequest(friendship.id, true);
-        setFriendship((prev) => prev ? { ...prev, status: "accepted" } : null);
+        setRawFriendship((prev) => prev ? { ...prev, status: "accepted" } : null);
       }
     } catch (err) {
       console.warn("Friend action failed:", err);
@@ -337,7 +330,7 @@ export default function LeaderboardScreen() {
             {sortedPlayers.map((player, index) => {
               const rank = index + 1;
               const isCurrentUser = player.id === profile?.id;
-              const isSelected = player.id === selectedPlayerId;
+              const isSelected = player.id === activePlayerId;
 
               return (
                 <Pressable
@@ -411,7 +404,7 @@ export default function LeaderboardScreen() {
                 styles.row,
                 styles.currentUserRow,
                 styles.pinnedCurrentUserRow,
-                selectedPlayerId === profile.id && styles.selectedRow,
+                activePlayerId === profile.id && styles.selectedRow,
               ]}
             >
               <View style={styles.playerColumn}>

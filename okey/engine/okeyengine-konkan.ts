@@ -702,14 +702,6 @@ export function canDeclareKonkanWin(hand: OkeyTile[], okeyTile: OkeyTile, locked
     return hasSmallKonkanMeld(remainingTiles, okeyTile, requiredMeldMinSize);
   });
 }
-export function findKonkanDeclarationRunTileIds(_hand: OkeyTile[], _okeyTile: OkeyTile, _lockedSets: OkeyMeld[] = []): string[] | null {
-  // Authoritative declaration requires the explicit candidate produced from the real rack layout.
-  return null;
-}
-
-export function findKonkanDeclarationForPlayer(_state: OkeyGameState, _playerIndex: number): string[] | null {
-  return null;
-}
 
 export function canDeclareKonkanOpen(
   state: OkeyGameState,

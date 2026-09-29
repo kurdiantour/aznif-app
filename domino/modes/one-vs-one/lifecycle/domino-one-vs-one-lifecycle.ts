@@ -12,7 +12,3 @@ export function deriveDominoOneVsOneLifecycle(state: any): DominoOneVsOneLifecyc
   if (state?.status === "started" || state?.board?.centerTile) return "playing";
   return "waiting";
 }
-
-export function isDominoOneVsOneCommandAllowed(state: any): boolean {
-  return deriveDominoOneVsOneLifecycle(state) === "playing";
-}

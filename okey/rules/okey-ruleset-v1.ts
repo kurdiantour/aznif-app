@@ -78,6 +78,3 @@ export const OKEY_RULESET_V1 = {
     tiedLowestScoreHasNoWinner: true,
   },
 } as const;
-
-export type OkeyRulesetV1 = typeof OKEY_RULESET_V1;
-

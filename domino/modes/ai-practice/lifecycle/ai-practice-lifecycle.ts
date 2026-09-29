@@ -26,14 +26,3 @@ export function createAiPracticeNextRound(input: {
     timeLeft: PLAYER_TURN_DURATION_SECONDS,
   };
 }
-
-export type AiPracticeLifecycle = 'playing' | 'round-result' | 'finished';
-
-export function deriveAiPracticeLifecycle(state: {
-  roundWinnerPlayerId?: string | null;
-  winningTeamId?: string | null;
-}): AiPracticeLifecycle {
-  if (state.winningTeamId) return 'finished';
-  if (state.roundWinnerPlayerId) return 'round-result';
-  return 'playing';
-}

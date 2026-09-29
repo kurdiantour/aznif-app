@@ -27,6 +27,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const activeUserIdRef = useRef<string | null>(null);
   const requestSequenceRef = useRef(0);
   const inFlightRef = useRef<Promise<Wallet | null> | null>(null);
+  const pendingRefreshRef = useRef(false);
 
   const publishWallet = useCallback((nextWallet: Wallet | null) => {
     walletRef.current = nextWallet;
@@ -35,27 +36,60 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const refreshWallet = useCallback(async (): Promise<Wallet | null> => {
     if (!userId) return null;
-    if (inFlightRef.current) return inFlightRef.current;
+    if (inFlightRef.current) {
+      pendingRefreshRef.current = true;
+      return inFlightRef.current;
+    }
+
     const requestUserId = userId;
-    const requestSequence = ++requestSequenceRef.current;
-    setStatus(walletRef.current ? 'refreshing' : 'loading');
-    setError(null);
-    const request = getBalance(requestUserId)
-      .then((nextWallet) => {
-        if (activeUserIdRef.current !== requestUserId || requestSequenceRef.current !== requestSequence) return walletRef.current;
-        publishWallet(nextWallet);
-        setStatus('ready');
-        return nextWallet;
-      })
-      .catch((reason: unknown) => {
-        if (activeUserIdRef.current !== requestUserId || requestSequenceRef.current !== requestSequence) return walletRef.current;
-        setError(reason instanceof Error ? reason : new Error(String(reason)));
-        setStatus('error');
-        return null;
-      })
-      .finally(() => {
-        if (requestSequenceRef.current === requestSequence) inFlightRef.current = null;
-      });
+    let latestRequestSequence = 0;
+
+    const request = (async (): Promise<Wallet | null> => {
+      let latestWallet = walletRef.current;
+
+      do {
+        pendingRefreshRef.current = false;
+        const requestSequence = ++requestSequenceRef.current;
+        latestRequestSequence = requestSequence;
+        setStatus(walletRef.current ? 'refreshing' : 'loading');
+        setError(null);
+
+        try {
+          const nextWallet = await getBalance(requestUserId);
+          if (
+            activeUserIdRef.current !== requestUserId ||
+            requestSequenceRef.current !== requestSequence
+          ) {
+            return walletRef.current;
+          }
+
+          publishWallet(nextWallet);
+          setStatus('ready');
+          latestWallet = nextWallet;
+        } catch (reason: unknown) {
+          if (
+            activeUserIdRef.current !== requestUserId ||
+            requestSequenceRef.current !== requestSequence
+          ) {
+            return walletRef.current;
+          }
+
+          setError(reason instanceof Error ? reason : new Error(String(reason)));
+          setStatus('error');
+          latestWallet = null;
+        }
+      } while (
+        pendingRefreshRef.current &&
+        activeUserIdRef.current === requestUserId
+      );
+
+      return latestWallet;
+    })().finally(() => {
+      if (requestSequenceRef.current === latestRequestSequence) {
+        inFlightRef.current = null;
+      }
+    });
+
     inFlightRef.current = request;
     return request;
   }, [publishWallet, userId]);
@@ -64,6 +98,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (authLoading) return;
     requestSequenceRef.current += 1;
     inFlightRef.current = null;
+    pendingRefreshRef.current = false;
     activeUserIdRef.current = userId;
     publishWallet(null);
     setError(null);

@@ -978,6 +978,48 @@ test("reconcileAuthoritativeMatchStart creates match state and starts room", asy
   assert.equal(customResult.room?.status, "playing");
 });
 
+test("reconcileAuthoritativeMatchStart schedules the canonical version-0 lifecycle wake exactly once", async () => {
+  const nowMs = Date.parse("2026-09-29T12:00:00.000Z");
+  const alarms: Array<{ matchId: string; version: number; runAt: string }> = [];
+
+  const result = await reconcileAuthoritativeMatchStart({
+    client: {},
+    matchId: "test-room-start-alarm",
+    members: mockPlayers,
+    now: () => nowMs,
+    startRoomAction: async () => ({
+      data: { matchId: "test-room-start-alarm", status: "playing" },
+      error: null,
+    }),
+    scheduleLifecycleAlarm: async ({ matchId, version, runAt }) => {
+      alarms.push({ matchId, version, runAt });
+    },
+  });
+
+  assert.equal(result.executed, true);
+  assert.equal(alarms.length, 1);
+  assert.equal(alarms[0].matchId, "test-room-start-alarm");
+  assert.equal(alarms[0].version, 0);
+  assert.equal(alarms[0].runAt, result.turnDeadlineAt);
+});
+
+test("reconcileAuthoritativeMatchStart never schedules when start commit fails", async () => {
+  let alarmCalls = 0;
+
+  const result = await reconcileAuthoritativeMatchStart({
+    client: {},
+    matchId: "test-room-start-failed-no-alarm",
+    members: mockPlayers,
+    startRoomAction: async () => ({ data: null, error: { message: "start_failed" } }),
+    scheduleLifecycleAlarm: async () => {
+      alarmCalls += 1;
+    },
+  });
+
+  assert.equal(result.executed, false);
+  assert.equal(alarmCalls, 0);
+});
+
 test("reconcileAuthoritativeServerTurns commits Next Round only and hands starting Bot to the next server invocation", async () => {
   const baseMatch = createAuthoritativeOkeyMatch(mockPlayers, 0);
   // Round 1 ended with p2 winning. In round 2, dealer is p2 (bot, index 1) who receives 15 tiles!
@@ -1577,3 +1619,4 @@ test("Human request entering after turn deadline is rejected with turn_deadline_
     assert.equal(result.status, 409);
   }
 });
+

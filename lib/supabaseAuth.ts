@@ -20,11 +20,6 @@ export type Profile = {
   updated_at: string;
 };
 
-export type PublicProfile = Pick<
-  Profile,
-  "username" | "avatar_id" | "avatar_url" | "player_id"
->;
-
 const PROFILE_SELECT =
   "id, email, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
 const PROFILE_CREATE_RETRIES = 3;
@@ -426,20 +421,6 @@ export async function updateMyProfile(input: {
     .single<Profile>();
 
   scope?.assertCurrent();
-  if (error) throw error;
-
-  return data;
-}
-
-export async function getPublicProfile(
-  userId: string,
-): Promise<PublicProfile | null> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("username, avatar_id, avatar_url, player_id")
-    .eq("id", userId)
-    .maybeSingle<PublicProfile>();
-
   if (error) throw error;
 
   return data;

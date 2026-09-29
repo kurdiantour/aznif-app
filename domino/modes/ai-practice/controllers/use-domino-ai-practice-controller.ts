@@ -1,11 +1,7 @@
-import { getNextHandKingIndex, NEXT_HAND_OPENING_STATE } from '@/domino/core/rules/king-rules';
 import {
-  applyMove,
   canAnyPlayerMove,
   canHandMove,
   createEmptyBoard,
-  isValidMove,
-  roundToNearestFive,
 } from '@/domino/core/engine/kozel-engine';
 import {
   DominoTileData,
@@ -16,7 +12,7 @@ import {
   TeamId,
 } from '@/domino/types/domino-game';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAvailableBranches, handContainsTile } from '@/domino/shared/rules/game-rule-queries';
+import { getAvailableBranches } from '@/domino/shared/rules/game-rule-queries';
 import { buildRoundResult } from '@/domino/shared/lifecycle/round-result';
 import { useRoundLifecycle } from '@/domino/shared/lifecycle/use-round-lifecycle';
 import { decideAiPracticeBotTurn, scheduleAiPracticeBotTurn } from './ai-practice-bot-controller';
@@ -30,8 +26,6 @@ import {
 } from '../engine/ai-practice-engine';
 import {
   MAX_ONE_VS_ONE_HUMAN_DRAWS_PER_TURN,
-  getBlockedRoundWinnerIndex1v1,
-  pickPreferredBranch,
   PLAYER_TURN_DURATION_SECONDS,
 } from '@/domino/shared/game-shared';
 

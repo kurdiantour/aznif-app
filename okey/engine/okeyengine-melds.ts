@@ -1,4 +1,4 @@
-import type { OkeyColor, OkeyGameState, OkeyMeld, OkeyTeamId, OkeyTile } from "../types/okey.ts";
+import type { OkeyColor, OkeyGameState, OkeyMeld, OkeyTeamId, OkeyTile } from "../types/okey.ts";
 import { OKEY_RULESET_V1 } from "../rules/okey-ruleset-v1.ts";
 import { hasOkeyTeammateOpenedForCurrentRules, getOkeyTeamFirstOpenScoreForCurrentRules, isActiveOkeyPlayer } from "./okeyengine-eliminated.ts";
 
@@ -56,7 +56,6 @@ export function selectBestMeldPlan(candidates: OkeyMeldCandidate[], totalTileCou
   const best = solve(0);
   return best.score === Number.NEGATIVE_INFINITY ? { score: 0, melds: [] as OkeyMeld[], usedTileCount: 0 } : { score: best.score, melds: best.melds, usedTileCount: best.usedTileCount };
 }
-
 
 export function hasForbiddenThreeTileDoubleJoker(tiles: OkeyTile[], okeyTile: OkeyTile): boolean {
   return OKEY_RULESET_V1.meld.forbidTwoWildcardsInThreeTileMeld
@@ -225,45 +224,8 @@ export function getMeldScore(tiles: OkeyTile[], okeyTile: OkeyTile): number | nu
   return scoreSet(tiles, okeyTile) ?? scoreRun(tiles, okeyTile);
 }
 
-export function isValidScoringMeld(meld: OkeyMeld, okeyTile: OkeyTile) {
-  return getMeldScore(meld.tiles, okeyTile) !== null;
-}
 
-export function getOkeyPlayerSetScore(melds: OkeyMeld[], okeyTile: OkeyTile) {
-  return melds.reduce((total, meld) => {
-    const score = getMeldScore(meld.tiles, okeyTile);
-    return score === null ? total : total + score;
-  }, 0);
-}
 
-export function getBestRackSetScore(rows: OkeyTile[][], okeyTile: OkeyTile) {
-  return rows.reduce((total, rowTiles) => {
-    let rowTotal = 0;
-    let index = 0;
-
-    while (index < rowTiles.length) {
-      let bestScore = 0;
-      let bestEndIndex = index;
-
-      for (let endIndex = index + 3; endIndex <= rowTiles.length; endIndex += 1) {
-        const score = getMeldScore(rowTiles.slice(index, endIndex), okeyTile);
-        if (score !== null && score > bestScore) {
-          bestScore = score;
-          bestEndIndex = endIndex;
-        }
-      }
-
-      if (bestScore > 0) {
-        rowTotal += bestScore;
-        index = bestEndIndex;
-      } else {
-        index += 1;
-      }
-    }
-
-    return total + rowTotal;
-  }, 0);
-}
 
 export function getEffectiveTile(tile: OkeyTile, okeyTile: OkeyTile): OkeyTile {
   if (!tile.isFakeJoker) return tile;

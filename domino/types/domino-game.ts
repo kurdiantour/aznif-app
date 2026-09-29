@@ -67,12 +67,6 @@ export type KozelBoardState = {
   branches: Record<KozelBranch, BoardBranchState>;
 };
 
-export type TeamScore = {
-  teamId: TeamId;
-  name: string;
-  score: number;
-};
-
 export type ScoringEvent = {
   playerId: string;
   teamId: TeamId;

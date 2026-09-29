@@ -12,7 +12,7 @@ import { chooseOkeyEliminatedTurnDiscardTile, getOkeyRecyclableMeldsForCurrentRu
 import { canDeclareKonkanOpen, eliminateKonkanPlayerMidTurn, getKonkanDiscardEntry, getKonkanDiscardOutcome, resolveKonkanDiscardPick } from "./okeyengine-konkan.ts";
 import { canDeclareBasicWin, getOkeyScoreValue, getRemainingPlayerMeldSlots, getRequiredOpenScore, isOkeyWildcard, sortTiles, validateOpenPlayerMelds } from "./okeyengine-melds.ts";
 import { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
-export { canDeclareKonkanOpen, canDeclareKonkanWin, canLockKonkanSet, canSpendTileOnBestMeld, canSpendTileOnMeld, declareKonkanOpen, eliminateKonkanPlayerMidTurn, findKonkanDeclarationForPlayer, findKonkanDeclarationRunTileIds, getLockedKonkanSetsForPlayer, hasLockedKonkanSet, hasPlayerExecutedKonkanSpend, hasSmallKonkanMeld, isOrderedOfficialKonkanRun, lockKonkanSet, resolveTableMeldAction, spendTileOnBestMeld, spendTileOnMeld } from "./okeyengine-konkan.ts";
+export { canDeclareKonkanOpen, canDeclareKonkanWin, canLockKonkanSet, canSpendTileOnBestMeld, canSpendTileOnMeld, declareKonkanOpen, eliminateKonkanPlayerMidTurn, getLockedKonkanSetsForPlayer, hasLockedKonkanSet, hasPlayerExecutedKonkanSpend, hasSmallKonkanMeld, isOrderedOfficialKonkanRun, lockKonkanSet, resolveTableMeldAction, spendTileOnBestMeld, spendTileOnMeld } from "./okeyengine-konkan.ts";
 export type { OkeyRunEnd, OkeyTableMeldAction } from "./okeyengine-konkan.ts";
 export { canDeclareBasicWin, findBestMeldPlan, getMeldKind, getRemainingPlayerMeldSlots, getRequiredOpenScore, getTeamFirstOpenScore, isOkeyWildcard, isValidMeld, MAX_PLAYER_MELDS, normalizeOpenMelds, orderRunTiles, sortTiles } from "./okeyengine-melds.ts";
 export { advanceTurn, getTurnMessage, withJokerOrigin, withoutTile } from "./okeyengine-state-utils.ts";
@@ -617,10 +617,6 @@ export function getRoundResultScoreDetails(state: OkeyGameState) {
   }
 
   return { scores, details };
-}
-
-export function getRoundResultTeamScores(state: OkeyGameState) {
-  return getRoundResultScoreDetails(state).scores;
 }
 
 export function getNextRoundDealerIndex(state: OkeyGameState) {

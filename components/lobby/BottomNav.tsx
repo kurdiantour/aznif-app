@@ -20,7 +20,7 @@ import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
 import { useProfile } from "@/lib/profile";
 
 export type BottomNavKey =
-  "home"
+  | "home"
   | "aznif"
   | "leaderboard"
   | "shop";
@@ -76,12 +76,19 @@ export function BottomNav({
 
   const [dailyGiftVisible, setDailyGiftVisible] =
     useState(false);
+
   const [dailyQuestsVisible, setDailyQuestsVisible] =
     useState(false);
+
   const dailyGift = useDailyGift();
   const dailyQuests = useDailyQuests();
   const { profile } = useProfile();
-  const { party, cancelParty, cancellingParty, partyError } = useGameParty();
+  const {
+    party,
+    cancelParty,
+    cancellingParty,
+    partyError,
+  } = useGameParty();
 
   const routeActive: BottomNavKey =
     pathname.includes("leaderboard")
@@ -128,6 +135,7 @@ export function BottomNav({
               onCancel={() => void cancelParty()}
             />
           ) : null}
+
           {/* Daily Gift Button */}
 
           <DailyGiftButton
@@ -233,33 +241,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 18,
-
     alignItems: "center",
-
     zIndex: 999,
     elevation: 20,
   },
 
   row: {
     flexDirection: "row-reverse",
-
     alignItems: "center",
-
     gap: 10,
   },
 
   container: {
     flexDirection: "row",
-
     alignItems: "center",
-
     paddingHorizontal: 6,
     paddingVertical: 6,
-
     borderRadius: 12,
-
     borderWidth: 1,
-
     borderColor:
       "rgba(180,120,255,0.18)",
 
@@ -269,17 +268,11 @@ const styles = StyleSheet.create({
 
   item: {
     height: 38,
-
     paddingHorizontal: 18,
-
     borderRadius: 12,
-
     flexDirection: "row",
-
     alignItems: "center",
-
     justifyContent: "center",
-
     gap: 7,
   },
 
@@ -288,7 +281,6 @@ const styles = StyleSheet.create({
       "rgba(150,90,255,0.22)",
 
     borderWidth: 1,
-
     borderColor:
       "rgba(190,140,255,0.35)",
   },
@@ -299,7 +291,6 @@ const styles = StyleSheet.create({
 
   text: {
     fontSize: 12,
-
     fontFamily: "SpedaBold",
   },
 
@@ -312,4 +303,3 @@ const styles = StyleSheet.create({
       "rgba(255,255,255,0.52)",
   },
 });
-

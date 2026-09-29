@@ -5,7 +5,6 @@
 
 // Player rack source of truth
 export const RACK_ASPECT_RATIO = 1000 / 240;
-export const RACK_BOTTOM_BASE = 82; // used as `RACK_BOTTOM_BASE + safe.bottom`
 
 // Player tile source of truth
 export const PLAYER_TILE_WIDTH = 46;

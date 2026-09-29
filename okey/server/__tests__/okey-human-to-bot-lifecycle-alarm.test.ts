@@ -8,10 +8,12 @@ import {
     type OkeyAuthoritativeMatchState,
 } from '../okey-authoritative.ts';
 import {
-    getOkeyLifecycleRunAt,
     reconcileAuthoritativeServerLifecycleAlarm,
 } from '../okey-server-reconciler.ts';
-import { executeOkeyServerLifecycle } from '../okey-turn-engine.ts';
+import {
+    executeOkeyServerLifecycle,
+    getOkeyLifecycleRunAt,
+} from '../okey-turn-engine.ts';
 
 const players = [
   { id: 'p1', name: 'P1', controlledByBot: false },
@@ -186,3 +188,4 @@ test('Ghost lifecycle alarms run immediately, preserve a null human deadline, an
   assert.equal(scheduledRunAts.length, 2);
   assert.equal(scheduledRunAts[1], new Date(now + 15_000).toISOString());
 });
+

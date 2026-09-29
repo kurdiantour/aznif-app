@@ -51,13 +51,6 @@ export function getOpenableRackLayout(
   return getRackMeldPlan(contiguousGroups, okeyTile);
 }
 
-export function getRackDisplayScore(
-  contiguousGroups: OkeyTile[][],
-  okeyTile: OkeyTile,
-): number {
-  return getRackMeldPlan(contiguousGroups, okeyTile).score;
-}
-
 export function getOrderedKonkanRunCandidates(contiguousGroups: OkeyTile[][]): string[][] {
   const size = OKEY_RULESET_V1.konkan.officialRunSize;
   return contiguousGroups.flatMap((group) =>

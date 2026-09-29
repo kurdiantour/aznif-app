@@ -168,12 +168,24 @@ export default function GameChatDrawer({
     const loadMessages = () =>
       getGameChatMessages(gameType, matchId, mode);
 
-    loadMessages()
-      .then((nextMessages) => {
-        if (isMounted) {
-          setMessages(nextMessages);
+loadMessages()
+  .then((nextMessages) => {
+    if (isMounted) {
+      setMessages((current) => {
+        const merged = [...nextMessages];
+
+        for (const message of current) {
+          if (!merged.some((item) => item.id === message.id)) {
+            merged.push(message);
+          }
         }
-      })
+
+        return merged.sort((left, right) =>
+          left.created_at.localeCompare(right.created_at),
+        );
+      });
+    }
+  })
       .catch((err) => {
         console.warn(
           "Failed to load game chat messages",
@@ -321,7 +333,6 @@ export default function GameChatDrawer({
       style={styles.overlay}
     >
       <Pressable
-        accessibilityLabel="داخستنی گفتوگۆی یاری"
         style={styles.backdrop}
         onPress={handleBackdropPress}
       />

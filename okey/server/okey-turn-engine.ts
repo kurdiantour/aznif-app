@@ -1,5 +1,9 @@
 import type { OkeyGameState } from "../types/okey.ts";
-import { isGhostOkeySeat } from "../engine/okeyengine-eliminated.ts";
+import {
+  isActiveOkeyPlayer,
+  isEliminatedOkeyPlayer,
+  isGhostOkeySeat,
+} from "../engine/okeyengine-eliminated.ts";
 import {
   getNextOkeyMatchTurnDeadline,
   OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
@@ -26,6 +30,75 @@ import { selectOkeyBotIntent } from "./okey-bot-executor.ts";
  */
 export const OKEY_DRAW_PHASE_SECONDS = 15;
 export const OKEY_THROW_PHASE_SECONDS = 30;
+
+/** Returns the next official lifecycle time. Bot ownership is immediate and never UI-paced. */
+export function getOkeyLifecycleRunAt(
+  state: OkeyAuthoritativeMatchState,
+  turnDeadlineAt: string | null,
+  nowMs: number,
+): string | null {
+  if (state.matchFinished) return null;
+  if (state.roundState.phase === "finished") {
+    return state.nextRoundEligibleAt ?? null;
+  }
+
+  const currentPlayer = state.roundState.players[state.roundState.currentPlayerIndex];
+
+  if (isEliminatedOkeyPlayer(currentPlayer)) {
+    return new Date(nowMs).toISOString();
+  }
+
+  if (
+    isActiveOkeyPlayer(currentPlayer) &&
+    (currentPlayer.controlledByBot === true || currentPlayer.kind === "bot")
+  ) {
+    return new Date(nowMs).toISOString();
+  }
+
+  return turnDeadlineAt;
+}
+
+
+export type OkeyLifecycleAlarmJob = {
+  matchId: string;
+  state: OkeyAuthoritativeMatchState;
+  version: number;
+  runAt: string;
+};
+
+export type OkeyLifecycleAlarmScheduler = (
+  input: OkeyLifecycleAlarmJob,
+) => Promise<void>;
+
+/**
+ * Single owner for deciding and registering the next authoritative Okey wake.
+ * Transport callers provide only the scheduler adapter; they do not decide runAt.
+ */
+export async function scheduleNextOkeyLifecycleAlarm(input: {
+  matchId: string;
+  state: OkeyAuthoritativeMatchState;
+  version: number;
+  turnDeadlineAt: string | null;
+  scheduleLifecycleAlarm?: OkeyLifecycleAlarmScheduler;
+  nowMs?: number;
+}): Promise<string | null> {
+  const runAt = getOkeyLifecycleRunAt(
+    input.state,
+    input.turnDeadlineAt,
+    input.nowMs ?? Date.now(),
+  );
+
+  if (!runAt || !input.scheduleLifecycleAlarm) return runAt;
+
+  await input.scheduleLifecycleAlarm({
+    matchId: input.matchId,
+    state: input.state,
+    version: input.version,
+    runAt,
+  });
+
+  return runAt;
+}
 
 /** The authoritative phase of the current seat. */
 export type OkeyAuthoritativeTurnPhase = "draw" | "throw" | "finished";
@@ -953,5 +1026,6 @@ export async function executeOkeyServerLifecycle(
     }
   }
 }
+
 
 

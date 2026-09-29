@@ -14,12 +14,6 @@ export const FREE_MATCH_WIN_REWARD: MatchReward = {
   points: 35,
 };
 
-export const FREE_MATCH_LOSS_REWARD: MatchReward = {
-  coin: 5,
-  gem: 0,
-  points: -15,
-};
-
 export function calculateMatchReward(
   _winnerScore: number,
   _loserScore: number,

@@ -1,5 +1,3 @@
-import { isActiveOkeyPlayer, isEliminatedOkeyPlayer } from "../engine/okeyengine-eliminated.ts";
-
 import {
     createOkeyCommandActionEvents,
     type OkeyActionEvent,
@@ -21,6 +19,8 @@ import {
 import {
     executeOkeyAuthoritativePipeline,
     executeOkeyServerLifecycle,
+    getOkeyLifecycleRunAt,
+    scheduleNextOkeyLifecycleAlarm,
     type OkeyAuthoritativeTransition,
     type OkeyTurnCommit,
 } from "./okey-turn-engine.ts";
@@ -38,30 +38,6 @@ export {
     type OkeyServerLifecycleInput,
     type OkeyServerLifecycleResult,
 } from "./okey-turn-engine.ts";
-
-
-/** Returns the next official lifecycle time. Bot ownership is immediate and never UI-paced. */
-export function getOkeyLifecycleRunAt(
-  state: OkeyAuthoritativeMatchState,
-  turnDeadlineAt: string | null,
-  nowMs: number,
-): string | null {
-  if (state.matchFinished) return null;
-  if (state.roundState.phase === 'finished') return state.nextRoundEligibleAt ?? null;
-
-  const currentPlayer = state.roundState.players[state.roundState.currentPlayerIndex];
-
-  if (isEliminatedOkeyPlayer(currentPlayer)) return new Date(nowMs).toISOString();
-
-  if (
-    isActiveOkeyPlayer(currentPlayer) &&
-    (currentPlayer.controlledByBot === true || currentPlayer.kind === 'bot')
-  ) {
-    return new Date(nowMs).toISOString();
-  }
-
-  return turnDeadlineAt;
-}
 
 
 type OkeyHumanAuthoritativeBundle = {
@@ -456,21 +432,14 @@ export async function reconcileAuthoritativeHumanCommand(
 
       const committed = execution.committed;
 
-      if (
-        !committed.state.matchFinished &&
-        dependencies.scheduleLifecycleAlarm
-      ) {
-        await dependencies.scheduleLifecycleAlarm({
-          matchId: input.matchId,
-          state: committed.state,
-          version: committed.version,
-          runAt: getOkeyLifecycleRunAt(
-            committed.state,
-            committed.turn_deadline_at,
-            now(),
-          )!,
-        });
-      }
+      await scheduleNextOkeyLifecycleAlarm({
+        matchId: input.matchId,
+        state: committed.state,
+        version: committed.version,
+        turnDeadlineAt: committed.turn_deadline_at,
+        scheduleLifecycleAlarm: dependencies.scheduleLifecycleAlarm,
+        nowMs: now(),
+      });
 
       return {
         ok: true,
@@ -552,6 +521,12 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
     projection: OkeyMatchServerProjection;
     turnDeadlineAt: string | null;
   }) => Promise<{ data: TRoom | null; error: any }>;
+  scheduleLifecycleAlarm?: (input: {
+    matchId: string;
+    state: OkeyAuthoritativeMatchState;
+    version: number;
+    runAt: string;
+  }) => Promise<void>;
 }): Promise<OkeyMatchStartReconcileResult<TRoom>> {
   const getNow = options.now ?? Date.now;
 
@@ -598,6 +573,15 @@ export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
       error: startedError?.message ?? "match_start_failed",
     };
   }
+
+  await scheduleNextOkeyLifecycleAlarm({
+    matchId: options.matchId,
+    state,
+    version: 0,
+    turnDeadlineAt: deadline,
+    scheduleLifecycleAlarm: options.scheduleLifecycleAlarm,
+    nowMs: getNow(),
+  });
 
   return {
     state,
@@ -778,21 +762,14 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
     reason,
   };
 
-  if (
-    !reconciled.state.matchFinished &&
-    options.scheduleLifecycleAlarm
-  ) {
-    await options.scheduleLifecycleAlarm({
-      matchId,
-      state: reconciled.state,
-      version: reconciled.version,
-      runAt: getOkeyLifecycleRunAt(
-        reconciled.state,
-        reconciled.turnDeadlineAt,
-        getNow(),
-      )!,
-    });
-  }
+  await scheduleNextOkeyLifecycleAlarm({
+    matchId,
+    state: reconciled.state,
+    version: reconciled.version,
+    turnDeadlineAt: reconciled.turnDeadlineAt,
+    scheduleLifecycleAlarm: options.scheduleLifecycleAlarm,
+    nowMs: getNow(),
+  });
 
   return result;
 }

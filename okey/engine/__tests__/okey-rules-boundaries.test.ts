@@ -9,7 +9,6 @@ import {
     createInitialOkeyGame,
     declareKonkanOpen,
     discardTile,
-    findKonkanDeclarationRunTileIds,
     getRequiredOpenScore,
     hasLockedKonkanSet,
     hasSmallKonkanMeld,
@@ -324,11 +323,7 @@ test("Konkan win validation strictly enforces lock and meld size rules", () => {
   assert.equal(hasLockedKonkanSet([{ ...lockedMeld, locked: false }], okeyTile), false);
   assert.equal(hasLockedKonkanSet([], okeyTile), false);
 
-  // 5. Legacy whole-hand discovery is disabled; only explicit rack-layout candidates may declare.
-  assert.equal(findKonkanDeclarationRunTileIds([...officialRun, ...meld4], okeyTile, []), null);
-  assert.equal(findKonkanDeclarationRunTileIds([...officialRun, ...meld3], okeyTile, [lockedMeld]), null);
-
-  // 6. Normal discardTile NEVER finishes KonKan round
+  // 5. Normal discardTile NEVER finishes KonKan round
   const baseState = createInitialOkeyGame(0);
   // Setup player with Run 10 + Meld 4 + Discard (no lock)
   const readyHandNoLock = [...officialRun, ...meld4, discardTileItem];
@@ -346,7 +341,7 @@ test("Konkan win validation strictly enforces lock and meld size rules", () => {
   assert.equal(afterNormalDiscard.phase, "playing");
   assert.equal(afterNormalDiscard.winnerId, null);
 
-  // 7. KonKan win only via declareKonkanOpen with automatic final discard
+  // 6. KonKan win only via declareKonkanOpen with automatic final discard
   const officialRunIds = officialRun.map((t) => t.id);
   const meld4Ids = meld4.map((t) => t.id);
   const meld3Ids = meld3.map((t) => t.id);

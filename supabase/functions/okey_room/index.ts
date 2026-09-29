@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 import { reconcileAuthoritativeMatchStart } from "../../../okey/server/okey-server-reconciler.ts";
+import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
 
 type OkeyCurrency = "fun" | "aznif";
 
@@ -149,6 +150,8 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const lifecycleSecret = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
+  const schedulerUrl = Deno.env.get("AZNIF_GAME_LIFECYCLE_URL");
   const authorization = req.headers.get("Authorization");
 
   if (!supabaseUrl || !anonKey || !serviceKey) {
@@ -730,6 +733,10 @@ serve(async (req) => {
       );
     }
 
+    if (!lifecycleSecret || !schedulerUrl) {
+      return json({ error: "lifecycle_not_configured" }, 500);
+    }
+
     const charged = await service.rpc(
       "okey_charge_entry_fee",
       {
@@ -792,6 +799,16 @@ serve(async (req) => {
             p_state: state,
             p_projection: projection,
             p_turn_deadline_at: turnDeadlineAt,
+          });
+        },
+        scheduleLifecycleAlarm: async (lifecycleJob) => {
+          await scheduleAznifGameLifecycle({
+            schedulerUrl,
+            lifecycleSecret,
+            gameType: "okey",
+            matchId: lifecycleJob.matchId,
+            expectedVersion: lifecycleJob.version,
+            runAt: lifecycleJob.runAt,
           });
         },
       });
@@ -1014,5 +1031,6 @@ serve(async (req) => {
     room: withTableEconomy(room),
   });
 });
+
 
 

@@ -80,20 +80,3 @@ export class OkeyCosmeticsResolver
     }
   }
 }
-
-export type OkeyResolvedCosmetics = {
-  sharedTableSetAssetKey: string;
-  sharedTilesSetAssetKey: string;
-  playerRackSetAssetKeys: Record<string, string>;
-};
-
-export function toOkeyResolvedCosmetics(
-  resolution: MultiplayerCosmeticsResolution,
-): OkeyResolvedCosmetics {
-  return {
-    sharedTableSetAssetKey: resolution.sharedSetAssetKey,
-    sharedTilesSetAssetKey: resolution.sharedSetAssetKey,
-    playerRackSetAssetKeys: resolution.playerSetAssetKeys,
-  };
-}
-

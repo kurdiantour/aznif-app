@@ -613,16 +613,18 @@ useEffect(() => {
 
     setIsLeavingMatch(true);
 
-    try {
-      if (!isLocalGame && roomId) {
-        if (gameMode === "1v1") {
-          await oneVsOneGame.leaveMatch();
-        } else {
-          await supabase.rpc("leave_two_vs_two_match", {
-            p_room_id: roomId,
-          });
-        }
-      }
+try {
+  if (!isLocalGame && roomId) {
+    if (gameMode === "1v1") {
+      await oneVsOneGame.leaveMatch();
+    } else {
+      const { error } = await supabase.rpc("leave_two_vs_two_match", {
+        p_room_id: roomId,
+      });
+
+      if (error) throw error;
+    }
+  }
 
       setShowLeaveConfirm(false);
       router.replace("/(tabs)/play");
@@ -964,7 +966,6 @@ useEffect(() => {
 
           <View style={styles.topRightActions}>
             <Pressable
-              accessibilityLabel="Open game settings"
               style={styles.topRightActionButton}
               onPress={openMatchMenu}
             >

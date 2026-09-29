@@ -30,10 +30,6 @@ export function getEquippedItem(state: ShopState | null, category: ShopCategory)
   return state?.snapshot.items.find((item) => item.id === state.equippedByCategory[category]);
 }
 
-export function getDefaultItem(state: ShopState | null, category: ShopCategory): ShopCatalogRow | undefined {
-  return state?.snapshot.items.find((item) => item.category === category && item.is_default);
-}
-
 export function nextShopBoundaryDelay(state: ShopState, elapsedMs: number): number | null {
   const now = Date.parse(state.snapshot.server_now) + Math.max(0, elapsedMs);
   const future = state.snapshot.items.flatMap((item) => [

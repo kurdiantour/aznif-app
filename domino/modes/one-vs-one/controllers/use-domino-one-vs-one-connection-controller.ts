@@ -134,23 +134,28 @@ export function useDominoOneVsOneConnectionController(args: {
       });
     };
 
-    const boot = async () => {
-      try {
-        args.setLoading(true);
-        args.setError(null);
-        const userId = await args.adapter!.getCurrentUserId();
-        if (!mounted) return;
-        args.setCurrentUserId(userId);
-        if (!mounted) return;
-        await Promise.all([loadRoom(), refreshPlayers()]);
-        subscribe();
-        if (mounted) args.setLoading(false);
-      } catch (error: any) {
-        if (!mounted) return;
-        args.setError(error?.message ?? String(error));
-        args.setLoading(false);
-      }
-    };
+const boot = async () => {
+  try {
+    args.setLoading(true);
+    args.setError(null);
+
+    const userId = await args.adapter!.getCurrentUserId();
+    if (!mounted) return;
+
+    args.setCurrentUserId(userId);
+
+    await Promise.all([loadRoom(), refreshPlayers()]);
+    if (!mounted) return;
+
+    subscribe();
+    args.setLoading(false);
+  } catch (error: any) {
+    if (!mounted) return;
+
+    args.setError(error?.message ?? String(error));
+    args.setLoading(false);
+  }
+};
 
     void boot();
     return () => {
