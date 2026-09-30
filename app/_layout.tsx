@@ -117,7 +117,6 @@ export default function Layout() {
                 }}
               />
               <Stack.Screen name="create-room" />
-              <Stack.Screen name="domino/matchmaking" />
               <Stack.Screen name="domino/play-ai" />
               <Stack.Screen name="wallet-history" />
               <Stack.Screen name="(tabs)" />

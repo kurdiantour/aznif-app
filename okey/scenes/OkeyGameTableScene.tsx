@@ -343,6 +343,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
   } = useOkeyTileFlightCoordinator(
     state.players,
     state.discardPile[state.discardPile.length - 1] ?? null,
+    dealLifecycleKey,
   );
   const presentedState = useMemo(() => ({
     ...state,
@@ -830,6 +831,8 @@ return (
       playerId={opponentSeats[0]?.id}
       side="top"
       onMeasured={handleTopOpponentMeasured}
+      dealResetKey={dealLifecycleKey}
+      dealOrigin={dealOrigin}
       onPress={
         opponentSeats[0]?.name
           ? () => openOpponentProfile(opponentSeats[0]?.id ?? "")
@@ -842,6 +845,8 @@ return (
       playerId={opponentSeats[1]?.id}
       side="left"
       onMeasured={handleLeftOpponentMeasured}
+      dealResetKey={dealLifecycleKey}
+      dealOrigin={dealOrigin}
       onPress={
         opponentSeats[1]?.name
           ? () => openOpponentProfile(opponentSeats[1]?.id ?? "")
@@ -854,12 +859,15 @@ return (
       playerId={opponentSeats[2]?.id}
       side="right"
       onMeasured={handleRightOpponentMeasured}
+      dealResetKey={dealLifecycleKey}
+      dealOrigin={dealOrigin}
       onPress={
         opponentSeats[2]?.name
           ? () => openOpponentProfile(opponentSeats[2]?.id ?? "")
           : undefined
       }
     />
+
 
 <MemoizedOkeyTableMeldAreas
       players={presentedSeatOrderedPlayers}
@@ -1154,4 +1162,3 @@ const presentationOverlayStyles = StyleSheet.create({
     alignItems: "center",
   },
 });
-

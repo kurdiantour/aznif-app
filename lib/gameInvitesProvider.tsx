@@ -161,9 +161,9 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
       handled.current.set(party.id, party.commandVersion);
       router.replace({ pathname: "/okey/game", params: { mode: party.currentCurrency, table: party.currentTableId, tableId: party.currentTableId, matchId: party.currentRoomId } });
     } else if (party.currentGame === "domino") {
-      if (!party.currentMode || pathname.startsWith("/domino/matchmaking") || pathname.startsWith("/domino/game")) return;
+      if (!party.currentMode || pathname.startsWith("/domino/game")) return;
       handled.current.set(party.id, party.commandVersion);
-      router.replace({ pathname: "/domino/matchmaking", params: { mode: party.currentMode, matchmaking_status: "searching", room_id: party.currentRoomId, matchType: "squad", playMode: party.currentCurrency, entryFee: String(party.currentEntryFee) } });
+      router.replace({ pathname: "/domino/game", params: { mode: party.currentMode, matchmaking_status: "searching", room_id: party.currentRoomId, matchType: "squad", playMode: party.currentCurrency, entryFee: String(party.currentEntryFee) } });
     }
   }, [ready, current, party, auth.userId, snapshot?.live, snapshot?.revision, snapshot?.navigable, pathname, router]);
 

@@ -17,6 +17,7 @@ export function useDominoTwoVsTwoConnectionController(input: {
   setLoading: (value: boolean) => void;
   setError: (value: string | null) => void;
   setCurrentUserId: (value: string | null) => void;
+  enabled?: boolean;
   rawState?: any;
   currentUserId?: string | null;
   players?: any[];
@@ -34,6 +35,13 @@ export function useDominoTwoVsTwoConnectionController(input: {
   }, [input.refreshSnapshot, input.loadPlayers]);
 
   useEffect(() => {
+    const isEnabled = input.enabled ?? Boolean(input.roomId);
+    if (!isEnabled) {
+      input.setError(null);
+      input.setLoading(false);
+      return;
+    }
+
     if (!input.roomId || !input.adapter) {
       input.setError('No 2v2 room id');
       input.setLoading(false);
@@ -169,6 +177,7 @@ export function useDominoTwoVsTwoConnectionController(input: {
     };
   }, [
     input.roomId,
+    input.enabled,
     input.adapter,
     input.applyRealtimeRoom,
     input.loadPlayers,

@@ -27,7 +27,6 @@ import {
   RACK_DEAL_BATCH_STAGGER_MS,
   RACK_TILE_ENTER_MS,
   getFlatIndexForSlot,
-  getSlotEnterDelay,
   getRackRowTileTop,
   type ExternalDropPlacement,
   type RackRow,
@@ -455,7 +454,7 @@ export function OkeyPlayerRack({
         dealTileIds.forEach((tileId) => next.delete(tileId));
         return next;
       });
-    }, RACK_TILE_ENTER_MS + RACK_DEAL_BATCH_STAGGER_MS * 4 + 50);
+    }, RACK_TILE_ENTER_MS + 4 * 4 * 180 + 50);
 
     enterAnimationTimeoutsRef.current.push(timeout);
 
@@ -592,11 +591,15 @@ export function OkeyPlayerRack({
                         : rackTileHeight * 1.5))
                   : undefined
               }
-              delay={getSlotEnterDelay(
-                row,
-                slotIndex,
-                isDealer,
-              )}
+delay={
+  Math.floor(
+    (row === "bottom"
+      ? slotIndex
+      : RACK_ROW_CAPACITY + slotIndex) / 3
+  ) *
+  4 *
+  180
+}
             >
               {tileFace}
             </EnteringRackTile>

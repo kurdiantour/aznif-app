@@ -203,7 +203,7 @@ if (sharedGameUtils.includes("@ts-nocheck")) {
 }
 
 const privateRoomScreen = read("app/create-room.tsx");
-const matchmakingScreen = read("app/domino/matchmaking.tsx");
+const matchmakingScreen = read("domino/multiplayer/useDominoWaitingRoom.ts");
 const localAiRewardHardening = read(
   "supabase/migrations/20260630000300_harden_local_ai_practice_reward_claims.sql",
 );

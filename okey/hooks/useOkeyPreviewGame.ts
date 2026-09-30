@@ -13,8 +13,8 @@ import type { OkeyCommittedTransition, OkeyPresentationSource } from "@/okey/ada
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
 import type { OkeyDrawSource, OkeyGameState, OkeyMeld, OkeyTeamId } from "@/okey/types/okey";
 
-function createPreviewState(): OkeyGameState {
-  const initial = createInitialOkeyGame(0);
+function createPreviewState(dealerIndex = 0): OkeyGameState {
+  const initial = createInitialOkeyGame(dealerIndex);
   const players = initial.players.map((player, index) => ({
     ...player,
     id: index === 0 ? "seat-0" : `seat-${index}`,
@@ -31,14 +31,19 @@ function createPreviewState(): OkeyGameState {
   };
 }
 
-function createPreviewProjection(state: OkeyGameState, version: number, deadline: number): OkeyMatchServerProjection {
+function createPreviewProjection(
+  state: OkeyGameState,
+  version: number,
+  deadline: number,
+  currentRound = 1,
+): OkeyMatchServerProjection {
   return {
     ...state,
     version,
     deckCount: state.deck.length,
     turnDeadlineAt: new Date(deadline).toISOString(),
     turnDurationSeconds: 30,
-    currentRound: 1,
+    currentRound,
     maxRounds: 7,
     roundResults: [],
     matchScores: { teamA: 0, teamB: 0 },
@@ -111,7 +116,12 @@ export function useOkeyPreviewGame(enabled = true) {
     const deadline = next.currentPlayerIndex !== previous.state.currentPlayerIndex
       ? Date.now() + TURN_MS
       : Date.parse(previous.projection.turnDeadlineAt!);
-    const projection = createPreviewProjection(next, previous.projection.version + 1, deadline);
+    const projection = createPreviewProjection(
+      next,
+      previous.projection.version + 1,
+      deadline,
+      previous.projection.currentRound,
+    );
     projection.lastTimeoutDiscardEvent = timeoutTileId
       ? { id: 'local-timeout-' + projection.version, playerId: 'seat-0', tileId: timeoutTileId, source: 'rack' }
       : previous.projection.lastTimeoutDiscardEvent;
@@ -184,10 +194,16 @@ export function useOkeyPreviewGame(enabled = true) {
     if (!enabled || state.phase === "playing") return;
     const timer = setTimeout(() => {
       const previous = snapshotRef.current;
+      const nextRound = previous.projection.currentRound + 1;
       const next = createPreviewState();
       const value = {
         state: next,
-        projection: createPreviewProjection(next, previous.projection.version + 1, Date.now() + TURN_MS),
+        projection: createPreviewProjection(
+          next,
+          previous.projection.version + 1,
+          Date.now() + TURN_MS,
+          nextRound,
+        ),
       };
       snapshotRef.current = value;
       stream.reset();
@@ -268,7 +284,7 @@ export function useOkeyPreviewGame(enabled = true) {
     leaving: false,
     isAppActive: true,
     lifecycleResumeToken,
-    currentRound: 1,
+    currentRound: onlineProjection.currentRound,
     maxRounds: 7,
     roundResults: [],
     matchScores: { teamA: 0, teamB: 0 } as Record<OkeyTeamId, number>,

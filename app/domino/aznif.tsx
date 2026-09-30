@@ -251,7 +251,7 @@ export default function DominoAznifScreen() {
       }
 
       router.replace({
-        pathname: "/domino/matchmaking",
+        pathname: "/domino/game",
         params: {
           mode: config.mode,
           matchmaking_status: result.status,

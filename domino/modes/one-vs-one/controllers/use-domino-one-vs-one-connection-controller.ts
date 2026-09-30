@@ -20,6 +20,7 @@ export function useDominoOneVsOneConnectionController(args: {
   setCurrentUserId: (value: string | null) => void;
   setPlayers: (rows: any[]) => void;
   setProfiles: (profiles: Map<string, any>) => void;
+  enabled?: boolean;
 }) {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const startInFlightRef = useRef(false);
@@ -55,6 +56,13 @@ export function useDominoOneVsOneConnectionController(args: {
   }, [args.adapter, args.setPlayers, args.setProfiles]);
 
   useEffect(() => {
+    const isEnabled = args.enabled ?? Boolean(args.roomId);
+    if (!isEnabled) {
+      args.setError(null);
+      args.setLoading(false);
+      return;
+    }
+
     if (!args.roomId || !args.adapter) {
       args.setError("No 1v1 room id");
       args.setLoading(false);
@@ -164,6 +172,7 @@ const boot = async () => {
     };
   }, [
     args.roomId,
+    args.enabled,
     args.adapter,
     args.applySnapshot,
     args.setLoading,

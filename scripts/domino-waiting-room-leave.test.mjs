@@ -11,7 +11,7 @@ const twoVsTwoSql = readFileSync(
   "utf8",
 ).toLowerCase().replace(/--.*$/gm, "").replace(/\s+/g, " ");
 const sql = `${oneVsOneSql} ${twoVsTwoSql}`;
-const screen = readFileSync("app/domino/matchmaking.tsx", "utf8");
+const screen = readFileSync("domino/multiplayer/useDominoWaitingRoom.ts", "utf8");
 
 test("waiting-room leave supports Domino 1v1 and 2v2 atomically", () => {
   assert.match(oneVsOneSql, /create or replace function public\.cancel_one_vs_one_matchmaking\(p_room_id uuid default null\)/);

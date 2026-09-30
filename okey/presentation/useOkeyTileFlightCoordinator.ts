@@ -88,10 +88,17 @@ const createPresentationSurface = (): PresentationSurface => ({
 export function useOkeyTileFlightCoordinator(
   initialPlayers: OkeyGameState["players"],
   initialTopDiscard: OkeyTile | null,
+  lifecycleKey: string,
 ) {
   const [surface, setSurface] = useState<PresentationSurface>(createPresentationSurface);
-  const [presentedTablePlayers, setPresentedTablePlayers] =
-    useState(initialPlayers);
+  const [presentedPlayersSnapshot, setPresentedPlayersSnapshot] = useState(() => ({
+    lifecycleKey,
+    players: initialPlayers,
+  }));
+  const presentedTablePlayers =
+    presentedPlayersSnapshot.lifecycleKey === lifecycleKey
+      ? presentedPlayersSnapshot.players
+      : initialPlayers;
   const [presentedTopDiscard, setPresentedTopDiscard] =
     useState<OkeyTile | null>(initialTopDiscard);
 
@@ -177,12 +184,12 @@ export function useOkeyTileFlightCoordinator(
   });
 
   const setPresentedPlayers = useCallback((players: OkeyGameState["players"]) => {
-    setPresentedTablePlayers(players);
-  }, []);
+    setPresentedPlayersSnapshot({ lifecycleKey, players });
+  }, [lifecycleKey]);
 
   useEffect(() => {
-    setPresentedTablePlayers(initialPlayers);
-  }, [initialPlayers]);
+    setPresentedPlayersSnapshot({ lifecycleKey, players: initialPlayers });
+  }, [initialPlayers, lifecycleKey]);
 
   const resetPresentationRuntime = useCallback((
     players: OkeyGameState["players"],
@@ -191,10 +198,10 @@ export function useOkeyTileFlightCoordinator(
     activePresentationRef.current.resetOpponent?.();
     activePresentationRef.current.resetTimeout?.();
     awaitingDiscardRemovalTileIdRef.current = null;
-    setPresentedTablePlayers(players);
+    setPresentedPlayersSnapshot({ lifecycleKey, players });
     setPresentedTopDiscard(topDiscard);
     setSurface(createPresentationSurface());
-  }, []);
+  }, [lifecycleKey]);
 
   return {
     tileFlight: surface.tileFlight,
@@ -942,4 +949,5 @@ export function useOkeyAuthoritativeRackRemovalPresentation(
 export {
   useOkeyMeldDropOrchestration, useOkeyTableMeldCommandPresentation
 } from "@/okey/presentation/useOkeyTableActions";
+
 

@@ -59,8 +59,12 @@ type UseTwoVsTwoResult = Omit<
   passTurn: () => Promise<boolean>;
 };
 
-export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
-  const [loading, setLoading] = useState(true);
+export function useTwoVsTwoGame(
+  roomId?: string,
+  options?: { enabled?: boolean },
+): UseTwoVsTwoResult {
+  const isEnabled = options?.enabled ?? Boolean(roomId);
+  const [loading, setLoading] = useState(isEnabled);
   const [error, setError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
   const [playersRows, setPlayersRows] = useState<any[]>([]);
@@ -226,6 +230,7 @@ export function useTwoVsTwoGame(roomId?: string): UseTwoVsTwoResult {
 
   useDominoTwoVsTwoConnectionController({
     roomId,
+    enabled: isEnabled,
     loading,
     status: rawState?.status ?? null,
     handCounts: rawState?.handCounts,

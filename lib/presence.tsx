@@ -39,8 +39,6 @@ function routeStatus(pathname: string): PresenceStatus {
   }
 
   if (
-    pathname === "/domino/matchmaking" ||
-    pathname.startsWith("/domino/matchmaking/") ||
     pathname === "/okey/matchmaking" ||
     pathname.startsWith("/okey/matchmaking/")
   ) {

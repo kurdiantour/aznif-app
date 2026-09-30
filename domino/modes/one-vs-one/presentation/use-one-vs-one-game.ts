@@ -66,8 +66,10 @@ type UseOneVsOneResult = Omit<
 
 export function useOneVsOneGame(
   roomId?: string,
+  options?: { enabled?: boolean },
 ): UseOneVsOneResult {
-  const [loading, setLoading] = useState(true);
+  const isEnabled = options?.enabled ?? Boolean(roomId);
+  const [loading, setLoading] = useState(isEnabled);
   const [error, setError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
   const [playersRows, setPlayersRows] = useState<any[]>([]);
@@ -135,6 +137,7 @@ export function useOneVsOneGame(
   const { refreshSnapshot } =
     useDominoOneVsOneConnectionController({
       roomId,
+      enabled: isEnabled,
       adapter: matchAdapter,
       loading,
       status: rawState?.status,

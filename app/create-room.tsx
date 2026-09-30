@@ -84,7 +84,7 @@ export default function CreateRoomScreen() {
     code = "",
   ) => {
     router.replace({
-      pathname: "/domino/matchmaking",
+      pathname: "/domino/game",
       params: {
         mode: "1v1",
         matchmaking_status: "private",

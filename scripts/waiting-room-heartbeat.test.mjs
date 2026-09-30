@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const domino = readFileSync("app/domino/matchmaking.tsx", "utf8");
+const domino = readFileSync("domino/multiplayer/useDominoWaitingRoom.ts", "utf8");
 const okeyClient = readFileSync("okey/multiplayer/okey-room-api.ts", "utf8");
 const okeyRoom = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 const migration = readFileSync("supabase/migrations/20260828025845_stabilize_all_waiting_room_heartbeats.sql", "utf8");

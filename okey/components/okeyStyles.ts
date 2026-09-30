@@ -1,8 +1,6 @@
 import { StyleSheet } from "react-native";
 
 import {
-  OPPONENT_RACK_HEIGHT,
-  OPPONENT_RACK_WIDTH,
   OPPONENT_TILE_HEIGHT,
   OPPONENT_TILE_WIDTH,
   PLAYER_TILE_ASPECT_RATIO,
@@ -46,74 +44,6 @@ export const styles = StyleSheet.create({
     opacity: 0.2,
     borderWidth: 8,
     borderColor: "rgba(255,255,255,0.025)",
-  },
-
-  opponentSeat: {
-    position: "absolute",
-    alignItems: "center",
-    gap: 0,
-    zIndex: 500,
-    elevation: 500,
-  },
-
-  topSeat: {},
-
-  leftSeat: {
-    transform: [
-      { rotate: "-90deg" },
-      { translateY: -30 },
-    ],
-  },
-
-  rightSeat: {
-    transform: [
-      { rotate: "90deg" },
-      { translateY: -30 },
-    ],
-  },
-
-  opponentRackWrap: {
-    position: "relative",
-    overflow: "visible",
-  },
-
-  opponentRack: {
-    width: OPPONENT_RACK_WIDTH,
-    height: OPPONENT_RACK_HEIGHT,
-    paddingHorizontal: 8,
-    overflow: "hidden",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  opponentTilesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 1,
-  },
-
-  namePlate: {
-    width: 96,
-    maxWidth: 96,
-    minWidth: 0,
-    overflow: "hidden",
-    height: 20,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(0,0,0,0.32)",
-  },
-
-  nameText: {
-    flexShrink: 1,
-    width: "100%",
-    color: "#f8edd0",
-    fontSize: 13,
-    textAlign: "center",
   },
 
   tableMeldLayer: {
@@ -364,118 +294,6 @@ export const styles = StyleSheet.create({
     fontFamily: "RobotoMedium",
   },
 
-  centerPiles: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: "34%",
-    height: 140,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 54,
-    zIndex: 180,
-    elevation: 180,
-  },
-
-  activeDiscardDragLayer: {
-    zIndex: 10000,
-    elevation: 10000,
-  },
-
-  indicatorTileSpot: {
-    position: "absolute",
-    left: 4,
-    top: -30,
-    width: 42,
-    height: 58,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 0,
-    elevation: 0,
-  },
-
-  drawStackNatural: {
-    width: 50,
-    height: 72,
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-
-  drawStackLayer: {
-    position: "absolute",
-    left: 4,
-    transform: [{ rotate: "0deg" }],
-  },
-
-  deckCount: {
-    position: "absolute",
-    bottom: -10,
-    left: 4,
-    width: 42,
-    textAlign: "center",
-    color: "rgba(255,247,218,0.78)",
-    fontSize: 10,
-    fontFamily: "SpedaRegular",
-  },
-
-  discardCount: {
-    position: "absolute",
-    bottom: -8,
-    minWidth: 18,
-    height: 14,
-    borderRadius: 7,
-    textAlign: "center",
-    color: "#1b1426",
-    backgroundColor: "rgba(248,215,116,0.92)",
-    overflow: "hidden",
-    fontSize: 9,
-    lineHeight: 14,
-    fontFamily: "RobotoMedium",
-  },
-
-  discardPileNatural: {
-    width: 92,
-    height: 82,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  discardUnderTile: {
-    position: "absolute",
-    opacity: 0.96,
-  },
-
-  discardUnderLeft: {
-    left: 15,
-    top: 20,
-    transform: [{ rotate: "-24deg" }],
-  },
-
-  discardUnderRight: {
-    right: 14,
-    top: 19,
-    transform: [{ rotate: "22deg" }],
-  },
-
-  discardUnderBottom: {
-    left: 29,
-    bottom: 12,
-    transform: [{ rotate: "8deg" }],
-  },
-
-  emptyDiscard: {
-    width: 42,
-    height: 58,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: "rgba(255,247,218,0.14)",
-  },
-
-  disabled: {
-    opacity: 0.42,
-  },
-
   rackWrap: {
     position: "absolute",
     left: 0,
@@ -588,75 +406,11 @@ export const styles = StyleSheet.create({
     elevation: 800,
   },
 
-  turnTimerTrack: {
-    position: "absolute",
-    overflow: "hidden",
-    backgroundColor: "rgba(36,8,8,0.62)",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,180,180,0.28)",
-    zIndex: 3,
-    elevation: 3,
-  },
-
-  turnTimerTrackHorizontal: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-
-  turnTimerTrackVertical: {
-    flexDirection: "column",
-    justifyContent: "flex-end",
-    alignItems: "stretch",
-  },
-
-  turnTimerReverseHorizontal: {
-    flexDirection: "row-reverse",
-  },
-
-  turnTimerReverseVertical: {
-    justifyContent: "flex-start",
-  },
-
-  turnTimerFill: {
-    backgroundColor: "#ef2424",
-    shadowColor: "#ef2424",
-    shadowOpacity: 0.7,
-    shadowRadius: 6,
-    overflow: "hidden",
-  },
-
-  turnTimerFillDraw: {
-    backgroundColor: "#168a45",
-    shadowColor: "#35d06f",
-  },
-
   rackTurnTimer: {
     left: RACK_TURN_TIMER_LEFT,
     right: RACK_TURN_TIMER_RIGHT,
     top: RACK_TURN_TIMER_TOP,
     height: RACK_TURN_TIMER_HEIGHT,
-  },
-
-  opponentTimerTop: {
-    left: 0,
-    right: 0,
-    top: -7,
-    height: 4,
-  },
-
-  opponentTimerLeft: {
-    left: 0,
-    right: 0,
-    top: -7,
-    height: 4,
-  },
-
-  opponentTimerRight: {
-    left: 0,
-    right: 0,
-    top: -7,
-    height: 4,
   },
 
   tileShadow: {
@@ -686,24 +440,6 @@ export const styles = StyleSheet.create({
   tileImage: {
     width: "100%",
     height: "100%",
-  },
-
-  okeyChip: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    width: 13,
-    height: 13,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#facc15",
-  },
-
-  okeyChipText: {
-    color: "#221309",
-    fontSize: 8,
-    fontFamily: "RobotoMedium",
   },
 
   tileBack: {

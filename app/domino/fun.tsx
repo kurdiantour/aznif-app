@@ -251,7 +251,7 @@ export default function DominoFunScreen() {
       }
 
       router.push({
-        pathname: "/domino/matchmaking",
+        pathname: "/domino/game",
         params: {
           mode,
           matchmaking_status: result.status,

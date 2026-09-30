@@ -1,3 +1,5 @@
+import WaitingPlayersPopup from "@/components/multiplayer/WaitingPlayersPopup";
+import { useDominoWaitingRoom } from "@/domino/multiplayer/useDominoWaitingRoom";
 import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
 import { type ReactNode } from "react";
 import BoardArea from "@/components/game/BoardArea";
@@ -85,7 +87,16 @@ export default function GameScreen() {
 
 function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null }) {
   useGameSystemGestureProtection();
-  const { room_id, mode, practice, preview } = useLocalSearchParams();
+  const {
+    room_id,
+    mode,
+    practice,
+    preview,
+    matchmaking_status: initialStatus,
+    matchType,
+    playMode,
+    entryFee,
+  } = useLocalSearchParams();
   const router = useRouter();
 
   const roomId = String(room_id ?? "");
@@ -98,15 +109,30 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
   const isTwoVsTwoPreview = __DEV__ && preview === "true";
   const isLocalGame = isPracticeMode || isTwoVsTwoPreview;
 
+  const waitingRoom = useDominoWaitingRoom({
+    roomId,
+    mode: gameMode,
+    matchType: matchType ? String(matchType) : undefined,
+    initialStatus: initialStatus ? String(initialStatus) : undefined,
+    playMode: playMode ? String(playMode) : undefined,
+    entryFee: entryFee ? Number(entryFee) : undefined,
+    enabled: !isLocalGame,
+  });
+
+  const activeRoomId = waitingRoom.currentRoomId || roomId;
+  const isOnlineGameplayReady = !isLocalGame && waitingRoom.gameplayReady && Boolean(activeRoomId);
+
   const practiceGame = useAiPracticeGame(practiceUserId);
   const previewGame = useLocalTwoVsTwoPreviewGame(isTwoVsTwoPreview);
 
   const oneVsOneGame = useOneVsOneGame(
-    !isLocalGame && gameMode === "1v1" ? roomId : undefined,
+    isOnlineGameplayReady && gameMode === "1v1" ? activeRoomId : undefined,
+    { enabled: isOnlineGameplayReady && gameMode === "1v1" },
   );
 
   const twoVsTwoGame = useTwoVsTwoGame(
-    !isLocalGame && gameMode === "2v2" ? roomId : undefined,
+    isOnlineGameplayReady && gameMode === "2v2" ? activeRoomId : undefined,
+    { enabled: isOnlineGameplayReady && gameMode === "2v2" },
   );
 
   const game = isTwoVsTwoPreview
@@ -130,8 +156,8 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
   const displayBoard =
     (game as any).pendingMove?.visualBoard ?? game.board;
 
-  const gameLoading = !isLocalGame && (game as any).loading;
-  const gameError = !isLocalGame ? (game as any).error : null;
+  const gameLoading = !isLocalGame && !waitingRoom.isWaiting && (game as any).loading;
+  const gameError = !isLocalGame && !waitingRoom.isWaiting ? (game as any).error : null;
 
   const { profile, loading: profileLoading, refreshProfile } = useProfile();
 
@@ -182,6 +208,8 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
 }, [game.passTurn]);
 
 useEffect(() => {
+  if (waitingRoom.isWaiting) return;
+
   const subscription = BackHandler.addEventListener(
     "hardwareBackPress",
     () => {
@@ -191,7 +219,7 @@ useEffect(() => {
   );
 
   return () => subscription.remove();
-}, []);
+}, [waitingRoom.isWaiting]);
 
   const localCurrentUserId =
     !isLocalGame && gameMode === "1v1"
@@ -209,8 +237,8 @@ useEffect(() => {
     gameInitializedRef.current = false;
     takeoverExitStartedRef.current = false;
     practiceRewardSettlementRequestedRef.current = false;
-    practiceMatchIdRef.current = roomId || `${Date.now()}-${Math.random()}`;
-  }, [roomId, gameMode, isLocalGame]);
+    practiceMatchIdRef.current = activeRoomId || `${Date.now()}-${Math.random()}`;
+  }, [activeRoomId, gameMode, isLocalGame]);
 
   useEffect(() => {
     let mounted = true;
@@ -232,17 +260,17 @@ useEffect(() => {
   }, []);
 
   useEffect(() => {
-    if (isLocalGame || gameMode === "1v1") return;
+    if (isLocalGame || gameMode === "1v1" || !isOnlineGameplayReady) return;
     if (gameLoading) return;
     if (gameInitializedRef.current) return;
-    if (!roomId) return;
+    if (!activeRoomId) return;
 
     const initializeGame = async () => {
       try {
         const { data: roomData, error: roomError } = await supabase
           .from("two_vs_two_rooms")
           .select("status, state")
-          .eq("id", roomId)
+          .eq("id", activeRoomId)
           .maybeSingle();
 
         if (roomError) {
@@ -262,7 +290,7 @@ useEffect(() => {
         gameInitializedRef.current = true;
 
         const { error } = await supabase.rpc("start_two_vs_two_game", {
-          p_room_id: roomId,
+          p_room_id: activeRoomId,
         });
 
         if (error) {
@@ -274,7 +302,7 @@ useEffect(() => {
     };
 
     void initializeGame();
-  }, [isLocalGame, gameLoading, roomId, gameMode]);
+  }, [isLocalGame, gameLoading, activeRoomId, gameMode, isOnlineGameplayReady]);
 
   useEffect(() => {
     if (gameLoading || !game.myHand.length) return;
@@ -614,12 +642,12 @@ useEffect(() => {
     setIsLeavingMatch(true);
 
 try {
-  if (!isLocalGame && roomId) {
+  if (!isLocalGame && activeRoomId) {
     if (gameMode === "1v1") {
       await oneVsOneGame.leaveMatch();
     } else {
       const { error } = await supabase.rpc("leave_two_vs_two_match", {
-        p_room_id: roomId,
+        p_room_id: activeRoomId,
       });
 
       if (error) throw error;
@@ -776,7 +804,7 @@ useEffect(() => {
         : null;
 
 
-  if (gameLoading) {
+  if (!waitingRoom.isWaiting && gameLoading) {
     return (
       <DominoTableBackground>
         <View style={styles.loadingOverlay}>
@@ -790,7 +818,7 @@ useEffect(() => {
     return <Redirect href="/login" />;
   }
 
-  if (gameError) {
+  if (!waitingRoom.isWaiting && gameError) {
     return (
       <View style={styles.centerScreen}>
         <Text style={styles.statusText}>{"\u0646\u06d5\u062a\u0648\u0627\u0646\u0631\u0627 \u06cc\u0627\u0631\u06cc\u06cc\u06d5\u06a9\u06d5 \u0628\u0627\u0631\u0628\u06a9\u0631\u06ce\u062a"}</Text>
@@ -800,7 +828,7 @@ useEffect(() => {
   }
 
   return (
-    <DominoCosmeticsProvider roomId={roomId || undefined} mode={gameMode}>
+    <DominoCosmeticsProvider roomId={activeRoomId || undefined} mode={gameMode}>
       <View
         ref={screenRef}
         onLayout={() =>
@@ -829,6 +857,16 @@ useEffect(() => {
         )}
       <View style={styles.stage}>
         <DominoTableBackground>
+          <WaitingPlayersPopup
+            visible={waitingRoom.isWaiting}
+            playerCount={gameMode === "1v1" ? 2 : 4}
+            entryFee={waitingRoom.waitingEntryFee}
+            currency={waitingRoom.waitingCurrency}
+            players={waitingRoom.publicWaitingPlayers}
+            countdownSeconds={waitingRoom.countdownSeconds}
+            canCancel={waitingRoom.canCancel}
+            onCancel={waitingRoom.handleCancel}
+          />
           {topPlayer && (
             <View style={styles.topOpponentArea}>
               <View style={styles.avatarSlot}>
@@ -964,27 +1002,31 @@ useEffect(() => {
             </View>
           )}
 
-          <View style={styles.topRightActions}>
-            <Pressable
-              style={styles.topRightActionButton}
-              onPress={openMatchMenu}
-            >
-              <Ionicons name="menu-outline" size={22} color="#f8f3df" />
-            </Pressable>
-          </View>
+          {!waitingRoom.isWaiting && (
+            <View style={styles.topRightActions}>
+              <Pressable
+                style={styles.topRightActionButton}
+                onPress={openMatchMenu}
+              >
+                <Ionicons name="menu-outline" size={22} color="#f8f3df" />
+              </Pressable>
+            </View>
+          )}
 
-          <View style={styles.bottomHudRow}>
-            <MiniScoreBoard
-              teamAName={miniScoreTeamAName}
-              teamAScore={miniScoreTeamAScore}
-              teamBName={miniScoreTeamBName}
-              teamBScore={miniScoreTeamBScore}
-              onPress={() => setShowScorePopup(true)}
-            />
-          </View>
+          {!waitingRoom.isWaiting && (
+            <View style={styles.bottomHudRow}>
+              <MiniScoreBoard
+                teamAName={miniScoreTeamAName}
+                teamAScore={miniScoreTeamAScore}
+                teamBName={miniScoreTeamBName}
+                teamBScore={miniScoreTeamBScore}
+                onPress={() => setShowScorePopup(true)}
+              />
+            </View>
+          )}
 
           <DrawPilePrompt
-            visible={game.canDrawTile || shouldShowPassPrompt}
+            visible={!waitingRoom.isWaiting && (game.canDrawTile || shouldShowPassPrompt)}
             gameMode={gameMode}
             boneyardCount={game.boneyardCount}
             onDraw={handleDrawTile}
@@ -1000,11 +1042,11 @@ useEffect(() => {
 
           <View style={styles.bottomArea}>
             <PlayerHand
-              tiles={game.myHand}
+              tiles={waitingRoom.isWaiting ? [] : game.myHand}
               scale={1.1}
               onPlayTile={handleDropTile}
               onSelectTile={handlePreviewTile}
-              disabled={!isMyTurn || game.canDrawTile}
+              disabled={waitingRoom.isWaiting || !isMyTurn || game.canDrawTile}
               selectedTileId={selectedTile?.id ?? null}
               playableTileIds={playableTileIds}
               dealOrigin={dealOrigin}
@@ -1075,7 +1117,7 @@ useEffect(() => {
 
 <MultiplayerGameChat
   gameType="domino"
-  matchId={roomId}
+  matchId={activeRoomId}
   mode={gameMode}
   currentUserId={profile?.id ?? localCurrentUserId}
   playerIdBySeat={{
@@ -1084,7 +1126,7 @@ useEffect(() => {
     left: leftPlayer?.id,
     right: rightPlayer?.id,
   }}
-  enabled={!isLocalGame && !!roomId}
+  enabled={!isLocalGame && !waitingRoom.isWaiting && !!activeRoomId}
 /><MatchMenuDrawer
   visible={showMatchMenu}
   players={game.players}
@@ -1119,7 +1161,6 @@ const styles = StyleSheet.create({
   previewRestartText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   screen: {
     flex: 1,
-    direction: "ltr",
     width: "100%",
     height: "100%",
     backgroundColor: "#03110b",
@@ -1160,7 +1201,6 @@ const styles = StyleSheet.create({
 
   stage: {
     flex: 1,
-    direction: "ltr",
     width: "100%",
     height: "100%",
     backgroundColor: "#03110b",
