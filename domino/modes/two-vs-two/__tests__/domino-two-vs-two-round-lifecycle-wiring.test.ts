@@ -21,6 +21,15 @@ test('human and bot last-tile paths commit the same shared finished-round transi
   }
 });
 
+test('human and bot share the same authoritative match finish commit status', () => {
+  const human = readFileSync('supabase/functions/submit_two_vs_two/move.ts', 'utf8');
+  const bot = readFileSync('supabase/functions/process_bot_turns/index.ts', 'utf8');
+  for (const source of [human, bot]) {
+    assert.match(source, /status:\s*nextStatus/);
+    assert.doesNotMatch(source, /\.update\(\{\s*status:\s*["']finished["']/);
+  }
+});
+
 test('reveal and countdown precede the authoritative start-next-hand command', () => {
   const controller = readFileSync(
     'domino/modes/two-vs-two/controllers/use-domino-two-vs-two-controller.ts',

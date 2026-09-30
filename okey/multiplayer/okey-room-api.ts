@@ -189,7 +189,6 @@ export async function getOkeyRoomCosmetics(
 
 export function subscribeOkeyWaitingRoomHeartbeat(
   matchId: string,
-  listener: (room: OkeyRoomSnapshot) => void,
   onError?: (error: Error) => void,
 ) {
   let active = true;
@@ -219,13 +218,11 @@ export function subscribeOkeyWaitingRoomHeartbeat(
     heartbeatInFlight = true;
 
     try {
-      const room = await heartbeatOkeyRoom(matchId);
-
-      if (active) {
-        listener(room);
-      }
+      await heartbeatOkeyRoom(matchId);
     } catch (error) {
-      reportError(error);
+      if (active) {
+        reportError(error);
+      }
     } finally {
       heartbeatInFlight = false;
     }
@@ -308,8 +305,10 @@ export function subscribeOkeyRoom(
         }
       })
       .catch((error) => {
-        reportError(error);
-        scheduleCountdownStartRetry();
+        if (active) {
+          reportError(error);
+          scheduleCountdownStartRetry();
+        }
       })
       .finally(() => {
         refreshInFlight = null;
@@ -344,7 +343,7 @@ export function subscribeOkeyRoom(
     countdownStartTimer = setTimeout(() => {
       countdownStartTimer = null;
       void runCountdownStartCheck();
-    }, 500);
+    }, COUNTDOWN_START_RETRY_MS);
   }
 
   function scheduleCountdownStartCheck(

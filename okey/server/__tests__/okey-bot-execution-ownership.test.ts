@@ -10,7 +10,6 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   const worker = read("supabase/functions/process_bot_turns/index.ts");
   const executor = read("okey/server/okey-bot-executor.ts");
   const commitGateway = read("okey/server/okey-authoritative-commit-gateway.ts");
-  const reconciler = read("okey/server/okey-server-reconciler.ts");
   const edge = read("supabase/functions/okey_match/index.ts");
   const maintenance = read("supabase/functions/okey_maintenance/index.ts");
   const matchAdapterInterface = read("okey/adapters/okey-match-adapter.ts");
@@ -23,15 +22,15 @@ test("Okey Bot execution is 100% server-owned through reconciler with zero clien
   assert.doesNotMatch(hook, /selectBotTurn/);
   assert.doesNotMatch(hook, /canExecuteBotTurn/);
 
-  // Reconciler owns lifecycle execution; executor is policy-only:
-  assert.match(reconciler, /reconcileAuthoritativeServerLifecycleAlarm/);
+  // Engine owns lifecycle execution; executor is policy-only:
+  assert.match(engine, /reconcileAuthoritativeServerLifecycleAlarm/);
   assert.match(edge, /reconcileAuthoritativeHumanCommand/);
   assert.doesNotMatch(edge, /reconcileAuthoritativeServerLifecycleAlarm/);
   assert.doesNotMatch(maintenance, /reconcileAuthoritativeServerLifecycleAlarm|\.eq\("status", "playing"\)/);
   assert.match(maintenance, /\.eq\("status", "finished"\)[\s\S]*settlement_at/);
   assert.match(worker, /if \(!isTrustedWorker\)\s*\{[\s\S]*return json\(\{ error: "Unauthorized" \}, 401\);[\s\S]*\}/);
   assert.match(executor, /selectOkeyBotIntent/);
-  assert.match(reconciler, /executeOkeyServerLifecycle/);
+  assert.match(engine, /executeOkeyServerLifecycle/);
   assert.match(engine, /commitAuthoritativeOkeyAction\(\{/);
   assert.doesNotMatch(executor, /\.rpc\(|evaluateOkeyServerLifecycle|commitAuthoritativeOkeyAction|\.channel\(|settleAuthoritative|okey_settle|dispatchContinuation|scheduleLifecycleAlarm/);
   assert.match(commitGateway, /p_expected_version: input\.expectedVersion/);

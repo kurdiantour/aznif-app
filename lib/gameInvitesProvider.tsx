@@ -1,5 +1,5 @@
 import { GameInvitePopup } from "@/components/friends/GameInvitePopup";
-import { cancelMyGameParty, getMyDominoParty, type DominoParty } from "./dominoParty";
+import { cancelMyGameParty, getMyGameParty, type GameParty } from "./gameParty";
 import { getAuthState, hasReadySession, subscribeAuthState, useAuthState } from "./auth-state";
 import { usePathname, useRouter } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type PropsWithChildren } from "react";
@@ -8,14 +8,14 @@ import { supabase } from "./supabase";
 import { getCachedShopState, getMyShopState } from "./shop";
 
 type GamePartyContextValue = {
-  party: DominoParty | null;
-  refreshParty: () => Promise<DominoParty | null>;
+  party: GameParty | null;
+  refreshParty: () => Promise<GameParty | null>;
   cancelParty: () => Promise<void>;
   cancellingParty: boolean;
   partyError: string | null;
 };
 const GamePartyContext = createContext<GamePartyContextValue | null>(null);
-type Snapshot = { generation: number; party: DominoParty | null; invites: GameInvite[]; live: boolean; revision: number; navigable: boolean };
+type Snapshot = { generation: number; party: GameParty | null; invites: GameInvite[]; live: boolean; revision: number; navigable: boolean };
 type Operation = { generation: number; kind: "respond" | "cancel"; busy: boolean; error: string | null };
 
 export function GameInvitesProvider({ children }: PropsWithChildren) {
@@ -28,7 +28,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
   const mounted = useRef(false);
   const revision = useRef(0);
   const epoch = useRef(0);
-  const pending = useRef<{ generation: number; promise: Promise<DominoParty | null> } | null>(null);
+  const pending = useRef<{ generation: number; promise: Promise<GameParty | null> } | null>(null);
   const mutation = useRef<object | null>(null);
   const dirty = useRef(false);
   const live = useRef(false);
@@ -39,7 +39,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
   const ownOperation = operation?.generation === auth.generation ? operation : null;
 
   // One shared queue: events during a read schedule a trailing read, never a parallel one.
-  const refresh = useCallback((invalidate = false, fromEvent = invalidate): Promise<DominoParty | null> => {
+  const refresh = useCallback((invalidate = false, fromEvent = invalidate): Promise<GameParty | null> => {
     if (!current() || !hasReadySession()) return Promise.resolve(null);
     if (invalidate) { revision.current++; dirty.current = true; live.current = live.current || fromEvent; }
     if (mutation.current) { dirty.current = true; return Promise.resolve(null); }
@@ -47,7 +47,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
     const requestEpoch = epoch.current;
     const valid = () => current() && epoch.current === requestEpoch;
     const promise = Promise.resolve().then(async () => {
-      let result: DominoParty | null = null;
+      let result: GameParty | null = null;
       do {
         if (!valid() || !hasReadySession() || mutation.current) return null;
         dirty.current = false;
@@ -56,7 +56,7 @@ export function GameInvitesProvider({ children }: PropsWithChildren) {
         live.current = false;
         try {
           // Wait for both reads, even if one fails, so a trailing refresh cannot overlap it.
-          const [invitesResult, partyResult] = await Promise.allSettled([getPendingGameInvites(), getMyDominoParty()]);
+          const [invitesResult, partyResult] = await Promise.allSettled([getPendingGameInvites(), getMyGameParty()]);
           if (!valid() || !hasReadySession()) return null;
           if (request !== revision.current) continue;
           let nextParty = partyResult.status === "fulfilled" ? partyResult.value : undefined;

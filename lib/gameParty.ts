@@ -2,7 +2,7 @@ import { getAuthState, requireReadySession } from "./auth-state";
 import type { AvatarId } from "@/types/avatar";
 import { supabase } from "./supabase";
 
-export type DominoParty = {
+export type GameParty = {
   id: string;
   leaderId: string;
   flowStatus: "idle" | "matchmaking";
@@ -23,7 +23,7 @@ export type DominoParty = {
   }[];
 };
 
-function mapParty(row: any): DominoParty | null {
+function mapParty(row: any): GameParty | null {
   if (!row?.id) return null;
 
   return {
@@ -70,7 +70,7 @@ function mapParty(row: any): DominoParty | null {
   };
 }
 
-export async function getMyDominoParty(): Promise<DominoParty | null> {
+export async function getMyGameParty(): Promise<GameParty | null> {
   const auth = requireReadySession();
   const { data, error } = await supabase.rpc("get_my_domino_party");
 

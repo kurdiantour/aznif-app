@@ -15,7 +15,6 @@ export function useDominoOneVsOneConnectionController(args: {
   players: any[];
   privateHandCount: number;
   applySnapshot: (snapshot: any) => boolean;
-  getPrivateHand: () => unknown[];
   setLoading: (value: boolean) => void;
   setError: (value: string | null) => void;
   setCurrentUserId: (value: string | null) => void;
@@ -108,17 +107,14 @@ export function useDominoOneVsOneConnectionController(args: {
     subscribe = () => {
       unsubscribeRef.current?.();
       unsubscribeRef.current = args.adapter!.subscribe({
-        onRoomInvalidated: (snapshot) => {
-          if (!mounted || !snapshot) return;
-          markActivity();
-          args.applySnapshot({
-            ...(snapshot as any),
-            state: { ...((snapshot as any).state ?? {}), myHand: args.getPrivateHand() },
-          });
-          void refreshSnapshot().catch((error) => {
-            console.warn("1v1 private hand refresh after room realtime update failed", error);
-          });
-        },
+onRoomInvalidated: () => {
+  if (!mounted) return;
+  markActivity();
+
+  void refreshSnapshot().catch((error) => {
+    console.warn("1v1 snapshot refresh after room realtime update failed", error);
+  });
+},
         onRosterInvalidated: () => {
           if (!mounted) return;
           markActivity();
@@ -170,7 +166,6 @@ const boot = async () => {
     args.roomId,
     args.adapter,
     args.applySnapshot,
-    args.getPrivateHand,
     args.setLoading,
     args.setError,
     args.setCurrentUserId,

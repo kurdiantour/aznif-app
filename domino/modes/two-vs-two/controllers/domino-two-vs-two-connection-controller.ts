@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
+import { RealtimeReconnectPolicy } from '@/lib/multiplayer/core/realtime-reconnect';
 import type { DominoTwoVsTwoAdapter } from '../adapters/domino-two-vs-two-adapter';
 
 export function useDominoTwoVsTwoConnectionController(input: {
@@ -22,7 +23,7 @@ export function useDominoTwoVsTwoConnectionController(input: {
   privateHandCount?: number;
 }) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconnectAttemptRef = useRef(0);
+  const reconnectPolicyRef = useRef(new RealtimeReconnectPolicy());
   const unsubscribeRealtimeRef = useRef<(() => void) | null>(null);
 
   const reconcile = useCallback(async () => {
@@ -51,41 +52,44 @@ export function useDominoTwoVsTwoConnectionController(input: {
 
       if (status === 'SUBSCRIBED') {
         if (channel === 'rooms') {
-          const reconnected = reconnectAttemptRef.current > 0;
-          reconnectAttemptRef.current = 0;
+          const reconnected = reconnectPolicyRef.current.getAttempt() > 0;
+
+          reconnectPolicyRef.current.observe(status);
           input.setError(null);
 
           if (reconnected) {
             void reconcile().catch((reconcileError) => {
-              console.warn('2v2 realtime reconnect reconcile failed', reconcileError);
+              console.warn(
+                '2v2 realtime reconnect reconcile failed',
+                reconcileError,
+              );
             });
           }
         }
+
         return;
       }
 
-      if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') {
-        return;
-      }
+      const delay = reconnectPolicyRef.current.observe(status);
+
+      if (delay === null) return;
 
       console.warn(`2v2 Realtime ${channel} status: ${status}`, error);
-
-      const delay = Math.min(
-        1000 * Math.pow(2, reconnectAttemptRef.current),
-        15000,
-      );
-      reconnectAttemptRef.current += 1;
 
       if (!reconnectTimerRef.current && mounted) {
         reconnectTimerRef.current = setTimeout(() => {
           reconnectTimerRef.current = null;
-          if (mounted) subscribe();
+
+          if (mounted) {
+            subscribe();
+          }
         }, delay);
       }
     };
 
     subscribe = () => {
       unsubscribeRealtimeRef.current?.();
+
       unsubscribeRealtimeRef.current = input.adapter!.subscribe({
         onRoomInvalidated: (snapshot) => {
           if (!mounted) return;
@@ -95,15 +99,24 @@ export function useDominoTwoVsTwoConnectionController(input: {
           // Realtime room payload contains public state only.
           // Fetch one authoritative snapshot to refresh this player's private hand.
           void input.refreshSnapshot().catch((error) => {
-            console.warn('2v2 private hand refresh after room update failed', error);
+            console.warn(
+              '2v2 private hand refresh after room update failed',
+              error,
+            );
           });
         },
+
         onRosterInvalidated: () => {
           if (!mounted) return;
+
           void input.loadPlayers(false).catch((error) => {
-            console.warn('2v2 realtime roster refresh failed', error);
+            console.warn(
+              '2v2 realtime roster refresh failed',
+              error,
+            );
           });
         },
+
         onStatus: handleStatus,
       });
     };
@@ -114,21 +127,26 @@ export function useDominoTwoVsTwoConnectionController(input: {
         input.setError(null);
 
         const userId = await input.adapter!.getCurrentUserId();
+
         if (!mounted) return;
 
         input.setCurrentUserId(userId);
+
         if (!mounted) return;
 
         await Promise.all([
           input.refreshSnapshot(),
           input.loadPlayers(),
         ]);
+
         if (!mounted) return;
 
         subscribe();
+
         input.setLoading(false);
       } catch (error: any) {
         if (!mounted) return;
+
         input.setError(error?.message ?? String(error));
         input.setLoading(false);
       }
@@ -146,6 +164,8 @@ export function useDominoTwoVsTwoConnectionController(input: {
 
       unsubscribeRealtimeRef.current?.();
       unsubscribeRealtimeRef.current = null;
+
+      reconnectPolicyRef.current.reset();
     };
   }, [
     input.roomId,
@@ -162,15 +182,21 @@ export function useDominoTwoVsTwoConnectionController(input: {
   useEffect(() => {
     if (!input.roomId) return;
 
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') return;
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState) => {
+        if (nextState !== 'active') return;
 
-      void (async () => {
-        await reconcile();
-      })().catch((error) => {
-        console.warn('2v2 AppState reconcile failed', error);
-      });
-    });
+        void (async () => {
+          await reconcile();
+        })().catch((error) => {
+          console.warn(
+            '2v2 AppState reconcile failed',
+            error,
+          );
+        });
+      },
+    );
 
     return () => subscription.remove();
   }, [input.roomId, reconcile]);

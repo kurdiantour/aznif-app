@@ -3,7 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import type { ReactNode } from "react";
 import { getAuthState, publishAuthState } from "@/lib/auth-state";
 import { GameInvitesProvider, useGameParty } from "@/lib/gameInvitesProvider";
-import type { DominoParty } from "@/lib/dominoParty";
+import type { GameParty } from "@/lib/gameParty";
 const mockInvites = jest.fn();
 const mockParty = jest.fn();
 const mockRespond = jest.fn();
@@ -17,7 +17,7 @@ const mockChannels: { name: string; event: () => void; status: (value: string) =
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter, usePathname: () => "/(tabs)/play" }));
 jest.mock("@/components/friends/GameInvitePopup", () => ({ GameInvitePopup: (props: typeof mockPopup) => { mockPopup = props; return null; } }));
 jest.mock("@/lib/gameInvites", () => ({ getPendingGameInvites: () => mockInvites(), respondGameInvite: (...args: unknown[]) => mockRespond(...args) }));
-jest.mock("@/lib/dominoParty", () => ({ getMyDominoParty: () => mockParty(), cancelMyGameParty: () => mockCancel() }));
+jest.mock("@/lib/gameParty", () => ({ getMyGameParty: () => mockParty(), cancelMyGameParty: () => mockCancel() }));
 jest.mock("@/lib/shop", () => ({ getCachedShopState: () => null, getMyShopState: () => mockShop() }));
 jest.mock("@/lib/supabase", () => ({ supabase: {
   channel: (name: string) => {
@@ -28,7 +28,7 @@ jest.mock("@/lib/supabase", () => ({ supabase: {
   }, removeChannel: (...args: unknown[]) => mockRemove(...args),
 } }));
 const session = (id: string, token = id) => ({ access_token: token, user: { id } }) as Session;
-const party = (id = "alice", version = 1): DominoParty => ({ id: "party", leaderId: "leader", flowStatus: "matchmaking", currentGame: "domino", currentRoomId: "room", currentMode: "2v2", currentCurrency: "fun", currentEntryFee: 10, currentTableId: null, commandVersion: version, updatedAt: new Date().toISOString(), members: [{ userId: id, role: "member", name: id }] });
+const party = (id = "alice", version = 1): GameParty => ({ id: "party", leaderId: "leader", flowStatus: "matchmaking", currentGame: "domino", currentRoomId: "room", currentMode: "2v2", currentCurrency: "fun", currentEntryFee: 10, currentTableId: null, commandVersion: version, updatedAt: new Date().toISOString(), members: [{ userId: id, role: "member", name: id }] });
 const invite = (id = "alice") => ({ id: "invite-" + id, recipientId: id, status: "pending", expiresAt: new Date(Date.now() + 60000).toISOString() });
 const wrapper = ({ children }: { children: ReactNode }) => <GameInvitesProvider>{children}</GameInvitesProvider>;
 const settle = async () => { await act(async () => { await Promise.resolve(); }); };
@@ -51,7 +51,7 @@ test("does not subscribe or read before ready auth", async () => {
   ui.unmount();
 });
 test("logout immediately hides state and discards late navigation and callbacks", async () => {
-  let finish!: (value: DominoParty) => void;
+  let finish!: (value: GameParty) => void;
   mockParty.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
   mockInvites.mockResolvedValue([invite()]);
   const ui = renderHook(useGameParty, { wrapper }); await settle();
@@ -74,7 +74,7 @@ test("old account cannot navigate after the Shop preload completes", async () =>
   ui.unmount();
 });
 test("multiple events during a read cause one trailing read and never navigate from the superseded result", async () => {
-  let finish!: (value: DominoParty) => void;
+  let finish!: (value: GameParty) => void;
   mockParty.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValue({ ...party(), flowStatus: "idle" });
   const ui = renderHook(useGameParty, { wrapper }); await settle();
   act(() => { mockChannels[0].event(); mockChannels[0].event(); mockChannels[0].event(); });
@@ -122,7 +122,7 @@ test.each(["respond", "cancel"])("late %s cannot alter the new account or refres
   ui.unmount();
 });
 test("resume does not accept a pre-background response or change generation", async () => {
-  let finish!: (value: DominoParty) => void;
+  let finish!: (value: GameParty) => void;
   mockParty.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValue({ ...party(), flowStatus: "idle" });
   const ui = renderHook(useGameParty, { wrapper }); await settle();
   const auth = getAuthState();
@@ -177,7 +177,7 @@ test("late cancel failure cannot set an error in a new account", async () => {
   ui.unmount();
 });
 test("unmount closes channels and prevents pending navigation", async () => {
-  let finish!: (value: DominoParty) => void;
+  let finish!: (value: GameParty) => void;
   mockParty.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
   const ui = renderHook(useGameParty, { wrapper }); await settle();
   const channel = mockChannels[0]; ui.unmount();
@@ -199,7 +199,7 @@ test("sender-side invite updates refresh the leader's newly formed party", async
 test("successful cancellation invalidates a read started before it", async () => {
   mockParty.mockResolvedValue({ ...party(), flowStatus: "idle" });
   const ui = renderHook(useGameParty, { wrapper }); await settle();
-  let finish!: (value: DominoParty) => void;
+  let finish!: (value: GameParty) => void;
   mockParty.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValue(null);
   act(() => { void ui.result.current.refreshParty(); }); await settle();
   await act(async () => { await ui.result.current.cancelParty(); });

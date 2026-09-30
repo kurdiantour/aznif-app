@@ -85,24 +85,19 @@ export function useOkeyTablePresentation() {
     setSelectedTileId(tileId);
     setDiscardDropPlacement(null);
   }, []);
-  const resetTablePresentation = useCallback(() => {
-    setTableMeldOffsets({});
-    setSelectedTileId(null);
-    setDroppedMelds([]);
-    setPendingNormalMeld(null);
-    setLocalDragCommittedMeldSignatures([]);
-    setOpenableRackMelds({ melds: [], score: 0, contiguousGroups: [] });
-    setOptimisticRackTile(null);
-    setDiscardDropPlacement(null);
-    setIsDiscardDragActive(false);
-    setHoveredMeldTarget(null);
-    setShowScoreDetails(false);
-    setShowDiscardHistory(false);
-    setShowFinalTileCelebration(false);
-    setTurnWarningToastVisible(false);
-    setKonkanRevealData({ visible: false, runTiles: [], completionMeldTiles: [] });
-    setProfilePlayer(null);
-  }, []);
+const resetTablePresentation = useCallback(() => {
+  setTableMeldOffsets({});
+  setSelectedTileId(null);
+  setDroppedMelds([]);
+  setPendingNormalMeld(null);
+  setLocalDragCommittedMeldSignatures([]);
+  setOpenableRackMelds({ melds: [], score: 0, contiguousGroups: [] });
+  setOptimisticRackTile(null);
+  setDiscardDropPlacement(null);
+  setIsDiscardDragActive(false);
+  setHoveredMeldTarget(null);
+  resetPresentationOverlays();
+}, [resetPresentationOverlays]);
 
   return {
     konkanRevealData, setKonkanRevealData, closeKonkanReveal, showKonkanReveal,

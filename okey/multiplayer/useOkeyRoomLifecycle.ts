@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 
 import { useGameParty } from "@/lib/gameInvitesProvider";
@@ -24,6 +24,23 @@ export function useOkeyRoomLifecycle({
   const [room, setRoom] = useState<OkeyRoomSnapshot | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [leavingWaitingRoom, setLeavingWaitingRoom] = useState(false);
+  const [subscriptionEpoch, setSubscriptionEpoch] = useState(0);
+
+  const roomUnsubscribeRef = useRef<(() => void) | null>(null);
+  const heartbeatUnsubscribeRef = useRef<(() => void) | null>(null);
+  const leavingMatchIdRef = useRef<string | null>(null);
+  const subscriptionEpochRef = useRef(0);
+
+  const stopSubscriptions = useCallback(() => {
+    if (heartbeatUnsubscribeRef.current) {
+      heartbeatUnsubscribeRef.current();
+      heartbeatUnsubscribeRef.current = null;
+    }
+    if (roomUnsubscribeRef.current) {
+      roomUnsubscribeRef.current();
+      roomUnsubscribeRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -40,63 +57,110 @@ export function useOkeyRoomLifecycle({
   }, []);
 
   useEffect(() => {
-    if (!matchId || matchId === "preview") {
+    if (
+      !matchId ||
+      matchId === "preview" ||
+      leavingMatchIdRef.current === matchId
+    ) {
+      stopSubscriptions();
       const reset = setTimeout(() => setRoom(null), 0);
       return () => clearTimeout(reset);
     }
 
+    if (leavingMatchIdRef.current && leavingMatchIdRef.current !== matchId) {
+      leavingMatchIdRef.current = null;
+    }
+
+    const currentEpoch = ++subscriptionEpochRef.current;
     let active = true;
 
     void getOkeyRoomStatus(matchId)
       .then((snapshot) => {
-        if (active) {
+        if (
+          active &&
+          subscriptionEpochRef.current === currentEpoch &&
+          leavingMatchIdRef.current !== matchId
+        ) {
           setRoom(snapshot);
         }
       })
       .catch((error) => {
-        console.warn("Unable to load Okey room status", error);
+        if (
+          active &&
+          subscriptionEpochRef.current === currentEpoch &&
+          leavingMatchIdRef.current !== matchId
+        ) {
+          console.warn("Unable to load Okey room status", error);
+        }
       });
 
     const unsubscribe = subscribeOkeyRoom(matchId, (snapshot) => {
-      if (active) {
+      if (
+        active &&
+        subscriptionEpochRef.current === currentEpoch &&
+        leavingMatchIdRef.current !== matchId
+      ) {
         setRoom(snapshot);
       }
     });
 
-    return () => {
+    roomUnsubscribeRef.current = () => {
       active = false;
       unsubscribe();
     };
-  }, [matchId]);
+
+    return () => {
+      active = false;
+      if (roomUnsubscribeRef.current) {
+        roomUnsubscribeRef.current();
+        roomUnsubscribeRef.current = null;
+      }
+    };
+  }, [matchId, stopSubscriptions, subscriptionEpoch]);
 
   useEffect(() => {
     if (
       !matchId ||
       matchId === "preview" ||
-      room?.status !== "waiting"
+      room?.status !== "waiting" ||
+      leavingMatchIdRef.current === matchId
     ) {
+      if (heartbeatUnsubscribeRef.current) {
+        heartbeatUnsubscribeRef.current();
+        heartbeatUnsubscribeRef.current = null;
+      }
       return;
     }
 
+    const currentEpoch = subscriptionEpochRef.current;
     let active = true;
 
     const unsubscribe = subscribeOkeyWaitingRoomHeartbeat(
       matchId,
-      (snapshot) => {
-        if (active) {
-          setRoom(snapshot);
-        }
-      },
       (error) => {
-        console.warn("Unable to heartbeat Okey waiting room", error);
+        if (
+          active &&
+          subscriptionEpochRef.current === currentEpoch &&
+          leavingMatchIdRef.current !== matchId
+        ) {
+          console.warn("Unable to heartbeat Okey waiting room", error);
+        }
       },
     );
 
-    return () => {
+    heartbeatUnsubscribeRef.current = () => {
       active = false;
       unsubscribe();
     };
-  }, [matchId, room?.status]);
+
+    return () => {
+      active = false;
+      if (heartbeatUnsubscribeRef.current) {
+        heartbeatUnsubscribeRef.current();
+        heartbeatUnsubscribeRef.current = null;
+      }
+    };
+  }, [matchId, room?.status, subscriptionEpoch]);
 
   useEffect(() => {
     if (
@@ -110,24 +174,32 @@ export function useOkeyRoomLifecycle({
       return;
     }
 
+    leavingMatchIdRef.current = matchId;
+    subscriptionEpochRef.current += 1;
+    stopSubscriptions();
+
     const redirect = setTimeout(() => {
       setRoom(null);
       router.replace(exitRoute);
     }, 0);
 
     return () => clearTimeout(redirect);
-  }, [currentUserId, exitRoute, matchId, party, router]);
+  }, [currentUserId, exitRoute, matchId, party, router, stopSubscriptions]);
 
   const cancelWaiting = useCallback(async () => {
     if (
       !matchId ||
       leavingWaitingRoom ||
+      leavingMatchIdRef.current === matchId ||
       room?.countdownEndsAt ||
       (party && party.leaderId !== currentUserId)
     ) {
       return;
     }
 
+    leavingMatchIdRef.current = matchId;
+    subscriptionEpochRef.current += 1;
+    stopSubscriptions();
     setLeavingWaitingRoom(true);
 
     try {
@@ -136,8 +208,9 @@ export function useOkeyRoomLifecycle({
       router.replace(exitRoute);
     } catch (error) {
       console.warn("Unable to leave Okey waiting room", error);
-    } finally {
+      leavingMatchIdRef.current = null;
       setLeavingWaitingRoom(false);
+      setSubscriptionEpoch((epoch) => epoch + 1);
     }
   }, [
     currentUserId,
@@ -147,6 +220,7 @@ export function useOkeyRoomLifecycle({
     party,
     room?.countdownEndsAt,
     router,
+    stopSubscriptions,
   ]);
 
   const activeMatchId =

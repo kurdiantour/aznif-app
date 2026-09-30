@@ -36,11 +36,13 @@ export function GameInvitePopup({
     }
 
     const updateRemainingTime = () => {
-      const expiresAt = new Date(invite.expiresAt).getTime();
+      const expiresAt = new Date(
+        invite.expiresAt,
+      ).getTime();
 
       const nextRemaining = Math.max(
         0,
-        Math.ceil((expiresAt - Date.now()) / 1000)
+        Math.ceil((expiresAt - Date.now()) / 1000),
       );
 
       setRemainingSeconds(nextRemaining);
@@ -52,7 +54,10 @@ export function GameInvitePopup({
 
     updateRemainingTime();
 
-    const interval = setInterval(updateRemainingTime, 1000);
+    const interval = setInterval(
+      updateRemainingTime,
+      1000,
+    );
 
     return () => {
       clearInterval(interval);
@@ -63,58 +68,82 @@ export function GameInvitePopup({
 
   return (
     <View style={styles.backdrop}>
-      <LinearGradient
-        colors={["#24134b", "#090d21"]}
-        style={styles.card}
-      >
-        <View style={styles.timerCircle}>
-          <Text style={styles.timerNumber}>{remainingSeconds}</Text>
-        </View>
+      <View style={styles.card}>
+        <LinearGradient
+          colors={[
+            "rgba(2,6,23,0.92)",
+            "rgba(9,18,40,0.86)",
+          ]}
+          style={styles.gradient}
+        >
+          <View style={styles.headerPanel}>
+            <View style={styles.timerCircle}>
+              <Text style={styles.timerNumber}>
+                {remainingSeconds}
+              </Text>
+            </View>
 
-        <Text style={styles.title}>{invite.senderName}</Text>
+            <Text style={styles.title}>
+              {invite.senderName}
+            </Text>
 
-        <Text style={styles.message}>
-          بانگهێشتی کردوویت بۆ یاری.
-        </Text>
+            <Text style={styles.message}>
+              بانگهێشتی کردوویت بۆ یاری.
+            </Text>
+          </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <Text style={styles.error}>
+              {error}
+            </Text>
+          ) : null}
 
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="ڕەتکردنەوەی بانگهێشت"
-            disabled={busy}
-            onPress={onDecline}
-            style={({ pressed }) => [
-              styles.button,
-              styles.declineButton,
-              pressed && !busy && styles.buttonPressed,
-              busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.buttonText}>ڕەتکردنەوە</Text>
-          </Pressable>
+          <View style={styles.actions}>
+            <Pressable
+              disabled={busy}
+              onPress={onDecline}
+              style={({ pressed }) => [
+                styles.button,
+                styles.declineButton,
+                pressed &&
+                  !busy &&
+                  styles.buttonPressed,
+                busy &&
+                  styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.declineText}>
+                ڕەتکردنەوە
+              </Text>
+            </Pressable>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="قبووڵکردنی بانگهێشت"
-            disabled={busy}
-            onPress={onAccept}
-            style={({ pressed }) => [
-              styles.button,
-              styles.acceptButton,
-              pressed && !busy && styles.buttonPressed,
-              busy && styles.buttonDisabled,
-            ]}
-          >
-            {busy ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Text style={styles.buttonText}>قبووڵکردن</Text>
-            )}
-          </Pressable>
-        </View>
-      </LinearGradient>
+            <Pressable
+              disabled={busy}
+              onPress={onAccept}
+              style={({ pressed }) => [
+                styles.button,
+                styles.acceptButton,
+                pressed &&
+                  !busy &&
+                  styles.buttonPressed,
+                busy &&
+                  styles.buttonDisabled,
+              ]}
+            >
+              {busy ? (
+                <ActivityIndicator
+                  color="#ffffff"
+                  size="small"
+                />
+              ) : (
+                <Text style={styles.acceptText}>
+                  قبووڵکردن
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -122,63 +151,95 @@ export function GameInvitePopup({
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFill,
-    zIndex: 1000,
+    zIndex: 5000,
+    elevation: 5000,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    backgroundColor: "rgba(2,6,23,0.82)",
   },
 
   card: {
-    width: 360,
-    maxWidth: "88%",
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 18,
+    width: "100%",
+    maxWidth: 390,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(4,10,25,0.86)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 20,
+  },
+
+  gradient: {
+    width: "100%",
+    padding: 12,
+  },
+
+  headerPanel: {
+    minHeight: 140,
     alignItems: "center",
-    borderRadius: 16,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.22)",
+    backgroundColor: "rgba(15,23,42,0.66)",
   },
 
   timerCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.28)",
+    backgroundColor: "rgba(248,215,116,0.08)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#22c55e",
-    backgroundColor: "rgba(34, 197, 94, 0.10)",
+    marginBottom: 8,
   },
 
   timerNumber: {
-    color: "#ffffff",
-    fontSize: 22,
+    color: "#f8d774",
+    fontSize: 20,
     fontFamily: "RobotoMedium",
     textAlign: "center",
   },
 
   title: {
-    marginTop: 14,
+    width: "100%",
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 19,
+    lineHeight: 28,
+    fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
   },
 
   message: {
-    marginTop: 7,
-    color: "#d9d5e8",
-    fontFamily: "SpedaBold",
+    width: "100%",
+    marginTop: 5,
+    color: "rgba(255,255,255,0.72)",
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
+    fontFamily: "SpedaBold",
     textAlign: "center",
     writingDirection: "rtl",
   },
 
   error: {
-    marginTop: 8,
+    marginBottom: 10,
     color: "#ff8a8a",
     fontFamily: "SpedaBold",
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 18,
     textAlign: "center",
     writingDirection: "rtl",
@@ -188,39 +249,47 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     gap: 10,
-    marginTop: 18,
   },
 
   button: {
     flex: 1,
-    height: 40,
+    minHeight: 46,
+    borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
-  },
-
-  acceptButton: {
-    backgroundColor: "#16a34a",
   },
 
   declineButton: {
-    backgroundColor: "#4b5563",
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.24)",
+    backgroundColor: "rgba(248,215,116,0.08)",
   },
 
-  buttonPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.98 }],
+  acceptButton: {
+    backgroundColor: "#2563eb",
   },
 
-  buttonDisabled: {
-    opacity: 0.55,
+  declineText: {
+    color: "#f8d774",
+    fontFamily: "SpedaBold",
+    fontSize: 13,
+    textAlign: "center",
+    writingDirection: "rtl",
   },
 
-  buttonText: {
+  acceptText: {
     color: "#ffffff",
     fontFamily: "SpedaBold",
     fontSize: 13,
     textAlign: "center",
     writingDirection: "rtl",
+  },
+
+  buttonPressed: {
+    opacity: 0.86,
+  },
+
+  buttonDisabled: {
+    opacity: 0.55,
   },
 });

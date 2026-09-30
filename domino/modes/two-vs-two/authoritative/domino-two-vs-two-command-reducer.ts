@@ -300,7 +300,9 @@ export function reduceTwoVsTwoPlay(input: {
       input.boneyard,
     nextTurnPlayerId:
       finalTurnPlayerId,
-    status: 'active',
+    status: finished.winningTeamId
+      ? 'finished'
+      : 'active',
   };
 }
 

@@ -1,7 +1,7 @@
 import type { Session } from "@supabase/supabase-js";
 import { publishAuthState } from "@/lib/auth-state";
 import { getPendingGameInvites, sendGameInvite, respondGameInvite, cancelGameInvite } from "@/lib/gameInvites";
-import { getMyDominoParty, cancelMyGameParty } from "@/lib/dominoParty";
+import { getMyGameParty, cancelMyGameParty } from "@/lib/gameParty";
 const mockRpc = jest.fn();
 jest.mock("@/lib/supabase", () => ({ supabase: { rpc: (...args: unknown[]) => mockRpc(...args) } }));
 const signIn = (id: string) => publishAuthState({ access_token: id, user: { id } } as Session, true, true);
@@ -10,7 +10,7 @@ const operations = [
   ["send invite", () => sendGameInvite("friend")],
   ["respond invite", () => respondGameInvite("invite", true)],
   ["cancel invite", () => cancelGameInvite("invite")],
-  ["read party", () => getMyDominoParty()],
+  ["read party", () => getMyGameParty()],
   ["cancel party", () => cancelMyGameParty()],
 ] as const;
 beforeEach(() => { mockRpc.mockReset(); publishAuthState(null, false, true); });

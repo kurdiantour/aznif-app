@@ -64,3 +64,55 @@ test('2v2 bot pass preserves the current turn timestamp policy', () => {
   assert.equal(result.nextState.turnStartedAt, 'original');
   assert.equal(result.nextTurnPlayerId, 'p1');
 });
+
+test('2v2 play finishes match and sets status to finished when team score reaches target on empty hand', () => {
+  const tile = { id: '6-6', left: 6, right: 6 };
+  const result = reduceTwoVsTwoPlay({
+    state: { teamScores: { teamA: 340, teamB: 50 }, matchReward: null },
+    hands: [[tile], [{ id: '1-2', left: 1, right: 2 }], [], []],
+    boneyard: [],
+    players,
+    playerIndex: 0,
+    actorUserId: 'p0',
+    tile,
+    nextBoard: { centerTile: tile },
+    nextSpinnerValue: 6,
+    moveScore: 10,
+    phaseStartedAt: '2026-01-01T00:00:00.000Z',
+    isSameTile: (left, right) => left.id === right.id,
+    canAnyPlayerMove: () => true,
+  });
+  assert.equal(result.nextState.roundWinnerPlayerId, 'p0');
+  assert.equal(result.nextState.roundEndReason, 'empty_hand');
+  assert.equal(result.nextState.teamScores.teamA, 355);
+  assert.equal(result.nextState.winningTeamId, 'teamA');
+  assert.equal(result.status, 'finished');
+});
+
+test('2v2 play finishes match and sets status to finished when team score reaches target on blocked board', () => {
+  const tile = { id: '6-6', left: 6, right: 6 };
+  const result = reduceTwoVsTwoPlay({
+    state: { teamScores: { teamA: 0, teamB: 340 }, matchReward: null },
+    hands: [
+      [tile, { id: '4-4', left: 4, right: 4 }],
+      [{ id: '0-1', left: 0, right: 1 }],
+      [{ id: '2-2', left: 2, right: 2 }],
+      [{ id: '3-3', left: 3, right: 3 }],
+    ],
+    boneyard: [],
+    players,
+    playerIndex: 0,
+    actorUserId: 'p0',
+    tile,
+    nextBoard: { centerTile: tile },
+    nextSpinnerValue: 6,
+    moveScore: 0,
+    phaseStartedAt: '2026-01-01T00:00:00.000Z',
+    isSameTile: (left, right) => left.id === right.id,
+    canAnyPlayerMove: () => false,
+  });
+  assert.equal(result.nextState.roundWinnerPlayerId, 'p1');
+  assert.equal(result.nextState.roundEndReason, 'blocked');
+  assert.equal(result.nextState.winningTeamId, 'teamB');
+  assert.equal(result.status, 'finished');
+});

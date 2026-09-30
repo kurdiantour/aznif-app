@@ -7,7 +7,7 @@ export function getSnapshotVersion(snapshot: VersionedSnapshot | null | undefine
 
 export function acceptsSnapshot(currentVersion: number, candidate: VersionedSnapshot): boolean {
   const candidateVersion = getSnapshotVersion(candidate);
-  return candidateVersion < 0 || candidateVersion >= currentVersion;
+  return candidateVersion >= 0 && candidateVersion >= currentVersion;
 }
 
 export function reconcileOptimisticCommand<TPayload, TProjection, TSnapshot>(

@@ -13,17 +13,23 @@ import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import { formatCurrencyAmount } from "@/lib/aznif-display";
 import type { AvatarId } from "@/types/avatar";
 
-type Props = {
+export type WaitingPlayerMember = {
+  playerIndex: number;
+  avatarId?: AvatarId;
+  avatarUrl?: string;
+  username?: string;
+};
+
+export type WaitingPlayersPopupProps = {
   visible: boolean;
   entryFee: number;
   currency: "fun" | "aznif";
-  members: {
-    playerIndex: number;
-    avatarId?: AvatarId;
-    avatarUrl?: string;
-  }[];
-  countdownEndsAt: string | null;
-  canCancel: boolean;
+  members?: WaitingPlayerMember[];
+  players?: WaitingPlayerMember[];
+  countdownEndsAt?: string | null;
+  countdownSeconds?: number | null;
+  playerCount?: 2 | 4;
+  canCancel?: boolean;
   loading?: boolean;
   onCancel: () => void;
 };
@@ -33,11 +39,14 @@ export default function WaitingPlayersPopup({
   entryFee,
   currency,
   members,
-  countdownEndsAt,
-  canCancel,
+  players,
+  countdownEndsAt = null,
+  countdownSeconds: countdownSecondsProp,
+  playerCount = 4,
+  canCancel = true,
   loading = false,
   onCancel,
-}: Props) {
+}: WaitingPlayersPopupProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -52,18 +61,25 @@ export default function WaitingPlayersPopup({
     return () => clearInterval(timer);
   }, [countdownEndsAt]);
 
-  const countdownSeconds = countdownEndsAt
-    ? Math.max(
-        0,
-        Math.ceil(
-          (Date.parse(countdownEndsAt) - now) / 1_000,
-        ),
-      )
-    : null;
+  const countdownSeconds =
+    countdownSecondsProp !== undefined
+      ? countdownSecondsProp
+      : countdownEndsAt
+        ? Math.max(
+            0,
+            Math.ceil(
+              (Date.parse(countdownEndsAt) - now) / 1_000,
+            ),
+          )
+        : null;
 
   if (!visible) {
     return null;
   }
+
+  const activeMembers = members ?? players ?? [];
+  const slotOrder = playerCount === 2 ? [0, 1] : [0, 2, 1, 3];
+  const timerSlotIndex = Math.floor(slotOrder.length / 2) - 1;
 
   return (
     <View
@@ -102,9 +118,9 @@ export default function WaitingPlayersPopup({
           </Text>
 
           <View style={styles.players}>
-            {[0, 2, 1, 3].map(
+            {slotOrder.map(
               (index, displayIndex) => {
-                const member = members.find(
+                const member = activeMembers.find(
                   (item) =>
                     item.playerIndex === index,
                 );
@@ -123,8 +139,7 @@ export default function WaitingPlayersPopup({
                           styles.playerActive,
                       ]}
                     >
-                      {member?.avatarId ||
-                      member?.avatarUrl ? (
+                      {member ? (
                         <PlayerAvatar
                           avatarId={member.avatarId}
                           avatarUrl={member.avatarUrl}
@@ -139,7 +154,7 @@ export default function WaitingPlayersPopup({
                       )}
                     </View>
 
-                    {displayIndex === 1 ? (
+                    {displayIndex === timerSlotIndex ? (
                       <View
                         style={styles.startStatus}
                       >
@@ -182,7 +197,7 @@ export default function WaitingPlayersPopup({
               />
             ) : (
               <Text style={styles.cancelText}>
-                پاشگەز بوومەوە
+                پاشگەزبوونەوە
               </Text>
             )}
           </Pressable>

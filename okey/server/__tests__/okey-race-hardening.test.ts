@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createAuthoritativeOkeyMatch } from "../okey-authoritative.ts";
-import { reconcileAuthoritativeHumanCommand } from "../okey-server-reconciler.ts";
+import { reconcileAuthoritativeHumanCommand } from "../okey-turn-engine.ts";
 
 type HumanInput = Parameters<typeof reconcileAuthoritativeHumanCommand>[0];
 type Bundle = HumanInput["bundle"];
@@ -54,7 +54,7 @@ function retryFixture(errors: (string | null)[]) {
     },
     deterministicCommandId: async source => source,
     now: () => input.commandReceivedAtMs,
-    reloadManualLeaveBundle: async () => { reloadCount++; return reload(); },
+    reloadBundle: async () => { reloadCount++; return reload(); },
     broadcastStateUpdate: async payload => { broadcasts.push(payload.version); },
     scheduleLifecycleAlarm: async payload => { alarms.push(payload.version); },
   };
@@ -153,7 +153,7 @@ for (const alreadyApplied of ["command", "membership"] as const) {
 test("Edge wires manual leave reload and adapter awaits authoritative leave before room cleanup", () => {
   const edge = read("supabase/functions/okey_match/index.ts");
   const adapter = read("okey/adapters/supabase-okey-match-adapter.ts");
-  assert.match(edge, /reloadManualLeaveBundle:\s*loadManualLeaveBundle/);
+  assert.match(edge, /reloadBundle:\s*loadAuthoritativeBundle/);
   assert.match(adapter, /notAppliedOnError:[\s\S]*manual_leave_retry_exhausted/);
   assert.match(adapter, /await this\.runAuthoritativeMutation\([\s\S]*await leaveOkeyRoom/);
 });
@@ -161,15 +161,15 @@ test("Edge wires manual leave reload and adapter awaits authoritative leave befo
 test("lifecycle alarms are one-shot, version-bound, and only chain after a committed transition", () => {
   const scheduler = read("supabase/functions/_shared/aznif-game-lifecycle.ts");
   const worker = read("supabase/functions/process_bot_turns/index.ts");
-  const reconciler = read("okey/server/okey-server-reconciler.ts");
+  const engine = read("okey/server/okey-turn-engine.ts");
 
   assert.match(scheduler, /expectedVersion: input\.expectedVersion/);
   assert.doesNotMatch(worker, /result\?\.executed === true/);
   assert.match(worker, /initialVersion: Number\(expected_version\)/);
   assert.doesNotMatch(worker, /eligible_at|turn_deadline_at/);
-  assert.doesNotMatch(reconciler, /dispatchContinuation|reconcileAuthoritativeServerScheduler/);
-  const lifecycleAlarmSource = reconciler.slice(
-    reconciler.indexOf("export async function reconcileAuthoritativeServerLifecycleAlarm"),
+  assert.doesNotMatch(engine, /dispatchContinuation|reconcileAuthoritativeServerScheduler/);
+  const lifecycleAlarmSource = engine.slice(
+    engine.indexOf("export async function reconcileAuthoritativeServerLifecycleAlarm"),
   );
   assert.doesNotMatch(lifecycleAlarmSource, /refreshAfterInitialSleep|retryIntervalMs|maxRetryDurationMs|await sleep\(|while\s*\(/);
   assert.equal((lifecycleAlarmSource.match(/await executeOkeyServerLifecycle\(\{/g) ?? []).length, 1);

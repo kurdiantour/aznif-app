@@ -39,7 +39,6 @@ import type {
   OkeyTile,
 } from "../types/okey.ts";
 
-export const OKEY_MAX_ROUNDS = 7;
 const OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD = 2;
 
 export type OkeyTeamId =
@@ -527,7 +526,7 @@ export function settleAuthoritativeOkeyRound(
 
   const isFinalRound =
     match.currentRound >=
-    OKEY_MAX_ROUNDS;
+    OKEY_RULESET_V1.match.roundCount;
 
   /*
    * پایان راند هفتم:
@@ -1538,7 +1537,7 @@ export function projectOkeyMatchState(
       match.currentRound,
 
     maxRounds:
-      OKEY_MAX_ROUNDS,
+      OKEY_RULESET_V1.match.roundCount,
 
     roundResults:
       match.roundResults,

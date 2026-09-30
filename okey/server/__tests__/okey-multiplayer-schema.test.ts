@@ -19,7 +19,7 @@ const settlementSql = normalizeSql(
 );
 const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
 const matchFunction = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
-const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
+const reconciler = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
 
 test("current multiplayer room authority remains Okey scoped", () => {
   assert.match(roomSql, /okey\.matches/);

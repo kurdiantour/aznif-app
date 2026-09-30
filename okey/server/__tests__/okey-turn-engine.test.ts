@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
-import * as reconcilerApi from "../okey-server-reconciler.ts";
 import * as engineApi from "../okey-turn-engine.ts";
 
 import {
@@ -12,27 +11,26 @@ import {
 test("Okey lifecycle entry points use their current authoritative owners", () => {
   const match = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
   const room = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
-  const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
+  const engine = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
 
   assert.match(match, /reconcileAuthoritativeHumanCommand\(/);
   assert.match(room, /const result = await callRoomAction\(action\)/);
   assert.doesNotMatch(room, /executeAuthoritativeOkeyTurn/);
   assert.match(room, /event: "invalidate"/);
   assert.doesNotMatch(room, /from ["'].*domino/);
+  assert.match(engine, /reconcileAuthoritativeMatchStart/);
+  assert.match(engine, /reconcileAuthoritativeHumanCommand/);
+  assert.match(engine, /reconcileAuthoritativeServerLifecycleAlarm/);
 });
 
 test("lifecycle decision has one owner in okey-turn-engine", () => {
   const engine = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
   const authoritative = readFileSync("okey/server/okey-authoritative.ts", "utf8");
-  const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
 
   assert.match(engine, /export function evaluateOkeyServerLifecycle/);
   assert.doesNotMatch(authoritative, /export function evaluateOkeyServerLifecycle/);
   assert.doesNotMatch(authoritative, /export type OkeyLifecycleDecision/);
-  assert.match(reconciler, /from ["']\.\/okey-turn-engine\.ts["']/);
 });
-
-
 
 test("authoritative transition reduction has one engine gateway", () => {
   const calls: string[] = [];
@@ -110,7 +108,6 @@ test("authoritative transition reduction has one engine gateway", () => {
   ]);
 });
 
-
 // Resolve named imports, namespace imports and local callable aliases using symbols,
 // so comments, formatting and import renames cannot disguise a boundary violation.
 function inspectSource(file: string, source = readFileSync(file, "utf8")) {
@@ -171,7 +168,6 @@ test("architecture inspection resolves aliases and ignores formatting/comments",
 
 test("runtime controllers delegate reduction and persistence to their authoritative owners", () => {
   const match = inspectSource("supabase/functions/okey_match/index.ts");
-  const reconciler = inspectSource("okey/server/okey-server-reconciler.ts");
   const bot = inspectSource("okey/server/okey-bot-executor.ts");
   const engine = inspectSource("okey/server/okey-turn-engine.ts");
   const forbidden = [
@@ -182,14 +178,11 @@ test("runtime controllers delegate reduction and persistence to their authoritat
     "startAuthoritativeOkeyNextRound", "settleAuthoritativeOkeyRound",
     "reconcileAuthoritativeServerTurns",
   ];
-  for (const source of [match, reconciler, bot]) assertNoCalls(source, forbidden);
+  for (const source of [match, bot]) assertNoCalls(source, forbidden);
   assert.ok(match.calls().includes("reconcileAuthoritativeHumanCommand"));
-  assert.ok(reconciler.calls(reconciler.fn("reconcileAuthoritativeHumanCommand")).includes("executeOkeyAuthoritativePipeline"));
-  assert.ok(reconciler.calls(reconciler.fn("reconcileAuthoritativeServerLifecycleAlarm")).includes("executeOkeyServerLifecycle"));
-  for (const name of ["executeOkeyAuthoritativePipeline", "executeOkeyServerLifecycle", "reduceOkeyTransition", "reduceAuthoritativeOkeyTransition"]) {
-    assert.ok(!reconciler.ast.statements.some(node => ts.isFunctionDeclaration(node) && node.name?.text === name),
-      "Reconciler must not define " + name);
-  }
+  assert.ok(engine.calls(engine.fn("reconcileAuthoritativeHumanCommand")).includes("executeOkeyAuthoritativePipeline"));
+  assert.ok(engine.calls(engine.fn("reconcileAuthoritativeServerLifecycleAlarm")).includes("executeOkeyServerLifecycle"));
+
   bot.fn("selectOkeyBotIntent");
   const pipeline = engine.fn("executeOkeyAuthoritativePipeline");
   assert.ok(engine.calls(pipeline).includes("reduceAuthoritativeOkeyTransition"));
@@ -216,20 +209,21 @@ test("runtime controllers delegate reduction and persistence to their authoritat
     "terminal team forfeit must settle through the prepared pipeline state");
 });
 
-test("Reconciler preserves direct Turn Engine re-exports without local import bindings", () => {
-  const source = inspectSource("okey/server/okey-server-reconciler.ts");
-  const exports = source.ast.statements.filter(ts.isExportDeclaration)
-    .filter(node => node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)
-      && node.moduleSpecifier.text === "./okey-turn-engine.ts")
-    .flatMap(node => node.exportClause && ts.isNamedExports(node.exportClause) ? [...node.exportClause.elements] : []);
-  const runtimeNames = ["evaluateOkeyServerLifecycle", "executeOkeyAuthoritativePipeline",
-    "executeOkeyServerLifecycle", "generateOkeyReconcilerCommandId", "reduceAuthoritativeOkeyTransition"] as const;
+test("Turn Engine exports all canonical server APIs directly", () => {
+  const runtimeNames = [
+    "evaluateOkeyServerLifecycle",
+    "executeOkeyAuthoritativePipeline",
+    "executeOkeyServerLifecycle",
+    "generateOkeyReconcilerCommandId",
+    "getOkeyLifecycleRunAt",
+    "reconcileAuthoritativeHumanCommand",
+    "reconcileAuthoritativeMatchStart",
+    "reconcileAuthoritativeServerLifecycleAlarm",
+    "reduceAuthoritativeOkeyTransition",
+    "scheduleNextOkeyLifecycleAlarm",
+    "settleAuthoritativeOkeyMatch",
+  ] as const;
   for (const name of runtimeNames) {
-    assert.ok(exports.some(item => item.name.text === name && !item.isTypeOnly));
-    assert.equal(reconcilerApi[name], engineApi[name], name + " must be the same function, not a wrapper");
-  }
-  for (const name of ["OkeyAuthoritativeExecutionInput", "OkeyAuthoritativeSnapshotBundle",
-    "OkeyLifecycleDecision", "OkeyServerLifecycleInput", "OkeyServerLifecycleResult"]) {
-    assert.ok(exports.some(item => item.name.text === name && item.isTypeOnly), "missing type re-export " + name);
+    assert.equal(typeof (engineApi as any)[name], "function", "missing export " + name);
   }
 });

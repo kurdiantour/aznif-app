@@ -12,13 +12,13 @@ import {
 
 import {
     evaluateOkeyServerLifecycle,
+    executeOkeyServerLifecycle,
     generateOkeyReconcilerCommandId,
     reconcileAuthoritativeHumanCommand,
     reconcileAuthoritativeMatchStart,
     reconcileAuthoritativeServerLifecycleAlarm,
     type OkeyAuthoritativeSnapshotBundle
-} from "../okey-server-reconciler.ts";
-import { executeOkeyServerLifecycle } from "../okey-turn-engine.ts";
+} from "../okey-turn-engine.ts";
 
 function reconcileAuthoritativeEliminatedTurns(options: Parameters<typeof executeOkeyServerLifecycle>[0]) {
   return executeOkeyServerLifecycle(options);
@@ -163,17 +163,15 @@ test("Bot pacing eligibility is owned by the authoritative lifecycle decision", 
   }
 });
 
-test("Bot intent provider does not own pacing and Reconciler consumes authoritative pacing", () => {
+test("Bot intent provider does not own pacing and Engine consumes authoritative pacing", () => {
   const engine = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
   const executor = readFileSync("okey/server/okey-bot-executor.ts", "utf8");
-  const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
 
   assert.match(engine, /notBefore: state\.roundStartsAt \?\? null/);
   assert.match(engine, /ready: !startPending/);
   assert.doesNotMatch(executor, /evaluateOkeyServerLifecycle\(|notBefore/);
   assert.doesNotMatch(executor, /currentState\.roundStartsAt/);
   assert.match(engine, /case "bot-turn":[\s\S]*if \(!decision\.ready\)/);
-  assert.doesNotMatch(reconciler, /currentState\??\.roundStartsAt/);
 });
 test("Priority 4: Expired human turn deadline is triggered when time is past deadline", () => {
   const now = Date.parse("2026-09-02T12:00:40.000Z");
@@ -1096,7 +1094,7 @@ test("reconcileAuthoritativeServerTurns commits Next Round only and hands starti
 
 test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions have single Server owners and zero client triggers", () => {
   const edge = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
-  const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
+  const engine = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
   const adapter = readFileSync("okey/adapters/supabase-okey-match-adapter.ts", "utf8");
   const hook = readFileSync("okey/hooks/useOkeyMultiplayerGame.ts", "utf8");
   const matchInterface = readFileSync("okey/adapters/okey-match-adapter.ts", "utf8");
@@ -1104,7 +1102,7 @@ test("Single Server Owner: Eliminated, Bot, Timeout, and Next-Round transitions 
   // Server owns reconciliation:
   assert.match(edge, /reconcileAuthoritativeHumanCommand/);
   assert.doesNotMatch(edge, /executeOkeyServerLifecycle|reconcileAuthoritativeServerLifecycleAlarm/);
-  assert.match(reconciler, /reconcileAuthoritativeServerLifecycleAlarm/);
+  assert.match(engine, /reconcileAuthoritativeServerLifecycleAlarm/);
 
   // Client triggers and adapter methods are completely removed (Server is single owner):
   assert.doesNotMatch(hook, /eliminatedClaimRef/);

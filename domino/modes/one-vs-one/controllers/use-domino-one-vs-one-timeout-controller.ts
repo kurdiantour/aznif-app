@@ -201,7 +201,7 @@ export function useDominoOneVsOneTimeoutController(args: {
       const requestError = error instanceof MultiplayerRequestError ? error : null;
       syncClock(requestError?.details?.serverNow);
       if (requestError?.code === "turn_timer_not_expired") {
-        clearPassRetry();
+        clearDrawRetry();
         const expiresAt = requestError.details?.expiresAt;
         if (typeof expiresAt === "string") {
           const expiresAtMs = Date.parse(expiresAt);

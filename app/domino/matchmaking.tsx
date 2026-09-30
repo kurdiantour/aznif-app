@@ -1,4 +1,4 @@
-import DominoWaitingPlayersPopup from "@/components/game/DominoWaitingPlayersPopup";
+import WaitingPlayersPopup from "@/components/multiplayer/WaitingPlayersPopup";
 import { assignDominoBotIdentities } from "@/domino/shared/bot-identity";
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import type { AvatarId } from "@/types/avatar";
@@ -973,7 +973,7 @@ export default function MatchmakingScreen() {
           style={styles.overlay}
         />
 
-        <DominoWaitingPlayersPopup
+        <WaitingPlayersPopup
           visible={
             currentMatchType !==
             "private"

@@ -1100,7 +1100,6 @@ useEffect(() => {
 <LeaveMatchConfirmPopup
   visible={showLeaveConfirm}
   loading={isLeavingMatch}
-  isLocalGame={isLocalGame}
   onCancel={() => setShowLeaveConfirm(false)}
   onConfirm={handleConfirmLeaveGame}
 />

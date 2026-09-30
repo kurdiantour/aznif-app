@@ -56,6 +56,21 @@ serve(async (req) => {
     }
   }
 
+  const { data: okeyMemberships, error: okeyError } = await admin.rpc(
+    "get_active_okey_memberships",
+    { p_user_id: data.user.id },
+  );
+  if (okeyError) return json({ error: okeyError.message }, 500);
+  if (okeyMemberships?.length) {
+    return json(
+      {
+        error:
+          "Leave or cancel active matches before deleting your account.",
+      },
+      409,
+    );
+  }
+
   const { error: deleteError } = await admin.auth.admin.deleteUser(
     data.user.id,
   );

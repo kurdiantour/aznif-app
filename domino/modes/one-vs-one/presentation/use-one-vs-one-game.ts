@@ -132,12 +132,6 @@ export function useOneVsOneGame(
     return true;
   }, []);
 
-  const getPrivateHand = useCallback(
-    () =>
-      snapshotControllerRef.current.getSnapshot()?.myHand ?? [],
-    [],
-  );
-
   const { refreshSnapshot } =
     useDominoOneVsOneConnectionController({
       roomId,
@@ -155,7 +149,6 @@ export function useOneVsOneGame(
         ? rawState.myHand.length
         : 0,
       applySnapshot,
-      getPrivateHand,
       setLoading,
       setError,
       setCurrentUserId,

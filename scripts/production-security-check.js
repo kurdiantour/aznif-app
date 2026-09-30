@@ -153,6 +153,16 @@ if (
     "Account deletion must target only the authenticated token user.",
   );
 }
+if (
+  !matches(
+    deleteFunction,
+    /get_active_okey_memberships/,
+  )
+) {
+  failures.push(
+    "Account deletion must verify active Okey memberships before deletion.",
+  );
+}
 
 const privilegeLockdown = read(
   "supabase/migrations/20260613000500_rpc_privilege_lockdown.sql",

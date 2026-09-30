@@ -21,7 +21,7 @@ import {
   pipTotal,
   roundToNearestFive,
 } from "../_shared/game-utils.ts";
-import { reconcileAuthoritativeServerLifecycleAlarm } from "../../../okey/server/okey-server-reconciler.ts";
+import { reconcileAuthoritativeServerLifecycleAlarm } from "../../../okey/server/okey-turn-engine.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
 import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
@@ -392,6 +392,7 @@ serve(async (req) => {
       nextHands,
       nextBoneyard,
       nextTurnPlayerId: nextPlayerId,
+      status: nextStatus,
     } = transition;
     const { data: updatedRoom, error: commitError } = await svc.rpc(
       "commit_multiplayer_action",
@@ -402,7 +403,7 @@ serve(async (req) => {
         hands: nextHands,
         boneyard: nextBoneyard,
         currentTurnPlayerId: nextState.currentTurnPlayerId ?? nextPlayerId,
-        status: nextState.roundWinnerPlayerId ? "active" : null,
+        status: nextStatus,
         playerId: currentTurnPlayerId,
         action,
         payload,
@@ -416,19 +417,11 @@ serve(async (req) => {
 
     if (nextState.roundWinnerPlayerId) {
       await svc.from("two_vs_two_players").update({ consecutive_timeout_strikes: 0 }).eq("room_id", room_id);
-      const { data: forfeit, error: forfeitErr } = await svc.rpc(
+      const { error: forfeitErr } = await svc.rpc(
         names.resolveForfeits,
         { p_room_id: room_id },
       );
       if (forfeitErr) throw forfeitErr;
-
-      if (!forfeit?.forfeit && nextState.winningTeamId) {
-        const { error: finishErr } = await svc
-          .from(names.rooms)
-          .update({ status: "finished", current_turn_player_id: null })
-          .eq("id", room_id);
-        if (finishErr) throw finishErr;
-      }
     }
 
 

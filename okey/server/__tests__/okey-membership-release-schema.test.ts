@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -40,4 +40,11 @@ test("released membership blocks new human authoritative access but permits idem
 test("bot takeover does not enter the manual-leave reward penalty input", () => {
   assert.match(rewards, /state->'manualLeftPlayerIds'/);
   assert.doesNotMatch(rewards, /membership_release_reason|bot_takeover/);
+});
+
+test("account deletion is blocked by active okey memberships", () => {
+  const deleteSource = readFileSync("supabase/functions/delete_account/index.ts", "utf8");
+  assert.match(deleteSource, /"get_active_okey_memberships"/);
+  assert.match(deleteSource, /p_user_id:\s*data\.user\.id/);
+  assert.match(deleteSource, /okeyMemberships\?\.length[\s\S]*?409/);
 });

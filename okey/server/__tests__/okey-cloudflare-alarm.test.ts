@@ -7,7 +7,7 @@ const scheduler = readFileSync(
   "utf8",
 );
 const worker = readFileSync("supabase/functions/process_bot_turns/index.ts", "utf8");
-const reconciler = readFileSync("okey/server/okey-server-reconciler.ts", "utf8");
+const engine = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
 
 test("Cloudflare stores only match id, expected version, and official run time", () => {
   assert.match(scheduler, /return \{ gameType, matchId, expectedVersion, runAt \}/);
@@ -19,7 +19,7 @@ test("Cloudflare stores only match id, expected version, and official run time",
 
 test("lifecycle alarm is version-bound, one-shot, and contains no waiting loop", () => {
   assert.match(scheduler, /expected_version: lifecycleJob\.expectedVersion/);
-  assert.match(reconciler, /version !== Number\(options\.initialVersion\)/);
+  assert.match(engine, /version !== Number\(options\.initialVersion\)/);
   assert.doesNotMatch(scheduler, /setTimeout|setInterval|sleep\(|while\s*\(/);
   assert.doesNotMatch(worker, /edgeRuntime\.waitUntil\(lifecyclePromise\)/);
 });

@@ -17,17 +17,10 @@ import {
 } from "../../../okey/server/okey-action-events.ts";
 import {
   reconcileAuthoritativeHumanCommand,
-} from "../../../okey/server/okey-server-reconciler.ts";
+  type OkeyHumanAuthoritativeBundle,
+} from "../../../okey/server/okey-turn-engine.ts";
 import { deterministicCommandId } from "../_shared/deterministic-command-id.ts";
 import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
-
-type OkeyAuthoritativeBundle = {
-  state: OkeyAuthoritativeMatchState;
-  player_index: number;
-  version: number;
-  turn_deadline_at: string | null;
-  command_applied: boolean;
-};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,6 +77,11 @@ function parseCommand(
             tileId: command.tileId,
           }
         : null;
+
+    case "take-back-seat":
+      return {
+        type: "take-back-seat",
+      };
 
     case "declare-konkan":
       return Array.isArray(command.orderedRunTileIds) &&
@@ -155,20 +153,12 @@ serve(async (req) => {
 
   const commandReceivedAtMs = Date.now();
 
-  const supabaseUrl =
-    Deno.env.get("SUPABASE_URL");
-
-  const anonKey =
-    Deno.env.get("SUPABASE_ANON_KEY");
-
-  const serviceKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const lifecycleSecret = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
   const schedulerUrl = Deno.env.get("AZNIF_GAME_LIFECYCLE_URL");
-
-  const authorization =
-    req.headers.get("Authorization");
+  const authorization = req.headers.get("Authorization");
 
   if (!supabaseUrl || !anonKey || !serviceKey) {
     return json(
@@ -301,75 +291,22 @@ serve(async (req) => {
     await service.removeChannel(channel);
   };
 
+  const loadAuthoritativeBundle = async (): Promise<OkeyHumanAuthoritativeBundle | null> => {
+    const { data, error } = await service
+      .rpc("okey_get_authoritative_bundle", {
+        p_match_id: matchId,
+        p_user_id: authData.user.id,
+        p_command_id: isSnapshot ? null : body.commandId,
+      })
+      .single();
 
-
-
-  const loadManualLeaveBundle = async (): Promise<OkeyAuthoritativeBundle | null> => {
-    const [matchResult, seatResult, privateStateResult, commandResult] = await Promise.all([
-      service
-        .schema("okey")
-        .from("matches")
-        .select("version,status,turn_deadline_at")
-        .eq("id", matchId)
-        .maybeSingle(),
-      service
-        .schema("okey")
-        .from("match_seats")
-        .select("player_index")
-        .eq("match_id", matchId)
-        .eq("user_id", authData.user.id)
-        .maybeSingle(),
-      service
-        .schema("okey")
-        .from("match_private_states")
-        .select("state")
-        .eq("match_id", matchId)
-        .maybeSingle(),
-      service
-        .schema("okey")
-        .from("match_commands")
-        .select("command_id")
-        .eq("match_id", matchId)
-        .eq("command_id", body.commandId)
-        .maybeSingle(),
-    ]);
-
-    if (
-      matchResult.error || !matchResult.data ||
-      seatResult.error || !seatResult.data ||
-      privateStateResult.error || !privateStateResult.data ||
-      commandResult.error
-    ) {
-      return null;
-    }
-
-    return {
-      version: Number(matchResult.data.version),
-      turn_deadline_at: matchResult.data.turn_deadline_at ?? null,
-      player_index: Number(seatResult.data.player_index),
-      state: privateStateResult.data.state as OkeyAuthoritativeMatchState,
-      command_applied: Boolean(commandResult.data),
-    };
+    if (error || !data) return null;
+    return data as OkeyHumanAuthoritativeBundle;
   };
 
-let bundle: OkeyAuthoritativeBundle | null = null;
-let bundleError: unknown = null;
+  const bundle = await loadAuthoritativeBundle();
 
-if (action === "manual-leave") {
-  bundle = await loadManualLeaveBundle();
-} else {
-  const bundleResult = await service
-    .rpc("okey_get_authoritative_bundle", {
-      p_match_id: matchId,
-      p_user_id: authData.user.id,
-      p_command_id: isSnapshot ? null : body.commandId,
-    })
-    .single();
-  bundle = bundleResult.data as OkeyAuthoritativeBundle | null;
-  bundleError = bundleResult.error;
-}
-
-  if (bundleError || !bundle) {
+  if (!bundle) {
     return json(
       {
         error: "match_not_found_or_forbidden",
@@ -378,12 +315,8 @@ if (action === "manual-leave") {
     );
   }
 
-  
-  const state =
-    bundle.state as OkeyAuthoritativeMatchState;
-
-  const playerIndex =
-    bundle.player_index as number;
+  const state = bundle.state as OkeyAuthoritativeMatchState;
+  const playerIndex = bundle.player_index as number;
 
   const projectForViewer = (
     matchState: OkeyAuthoritativeMatchState,
@@ -396,9 +329,7 @@ if (action === "manual-leave") {
     turnDeadlineAt,
   );
 
-  const hasManuallyLeft =
-    (state.manualLeftPlayerIds ?? [])
-      .includes(authData.user.id);
+  const hasManuallyLeft = (state.manualLeftPlayerIds ?? []).includes(authData.user.id);
 
   if (
     hasManuallyLeft &&
@@ -460,9 +391,6 @@ if (action === "manual-leave") {
   /*
    * Snapshot is strictly read-only. It only returns authoritative state,
    * missed action events, server time, and the viewer projection.
-   *
-   * It never advances Bot / Timeout / Ghost / Next-Round lifecycle and never
-   * retries settlement or performs any other authoritative side effect.
    */
   if (isSnapshot) {
     const currentState = state;
@@ -512,6 +440,7 @@ if (action === "manual-leave") {
     body.expectedVersion !== undefined && body.expectedVersion !== null
       ? Number(body.expectedVersion)
       : null;
+
   const humanResult = await reconcileAuthoritativeHumanCommand({
     action: action as "command" | "manual-leave",
     matchId,
@@ -524,7 +453,7 @@ if (action === "manual-leave") {
   }, {
     client: service,
     deterministicCommandId,
-    reloadManualLeaveBundle: loadManualLeaveBundle,
+    reloadBundle: loadAuthoritativeBundle,
     broadcastStateUpdate: async (payload) => broadcastStateUpdate(
       payload.commandId,
       payload.version,
@@ -543,6 +472,7 @@ if (action === "manual-leave") {
       });
     },
   });
+
   if (!humanResult.ok) {
     if (humanResult.error === "settlement_failed" && humanResult.commit) {
       return json({
@@ -562,6 +492,7 @@ if (action === "manual-leave") {
       humanResult.status,
     );
   }
+
   const commit = humanResult.commit;
   const commandSettlement = humanResult.settlement;
   if (humanResult.duplicate) {
@@ -587,18 +518,10 @@ if (action === "manual-leave") {
     finalDeadline,
   );
 
-  if (finalState.matchFinished) {
-    return json({
-      applied: commit.applied,
-      actionEvents: finalActionEvents,
-      settlement: commandSettlement,
-      projection: finalProjection,
-    });
-  }
-
   return json({
     applied: commit.applied,
     actionEvents: finalActionEvents,
+    settlement: commandSettlement,
     projection: finalProjection,
   });
 });

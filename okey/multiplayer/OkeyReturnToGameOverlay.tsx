@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { useProfile } from "@/lib/profile";
 import { ReturnToGamePopup } from "@/components/game/ReturnToGamePopup";
-import { getActiveOkeyMemberships } from "./okey-room-api";
+import { getActiveOkeyMemberships, getOkeyRoomStatus } from "./okey-room-api";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 
 export function OkeyReturnToGameOverlay() {
   const { profile } = useProfile();
   const router = useRouter();
+  const pathname = usePathname();
 
   const [resumableMatchId, setResumableMatchId] = useState<string | null>(
     null,
@@ -69,24 +70,28 @@ export function OkeyReturnToGameOverlay() {
   }, [profile, rejectedMatches]);
 
   useEffect(() => {
-    const initialCheck = setTimeout(() => {
-      void checkMemberships();
-    }, 0);
+    if (pathname === "/okey/game") {
+      setResumableMatchId(null);
+      return;
+    }
 
+    void checkMemberships();
+  }, [pathname, checkMemberships]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener(
       "change",
       (state) => {
-        if (state === "active") {
+        if (state === "active" && pathname !== "/okey/game") {
           void checkMemberships();
         }
       },
     );
 
     return () => {
-      clearTimeout(initialCheck);
       subscription.remove();
     };
-  }, [checkMemberships]);
+  }, [pathname, checkMemberships]);
 
   const handleReturn = async () => {
 
@@ -111,9 +116,23 @@ export function OkeyReturnToGameOverlay() {
 
       setResumableMatchId(null);
 
-      router.push(
-        `/okey/fun?matchId=${currentMatchId}`,
-      );
+      let mode = "fun";
+      try {
+        const room = await getOkeyRoomStatus(currentMatchId);
+        if (room?.currency === "aznif") {
+          mode = "aznif";
+        }
+      } catch {
+        // Fallback to fun if status lookup fails
+      }
+
+      router.replace({
+        pathname: "/okey/game",
+        params: {
+          matchId: currentMatchId,
+          mode,
+        },
+      });
     } catch (error) {
       console.warn(
         "Failed to take back seat",

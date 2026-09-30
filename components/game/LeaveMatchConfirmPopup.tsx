@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   ActivityIndicator,
   Pressable,
@@ -11,28 +11,21 @@ import {
 type LeaveMatchConfirmPopupProps = {
   visible: boolean;
   loading?: boolean;
-  isLocalGame?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 };
 
-const LEAVE_TITLE =
-  "دڵنیایت لە یارییەکە دەچیتە دەرەوە؟";
+const LEAVE_TITLE = "دەرچوون لە یارییەکە؟";
 
-const LOCAL_GAME_BODY =
-    "بەجێهێشتنی یاری پێش کۆتایی وەک دۆڕان تۆمار دەکرێت و پوینت لەدەست دەدەیت.";
-
-
-const ONLINE_GAME_BODY =
-    "بەجێهێشتنی یاری پێش کۆتایی وەک دۆڕان تۆمار دەکرێت و ئەنجامەکە بە پێی یاساکانی یارییەکە هەژمار دەکرێت.";
+const LEAVE_BODY =
+  "بەجێهێشتنی یاری پێش کۆتایی وەک دۆڕان تۆمار دەکرێت و ئەنجامەکە بە پێی یاساکانی یارییەکە هەژمار دەکرێت.";
 
 const CANCEL_TEXT = "پاشگەزبوونەوە";
-const CONFIRM_TEXT = "دەرچوون لە یاری";
+const CONFIRM_TEXT = "دەرچوون";
 
 export default function LeaveMatchConfirmPopup({
   visible,
   loading = false,
-  isLocalGame = false,
   onCancel,
   onConfirm,
 }: LeaveMatchConfirmPopupProps) {
@@ -40,50 +33,79 @@ export default function LeaveMatchConfirmPopup({
 
   return (
     <View style={styles.overlay}>
-      <View style={styles.scrim} />
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onCancel}
+        disabled={loading}
+      />
 
-      <BlurView intensity={45} tint="dark" style={styles.modal}>
-        <View style={styles.warningIconCircle}>
-          <Ionicons
-            name="warning-outline"
-            size={28}
-            color="#facc15"
-          />
-        </View>
+      <View style={styles.card}>
+        <LinearGradient
+          colors={[
+            "rgba(2,6,23,0.92)",
+            "rgba(9,18,40,0.86)",
+          ]}
+          style={styles.gradient}
+        >
+          <View style={styles.headerPanel}>
+            <View style={styles.iconWrap}>
+              <Ionicons
+                name="exit-outline"
+                size={24}
+                color="#f8d774"
+              />
+            </View>
 
-        <Text style={styles.title}>{LEAVE_TITLE}</Text>
+            <Text style={styles.title}>
+              {LEAVE_TITLE}
+            </Text>
 
-        <Text style={styles.body}>
-          {isLocalGame ? LOCAL_GAME_BODY : ONLINE_GAME_BODY}
-        </Text>
+            <Text style={styles.body}>
+              {LEAVE_BODY}
+            </Text>
+          </View>
 
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.cancelButton}
-            onPress={onCancel}
-            disabled={loading}
-          >
-            <Text style={styles.cancelText}>{CANCEL_TEXT}</Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.confirmButton,
-              loading && styles.buttonDisabled,
-            ]}
-            onPress={onConfirm}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Text style={styles.confirmText}>
-                {CONFIRM_TEXT}
+          <View style={styles.actions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.cancelButton,
+                pressed &&
+                  !loading &&
+                  styles.buttonPressed,
+              ]}
+              onPress={onCancel}
+              disabled={loading}
+            >
+              <Text style={styles.cancelText}>
+                {CANCEL_TEXT}
               </Text>
-            )}
-          </Pressable>
-        </View>
-      </BlurView>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.confirmButton,
+                loading && styles.buttonDisabled,
+                pressed &&
+                  !loading &&
+                  styles.buttonPressed,
+              ]}
+              onPress={onConfirm}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator
+                  color="#ffffff"
+                  size="small"
+                />
+              ) : (
+                <Text style={styles.confirmText}>
+                  {CONFIRM_TEXT}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -91,32 +113,25 @@ export default function LeaveMatchConfirmPopup({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFill,
-    zIndex: 1000,
-    elevation: 1000,
+    zIndex: 5000,
+    elevation: 5000,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
+    backgroundColor: "rgba(2,6,23,0.82)",
   },
 
-  scrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(9, 3, 18, 0.28)",
-  },
+  card: {
+    width: "90%",
+    maxWidth: 450,
+    minHeight: 190,
 
-  modal: {
-    width: "86%",
-    maxWidth: 480,
-    minHeight: 180,
     borderRadius: 6,
-    overflow: "hidden",
-    paddingHorizontal: 14,
-    paddingTop: 20,
-    paddingBottom: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(58, 25, 92, 0.18)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(4,10,25,0.86)",
+    overflow: "hidden",
+
     shadowColor: "#000",
     shadowOpacity: 0.28,
     shadowRadius: 18,
@@ -127,69 +142,97 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
 
-  warningIconCircle: {
-    width: 54,
-    height: 54,
-    marginBottom: 12,
-    borderRadius: 27,
+  gradient: {
+    width: "100%",
+    padding: 12,
+  },
+
+  headerPanel: {
+    minHeight: 92,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(250, 204, 21, 0.10)",
+
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.65)",
+    borderColor: "rgba(248,215,116,0.22)",
+    backgroundColor: "rgba(15,23,42,0.66)",
+  },
+
+  iconWrap: {
+    width: 42,
+    height: 42,
+    marginBottom: 8,
+
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.22)",
+    backgroundColor: "rgba(248,215,116,0.08)",
+
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   title: {
-    color: "#f8f3df",
-    fontSize: 18,
+    width: "100%",
+    color: "#ffffff",
+    fontSize: 19,
+    lineHeight: 28,
     fontFamily: "SpedaBold",
     textAlign: "center",
+    writingDirection: "rtl",
   },
 
   body: {
-    marginTop: 10,
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 14,
+    width: "100%",
+    marginTop: 7,
+
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 13,
     lineHeight: 21,
     fontFamily: "SpedaBold",
+
     textAlign: "center",
+    writingDirection: "rtl",
   },
 
   actions: {
-    marginTop: 18,
+    width: "100%",
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 10,
   },
 
   cancelButton: {
-    minWidth: 140,
-    height: 40,
-    borderRadius: 8,
+    flex: 1,
+    height: 46,
+
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(248,215,116,0.24)",
+    backgroundColor: "rgba(248,215,116,0.08)",
+
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
   },
 
   confirmButton: {
-    minWidth: 140,
-    height: 40,
-    borderRadius: 8,
+    flex: 1,
+    height: 46,
+
+    borderRadius: 6,
+    backgroundColor: "#dc2626",
+
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dc2626",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-  },
-
-  buttonDisabled: {
-    opacity: 0.65,
   },
 
   cancelText: {
-    color: "#f8f3df",
+    color: "#f8d774",
     fontSize: 13,
     fontFamily: "SpedaBold",
   },
@@ -198,5 +241,13 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 13,
     fontFamily: "SpedaBold",
+  },
+
+  buttonPressed: {
+    opacity: 0.86,
+  },
+
+  buttonDisabled: {
+    opacity: 0.55,
   },
 });

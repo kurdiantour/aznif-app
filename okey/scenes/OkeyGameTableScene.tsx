@@ -19,7 +19,7 @@ import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebra
 import { OkeyForcedKonkan } from "@/okey/components/OkeyForcedKonkan";
 import { OkeyTileCycleAnnouncement } from "@/okey/components/OkeyTileCycleAnnouncement";
 import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
-import OkeyLeaveMatchConfirmPopup, { type OkeyMatchMode } from "@/okey/components/OkeyLeaveMatchConfirmPopup";
+import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
 import {
   OkeyMatchResultPopup,
 } from "@/okey/components/OkeyMatchResultPopup";
@@ -28,7 +28,7 @@ import { MemoizedOkeyOpponentSeat } from "@/okey/components/OkeyOpponentSeat";
 import { MemoizedOkeyPlayerRack } from "@/okey/components/OkeyPlayerRack";
 import { OkeyScoreDetailsPopup } from "@/okey/components/OkeyScoreDetailsPopup";
 import { MemoizedOkeyTableMeldAreas } from "@/okey/components/OkeyTableMeldAreas";
-import WaitingPlayersPopup from "@/okey/components/WaitingPlayersPopup";
+import WaitingPlayersPopup from "@/components/multiplayer/WaitingPlayersPopup";
 import { styles } from "@/okey/components/okeyStyles";
 import {
   discardTile,
@@ -131,7 +131,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
 
   const onlineMatchId = getRouteParam(params.matchId);
 
-  const okeyMatchMode: OkeyMatchMode =
+  const okeyMatchMode =
     getRouteParam(params.mode) === "aznif"
       ? "aznif"
       : "fun";
@@ -371,6 +371,23 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
     showMatchResultPopup, matchFinished,
   });
 
+  const takeoverExitStartedRef = useRef(false);
+
+  useEffect(() => {
+    takeoverExitStartedRef.current = false;
+  }, [onlineMatchId]);
+
+  const localPlayerTakenOver =
+    !isPreview &&
+    (humanPlayer?.controlledByBot === true ||
+      onlineProjection?.players.find((player) => player.id === currentUserId)?.controlledByBot === true);
+
+  useEffect(() => {
+    if (!localPlayerTakenOver || takeoverExitStartedRef.current) return;
+    takeoverExitStartedRef.current = true;
+    router.replace(exitRoute);
+  }, [exitRoute, localPlayerTakenOver, router]);
+
   const commitOpenPresentation = useCallback((melds: typeof openableRackMelds.melds, score: number, tileId?: string) => {
     const playerIndex = presentedState.players.findIndex((player) => player.id === humanPlayer.id);
     if (playerIndex >= 0) {
@@ -497,7 +514,10 @@ const shouldShowScorePopup =
     toLocalRect,
   });
 
-  const isHumanTurn = turnView.phase === "playing" && turnView.playerId === humanPlayer.id;
+  const isHumanTurn =
+    !localPlayerTakenOver &&
+    turnView.phase === "playing" &&
+    turnView.playerId === humanPlayer.id;
 
 
 
@@ -644,7 +664,12 @@ useEffect(() => {
     setHoveredMeldTarget,
   });
 
-  const turnTimerVisible = onlineGameplayReady && state.phase === "playing" && !showRoundResultPopup && !showMatchResultPopup;
+  const turnTimerVisible =
+    !localPlayerTakenOver &&
+    onlineGameplayReady &&
+    state.phase === "playing" &&
+    !showRoundResultPopup &&
+    !showMatchResultPopup;
 
   const {
     startDrawFlight,
@@ -877,8 +902,8 @@ return (
                 topDiscard={presentedTopDiscard}
                 discardUnderlayTile={state.discardPile[state.discardPile.length - 2] ?? null}
                 discardCount={presentedDiscardCount}
-                canDraw={canDraw && !drawPending}
-                canDrawDiscard={canDrawDiscard && !drawPending}
+                canDraw={canDraw && !drawPending && !localPlayerTakenOver}
+                canDrawDiscard={canDrawDiscard && !drawPending && !localPlayerTakenOver}
                 indicatorTile={state.indicatorTile}
                 okeyTile={state.okeyTile}
                 onDrawDeck={handleDrawDeck}
@@ -917,7 +942,7 @@ return (
           onClose={() => setShowDiscardHistory(false)}
         />
         <View style={styles.playerSetScoreWrap} pointerEvents="box-none">
-             {canPlayAfterDraw && openAction.allowed &&
+             {canPlayAfterDraw && openAction.allowed && !localPlayerTakenOver &&
              (!humanPlayer.konkan || openAction.mode === "declare-konkan") ? (
             <Pressable
               style={styles.openSetsButton}
@@ -947,50 +972,51 @@ return (
             )}
           </View>
         </View>
-        <MemoizedOkeyPlayerRack
-          key={`${dealLifecycleKey}-rack`}
-          tiles={onlineGameplayReady ? presentedHumanRackTiles : EMPTY_OKEY_TILES}
-          selectedTileId={selectedTileId}
-          okeyTile={state.okeyTile}
-          onSelectTile={handleRackTileSelectStable}
-          onTileDragStart={handleTileDragStart}
-          playerId={currentUserId ?? humanPlayer.id}
+        <View pointerEvents={localPlayerTakenOver ? "none" : "auto"}>
+          <MemoizedOkeyPlayerRack
+            key={`${dealLifecycleKey}-rack`}
+            tiles={onlineGameplayReady ? presentedHumanRackTiles : EMPTY_OKEY_TILES}
+            selectedTileId={selectedTileId}
+            okeyTile={state.okeyTile}
+            onSelectTile={handleRackTileSelectStable}
+            onTileDragStart={handleTileDragStart}
+            playerId={currentUserId ?? humanPlayer.id}
 
-          onOpenableMeldsChange={setOpenableRackMelds}
-          onDropMeldGroup={handleDropMeldGroupStable}
-          onDropTile={handleDropTileStable}
-          stagedTileIds={droppedTileIds}
-          onTileDragPointChange={handleTileDragPointChange}
-          hiddenTileIds={combinedHiddenRackTileIds}
-          skipEnterAnimationTileIds={skipEnterAnimationTileIds}
-         externalDropPlacement={discardDropPlacement}
-          eliminated={isEliminatedOkeyPlayer(humanPlayer)}
-          onExternalDropPlaced={handleExternalDropPlaced}
+            onOpenableMeldsChange={setOpenableRackMelds}
+            onDropMeldGroup={handleDropMeldGroupStable}
+            onDropTile={handleDropTileStable}
+            stagedTileIds={droppedTileIds}
+            onTileDragPointChange={handleTileDragPointChange}
+            hiddenTileIds={combinedHiddenRackTileIds}
+            skipEnterAnimationTileIds={skipEnterAnimationTileIds}
+            externalDropPlacement={discardDropPlacement}
+            eliminated={isEliminatedOkeyPlayer(humanPlayer)}
+            onExternalDropPlaced={handleExternalDropPlaced}
 
-          turnTimerActive={
-            turnTimerVisible &&
-            isHumanTurn
-          }
-          turnWarningToastVisible={turnWarningToastVisible}
-          turnWarningToastMessage={
-            state.hasDrawnThisTurn
-              ? "هەلدانی تاشەبەردێک انجام بدە"
-              : undefined
-          }
-          turnDeadlineAt={turnView.deadlineAt}
-          serverClockOffsetMs={serverClockOffsetMs}
-          turnDurationSeconds={turnView.durationSeconds}
-          turnTimerPhase={state.hasDrawnThisTurn ? "throw" : "draw"}
-          dealResetKey={dealLifecycleKey}
-          isDealer={onlineGameplayReady && state.dealerIndex === 0}
-          dealOrigin={dealOrigin}
-          onRackMeasured={handleRackMeasured}
-          onDrawLandingRectChange={handleDrawLandingRectChange}
-          onTileMeasured={handleRackTileMeasured}
+            turnTimerActive={
+              turnTimerVisible &&
+              isHumanTurn
+            }
+            turnWarningToastVisible={turnWarningToastVisible}
+            turnWarningToastMessage={
+              state.hasDrawnThisTurn
+                ? "هەلدانی تاشەبەردێک انجام بدە"
+                : undefined
+            }
+            turnDeadlineAt={turnView.deadlineAt}
+            serverClockOffsetMs={serverClockOffsetMs}
+            turnDurationSeconds={turnView.durationSeconds}
+            turnTimerPhase={state.hasDrawnThisTurn ? "throw" : "draw"}
+            dealResetKey={dealLifecycleKey}
+            isDealer={onlineGameplayReady && state.dealerIndex === 0}
+            dealOrigin={dealOrigin}
+            onRackMeasured={handleRackMeasured}
+            onDrawLandingRectChange={handleDrawLandingRectChange}
+            onTileMeasured={handleRackTileMeasured}
 
-          onMoveTile={handleMoveRackTile}
-
-        />
+            onMoveTile={handleMoveRackTile}
+          />
+        </View>
         {returningJokers.arrivals.map(({ tile, rect }) => rect && !hiddenRackTileIdsForPresentation.includes(tile.id) ? (
           <OkeyReturningJokerOverlay key={tile.id} tile={tile} rect={toLocalRect(rect)} onDone={returningJokers.dismiss} />
         ) : null)}
@@ -1042,9 +1068,8 @@ return (
     requestExit();
   }}
 />
-<OkeyLeaveMatchConfirmPopup
+<LeaveMatchConfirmPopup
   visible={exitConfirmationVisible}
-  mode={okeyMatchMode}
   loading={leaving}
   onCancel={cancelExit}
   onConfirm={() => {

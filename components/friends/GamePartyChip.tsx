@@ -1,5 +1,5 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import type { DominoParty } from "@/lib/dominoParty";
+import type { GameParty } from "@/lib/gameParty";
 import {
   getHumanPlayerProfile,
   type HumanPlayerProfile,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 type Props = {
-  party: DominoParty;
+  party: GameParty;
   currentUserId: string;
   cancelling: boolean;
   error: string | null;
@@ -39,7 +39,7 @@ function TeammatePartyChip({
   error,
   onCancel,
 }: Omit<Props, "party" | "currentUserId"> & {
-  teammate: DominoParty["members"][number];
+  teammate: GameParty["members"][number];
 }) {
   const [teammateProfile, setTeammateProfile] =
     useState<HumanPlayerProfile | null>(null);
