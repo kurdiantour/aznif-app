@@ -115,7 +115,7 @@ export function createOkeyResponsiveLayout({
 
   const widthRatio =
     layoutClass === "compact"
-      ? 0.90
+      ? 0.9
       : layoutClass === "tablet"
       ? 0.78
       : 0.84;
@@ -127,10 +127,39 @@ export function createOkeyResponsiveLayout({
       ? 820
       : 595;
 
-const rackWidth = Math.min(usableWidth * widthRatio, maxRackWidth);
-const rackHeight = Math.round(rackWidth / RACK_ASPECT_RATIO);
+  /*
+   * Rack sizing is constrained by both viewport width and height.
+   * This prevents short/wide phones from producing an oversized rack
+   * while keeping the same visual proportions on taller devices.
+   */
+  const rackWidthFromScreen =
+    usableWidth * widthRatio;
 
-const rackBottom = 10;
+  const maxRackHeight =
+    layoutClass === "compact"
+      ? usableHeight * 0.52
+      : layoutClass === "tablet"
+      ? usableHeight * 0.48
+      : usableHeight * 0.5;
+
+  const rackWidthFromHeight =
+    maxRackHeight * RACK_ASPECT_RATIO;
+
+  const rackWidth = Math.min(
+    rackWidthFromScreen,
+    rackWidthFromHeight,
+    maxRackWidth,
+  );
+
+  const rackHeight = Math.round(
+    rackWidth / RACK_ASPECT_RATIO,
+  );
+
+  /*
+   * The player rack is anchored directly to the bottom
+   * of the game surface on every device.
+   */
+  const rackBottom = 8;
 
   const centerPilesTop = clamp(
     usableHeight * CENTER_PILES_TOP_PCT,
@@ -143,11 +172,18 @@ const rackBottom = 10;
     usableWidth,
     usableHeight,
 
+    /*
+     * Do not push the entire game table upward using
+     * the bottom safe-area inset.
+     *
+     * Individual UI elements that require safe-area protection
+     * can handle it independently.
+     */
     screen: {
       paddingLeft: safe.left + edge,
       paddingRight: safe.right + edge,
       paddingTop: safe.top + edge,
-      paddingBottom: safe.bottom + edge,
+      paddingBottom: 0,
     },
 
     topActions: {

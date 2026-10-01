@@ -68,15 +68,15 @@ test("three consecutive Bot transitions reach the Human official deadline withou
   assert.ok(getNextOkeyMatchTurnDeadline(match, now));
 });
 
-test("Edge lifecycle schedules target the durable alarm scheduler", async () => {
+test("Edge seeds the durable lifecycle once and Cloudflare owns alarm continuation", async () => {
   const { readFile } = await import("node:fs/promises");
   const matchEdge = await readFile("supabase/functions/okey_match/index.ts", "utf8");
   const worker = await readFile("supabase/functions/process_bot_turns/index.ts", "utf8");
   const scheduler = await readFile("cloudflare/aznif-game-lifecycle/src/index.js", "utf8");
   assert.match(matchEdge, /gameType: "okey"/);
   assert.match(matchEdge, /runAt: lifecycleJob\.runAt/);
-  assert.match(worker, /gameType: "okey"/);
-  assert.match(worker, /runAt: lifecycleJob\.runAt/);
-  assert.match(scheduler, /storage\.setAlarm\(Date\.parse\(lifecycleJob\.runAt\)\)/);
+  assert.doesNotMatch(worker, /scheduleAznifGameLifecycle|AZNIF_GAME_LIFECYCLE_URL/);
+  assert.match(scheduler, /result\?\.nextRunAt/);
+  assert.match(scheduler, /storage\.setAlarm\(Date\.parse\(nextRunAt\)\)/);
   assert.doesNotMatch(scheduler, /setTimeout|sleep\(/);
 });

@@ -48,9 +48,14 @@ export type OkeyTeamId =
 export type OkeyServerPlayerIdentity = {
   id: string;
   name: string;
+  avatarId?: string;
+  avatarUrl?: string;
   controlledByBot?: boolean;
   botDifficulty?: "easy" | "normal" | "hard";
   botNumber?: number;
+  originalName?: string;
+  originalAvatarId?: string;
+  originalAvatarUrl?: string;
 };
 
 export type OkeyAuthoritativeRoundResult = {
@@ -178,30 +183,50 @@ function getPlayerIdentities(
     {
       id: state.players[0].id,
       name: state.players[0].name,
+      avatarId: state.players[0].avatarId,
+      avatarUrl: state.players[0].avatarUrl,
       controlledByBot: state.players[0].controlledByBot,
       botDifficulty: state.players[0].botDifficulty,
       botNumber: state.players[0].botNumber,
+      originalName: state.players[0].originalName,
+      originalAvatarId: state.players[0].originalAvatarId,
+      originalAvatarUrl: state.players[0].originalAvatarUrl,
     },
     {
       id: state.players[1].id,
       name: state.players[1].name,
+      avatarId: state.players[1].avatarId,
+      avatarUrl: state.players[1].avatarUrl,
       controlledByBot: state.players[1].controlledByBot,
       botDifficulty: state.players[1].botDifficulty,
       botNumber: state.players[1].botNumber,
+      originalName: state.players[1].originalName,
+      originalAvatarId: state.players[1].originalAvatarId,
+      originalAvatarUrl: state.players[1].originalAvatarUrl,
     },
     {
       id: state.players[2].id,
       name: state.players[2].name,
+      avatarId: state.players[2].avatarId,
+      avatarUrl: state.players[2].avatarUrl,
       controlledByBot: state.players[2].controlledByBot,
       botDifficulty: state.players[2].botDifficulty,
       botNumber: state.players[2].botNumber,
+      originalName: state.players[2].originalName,
+      originalAvatarId: state.players[2].originalAvatarId,
+      originalAvatarUrl: state.players[2].originalAvatarUrl,
     },
     {
       id: state.players[3].id,
       name: state.players[3].name,
+      avatarId: state.players[3].avatarId,
+      avatarUrl: state.players[3].avatarUrl,
       controlledByBot: state.players[3].controlledByBot,
       botDifficulty: state.players[3].botDifficulty,
       botNumber: state.players[3].botNumber,
+      originalName: state.players[3].originalName,
+      originalAvatarId: state.players[3].originalAvatarId,
+      originalAvatarUrl: state.players[3].originalAvatarUrl,
     },
   ];
 }
@@ -262,6 +287,12 @@ export function createAuthoritativeOkeyGame(
         name:
           players[index].name,
 
+        avatarId:
+          players[index].avatarId,
+
+        avatarUrl:
+          players[index].avatarUrl,
+
         kind: players[index].controlledByBot ? "bot" as const : "human" as const,
 
         controlledByBot:
@@ -272,6 +303,15 @@ export function createAuthoritativeOkeyGame(
 
         botNumber:
           players[index].botNumber,
+
+        originalName:
+          players[index].originalName,
+
+        originalAvatarId:
+          players[index].originalAvatarId,
+
+        originalAvatarUrl:
+          players[index].originalAvatarUrl,
       }),
     ),
 
@@ -881,17 +921,41 @@ export function applyAuthoritativeOkeyCommand(
       );
       break;
 
-    case "take-back-seat":
-      if (!state.players[actorPlayerIndex].controlledByBot) {
+    case "take-back-seat": {
+      const player = state.players[actorPlayerIndex];
+      if (!player.controlledByBot) {
         throw new OkeyCommandError("command_rejected");
       }
+
+      const restoredName = player.originalName ?? player.name;
+      const turnMessage =
+        "playerName" in state.turnMessage && state.turnMessage.playerName === player.name
+          ? { ...state.turnMessage, playerName: restoredName }
+          : state.turnMessage;
+
       next = {
         ...state,
+        turnMessage,
         players: state.players.map((p, i) =>
-          i === actorPlayerIndex ? { ...p, controlledByBot: false, kind: "human" } : p
+          i === actorPlayerIndex
+            ? {
+                ...p,
+                name: restoredName,
+                avatarId: p.originalAvatarId,
+                avatarUrl: p.originalAvatarUrl,
+                controlledByBot: false,
+                kind: "human",
+                botDifficulty: undefined,
+                botNumber: undefined,
+                originalName: undefined,
+                originalAvatarId: undefined,
+                originalAvatarUrl: undefined,
+              }
+            : p,
         ),
       };
       break;
+    }
 
     default:
       throw new OkeyCommandError(

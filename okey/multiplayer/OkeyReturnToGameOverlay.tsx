@@ -1,10 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { usePathname, useRouter } from "expo-router";
-import { useProfile } from "@/lib/profile";
+
 import { ReturnToGamePopup } from "@/components/game/ReturnToGamePopup";
-import { getActiveOkeyMemberships, getOkeyRoomStatus } from "./okey-room-api";
+import { useProfile } from "@/lib/profile";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
+
+import {
+  getActiveOkeyMemberships,
+  getOkeyRoomStatus,
+} from "./okey-room-api";
 
 export function OkeyReturnToGameOverlay() {
   const { profile } = useProfile();
@@ -18,6 +23,11 @@ export function OkeyReturnToGameOverlay() {
   const [rejectedMatches, setRejectedMatches] = useState<Set<string>>(
     () => new Set(),
   );
+
+  const finishResumeFlow = useCallback(() => {
+    setResumableMatchId(null);
+    router.replace("/(tabs)/play");
+  }, [router]);
 
   const checkMemberships = useCallback(async () => {
     if (!profile?.id) {
@@ -55,19 +65,19 @@ export function OkeyReturnToGameOverlay() {
         (player) => player.id === profile.id,
       );
 
-      if (me?.controlledByBot) {
-        setResumableMatchId(playingMatch.matchId);
+      if (!me) {
+        setResumableMatchId(null);
         return;
       }
 
-      setResumableMatchId(null);
+      setResumableMatchId(playingMatch.matchId);
     } catch (error) {
       console.warn(
         "Failed to check active memberships",
         error,
       );
     }
-  }, [profile, rejectedMatches]);
+  }, [profile?.id, rejectedMatches]);
 
   useEffect(() => {
     if (pathname === "/okey/game") {
@@ -82,7 +92,10 @@ export function OkeyReturnToGameOverlay() {
     const subscription = AppState.addEventListener(
       "change",
       (state) => {
-        if (state === "active" && pathname !== "/okey/game") {
+        if (
+          state === "active" &&
+          pathname !== "/okey/game"
+        ) {
           void checkMemberships();
         }
       },
@@ -93,37 +106,152 @@ export function OkeyReturnToGameOverlay() {
     };
   }, [pathname, checkMemberships]);
 
-  const handleReturn = async () => {
+  /*
+   * While the Return-to-Game popup is visible, keep watching the
+   * authoritative match state.
+   *
+   * If the match finishes before the user presses Return or Reject,
+   * immediately dismiss the popup and return to the lobby.
+   */
+  useEffect(() => {
+    if (
+      !resumableMatchId ||
+      pathname === "/okey/game"
+    ) {
+      return;
+    }
 
+    const adapter = new SupabaseOkeyMatchAdapter(
+      resumableMatchId,
+    );
+
+    let active = true;
+
+    const unsubscribe = adapter.subscribe((snapshot) => {
+      if (!active) {
+        return;
+      }
+
+      if (snapshot.matchFinished) {
+        finishResumeFlow();
+        return;
+      }
+
+      const me = snapshot.players.find(
+        (player) => player.id === profile?.id,
+      );
+
+      if (!me) {
+        finishResumeFlow();
+      }
+    });
+
+    void adapter.refresh().catch(() => {
+      /*
+       * Do not dismiss the popup only because a refresh temporarily
+       * failed. Realtime or the explicit Return/Reject flow can retry.
+       */
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [
+    resumableMatchId,
+    pathname,
+    profile?.id,
+    finishResumeFlow,
+  ]);
+
+  const handleReturn = async () => {
     if (!resumableMatchId || loading) {
       return;
     }
 
     setLoading(true);
 
+    const currentMatchId = resumableMatchId;
+
+    const adapter = new SupabaseOkeyMatchAdapter(
+      currentMatchId,
+    );
+
     try {
-      const currentMatchId = resumableMatchId;
-
-      const adapter = new SupabaseOkeyMatchAdapter(
-        currentMatchId,
-      );
-
       await adapter.refresh();
 
-      await adapter.dispatch({
-        type: "take-back-seat",
-      });
+      const snapshot = adapter.getSnapshot();
+
+      if (!snapshot || snapshot.matchFinished) {
+        finishResumeFlow();
+        return;
+      }
+
+      const me = snapshot.players.find(
+        (player) => player.id === profile?.id,
+      );
+
+      if (!me) {
+        finishResumeFlow();
+        return;
+      }
+
+      if (me.controlledByBot) {
+        try {
+          await adapter.dispatch({
+            type: "take-back-seat",
+          });
+        } catch (error) {
+          /*
+           * The match may have finished in the tiny window between
+           * refresh() and take-back-seat.
+           */
+          try {
+            await adapter.refresh();
+
+            const refreshedSnapshot =
+              adapter.getSnapshot();
+
+            if (
+              !refreshedSnapshot ||
+              refreshedSnapshot.matchFinished
+            ) {
+              finishResumeFlow();
+              return;
+            }
+
+            const refreshedMe =
+              refreshedSnapshot.players.find(
+                (player) =>
+                  player.id === profile?.id,
+              );
+
+            if (!refreshedMe) {
+              finishResumeFlow();
+              return;
+            }
+          } catch {
+            // Preserve the original command failure below.
+          }
+
+          throw error;
+        }
+      }
 
       setResumableMatchId(null);
 
       let mode = "fun";
+
       try {
-        const room = await getOkeyRoomStatus(currentMatchId);
+        const room = await getOkeyRoomStatus(
+          currentMatchId,
+        );
+
         if (room?.currency === "aznif") {
           mode = "aznif";
         }
       } catch {
-        // Fallback to fun if status lookup fails
+        // Fallback to fun if status lookup fails.
       }
 
       router.replace({
@@ -144,23 +272,78 @@ export function OkeyReturnToGameOverlay() {
   };
 
   const handleReject = async () => {
-
     if (!resumableMatchId || loading) {
       return;
     }
 
     setLoading(true);
 
+    const currentMatchId = resumableMatchId;
+
+    const adapter = new SupabaseOkeyMatchAdapter(
+      currentMatchId,
+    );
+
     try {
-      const currentMatchId = resumableMatchId;
-
-      const adapter = new SupabaseOkeyMatchAdapter(
-        currentMatchId,
-      );
-
+      /*
+       * Refresh first so we never send manual-leave to an already
+       * finished match.
+       */
       await adapter.refresh();
 
-      await adapter.leave();
+      const snapshot = adapter.getSnapshot();
+
+      if (!snapshot || snapshot.matchFinished) {
+        finishResumeFlow();
+        return;
+      }
+
+      const me = snapshot.players.find(
+        (player) => player.id === profile?.id,
+      );
+
+      if (!me) {
+        finishResumeFlow();
+        return;
+      }
+
+      try {
+        await adapter.leave();
+      } catch (error) {
+        /*
+         * The match may have finished between refresh() and leave().
+         * Refresh once more before treating this as a real failure.
+         */
+        try {
+          await adapter.refresh();
+
+          const refreshedSnapshot =
+            adapter.getSnapshot();
+
+          if (
+            !refreshedSnapshot ||
+            refreshedSnapshot.matchFinished
+          ) {
+            finishResumeFlow();
+            return;
+          }
+
+          const refreshedMe =
+            refreshedSnapshot.players.find(
+              (player) =>
+                player.id === profile?.id,
+            );
+
+          if (!refreshedMe) {
+            finishResumeFlow();
+            return;
+          }
+        } catch {
+          // Preserve the original leave failure below.
+        }
+
+        throw error;
+      }
 
       setRejectedMatches((previous) => {
         const next = new Set(previous);
@@ -185,5 +368,11 @@ export function OkeyReturnToGameOverlay() {
     return null;
   }
 
-  return <ReturnToGamePopup loading={loading} onReturn={handleReturn} onReject={handleReject} />;
+  return (
+    <ReturnToGamePopup
+      loading={loading}
+      onReturn={handleReturn}
+      onReject={handleReject}
+    />
+  );
 }

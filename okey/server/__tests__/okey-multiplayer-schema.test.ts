@@ -17,7 +17,7 @@ const roomSql = normalizeSql(
 const settlementSql = normalizeSql(
   "supabase/migrations/20260816180000_domino_okey_takeover_economy_fix.sql",
 );
-const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8");
+const roomFunction = readFileSync("supabase/functions/okey_room/index.ts", "utf8").replace(/\r/g, "");
 const matchFunction = readFileSync("supabase/functions/okey_match/index.ts", "utf8");
 const reconciler = readFileSync("okey/server/okey-turn-engine.ts", "utf8");
 
@@ -111,9 +111,9 @@ test("charged start failures refresh before using the cancellation refund", () =
 
   assert.ok(chargeStart >= 0);
   assert.match(failureFlow, /try\s*\{[\s\S]*reconcileAuthoritativeMatchStart[\s\S]*callRoomAction\("start"/);
-  assert.match(failureFlow, /callRoomAction\("status"[\s\S]*refreshed\.data\.status === "playing"/);
-  assert.match(failureFlow, /chargedByThisRequest\s*&&\s*refreshed\.data\.status === "waiting"/);
-  assert.match(failureFlow, /"okey_cancel_match_and_refund"[\s\S]*p_cancel_reason: "match_start_failed"/);
+  assert.match(failureFlow, /callRoomAction\("status"[\s\S]*refreshed\??\.data\??\.status === "playing"/);
+  assert.match(failureFlow, /refreshed\??\.data\??\.status === "playing"\s*&&\s*!dbStartCommitted/);
+  assert.match(failureFlow, /"okey_cancel_match_and_refund"[\s\S]*p_cancel_reason:/);
   assert.match(failureFlow, /match_start_failed_refund_failed/);
   assert.doesNotMatch(failureFlow, /"okey_settle_match"/);
 });

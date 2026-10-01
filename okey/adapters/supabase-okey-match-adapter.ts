@@ -427,6 +427,7 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
       }),
       {
         refreshOnError: false,
+        throwParsedError: true,
         notAppliedOnError: (body) =>
           body?.error === "version_conflict" ||
           body?.error === "manual_leave_retry_fetch_failed" ||

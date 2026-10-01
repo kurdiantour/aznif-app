@@ -587,3 +587,25 @@ test("initial snapshot sends afterVersion: null and sets actionEventVersion curs
   });
 });
 
+
+test("leave preserves server error details without proceeding to room cleanup", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-leave-error");
+  setSnapshot(adapter, 4);
+  const body = { error: "commit_failed", details: "database rejection" };
+  mockInvoke.mockResolvedValueOnce({
+    data: null,
+    error: { message: "Edge Function returned a non-2xx status code", context: { json: async () => body } },
+  });
+  await expect(adapter.leave()).rejects.toEqual(body);
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+  expect(adapter.getSnapshot()?.version).toBe(4);
+});
+
+test("leave preserves the original error if the response is not JSON", async () => {
+  const adapter = new SupabaseOkeyMatchAdapter("match-leave-invalid-error");
+  setSnapshot(adapter, 4);
+  const error = { message: "Gateway failure", context: { json: async () => { throw new Error("Invalid JSON"); } } };
+  mockInvoke.mockResolvedValueOnce({ data: null, error });
+  await expect(adapter.leave()).rejects.toBe(error);
+  expect(mockInvoke).toHaveBeenCalledTimes(1);
+});

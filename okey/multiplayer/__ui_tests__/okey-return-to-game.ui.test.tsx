@@ -14,7 +14,7 @@ const mockSnapshot = jest.fn();
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
 jest.mock("@/lib/profile", () => ({ useProfile: () => ({ profile: mockProfile }) }));
-jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
+jest.mock("expo-router", () => ({ useRouter: () => mockRouter, usePathname: () => "/(tabs)/play" }));
 jest.mock("../okey-room-api", () => ({ getActiveOkeyMemberships: () => mockMemberships() }));
 jest.mock("@/okey/adapters/supabase-okey-match-adapter", () => ({
   SupabaseOkeyMatchAdapter: jest.fn().mockImplementation(() => ({
@@ -54,12 +54,22 @@ test("shared popup delegates actions and blocks both buttons while loading", () 
   expect(onReject).toHaveBeenCalledTimes(1);
 });
 
-test("return keeps the existing refresh, take-back-seat and navigation sequence", async () => {
+test("return for takeover player triggers take-back-seat and navigates", async () => {
   const ui = await showOverlay();
   await act(async () => { fireEvent.press(ui.getByTestId("return-to-game-return")); });
   expect(mockRefresh).toHaveBeenCalledTimes(2);
   expect(mockDispatch).toHaveBeenCalledWith({ type: "take-back-seat" });
-  expect(mockRouter.push).toHaveBeenCalledWith("/okey/fun?matchId=match");
+  expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/okey/game", params: { matchId: "match", mode: "fun" } });
+  expect(ui.UNSAFE_queryByType(ReturnToGamePopup)).toBeNull();
+});
+
+test("return for non-takeover active player navigates directly without take-back-seat", async () => {
+  mockSnapshot.mockReturnValue({ matchFinished: false, players: [{ id: "human", controlledByBot: false }] });
+  const ui = await showOverlay();
+  await act(async () => { fireEvent.press(ui.getByTestId("return-to-game-return")); });
+  expect(mockRefresh).toHaveBeenCalledTimes(2);
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/okey/game", params: { matchId: "match", mode: "fun" } });
   expect(ui.UNSAFE_queryByType(ReturnToGamePopup)).toBeNull();
 });
 
@@ -74,9 +84,9 @@ test("reject leaves the match, excludes it from subsequent checks and returns to
 
 test.each([
   { matchFinished: true, players: [{ id: "human", controlledByBot: true }] },
-  { matchFinished: false, players: [{ id: "human", controlledByBot: false }] },
+  { matchFinished: true, players: [{ id: "human", controlledByBot: false }] },
   null,
-])("non-resumable snapshot does not display the popup: %j", async (snapshot) => {
+])("finished or missing match snapshot does not display the popup: %j", async (snapshot) => {
   mockSnapshot.mockReturnValue(snapshot);
   const ui = await showOverlay();
   expect(ui.UNSAFE_queryByType(ReturnToGamePopup)).toBeNull();
@@ -87,7 +97,7 @@ test("failed return keeps the popup available without navigating", async () => {
   mockDispatch.mockRejectedValueOnce(new Error("rejected"));
   const ui = await showOverlay();
   await act(async () => { fireEvent.press(ui.getByTestId("return-to-game-return")); });
-  expect(mockRouter.push).not.toHaveBeenCalled();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
   expect(ui.UNSAFE_getByType(ReturnToGamePopup).props.loading).toBe(false);
 });
 

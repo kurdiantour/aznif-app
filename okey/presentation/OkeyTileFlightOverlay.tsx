@@ -33,7 +33,7 @@ export function OkeyTileFlightOverlay({
     progress.setValue(0);
     const animation = Animated.timing(progress, {
       toValue: 1,
-      duration: 600,
+      duration: 460,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     });

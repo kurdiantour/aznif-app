@@ -1066,6 +1066,7 @@ return (
       />
       <MatchMenuDrawer
   visible={showMatchMenu}
+  loadHumanProfiles={!isPreview}
   players={seatOrderedPlayers}
   humanPlayer={humanPlayer}
   activePlayerId={presentedTurnPlayerId}

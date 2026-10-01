@@ -68,10 +68,59 @@ export class AznifGameAlarm {
     if (!response.ok) {
       throw new Error(`game_lifecycle_alarm_failed:${response.status}:${await response.text()}`);
     }
+    const payload = await response.json().catch(() => null);
+    const result = payload?.result;
+
+    // HTTP 200 does not mean the authoritative lifecycle succeeded. Keep the
+    // durable alarm retryable on DB/network/reconciliation failures.
+    if (!payload?.ok || !result?.ok || result?.reason === "fetch_failed") {
+      throw new Error(
+        `game_lifecycle_result_failed:${result?.reason ?? "invalid_response"}`,
+      );
+    }
+
     const latest = await this.state.storage.get(JOB_KEY);
+    const resultVersion = Number(result?.version);
+
+    // A human command or another authoritative path may have scheduled a newer
+    // version while this alarm was awaiting the Edge Function. Never let the
+    // stale alarm overwrite that newer job.
+    if (
+      latest &&
+      (latest.gameType !== lifecycleJob.gameType ||
+        latest.matchId !== lifecycleJob.matchId ||
+        !Number.isSafeInteger(resultVersion) ||
+        resultVersion < latest.expectedVersion)
+    ) {
+      return;
+    }
+
+    const nextRunAt =
+      typeof result?.nextRunAt === "string" ? result.nextRunAt : null;
+    if (
+      Number.isSafeInteger(resultVersion) &&
+      resultVersion >= 0 &&
+      nextRunAt &&
+      Number.isFinite(Date.parse(nextRunAt))
+    ) {
+      const nextJob = {
+        gameType: lifecycleJob.gameType,
+        matchId: lifecycleJob.matchId,
+        expectedVersion: resultVersion,
+        runAt: nextRunAt,
+      };
+      await this.state.storage.put(JOB_KEY, nextJob);
+      await this.state.storage.setAlarm(Date.parse(nextRunAt));
+      return;
+    }
+
+    // No nextRunAt means the authoritative engine has no future lifecycle work
+    // (for example a finished match). Delete only if no newer job appeared.
     if (
       latest?.gameType === lifecycleJob.gameType &&
-      latest?.expectedVersion === lifecycleJob.expectedVersion
+      latest?.matchId === lifecycleJob.matchId &&
+      Number.isSafeInteger(resultVersion) &&
+      resultVersion >= latest.expectedVersion
     ) {
       await this.state.storage.delete(JOB_KEY);
     }

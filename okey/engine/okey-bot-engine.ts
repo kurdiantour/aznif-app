@@ -72,6 +72,9 @@ export function handSeatToBot(state: OkeyGameState, playerIndex: number, difficu
   const turnMessage = "playerName" in state.turnMessage && state.turnMessage.playerName === player.name
     ? { ...state.turnMessage, playerName: botName }
     : state.turnMessage;
+  const originalName = player.originalName ?? player.name;
+  const originalAvatarId = player.originalAvatarId ?? player.avatarId;
+  const originalAvatarUrl = player.originalAvatarUrl ?? player.avatarUrl;
   return {
     ...state,
     turnMessage,
@@ -85,6 +88,9 @@ export function handSeatToBot(state: OkeyGameState, playerIndex: number, difficu
     controlledByBot: true,
     botDifficulty: difficulty,
     botNumber,
+    originalName,
+    originalAvatarId,
+    originalAvatarUrl,
   }
       : entry),
   };

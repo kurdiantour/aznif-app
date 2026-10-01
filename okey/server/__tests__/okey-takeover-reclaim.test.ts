@@ -16,10 +16,10 @@ import {
 } from "../okey-turn-engine.ts";
 
 const matchPlayers = [
-  { id: "player-0", name: "Player 0" },
-  { id: "player-1", name: "Player 1" },
-  { id: "player-2", name: "Player 2" },
-  { id: "player-3", name: "Player 3" },
+  { id: "player-0", name: "Player 0", avatarId: "avatar-0", avatarUrl: "https://example.com/avatar-0.png" },
+  { id: "player-1", name: "Player 1", avatarId: "avatar-1", avatarUrl: "https://example.com/avatar-1.png" },
+  { id: "player-2", name: "Player 2", avatarId: "avatar-2", avatarUrl: "https://example.com/avatar-2.png" },
+  { id: "player-3", name: "Player 3", avatarId: "avatar-3", avatarUrl: "https://example.com/avatar-3.png" },
 ] as const;
 
 const expiredDeadline = "2026-08-02T00:00:00.000Z";
@@ -78,8 +78,14 @@ test("3. Successful seat reclaim via take-back-seat command", () => {
   // Cause bot takeover via 2 draw timeouts
   match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, playerIndex), expiredDeadline, afterDeadline);
   match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, playerIndex), expiredDeadline, afterDeadline);
-  assert.equal(isOkeyBotControlled(match.roundState.players[playerIndex]), true);
+  const takenOverPlayer = match.roundState.players[playerIndex];
+  assert.equal(isOkeyBotControlled(takenOverPlayer), true);
   assert.equal(match.timeoutCountsByPlayerId[playerId], 2);
+  assert.equal(takenOverPlayer.originalName, matchPlayers[playerIndex].name);
+  assert.equal(takenOverPlayer.originalAvatarId, matchPlayers[playerIndex].avatarId);
+  assert.equal(takenOverPlayer.originalAvatarUrl, matchPlayers[playerIndex].avatarUrl);
+  assert.match(takenOverPlayer.name, /^Bot \d{3}$/);
+  assert.equal(takenOverPlayer.avatarId, "bot-avatar");
 
   // Reclaim seat
   const reclaimed = applyAuthoritativeOkeyMatchCommand(
@@ -90,8 +96,17 @@ test("3. Successful seat reclaim via take-back-seat command", () => {
 
   // Seat is human again, controlledByBot is false, streak is reset to 0
   assert.equal(isOkeyBotControlled(reclaimed.roundState.players[playerIndex]), false);
-  assert.equal(reclaimed.roundState.players[playerIndex].controlledByBot, false);
-  assert.equal(reclaimed.roundState.players[playerIndex].kind, "human");
+  const reclaimedPlayer = reclaimed.roundState.players[playerIndex];
+  assert.equal(reclaimedPlayer.controlledByBot, false);
+  assert.equal(reclaimedPlayer.kind, "human");
+  assert.equal(reclaimedPlayer.name, matchPlayers[playerIndex].name);
+  assert.equal(reclaimedPlayer.avatarId, matchPlayers[playerIndex].avatarId);
+  assert.equal(reclaimedPlayer.avatarUrl, matchPlayers[playerIndex].avatarUrl);
+  assert.equal(reclaimedPlayer.botDifficulty, undefined);
+  assert.equal(reclaimedPlayer.botNumber, undefined);
+  assert.equal(reclaimedPlayer.originalName, undefined);
+  assert.equal(reclaimedPlayer.originalAvatarId, undefined);
+  assert.equal(reclaimedPlayer.originalAvatarUrl, undefined);
   assert.equal(reclaimed.timeoutCountsByPlayerId[playerId], 0);
 
   // Attempting to reclaim an already human seat is rejected
@@ -107,6 +122,48 @@ test("3. Successful seat reclaim via take-back-seat command", () => {
     () => applyAuthoritativeOkeyMatchCommand(manualLeftMatch, playerIndex, { type: "take-back-seat" }),
     (error) => error instanceof OkeyCommandError && error.code === "command_rejected",
   );
+});
+
+
+test("3b. Bot takeover preserves original Human identity across a new round before reclaim", () => {
+  let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
+  const playerIndex = 1;
+
+  match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, playerIndex), expiredDeadline, afterDeadline);
+  match = resolveAuthoritativeMatchDeadline(forcePlayerTurn(match, playerIndex), expiredDeadline, afterDeadline);
+
+  const botPlayer = match.roundState.players[playerIndex];
+  assert.equal(botPlayer.originalName, matchPlayers[playerIndex].name);
+  assert.equal(botPlayer.originalAvatarId, matchPlayers[playerIndex].avatarId);
+  assert.equal(botPlayer.originalAvatarUrl, matchPlayers[playerIndex].avatarUrl);
+
+  const toIdentity = (player: (typeof match.roundState.players)[number]) => ({
+    id: player.id,
+    name: player.name,
+    avatarId: player.avatarId,
+    avatarUrl: player.avatarUrl,
+    controlledByBot: player.controlledByBot,
+    botDifficulty: player.botDifficulty,
+    botNumber: player.botNumber,
+    originalName: player.originalName,
+    originalAvatarId: player.originalAvatarId,
+    originalAvatarUrl: player.originalAvatarUrl,
+  });
+
+  const identities: Parameters<typeof createAuthoritativeOkeyMatch>[0] = [
+    toIdentity(match.roundState.players[0]),
+    toIdentity(match.roundState.players[1]),
+    toIdentity(match.roundState.players[2]),
+    toIdentity(match.roundState.players[3]),
+  ];
+
+  const nextRoundMatch = createAuthoritativeOkeyMatch(identities, 1);
+  const carriedPlayer = nextRoundMatch.roundState.players[playerIndex];
+  assert.equal(carriedPlayer.name, botPlayer.name);
+  assert.equal(carriedPlayer.avatarId, "bot-avatar");
+  assert.equal(carriedPlayer.originalName, matchPlayers[playerIndex].name);
+  assert.equal(carriedPlayer.originalAvatarId, matchPlayers[playerIndex].avatarId);
+  assert.equal(carriedPlayer.originalAvatarUrl, matchPlayers[playerIndex].avatarUrl);
 });
 
 test("4. Return to Game navigation directly to /okey/game?matchId=<id>&mode=<mode>", () => {

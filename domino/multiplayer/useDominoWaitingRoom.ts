@@ -507,7 +507,10 @@ export function useDominoWaitingRoom({
         ? players.length >= requiredPlayers
         : matchmakingStatus === "matched" && players.length >= requiredPlayers;
 
-  const matchLocked = isGameStarted || navigationStartedRef.current;
+  const matchLocked =
+  isGameStarted ||
+  navigationStartedRef.current ||
+  playersReady;
   matchLockedRef.current = matchLocked;
 
   const leaveWaitingRoom = useCallback(async () => {

@@ -43,6 +43,9 @@ export type OkeyPlayer = {
   botDifficulty?: OkeyBotDifficulty;
   controlledByBot?: boolean;
   botNumber?: number;
+  originalName?: string;
+  originalAvatarId?: string;
+  originalAvatarUrl?: string;
   teamId: OkeyTeamId;
   hand: OkeyTile[];
   opened: boolean;

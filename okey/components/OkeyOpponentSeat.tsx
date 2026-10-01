@@ -1,11 +1,12 @@
 import { Image } from "expo-image";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useOkeyResponsiveLayout } from "../layout/OkeyResponsiveLayoutProvider";
 import {
   OPPONENT_RACK_HEIGHT,
   OPPONENT_RACK_WIDTH,
+  OPPONENT_TILE_WIDTH,
 } from "../layout/uiPositions";
 import { useOkeyCosmetics } from "../hooks/useOkeyCosmetics";
 import { OkeyTileBack } from "./OkeyTileFace";
@@ -16,7 +17,7 @@ const DEAL_BATCH_INTERVAL_MS = 180;
 const DEAL_PLAYER_COUNT = 4;
 const DEAL_BATCH_SIZE = 3;
 const MAX_HAND_SIZE = 15;
-const DISPLAY_TILE_LIMIT = 6;
+const DISPLAY_TILE_LIMIT = 7;
 
 type DealTile = {
   id: number;
@@ -100,12 +101,14 @@ export function OkeyOpponentSeat({
     y: number;
   } | null>(null);
 
-  const [animatedDealKey, setAnimatedDealKey] = useState<string | undefined>(
-    undefined,
-  );
+  const dealOriginX = dealOrigin?.x;
+  const dealOriginY = dealOrigin?.y;
+  const wrapperOriginX = wrapperOrigin?.x;
+  const wrapperOriginY = wrapperOrigin?.y;
+
+  const animatedDealKey = useRef<string | undefined>(undefined);
 
   const [dealing, setDealing] = useState(false);
-  const [revealedBackCount, setRevealedBackCount] = useState(DISPLAY_TILE_LIMIT);
 
   const dealTiles = useMemo(() => buildDealTiles(count), [count]);
 
@@ -115,29 +118,30 @@ export function OkeyOpponentSeat({
   );
 
   const dealAnimRef = useRef<Animated.CompositeAnimation | null>(null);
-  const revealTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const targetBackCount =
-    count > 0 ? Math.min(DISPLAY_TILE_LIMIT, Math.max(1, count)) : 0;
+    Number.isFinite(count) ? Math.min(DISPLAY_TILE_LIMIT, Math.max(0, Math.floor(count))) : 0;
+  const slotSpacing = targetBackCount > 1
+    ? Math.min(OPPONENT_TILE_WIDTH + 1, (OPPONENT_RACK_WIDTH - 16 - OPPONENT_TILE_WIDTH) / (targetBackCount - 1))
+    : 0;
 
   useEffect(() => {
     if (
       !dealResetKey ||
-      animatedDealKey === dealResetKey ||
-      !dealOrigin ||
-      !wrapperOrigin ||
+      animatedDealKey.current === dealResetKey ||
+      dealOriginX === undefined ||
+      dealOriginY === undefined ||
+      wrapperOriginX === undefined ||
+      wrapperOriginY === undefined ||
       count <= 0
     ) {
       return;
     }
 
-    setAnimatedDealKey(dealResetKey);
+    animatedDealKey.current = dealResetKey;
     setDealing(true);
-    setRevealedBackCount(0);
 
     dealAnimRef.current?.stop();
-    revealTimeoutsRef.current.forEach(clearTimeout);
-    revealTimeoutsRef.current = [];
 
     tileAnimations.forEach((anim, index) => {
       anim.setValue(index < dealTiles.length ? 0 : 1);
@@ -157,26 +161,6 @@ export function OkeyOpponentSeat({
       });
     });
 
-    const batchCount = Math.ceil(count / DEAL_BATCH_SIZE);
-
-    for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
-      const deliveredCount = Math.min(
-        count,
-        (batchIndex + 1) * DEAL_BATCH_SIZE,
-      );
-
-      const timeout = setTimeout(() => {
-        setRevealedBackCount(
-          Math.min(DISPLAY_TILE_LIMIT, deliveredCount),
-        );
-      }, (
-        (batchIndex * DEAL_PLAYER_COUNT + dealOrder) *
-          DEAL_BATCH_INTERVAL_MS
-      ) + DEAL_TILE_DURATION_MS);
-
-      revealTimeoutsRef.current.push(timeout);
-    }
-
     const parallel = Animated.parallel(animations);
     dealAnimRef.current = parallel;
 
@@ -184,7 +168,7 @@ export function OkeyOpponentSeat({
       if (!finished) return;
 
       dealAnimRef.current = null;
-      setRevealedBackCount(targetBackCount);
+
       setDealing(false);
     });
 
@@ -192,27 +176,27 @@ export function OkeyOpponentSeat({
       dealAnimRef.current?.stop();
       dealAnimRef.current = null;
 
-      revealTimeoutsRef.current.forEach(clearTimeout);
-      revealTimeoutsRef.current = [];
+      setDealing(false);
     };
   }, [
-    animatedDealKey,
     count,
     dealOrder,
-    dealOrigin,
+    dealOriginX,
+    dealOriginY,
     dealResetKey,
     dealTiles,
     targetBackCount,
     tileAnimations,
-    wrapperOrigin,
+    wrapperOriginX,
+    wrapperOriginY,
   ]);
 
-  const measureSeat = () => {
+  const measureSeat = useCallback(() => {
     seatRef.current?.measureInWindow((x, y, width, height) => {
       setWrapperOrigin({ x, y });
       onMeasured?.({ x, y, width, height });
     });
-  };
+  }, [onMeasured]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(measureSeat);
@@ -220,11 +204,9 @@ export function OkeyOpponentSeat({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [playerId]);
+  }, [playerId, measureSeat]);
 
-  const displayBackCount = dealing
-    ? Math.min(targetBackCount, revealedBackCount)
-    : targetBackCount;
+  // The rack reflects the hand count; deal flights are presentation only.
 
   return (
 <Pressable
@@ -251,20 +233,24 @@ export function OkeyOpponentSeat({
             transition={0}
           />
 
-          <View style={styles.opponentTilesRow}>
-            {Array.from({ length: displayBackCount }).map((_, index) => (
-              <OkeyTileBack key={`settled-${index}`} small />
+          <View testID={`opponent-rack-${side}`} style={styles.opponentTilesRow}>
+            {Array.from({ length: targetBackCount }).map((_, index) => (
+              <View
+                key={`settled-${index}`}
+                style={{ marginLeft: index === 0 ? 0 : slotSpacing - OPPONENT_TILE_WIDTH }}
+              >
+                <OkeyTileBack small />
+              </View>
             ))}
           </View>
 
           {dealing && dealOrigin && wrapperOrigin ? (
-            <View pointerEvents="none" style={styles.dealFlightLayer}>
+            <View testID={`opponent-deal-${side}`} pointerEvents="none" style={styles.dealFlightLayer}>
               {dealTiles.map((tile) => {
                 const progress = tileAnimations[tile.id];
 
-                const slotSpacing = 9;
                 const targetOffsetX =
-                  (tile.targetSlot - (DISPLAY_TILE_LIMIT - 1) / 2) *
+                  (tile.targetSlot - (targetBackCount - 1) / 2) *
                   slotSpacing;
 
                 const targetScreenX =
@@ -419,7 +405,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 1,
   },
 
   dealFlightLayer: {

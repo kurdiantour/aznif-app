@@ -57,10 +57,10 @@ test("bot worker keeps server-owned lifecycle delivery outside snapshot path", (
     /reconcileAuthoritativeServerLifecycleAlarm\(/,
   );
 
-  assert.match(
+  assert.doesNotMatch(
     workerSource,
-    /scheduleAznifGameLifecycle\(/,
+    /scheduleAznifGameLifecycle\(|AZNIF_GAME_LIFECYCLE_URL/,
   );
 
-  assert.match(workerSource, /AZNIF_GAME_LIFECYCLE_URL/);
+  assert.match(workerSource, /re-arms itself from result\.nextRunAt\/version/);
 });

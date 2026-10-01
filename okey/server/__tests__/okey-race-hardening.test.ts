@@ -146,7 +146,7 @@ for (const alreadyApplied of ["command", "membership"] as const) {
     assert.equal(f.commits.length, 1);
     assert.equal(f.reloadCount(), 1);
     assert.deepEqual(f.broadcasts, []);
-    assert.deepEqual(f.alarms, []);
+    assert.deepEqual(f.alarms, [12]);
   });
 }
 
@@ -176,3 +176,25 @@ test("lifecycle alarms are one-shot, version-bound, and only chain after a commi
   assert.match(lifecycleAlarmSource, /version !== Number\(options\.initialVersion\)/);
 });
 
+
+test("manual leave at version 29 seeds an immediate bot alarm and duplicate retry restores it", async () => {
+  const f = retryFixture([null]);
+  f.input.bundle.version = 28;
+  f.input.clientExpectedVersion = 28;
+  const jobs: { version: number; runAt: string }[] = [];
+  f.dependencies.scheduleLifecycleAlarm = async job => { jobs.push(job); };
+  const result = await f.run();
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.version, 29);
+  assert.equal(result.turnDeadlineAt, null);
+  assert.equal(result.state.roundState.players[result.state.roundState.currentPlayerIndex].controlledByBot, true);
+  const expected = [{ version: 29, runAt: new Date(f.input.commandReceivedAtMs).toISOString() }];
+  assert.deepEqual(jobs.map(({ version, runAt }) => ({ version, runAt })), expected);
+  f.input.bundle = { ...f.input.bundle, state: result.state, version: 29,
+    turn_deadline_at: null, command_applied: true };
+  jobs.length = 0;
+  assert.equal((await f.run()).ok, true);
+  assert.equal(f.commits.length, 1, "retry must not apply leave twice");
+  assert.deepEqual(jobs.map(({ version, runAt }) => ({ version, runAt })), expected);
+});

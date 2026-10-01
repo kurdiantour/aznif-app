@@ -1151,6 +1151,15 @@ export async function reconcileAuthoritativeHumanCommand(
   }
 
   if (input.bundle.command_applied) {
+    // Restore the wake if the original request committed but failed to schedule.
+    await scheduleNextOkeyLifecycleAlarm({
+      matchId: input.matchId,
+      state: initialState,
+      version: Number(input.bundle.version),
+      turnDeadlineAt: input.bundle.turn_deadline_at,
+      scheduleLifecycleAlarm: dependencies.scheduleLifecycleAlarm,
+      nowMs: now(),
+    });
     const settled = await settleAuthoritativeOkeyMatch({
       client: dependencies.client,
       matchId: input.matchId,
@@ -1224,6 +1233,15 @@ export async function reconcileAuthoritativeHumanCommand(
           input.actorUserId,
         )
       ) {
+        // Confirming a committed leave must also restore its lifecycle wake.
+        await scheduleNextOkeyLifecycleAlarm({
+          matchId: input.matchId,
+          state: workingBundle.state,
+          version: Number(workingBundle.version),
+          turnDeadlineAt: workingBundle.turn_deadline_at,
+          scheduleLifecycleAlarm: dependencies.scheduleLifecycleAlarm,
+          nowMs: now(),
+        });
         return {
           ok: true,
           commit: {
@@ -1647,6 +1665,7 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
       ok: true,
       executed: false,
       ...baseResult,
+      nextRunAt: getOkeyLifecycleRunAt(state, turnDeadlineAt, getNow()),
       reason: "already_transitioned",
     };
   }
@@ -1715,6 +1734,12 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
           ? "eliminated_executed"
           : "next_round_started";
 
+  const nextRunAt = getOkeyLifecycleRunAt(
+    reconciled.state,
+    reconciled.turnDeadlineAt,
+    getNow(),
+  );
+
   const result: OkeyServerLifecycleAlarmResult = {
     ok: true,
     executed: true,
@@ -1722,17 +1747,20 @@ export async function reconcileAuthoritativeServerLifecycleAlarm(
     version: reconciled.version,
     attempts: 1,
     turnDeadlineAt: reconciled.turnDeadlineAt,
+    nextRunAt,
     reason,
   };
 
-  await scheduleNextOkeyLifecycleAlarm({
-    matchId,
-    state: reconciled.state,
-    version: reconciled.version,
-    turnDeadlineAt: reconciled.turnDeadlineAt,
-    scheduleLifecycleAlarm: options.scheduleLifecycleAlarm,
-    nowMs: getNow(),
-  });
+  if (options.scheduleLifecycleAlarm) {
+    await scheduleNextOkeyLifecycleAlarm({
+      matchId,
+      state: reconciled.state,
+      version: reconciled.version,
+      turnDeadlineAt: reconciled.turnDeadlineAt,
+      scheduleLifecycleAlarm: options.scheduleLifecycleAlarm,
+      nowMs: getNow(),
+    });
+  }
 
   return result;
 }

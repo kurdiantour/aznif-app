@@ -16,6 +16,7 @@ import {
 
 type MatchMenuDrawerProps = {
   visible: boolean;
+  loadHumanProfiles?: boolean;
   players: any[];
   humanPlayer?: any | null;
   activePlayerId?: string | null;
@@ -37,7 +38,7 @@ export default function MatchMenuDrawer(props: MatchMenuDrawerProps) {
   const humanPlayerIdsKey = JSON.stringify(
     Array.from(
       new Set<string>(
-        props.players
+        (props.loadHumanProfiles === false ? [] : props.players)
           .filter(
             (player) =>
               player?.kind !== "bot" &&

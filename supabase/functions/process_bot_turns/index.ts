@@ -24,14 +24,12 @@ import {
 import { reconcileAuthoritativeServerLifecycleAlarm } from "../../../okey/server/okey-turn-engine.ts";
 import { processDominoOneVsOneBotTurn } from "../../../domino/modes/one-vs-one/bot/domino-one-vs-one-bot-controller.ts";
 import { describeDominoOneVsOneServerError } from "../../../domino/modes/one-vs-one/server/domino-one-vs-one-server-error.ts";
-import { scheduleAznifGameLifecycle } from "../_shared/aznif-game-lifecycle.ts";
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") || Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const BOT_WORKER_SECRET = Deno.env.get("BOT_WORKER_SECRET");
 const AZNIF_LIFECYCLE_SECRET = Deno.env.get("AZNIF_LIFECYCLE_SECRET");
-const AZNIF_GAME_LIFECYCLE_URL = Deno.env.get("AZNIF_GAME_LIFECYCLE_URL");
 
 const svc = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "", {
   auth: { persistSession: false },
@@ -162,22 +160,10 @@ serve(async (req) => {
           });
           await svc.removeChannel(channel);
         },
-        scheduleLifecycleAlarm: async (lifecycleJob: any) => {
-          if (!AZNIF_GAME_LIFECYCLE_URL || !AZNIF_LIFECYCLE_SECRET) return;
-          await scheduleAznifGameLifecycle({
-            schedulerUrl: AZNIF_GAME_LIFECYCLE_URL,
-            lifecycleSecret: AZNIF_LIFECYCLE_SECRET,
-            gameType: "okey",
-            matchId: lifecycleJob.matchId,
-            expectedVersion: lifecycleJob.version,
-            runAt: lifecycleJob.runAt,
-          });
-        },
       });
 
-      // One lifecycle alarm performs one short official transition. Do not acknowledge
-      // Cloudflare until that transition and the next alarm registration have
-      // completed; a thrown error lets Durable Object alarms retry durably.
+      // One lifecycle alarm performs one short official transition. Cloudflare owns
+      // the durable continuation and re-arms itself from result.nextRunAt/version.
       const lifecycleResult = await lifecyclePromise;
       return json({ ok: true, mode: "okey-lifecycle", result: lifecycleResult });
     }
@@ -437,4 +423,5 @@ serve(async (req) => {
     return json({ error: failure.message, failure }, 500);
   }
 });
+
 
