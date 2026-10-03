@@ -11,7 +11,6 @@ import {
   getOkeyMatchTurnDeadlineAfterTransition,
   OKEY_AUTHORITATIVE_TRANSITION_REDUCERS,
   projectOkeyMatchPublicState,
-  settleAuthoritativeOkeyRound,
   type OkeyAuthoritativeCommand,
   type OkeyAuthoritativeMatchState,
   type OkeyMatchServerProjection,
@@ -332,15 +331,6 @@ export function evaluateOkeyServerLifecycle(
   }
 
   if (state.roundState.phase === "finished") {
-    if (state.pendingForfeitTeamId || state.leaveTerminationReason === "team-forfeit") {
-      return {
-        type: "due-next-round",
-        expectedVersion: version,
-        expectedRound: state.currentRound,
-        eligibleAt: new Date(now).toISOString(),
-      };
-    }
-
     const eligibleAt = state.nextRoundEligibleAt;
     if (eligibleAt) {
       const eligibleAtMs = Date.parse(eligibleAt);
@@ -996,21 +986,14 @@ export async function executeOkeyServerLifecycle(
     }
 
     case "due-next-round": {
-      const finishingTeamForfeit =
-        Boolean(currentState.pendingForfeitTeamId) ||
-        currentState.leaveTerminationReason === "team-forfeit";
-
       let actorPlayerId = "system";
       let commandState = currentState;
-      const commandType = finishingTeamForfeit ? "round-end-team-forfeit" : "start-next-round";
+      const commandType = "start-next-round";
 
       const execution = await executeOkeyAuthoritativePipeline({
         client: options.client,
         state: currentState,
-        transition: finishingTeamForfeit ? undefined : { type: "next-round" },
-        preReducedState: finishingTeamForfeit
-          ? settleAuthoritativeOkeyRound(currentState)
-          : undefined,
+        transition: { type: "next-round" },
         transitionNow: getNow(),
         matchId: options.matchId,
         actorPlayerId: () => actorPlayerId,
@@ -1033,9 +1016,7 @@ export async function executeOkeyServerLifecycle(
             "system";
           return getNextOkeyMatchTurnDeadline(nextState, getNow());
         },
-        createActionEvents: (nextState) => finishingTeamForfeit
-          ? []
-          : [{
+        createActionEvents: (nextState) => [{
               type: "round",
               actorPlayerId: null,
               payload: { round: nextState.currentRound },

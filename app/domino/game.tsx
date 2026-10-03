@@ -863,7 +863,9 @@ useEffect(() => {
             entryFee={waitingRoom.waitingEntryFee}
             currency={waitingRoom.waitingCurrency}
             players={waitingRoom.publicWaitingPlayers}
-            countdownSeconds={waitingRoom.countdownSeconds}
+            countdownSeconds={waitingRoom.countdownEndsAt ? undefined : waitingRoom.countdownSeconds}
+            countdownEndsAt={waitingRoom.countdownEndsAt}
+            loading={waitingRoom.leavingWaitingRoom}
             canCancel={waitingRoom.canCancel}
             onCancel={waitingRoom.handleCancel}
           />

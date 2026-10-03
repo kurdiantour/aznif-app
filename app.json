@@ -2,13 +2,14 @@
   "expo": {
     "name": "Aznif",
     "slug": "domino-app",
-    "version": "1.2.4",
+    "version": "1.2.6",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "dominoapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "runtimeVersion": "1.2.2-ios-gestures-v2",
+      "runtimeVersion": "1.2.6-ios-gestures-v2",
+      "buildNumber": "78",
       "supportsTablet": true,
       "bundleIdentifier": "com.behzadhakeem.dominoapp",
       "infoPlist": {
@@ -16,6 +17,7 @@
       }
     },
     "android": {
+      "versionCode": 22,
       "adaptiveIcon": {
         "backgroundColor": "#050b22",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

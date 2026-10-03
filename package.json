@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test:security": "node scripts/production-security-check.js",
     "test:domino:timeout": "node --test scripts/turn-timeout-concurrency.test.mjs",
-    "test:domino:waiting-room": "node --test scripts/domino-waiting-room-leave.test.mjs",
+    "test:domino:waiting-room": "node --test scripts/domino-waiting-room-leave.test.mjs scripts/domino-waiting-room-lifecycle.test.mjs scripts/domino-waiting-room-roster.test.mjs",
     "test:okey": "npm run test:okey:core && npm run test:okey:ui",
     "test:multiplayer:stats": "node --test scripts/multiplayer-stats-database.test.mjs && node --import ./scripts/test-typescript-loader.mjs --test --experimental-strip-types scripts/multiplayer-stats-lifecycle.test.ts",
     "test:okey:core": "node --import ./scripts/test-typescript-loader.mjs --test --experimental-strip-types okey/engine/__tests__/*.test.ts okey/engine/__tests__/*.test.js okey/server/__tests__/*.test.ts okey/lifecycle/__tests__/*.test.ts okey/feedback/__tests__/*.test.ts",

@@ -8,6 +8,7 @@ import { obtainToken } from "./platform";
 const installationKey = "aznif.push.installation.v1";
 let serialized: Promise<unknown> = Promise.resolve();
 let paused = false;
+let lastRegistered: string | null = null;
 function serialize<T>(operation: () => Promise<T>): Promise<T> {
   const result = serialized.then(operation, operation);
   serialized = result.catch(() => {});
@@ -21,29 +22,35 @@ async function installation() {
   return value;
 }
 export function resumeDeviceRegistration() { paused = false; }
-export function registerPushDevice(userId: string, requestPermission = false) {
+export function registerPushDevice(userId: string, requestPermission = false, devicePushToken?: import("expo-notifications").DevicePushToken) {
   return serialize(async () => {
     if (paused || Platform.OS === "web") return "web";
-    const result = await obtainToken(requestPermission);
+    const result = await obtainToken(requestPermission, devicePushToken);
     if (result.permission === "development_build_required") return result.permission;
     const { data } = await supabase.auth.getSession();
     if (paused || data.session?.user.id !== userId) return result.permission;
     const proof = await installation();
     if (!result.token) {
+      lastRegistered = null;
       const { error } = await supabase.rpc("push_unregister_device", { p_installation: proof.id, p_secret: proof.secret });
       if (error) throw error;
       return result.permission;
     }
+    const environment = Constants.expoConfig?.extra?.pushEnvironment ?? "production";
+    const registration = JSON.stringify([userId, proof.id, result.token, Platform.OS, environment]);
+    if (lastRegistered === registration) return result.permission;
     const { error } = await supabase.rpc("push_register_device", {
       p_installation: proof.id, p_secret: proof.secret, p_token: result.token, p_platform: Platform.OS,
-      p_environment: Constants.expoConfig?.extra?.pushEnvironment ?? "production",
+      p_environment: environment,
     });
     if (error) throw error;
+    lastRegistered = registration;
     return result.permission;
   });
 }
 export function unregisterPushDevice() {
   paused = true;
+  lastRegistered = null;
   return serialize(async () => {
     if (Platform.OS === "web") return;
     const stored = await AsyncStorage.getItem(installationKey);

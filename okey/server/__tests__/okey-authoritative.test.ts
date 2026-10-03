@@ -462,25 +462,34 @@ test("tile-cycle completion also waits for a separate same-round restart", () =>
   assert.equal(restarted.roundState.dealerIndex, 3);
 });
 
-test("a whole-team leave finishes the match immediately", () => {
+test("a whole-team leave keeps the current round playing until settlement", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = applyAuthoritativeManualLeave(match, 1);
   match = applyAuthoritativeManualLeave(match, 3);
 
-  assert.equal(match.pendingForfeitTeamId, "teamB");
+  assert.equal(match.pendingForfeitTeamId, null);
   assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);
   assert.equal(isOkeyBotControlled(match.roundState.players[3]), true);
-  assert.equal(match.matchFinished, true);
-  assert.equal(match.matchWinnerTeamId, "teamA");
-  assert.equal(match.leaveTerminationReason, "team-forfeit");
+  assert.equal(match.matchFinished, false);
+  assert.equal(match.matchWinnerTeamId, null);
+  assert.equal(match.leaveTerminationReason, null);
   assert.equal(match.nextRoundEligibleAt, null);
   assert.equal(match.currentRound, 1);
   assert.equal(match.roundResults.length, 0);
   assert.equal(match.roundState.phase, "playing");
-  assert.equal(getNextOkeyMatchTurnDeadline(match), null);
+  const settled = settleAuthoritativeOkeyRound({
+    ...match,
+    roundState: { ...match.roundState, phase: "finished", winnerId: match.roundState.players[0].id, endReason: "win" },
+  });
+  assert.equal(settled.matchFinished, true);
+  assert.equal(settled.matchWinnerTeamId, "teamA");
+  assert.equal(settled.leaveTerminationReason, "team-forfeit");
+  assert.equal(settled.roundResults.length, 1);
+  assert.equal(settled.matchScores.teamA, settled.roundResults[0].teamAScore);
+  assert.equal(settled.nextRoundEligibleAt, null);
 });
 
-test("manual leave plus teammate timeout takeover creates a team forfeit", () => {
+test("manual leave plus teammate timeout takeover defers forfeit to settlement", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = applyAuthoritativeManualLeave(match, 1);
   match = {
@@ -491,11 +500,17 @@ test("manual leave plus teammate timeout takeover creates a team forfeit", () =>
   match = resolveAuthoritativeMatchDeadline(match, expiredDeadline, afterDeadline);
 
   assert.deepEqual(match.manualLeftPlayerIds, ["player-1"]);
-  assert.equal(match.pendingForfeitTeamId, "teamB");
-  assert.equal(match.leaveTerminationReason, "team-forfeit");
+  assert.equal(match.pendingForfeitTeamId, null);
+  assert.equal(match.matchFinished, false);
+  const settled = settleAuthoritativeOkeyRound({
+    ...match,
+    roundState: { ...match.roundState, phase: "finished", winnerId: match.roundState.players[0].id, endReason: "win" },
+  });
+  assert.equal(settled.matchWinnerTeamId, "teamA");
+  assert.equal(settled.roundResults.length, 1);
 });
 
-test("two timeout takeovers on one team create a team forfeit", () => {
+test("two timeout takeovers forfeit only if neither seat is reclaimed by round end", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = {
     ...match,
@@ -506,11 +521,22 @@ test("two timeout takeovers on one team create a team forfeit", () => {
 
   assert.equal(isOkeyBotControlled(match.roundState.players[1]), true);
   assert.deepEqual(match.manualLeftPlayerIds, []);
-  assert.equal(match.pendingForfeitTeamId, "teamB");
-  assert.equal(match.leaveTerminationReason, "team-forfeit");
+  assert.equal(match.pendingForfeitTeamId, null);
+  assert.equal(match.matchFinished, false);
+  const finish = (current: typeof match) => settleAuthoritativeOkeyRound({
+    ...current,
+    roundState: { ...current.roundState, phase: "finished", winnerId: current.roundState.players[0].id, endReason: "win" },
+  });
+  assert.equal(finish(match).matchWinnerTeamId, "teamA");
+  const reclaimed = applyAuthoritativeOkeyMatchCommand(match, 1, { type: "take-back-seat" });
+  assert.equal(isOkeyBotControlled(reclaimed.roundState.players[1]), false);
+  const settled = finish(reclaimed);
+  assert.equal(settled.matchFinished, false);
+  assert.ok(settled.nextRoundEligibleAt);
+  assert.equal(startAuthoritativeOkeyNextRound(settled).currentRound, 2);
 });
 
-test("a whole-team forfeit after round settlement terminates without creating a next round", () => {
+test("leaves after round settlement do not retroactively forfeit that round", () => {
   let match = createAuthoritativeOkeyMatch(matchPlayers, 0);
   match = settleAuthoritativeOkeyRound({
     ...match,
@@ -528,15 +554,11 @@ test("a whole-team forfeit after round settlement terminates without creating a 
   match = applyAuthoritativeManualLeave(match, 1);
   match = applyAuthoritativeManualLeave(match, 3);
 
-  assert.equal(match.matchFinished, true);
-  assert.equal(match.matchWinnerTeamId, "teamA");
-  assert.equal(match.nextRoundEligibleAt, null);
-  assert.throws(
-    () => startAuthoritativeOkeyNextRound(match),
-    (error) => error instanceof OkeyCommandError && error.code === "command_rejected",
-  );
+  assert.equal(match.matchFinished, false);
+  assert.equal(match.matchWinnerTeamId, null);
+  assert.equal(startAuthoritativeOkeyNextRound(match).currentRound, 2);
 });
-test("a whole-team departure in round three terminates immediately without bot continuation", () => {
+test("a whole-team departure in round three waits for the round result", () => {
   let match = {
     ...createAuthoritativeOkeyMatch(matchPlayers, 0),
     currentRound: 3,
@@ -544,13 +566,19 @@ test("a whole-team departure in round three terminates immediately without bot c
   match = applyAuthoritativeManualLeave(match, 1);
   match = applyAuthoritativeManualLeave(match, 3);
 
-  assert.equal(match.matchFinished, true);
-  assert.equal(match.matchWinnerTeamId, "teamA");
-  assert.equal(match.leaveTerminationReason, "team-forfeit");
+  assert.equal(match.matchFinished, false);
+  assert.equal(match.matchWinnerTeamId, null);
+  assert.equal(match.leaveTerminationReason, null);
   assert.deepEqual([...match.manualLeftPlayerIds].sort(), ["player-1", "player-3"]);
   assert.equal(match.currentRound, 3);
   assert.equal(match.roundResults.length, 0);
-  assert.equal(getNextOkeyMatchTurnDeadline(match), null);
+  const settled = settleAuthoritativeOkeyRound({
+    ...match,
+    roundState: { ...match.roundState, phase: "finished", winnerId: match.roundState.players[0].id, endReason: "win" },
+  });
+  assert.equal(settled.matchFinished, true);
+  assert.equal(settled.currentRound, 3);
+  assert.equal(settled.roundResults.length, 1);
 });
 
 test("zero remaining humans terminate immediately without winner or bot continuation", () => {

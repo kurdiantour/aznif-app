@@ -11,6 +11,7 @@ const mockRefresh = jest.fn();
 const mockDispatch = jest.fn();
 const mockLeave = jest.fn();
 const mockSnapshot = jest.fn();
+const mockSubscribe = jest.fn((_listener: (snapshot: unknown) => void) => jest.fn());
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
 jest.mock("@/lib/profile", () => ({ useProfile: () => ({ profile: mockProfile }) }));
@@ -19,6 +20,7 @@ jest.mock("../okey-room-api", () => ({ getActiveOkeyMemberships: () => mockMembe
 jest.mock("@/okey/adapters/supabase-okey-match-adapter", () => ({
   SupabaseOkeyMatchAdapter: jest.fn().mockImplementation(() => ({
     refresh: () => mockRefresh(), getSnapshot: () => mockSnapshot(),
+    subscribe: (listener: (snapshot: unknown) => void) => mockSubscribe(listener),
     dispatch: (command: unknown) => mockDispatch(command), leave: () => mockLeave(),
   })),
 }));
@@ -57,7 +59,7 @@ test("shared popup delegates actions and blocks both buttons while loading", () 
 test("return for takeover player triggers take-back-seat and navigates", async () => {
   const ui = await showOverlay();
   await act(async () => { fireEvent.press(ui.getByTestId("return-to-game-return")); });
-  expect(mockRefresh).toHaveBeenCalledTimes(2);
+  expect(mockRefresh).toHaveBeenCalledTimes(3);
   expect(mockDispatch).toHaveBeenCalledWith({ type: "take-back-seat" });
   expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/okey/game", params: { matchId: "match", mode: "fun" } });
   expect(ui.UNSAFE_queryByType(ReturnToGamePopup)).toBeNull();
@@ -67,7 +69,7 @@ test("return for non-takeover active player navigates directly without take-back
   mockSnapshot.mockReturnValue({ matchFinished: false, players: [{ id: "human", controlledByBot: false }] });
   const ui = await showOverlay();
   await act(async () => { fireEvent.press(ui.getByTestId("return-to-game-return")); });
-  expect(mockRefresh).toHaveBeenCalledTimes(2);
+  expect(mockRefresh).toHaveBeenCalledTimes(3);
   expect(mockDispatch).not.toHaveBeenCalled();
   expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/okey/game", params: { matchId: "match", mode: "fun" } });
   expect(ui.UNSAFE_queryByType(ReturnToGamePopup)).toBeNull();

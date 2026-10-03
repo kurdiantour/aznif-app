@@ -1,5 +1,7 @@
 ﻿import { registerPushDevice, resumeDeviceRegistration, unregisterPushDevice } from "../devices";
-const mockRpc = jest.fn(async () => ({ error: null }));
+const mockRpc = jest.fn<Promise<{ error: Error | null }>, []>(
+  async () => ({ error: null })
+);
 let mockUser = "alice";
 let mockToken = "ExpoPushToken[x]";
 let mockPermission = "granted";
@@ -15,10 +17,28 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: async (key: string) => mockStore[key] ?? null,
   setItem: async (key: string, value: string) => { mockStore[key] = value; },
 }));
-beforeEach(() => { mockUser = "alice"; mockToken = "ExpoPushToken[x]"; mockPermission = "granted"; mockRpc.mockClear(); resumeDeviceRegistration(); });
+beforeEach(async () => { await unregisterPushDevice(); mockUser = "alice"; mockToken = "ExpoPushToken[x]"; mockPermission = "granted"; mockRpc.mockReset().mockResolvedValue({ error: null }); resumeDeviceRegistration(); });
 test("registers installation proof and selected build environment", async () => {
   await registerPushDevice("alice");
   expect(mockRpc).toHaveBeenCalledWith("push_register_device", expect.objectContaining({ p_environment: "development", p_token: mockToken, p_secret: expect.any(String) }));
+});
+test("does not repeat a successful registration for the same user and token", async () => {
+  await registerPushDevice("alice");
+  await registerPushDevice("alice");
+  expect(mockRpc).toHaveBeenCalledTimes(1);
+  mockToken = "ExpoPushToken[y]";
+  await registerPushDevice("alice");
+  expect(mockRpc).toHaveBeenCalledTimes(2);
+});
+test("retries after a failed registration and registers again after logout", async () => {
+  mockRpc.mockResolvedValueOnce({ error: new Error("offline") });
+  await expect(registerPushDevice("alice")).rejects.toThrow("offline");
+  await registerPushDevice("alice");
+  expect(mockRpc).toHaveBeenCalledTimes(2);
+  await unregisterPushDevice();
+  resumeDeviceRegistration();
+  await registerPushDevice("alice");
+  expect(mockRpc).toHaveBeenCalledTimes(4);
 });
 test("stale account registration is discarded", async () => {
   mockUser = "bob"; await registerPushDevice("alice"); expect(mockRpc).not.toHaveBeenCalled();

@@ -81,6 +81,8 @@ export function useDominoWaitingRoom({
   const [localPlayer, setLocalPlayer] = useState<MatchPlayer | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+  const [countdownEndsAt, setCountdownEndsAt] = useState<string | null>(null);
+  const [leavingWaitingRoom, setLeavingWaitingRoom] = useState(false);
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
   const [matchmakingStatus, setMatchmakingStatus] = useState(initialMatchmakingStatus);
   const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
@@ -89,6 +91,7 @@ export function useDominoWaitingRoom({
   const statusCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownSecondsRef = useRef<number | null>(null);
+  const startInFlightRef = useRef(false);
 
   const navigationStartedRef = useRef(false);
   const cancellationStartedRef = useRef(false);
@@ -184,8 +187,11 @@ export function useDominoWaitingRoom({
 
   useEffect(() => {
     if (initialMatchmakingStatus === "matched" && initialRoomId) {
-      setMatchmakingStatus("matched");
-      setCurrentRoomId(initialRoomId);
+      const timer = setTimeout(() => {
+        setMatchmakingStatus("matched");
+        setCurrentRoomId(initialRoomId);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [initialMatchmakingStatus, initialRoomId]);
 
@@ -196,6 +202,7 @@ export function useDominoWaitingRoom({
       isGameStarted ||
       !authChecked ||
       !localPlayer?.userId ||
+      leavingWaitingRoom ||
       currentMatchType === "bot"
     ) {
       return;
@@ -251,13 +258,60 @@ export function useDominoWaitingRoom({
       clearInterval(timer);
       appStateSubscription.remove();
     };
-  }, [authChecked, currentMatchType, currentRoomId, enabled, gameMode, isGameStarted, localPlayer?.userId]);
+  }, [authChecked, currentMatchType, currentRoomId, enabled, gameMode, isGameStarted, leavingWaitingRoom, localPlayer?.userId]);
+
+  const refreshRoom = useCallback(async () => {
+    if (!enabled || isGameStarted || currentMatchType === "bot" || cancellationStartedRef.current) return;
+    const { data, error } = await supabase.rpc("domino_waiting_room_status", {
+      p_mode: gameMode,
+      p_room_id: currentRoomId || null,
+    });
+    if (error) throw error;
+    if (cancellationStartedRef.current) return;
+    if (data?.roomId && data.roomId !== currentRoomId) {
+      setCurrentRoomId(data.roomId);
+    }
+    if (data?.roomId && data.memberCount >= requiredPlayers) {
+      setMatchmakingStatus("matched");
+    }
+    const deadline = data?.countdownEndsAt ?? null;
+    setCountdownEndsAt(deadline);
+    if (data?.started && !navigationStartedRef.current && !startInFlightRef.current) {
+      startInFlightRef.current = true;
+      try {
+        await prepareMultiplayerGameLaunch(data.roomId ?? currentRoomId, gameMode);
+        if (!cancellationStartedRef.current) {
+          navigationStartedRef.current = true;
+          setIsGameStarted(true);
+        }
+      } finally {
+        startInFlightRef.current = false;
+      }
+    }
+  }, [currentMatchType, currentRoomId, enabled, gameMode, isGameStarted, requiredPlayers]);
+
+  useEffect(() => {
+    if (!enabled || isGameStarted || currentMatchType === "bot" || leavingWaitingRoom) return;
+    const check = () => void refreshRoom().catch((error) => {
+      console.warn("Unable to refresh Domino waiting room", error);
+    });
+    check();
+    const timer = setInterval(check, 2000);
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => {
+      clearInterval(timer);
+      appStateSubscription.remove();
+    };
+  }, [currentMatchType, enabled, isGameStarted, leavingWaitingRoom, refreshRoom]);
 
   // Matchmaking status polling when searching
   useEffect(() => {
     if (
       !enabled ||
       isGameStarted ||
+      leavingWaitingRoom ||
       currentMatchType === "private" ||
       matchmakingStatus !== "searching"
     ) {
@@ -294,15 +348,17 @@ export function useDominoWaitingRoom({
         statusCheckIntervalRef.current = null;
       }
     };
-  }, [currentMatchType, enabled, isGameStarted, isOneVsOne, matchmakingStatus]);
+  }, [currentMatchType, enabled, isGameStarted, isOneVsOne, leavingWaitingRoom, matchmakingStatus]);
 
   // Realtime players roster loading and subscription
   useEffect(() => {
-    if (!enabled || isGameStarted) return;
+    if (!enabled || isGameStarted || leavingWaitingRoom) return;
     let mounted = true;
     let playersLoadInFlight = false;
+    let playersLoadRevision = 0;
 
     const loadPlayers = async () => {
+      const revision = ++playersLoadRevision;
       if (!currentRoomId) {
         setPlayers([]);
         return;
@@ -351,7 +407,8 @@ export function useDominoWaitingRoom({
           );
         }
 
-        if (!mounted) return;
+        // A newer roster event invalidates both the rows and their profile lookup.
+        if (!mounted || revision !== playersLoadRevision) return;
 
         const botIdentities = assignDominoBotIdentities(
           connectedPlayerRows.map((row: any, index: number) => ({
@@ -397,6 +454,10 @@ export function useDominoWaitingRoom({
         setPlayers(mappedPlayers);
       } finally {
         playersLoadInFlight = false;
+        // Coalesce events received during this request into a fresh snapshot.
+        if (mounted && revision !== playersLoadRevision) {
+          void loadPlayers();
+        }
       }
     };
 
@@ -417,7 +478,8 @@ export function useDominoWaitingRoom({
           filter: `room_id=eq.${currentRoomId}`,
         },
         (payload) => {
-          const changed = (payload.new ?? payload.old) as {
+          void refreshRoom().catch((error) => console.warn("Unable to refresh Domino room", error));
+          const changed = (payload.eventType === "DELETE" ? payload.old : payload.new) as {
             id?: string;
             connected?: boolean;
           };
@@ -442,6 +504,7 @@ export function useDominoWaitingRoom({
           filter: `id=eq.${currentRoomId}`,
         },
         (payload) => {
+          void refreshRoom().catch((error) => console.warn("Unable to refresh Domino room", error));
           const room = (payload.new ?? {}) as any;
           const hasStarted =
             room?.status === "playing" ||
@@ -476,7 +539,7 @@ export function useDominoWaitingRoom({
       mounted = false;
       void supabase.removeChannel(channel);
     };
-  }, [currentRoomId, enabled, isGameStarted, isOneVsOne]);
+  }, [currentRoomId, enabled, isGameStarted, isOneVsOne, leavingWaitingRoom, refreshRoom]);
 
   const publicWaitingPlayers = useMemo<PublicWaitingPlayer[]>(() => {
     const waitingPlayers = players.map((player) => ({
@@ -508,10 +571,12 @@ export function useDominoWaitingRoom({
         : matchmakingStatus === "matched" && players.length >= requiredPlayers;
 
   const matchLocked =
-  isGameStarted ||
-  navigationStartedRef.current ||
-  playersReady;
-  matchLockedRef.current = matchLocked;
+    isGameStarted ||
+    Boolean(countdownEndsAt) ||
+    players.length >= requiredPlayers;
+  useEffect(() => {
+    matchLockedRef.current = matchLocked;
+  }, [matchLocked]);
 
   const leaveWaitingRoom = useCallback(async () => {
     const { error } = isOneVsOne
@@ -528,7 +593,7 @@ export function useDominoWaitingRoom({
   }, [currentRoomId, isOneVsOne]);
 
   const handleCancel = useCallback(async () => {
-    if (matchLockedRef.current) {
+    if (matchLockedRef.current || navigationStartedRef.current) {
       return;
     }
 
@@ -541,6 +606,7 @@ export function useDominoWaitingRoom({
     }
 
     cancellationStartedRef.current = true;
+    setLeavingWaitingRoom(true);
 
     try {
       await leaveWaitingRoom();
@@ -558,9 +624,13 @@ export function useDominoWaitingRoom({
       router.replace("/(tabs)/play");
     } catch (error) {
       cancellationStartedRef.current = false;
+      setLeavingWaitingRoom(false);
+      void refreshRoom().catch((refreshError) => {
+        console.warn("Unable to refresh Domino room after leave failure", refreshError);
+      });
       console.warn("Failed to leave Domino waiting room", error);
     }
-  }, [leaveWaitingRoom, localPlayer?.userId, party, router]);
+  }, [leaveWaitingRoom, localPlayer?.userId, party, refreshRoom, router]);
 
   // Back button handling during waiting
   useEffect(() => {
@@ -569,7 +639,7 @@ export function useDominoWaitingRoom({
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       () => {
-        if (matchLockedRef.current) {
+        if (matchLockedRef.current || navigationStartedRef.current) {
           return true;
         }
 
@@ -604,10 +674,10 @@ export function useDominoWaitingRoom({
   }, [enabled]);
 
   // Countdown and start
-  const isMatchFound = playersReady;
+  const isMatchFound = currentMatchType === "bot" ? playersReady : Boolean(countdownEndsAt);
 
   useEffect(() => {
-    if (!enabled || isGameStarted) return;
+    if (!enabled || isGameStarted || leavingWaitingRoom) return;
 
     if (!isMatchFound) {
       if (countdownIntervalRef.current) {
@@ -615,51 +685,38 @@ export function useDominoWaitingRoom({
         countdownIntervalRef.current = null;
       }
       countdownSecondsRef.current = null;
-      setCountdownSeconds(null);
-      return;
+      const reset = setTimeout(() => setCountdownSeconds(null), 0);
+      return () => clearTimeout(reset);
     }
 
     if (navigationStartedRef.current || countdownIntervalRef.current) {
       return;
     }
 
-    const startValue = 5;
-    countdownSecondsRef.current = startValue;
-    setCountdownSeconds(startValue);
-
-    countdownIntervalRef.current = setInterval(() => {
-      const previous = countdownSecondsRef.current ?? 0;
-      const nextValue = previous - 1;
-
-      countdownSecondsRef.current = nextValue > 0 ? nextValue : null;
+    const startAt = countdownEndsAt ? Date.parse(countdownEndsAt) : Date.now() + 5000;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((startAt - Date.now()) / 1000));
+      countdownSecondsRef.current = remaining > 0 ? remaining : null;
       setCountdownSeconds(countdownSecondsRef.current);
-
-      if (nextValue <= 0) {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-
-        if (!navigationStartedRef.current) {
-          navigationStartedRef.current = true;
-
-          void (async () => {
-            try {
-              await prepareMultiplayerGameLaunch(currentRoomId, gameMode);
-            } catch (err) {
-              console.warn("Error launching Domino game", err);
-            }
-
-            if (cancellationStartedRef.current) {
-              return;
-            }
-
-            // Game officially started; transition directly without navigation!
+      if (remaining > 0 || navigationStartedRef.current || startInFlightRef.current) return;
+      startInFlightRef.current = true;
+      void (async () => {
+        try {
+          await prepareMultiplayerGameLaunch(currentRoomId, gameMode);
+          if (!cancellationStartedRef.current) {
+            navigationStartedRef.current = true;
             setIsGameStarted(true);
-          })();
+          }
+        } catch (error) {
+          console.warn("Error launching Domino game", error);
+          void refreshRoom().catch((refreshError) => console.warn("Unable to refresh Domino room", refreshError));
+        } finally {
+          startInFlightRef.current = false;
         }
-      }
-    }, 1000);
+      })();
+    };
+    tick();
+    countdownIntervalRef.current = setInterval(tick, 500);
 
     return () => {
       if (countdownIntervalRef.current) {
@@ -667,7 +724,7 @@ export function useDominoWaitingRoom({
         countdownIntervalRef.current = null;
       }
     };
-  }, [currentRoomId, enabled, gameMode, isGameStarted, isMatchFound]);
+  }, [countdownEndsAt, currentRoomId, enabled, gameMode, isGameStarted, isMatchFound, leavingWaitingRoom, refreshRoom]);
 
   const isWaiting = enabled && !isGameStarted;
   const gameplayReady = !enabled || isGameStarted;
@@ -680,11 +737,13 @@ export function useDominoWaitingRoom({
     players,
     publicWaitingPlayers,
     countdownSeconds,
+    countdownEndsAt,
+    leavingWaitingRoom,
     waitingCurrency,
     waitingEntryFee,
     matchLocked,
     canCancel:
-      !matchLocked && (!party || party.leaderId === localPlayer?.userId),
+      !matchLocked && !leavingWaitingRoom && (!party || party.leaderId === localPlayer?.userId),
     handleCancel,
   };
 }

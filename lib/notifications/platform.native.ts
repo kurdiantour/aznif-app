@@ -18,14 +18,15 @@ if (available) {
   });
 }
 // Tapping uses the OS default app open/resume. Do not register response listeners.
-export function subscribeToTokenChanges(listener: () => void) {
+export function subscribeToTokenChanges(listener: (token: import("expo-notifications").DevicePushToken) => void) {
   if (!Notifications) return () => {};
   const subscription = Notifications.addPushTokenListener(listener);
   return () => subscription.remove();
 }
 
 export async function obtainToken(
-  requestPermission: boolean
+  requestPermission: boolean,
+  devicePushToken?: import("expo-notifications").DevicePushToken
 ): Promise<{ token: string | null; permission: string }> {
   if (!available || !Notifications || !Device.isDevice) {
     return {
@@ -74,6 +75,7 @@ export async function obtainToken(
 
   const token = await Notifications.getExpoPushTokenAsync({
     projectId,
+    ...(devicePushToken ? { devicePushToken } : {}),
   });
 
   return {

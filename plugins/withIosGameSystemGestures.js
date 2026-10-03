@@ -1,6 +1,6 @@
 const { withAppDelegate } = require("expo/config-plugins");
 
-const IMPORT = "import AznifGameSystemGestures";
+const IMPORT = "internal import AznifGameSystemGestures";
 const LEGACY_CLASS = "private final class GameSystemGesturesRootViewController: UIViewController";
 
 function addGameSystemGesturesRootController(source) {

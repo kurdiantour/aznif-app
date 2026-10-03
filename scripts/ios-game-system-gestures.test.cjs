@@ -16,7 +16,7 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 test("clean AppDelegate gains one module import and root override; reruns are stable", () => {
   const output = transform(clean);
   assert.equal(transform(output), output);
-  assert.equal(output.match(/import AznifGameSystemGestures/g).length, 1);
+  assert.equal(output.match(/internal import AznifGameSystemGestures/g).length, 1);
   assert.equal(output.match(/override func createRootViewController/g).length, 1);
   assert.match(output, /GameSystemGesturesRootViewController\(\)/);
   assert.match(output, /override func bundleURL\(\) -> URL\? \{ nil \}/);

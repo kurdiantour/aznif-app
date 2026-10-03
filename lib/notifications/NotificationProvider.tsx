@@ -11,8 +11,8 @@ export function NotificationProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     if (authLoading || !userId) return;
     resumeDeviceRegistration();
-    const sync = (requestPermission = false) => {
-      void registerPushDevice(userId, requestPermission).catch(error => {
+    const sync = (requestPermission = false, devicePushToken?: import("expo-notifications").DevicePushToken) => {
+      void registerPushDevice(userId, requestPermission, devicePushToken).catch(error => {
         console.warn("Push registration failed", error);
       });
     };
@@ -20,7 +20,7 @@ export function NotificationProvider({ children }: React.PropsWithChildren) {
     const state = AppState.addEventListener("change", next => {
       if (next === "active") sync();
     });
-    const token = subscribeToTokenChanges(() => sync());
+    const token = subscribeToTokenChanges(devicePushToken => sync(false, devicePushToken));
     return () => { state.remove(); token(); };
   }, [userId, authLoading]);
   return <>{children}</>;

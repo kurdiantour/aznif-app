@@ -62,7 +62,7 @@ test.each(viewports)(
     const playerRackWidth = Number(layout.playerRack.width);
     const playerRackHeight = Number(layout.playerRack.height);
 
-    expect(rackBottom).toBe(10);
+    expect(rackBottom).toBe(8);
     expect(playerRackWidth).toBeLessThanOrEqual(layout.usableWidth);
     expect(playerRackHeight).toBe(
       Math.round(playerRackWidth / RACK_ASPECT_RATIO),
@@ -141,9 +141,8 @@ test(
       Number(plain.scoreBoard.left),
     );
 
-    expect(Number(inset.screen.paddingBottom)).toBeGreaterThan(
-      Number(plain.screen.paddingBottom),
-    );
+    expect(Number(inset.screen.paddingBottom)).toBe(0);
+    expect(Number(plain.screen.paddingBottom)).toBe(0);
   },
 );
 

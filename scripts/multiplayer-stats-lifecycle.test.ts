@@ -62,8 +62,12 @@ for(const scenario of ['manual-manual','manual-timeout','timeout-timeout'] as co
       else { for(let n=0;n<2;n++) { state=timeout(state,index); await commitOkey(db,id,state,'system-timeout',index); } }
       if(index===1) assert.equal((await results(db)).length,manual?1:0);
     }
+    assert.equal(state.leaveTerminationReason,null);
+    assert.equal(state.matchFinished,false);
+    state=settleAuthoritativeOkeyRound({...state,roundState:{...state.roundState,phase:'finished',winnerId:users[0],endReason:'win'}});
     assert.equal(state.leaveTerminationReason,'team-forfeit');
     assert.equal(state.matchFinished,true);
+    await commitOkey(db,id,state,'system-bot');
     await checkFinal(state,id);
   });
 }
@@ -143,16 +147,18 @@ test('Okey legacy last-human-winner terminal branch preserves three personal los
   await commitOkey(db,id,state,'system-bot'); await checkFinal(state,id);
 });
 
-test('Okey pending-forfeit tile-cycle-limit branch uses lifecycle winner',async()=>{
+test('Okey tile-cycle-limit does not settle a team forfeit',async()=>{
   let state=initial(); const id=await createOkey(db,state);
   for(const i of [1,3]) {
     state={...state,manualLeftPlayerIds:[...state.manualLeftPlayerIds,users[i]]};
     await commitOkey(db,id,state,'manual-leave',i);
   }
-  state=settleAuthoritativeOkeyRound({...state,pendingForfeitTeamId:'teamB',
+  state=settleAuthoritativeOkeyRound({...state,
     roundState:{...state.roundState,phase:'finished',winnerId:null,endReason:'tile-cycle-limit'}});
-  assert.equal(state.matchFinished,true);
-  await commitOkey(db,id,state,'system-bot'); await checkFinal(state,id);
+  assert.equal(state.matchFinished,false);
+  assert.equal(state.roundResults.length,0);
+  await commitOkey(db,id,state,'system-bot');
+  assert.equal((await results(db)).length,2);
 });
 
 for(const mode of ['1v1','2v2']) {

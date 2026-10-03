@@ -400,38 +400,38 @@ export function settleAuthoritativeOkeyRound(
     return match;
   }
 
-  const pendingForfeitTeamId = match.pendingForfeitTeamId;
+  const teamUnavailable = (teamId: OkeyTeamId) => {
+    const players = finishedRound.players.filter((player) => player.teamId === teamId);
+    return players.length > 0 && players.every((player) =>
+      isOkeyTerminalTakeover(match, player) ||
+      (isOkeyBotControlled(player) &&
+        (match.timeoutCountsByPlayerId?.[player.id] ?? 0) >= OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD)
+    );
+  };
+  const forfeitedTeamId: OkeyTeamId | null =
+    teamUnavailable("teamA") && !teamUnavailable("teamB") ? "teamA" :
+    teamUnavailable("teamB") && !teamUnavailable("teamA") ? "teamB" : null;
   // This is an official rule transition, not a presentation window. Clients
   // may keep showing the completed round, but the server can start the next
   // round from the instant the result is committed.
   const nextRoundEligibleAt = new Date(now).toISOString();
-  const forfeitWinnerTeamId: OkeyTeamId | null = pendingForfeitTeamId
-    ? pendingForfeitTeamId === "teamA" ? "teamB" : "teamA"
+  const forfeitWinnerTeamId: OkeyTeamId | null = forfeitedTeamId
+    ? forfeitedTeamId === "teamA" ? "teamB" : "teamA"
     : null;
 
   const finishPendingForfeit = (
     roundResults: OkeyAuthoritativeRoundResult[],
     matchScores: OkeyAuthoritativeMatchScores,
   ): OkeyAuthoritativeMatchState => {
-    if (!pendingForfeitTeamId || !forfeitWinnerTeamId) {
+    if (!forfeitedTeamId || !forfeitWinnerTeamId) {
       throw new Error("missing_pending_okey_team_forfeit");
-    }
-
-    const remainingMembers = finishedRound.players.filter(
-      (player) => !isOkeyTerminalTakeover(match, player),
-    );
-
-    if (
-      remainingMembers.some((player) => player.teamId === pendingForfeitTeamId) ||
-      !remainingMembers.some((player) => player.teamId === forfeitWinnerTeamId)
-    ) {
-      throw new Error("invalid_pending_okey_team_forfeit");
     }
 
     return {
       ...match,
       roundResults,
       matchScores,
+      leaveTerminationReason: "team-forfeit",
       matchFinished: true,
       matchWinnerTeamId: forfeitWinnerTeamId,
       nextRoundEligibleAt: null,
@@ -447,10 +447,6 @@ export function settleAuthoritativeOkeyRound(
     finishedRound.endReason ===
     "tile-cycle-limit"
   ) {
-    if (pendingForfeitTeamId) {
-      return finishPendingForfeit(match.roundResults, match.matchScores);
-    }
-
     return {
       ...match,
       nextRoundEligibleAt,
@@ -469,10 +465,6 @@ export function settleAuthoritativeOkeyRound(
     );
 
   if (alreadySettled) {
-    if (pendingForfeitTeamId) {
-      return finishPendingForfeit(match.roundResults, match.matchScores);
-    }
-
     return match.nextRoundEligibleAt
       ? match
       : { ...match, nextRoundEligibleAt };
@@ -540,7 +532,7 @@ export function settleAuthoritativeOkeyRound(
     roundResult,
   ];
 
-  if (pendingForfeitTeamId) {
+  if (forfeitedTeamId) {
     return finishPendingForfeit(nextRoundResults, nextScores);
   }
 
@@ -622,8 +614,6 @@ export function startAuthoritativeOkeyNextRound(
 ): OkeyAuthoritativeMatchState {
   if (
     match.matchFinished ||
-    match.pendingForfeitTeamId ||
-    match.leaveTerminationReason === "team-forfeit" ||
     match.roundState.phase !== "finished"
   ) {
     throw new OkeyCommandError("command_rejected");
@@ -998,45 +988,7 @@ function reconcileAuthoritativeHumanControl(
     };
   }
 
-  const teamA = match.roundState.players.filter((p) => p.teamId === "teamA");
-  const teamB = match.roundState.players.filter((p) => p.teamId === "teamB");
-
-  const isTeamForfeited = (team: typeof teamA) => {
-    if (team.length === 0) return false;
-    const allBots = team.every((p) => p.controlledByBot || p.kind === "bot");
-    if (!allBots) return false;
-    
-    const hasTakeover = team.some((p) =>
-      (match.manualLeftPlayerIds ?? []).includes(p.id) ||
-      (match.timeoutCountsByPlayerId?.[p.id] ?? 0) >= OKEY_DRAW_TIMEOUT_TAKEOVER_THRESHOLD
-    );
-    return hasTakeover;
-  };
-
-  const teamAForfeited = isTeamForfeited(teamA);
-  const teamBForfeited = isTeamForfeited(teamB);
-
-  const pendingForfeitTeamId: OkeyTeamId | null = teamAForfeited ? "teamA" : teamBForfeited ? "teamB" : null;
-
-  if (pendingForfeitTeamId) {
-    const winnerTeamId: OkeyTeamId =
-      pendingForfeitTeamId === "teamA" ? "teamB" : "teamA";
-
-    return {
-      ...match,
-      pendingForfeitTeamId,
-      leaveTerminationReason: "team-forfeit",
-      matchFinished: true,
-      matchWinnerTeamId: winnerTeamId,
-      nextRoundEligibleAt: null,
-    };
-  }
-
-  return {
-    ...match,
-    pendingForfeitTeamId: null,
-    leaveTerminationReason: null,
-  };
+  return match;
 }
 
 function reconcileAuthoritativeBotOwnership(
