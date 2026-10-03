@@ -11,12 +11,23 @@ const source = readFileSync(new URL('../supabase/functions/send-push-notificatio
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const alice = '11111111-1111-4111-8111-111111111111';
 const bob = '22222222-2222-4222-8222-222222222222';
-const row = (id, user_id = alice, extra = {}) => ({ id, user_id, active: true, environment: 'production', expo_push_token: 'ExpoPushToken[' + id + ']', ...extra });
+const row = (id, user_id = alice, extra = {}) => ({ id, user_id, platform: 'ios', active: true, environment: 'production', expo_push_token: 'ExpoPushToken[' + id + ']', ...extra });
 
 function harness(rows, tickets = [{ status: 'ok', id: 'audit-ticket' }], secret = 'dedicated-push-secret') {
-  const calls = [], queries = [], updates = [];
+  const calls = [], queries = [], updates = [], campaigns = new Map(), targets = new Set(), claims = new Set();
   let handler;
-  const service = { from(table) {
+  const service = { rpc: async (name,args) => {
+    const key=args.p_campaign+args.p_device;
+    if(name==='push_target_device'){targets.add(key);return {data:null,error:null};}
+    assert.equal(name,'push_claim_device');assert.equal(targets.has(key),true);
+    if(claims.has(key))return {data:false,error:null};claims.add(key);return {data:true,error:null};
+  }, from(table) {
+    if(table==='push_campaigns')return {
+      upsert(value){if(!campaigns.has(value.id))campaigns.set(value.id,value);return Promise.resolve({error:null});},
+      select(){return this;},eq(_key,id){this.id=id;return this;},single(){return Promise.resolve({data:campaigns.get(this.id),error:null});},
+      update(){return {eq:()=>Promise.resolve({error:null})};},
+    };
+    if(table==='push_campaign_devices')return {update(){return {eq(){return this;},then(resolve){return Promise.resolve({error:null}).then(resolve);}};}};
     assert.equal(table, 'push_devices');
     const filters = [];
     let patch, limit = Infinity, ordering;
@@ -52,7 +63,7 @@ function harness(rows, tickets = [{ status: 'ok', id: 'audit-ticket' }], secret 
   const invoke = (authorization, body = { title: 'Aznif', body: 'Single user', userId: alice, environment: 'production' }) => handler(new Request('https://audit.invalid', {
     method: 'POST', headers: authorization ? { Authorization: authorization } : {}, body: JSON.stringify(body),
   }));
-  return { invoke, calls, queries, updates };
+  return { invoke, calls, queries, updates, campaigns, claims };
 }
 
 test('real Edge authorization rejects absent, anon, user and mismatched service keys before lookup', async () => {
@@ -68,13 +79,14 @@ test('real Edge targets only active devices of one user/environment and sends th
   const h = harness([row('a'), row('b', bob), row('c', alice, { active: false }), row('d', alice, { environment: 'development' })]);
   const response = await h.invoke('Bearer dedicated-push-secret');
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { complete: true, results: [{ deviceId: 'a', userId: alice, status: 'accepted', ticketId: 'audit-ticket' }] });
+  const payload=await response.json();
+  assert.deepEqual(payload, { campaign_id: payload.campaign_id, complete: true, results: [{ deviceId: 'a', userId: alice, status: 'accepted', ticketId: 'audit-ticket' }] });
   assert.equal(h.calls.length, 1);
   const { url, options } = h.calls[0];
   assert.equal(url, 'https://exp.host/--/api/v2/push/send');
   assert.equal(options.method, 'POST');
   assert.equal(options.headers.Authorization, 'Bearer expo-test-key');
-  assert.deepEqual(JSON.parse(options.body), [{ to: 'ExpoPushToken[a]', title: 'Aznif', body: 'Single user', sound: 'default', priority: 'high', channelId: 'general', ttl: 0 }]);
+  assert.deepEqual(JSON.parse(options.body), [{ to: 'ExpoPushToken[a]', title: 'Aznif', body: 'Single user', sound: 'default', priority: 'high', channelId: 'general', ttl: 0, data: {campaign_id:payload.campaign_id,device_id:'a'} }]);
 });
 
 test('one user can target multiple active devices: it is not device-level targeting', async () => {
@@ -86,7 +98,7 @@ test('one user can target multiple active devices: it is not device-level target
 test('real Edge DeviceNotRegistered cleanup constrains device, owner and token', async () => {
   const h = harness([row('a'), row('b', bob)], [{ status: 'error', details: { error: 'DeviceNotRegistered' } }]);
   const body = await (await h.invoke('Bearer dedicated-push-secret')).json();
-  assert.equal(body.results[0].error, 'DeviceNotRegistered');
+  assert.equal(body.results[0].error, 'DeviceNotRegistered');assert.equal(body.results[0].status,'inactive');
   assert.equal(h.updates.length, 1);
   assert.deepEqual(h.updates[0].ids, ['a']);
   assert.deepEqual(h.updates[0].filters, [['eq', 'id', 'a'], ['eq', 'user_id', alice], ['eq', 'expo_push_token', 'ExpoPushToken[a]']]);
@@ -105,4 +117,11 @@ test('missing or empty PUSH_SEND_SECRET fails closed before lookup or sending', 
       assert.equal(h.calls.length, 0);
     }
   }
+});
+test('campaign id cannot be reused with changed payload', async () => {
+  const h=harness([row('a')]);
+  const base={title:'Aznif',body:'First',userId:alice,campaign_id:'33333333-3333-4333-8333-333333333333'};
+  assert.equal((await h.invoke('Bearer dedicated-push-secret',base)).status,200);
+  const rejected=await h.invoke('Bearer dedicated-push-secret',{...base,body:'Changed'});
+  assert.equal(rejected.status,409);assert.equal(h.calls.length,1);
 });

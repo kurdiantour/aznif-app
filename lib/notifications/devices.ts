@@ -22,6 +22,19 @@ async function installation() {
   return value;
 }
 export function resumeDeviceRegistration() { paused = false; }
+export async function recordPushOpen(userId: string, campaignId: string, deviceId: string) {
+  if (paused || Platform.OS === "web") return false;
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.user.id !== userId) return false;
+  const stored = await AsyncStorage.getItem(installationKey);
+  if (!stored) return false;
+  const proof = JSON.parse(stored) as { id: string; secret: string };
+  const { data: opened, error } = await supabase.rpc("push_record_open", {
+    p_campaign: campaignId, p_device: deviceId, p_installation: proof.id, p_secret: proof.secret,
+  });
+  if (error) throw error;
+  return opened === true;
+}
 export function registerPushDevice(userId: string, requestPermission = false, devicePushToken?: import("expo-notifications").DevicePushToken) {
   return serialize(async () => {
     if (paused || Platform.OS === "web") return "web";

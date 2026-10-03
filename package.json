@@ -25,7 +25,7 @@
     "test:shop:db": "node --test scripts/shop-database.test.mjs scripts/shop-assets.test.mjs scripts/shop-fresh-install.test.mjs scripts/shop-match-integration.test.mjs",
     "test:shop:ui": "jest --config jest.shop.config.cjs --runInBand",
     "test:shop": "npm run test:shop:db && npm run test:shop:ui",
-    "test:notifications": "node --test scripts/notifications-database.test.mjs && node --import ./scripts/test-typescript-loader.mjs --test scripts/notifications-contract.test.mjs scripts/notifications-edge.test.mjs && jest --config jest.notifications.config.cjs --runInBand"
+    "test:notifications": "node --test scripts/notifications-database.test.mjs scripts/notifications-client.test.mjs && node --import ./scripts/test-typescript-loader.mjs --test scripts/notifications-contract.test.mjs scripts/notifications-edge.test.mjs && jest --config jest.notifications.config.cjs --runInBand"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

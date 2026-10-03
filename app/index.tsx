@@ -1,4 +1,5 @@
 import { useProfile } from "@/lib/profile";
+import { takePushRoute } from "@/lib/notifications/routes";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
@@ -59,7 +60,7 @@ export default function IndexScreen() {
 
     if (authLoading) return;
 
-    router.replace(session ? "/(tabs)/play" : "/login");
+    router.replace(session ? (takePushRoute() ?? "/(tabs)/play") as never : "/login");
   }, [authError, authLoading, minimumDurationElapsed, router, session]);
 
   return (

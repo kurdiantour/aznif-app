@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseInput, handleImmediatePush } from '../supabase/functions/_shared/push-immediate.ts';
 const id='11111111-1111-4111-8111-111111111111';
-const input={title:'Aznif',body:'Tonight at 9',audience:'all'};
-const device={id,user_id:id,expo_push_token:'ExpoPushToken[x]'};
+const input={title:'Aznif',body:'Tonight at 9',audience:'all',campaign_id:id};
+const device={id,user_id:id,platform:'ios',expo_push_token:'ExpoPushToken[x]'};
 const request=value=>new Request('https://local.test',{method:'POST',headers:{Authorization:'Bearer test'},body:JSON.stringify(value)});
 function setup(overrides={}) {
- const sent=[],removed=[];
- return {sent,removed,deps:{authorize:async()=>null,list:async()=>[device],deactivate:async d=>{removed.push(d);},fetch:async(url,options)=>{sent.push({url,...options});return Response.json({data:[{status:'ok',id:'ticket'}]});},...overrides}};
+ const sent=[],removed=[],claims=new Set(),outcomes=[];
+ return {sent,removed,claims,outcomes,deps:{authorize:async()=>null,createCampaign:async()=>{},list:async()=>[device],target:async()=>{},claim:async(c,d)=>{const key=c+d.id;if(claims.has(key))return false;claims.add(key);return true;},finish:async(_c,r)=>{outcomes.push(r);},complete:async()=>{},deactivate:async d=>{removed.push(d);},fetch:async(url,options)=>{sent.push({url,...options});return Response.json({data:[{status:'ok',id:'ticket'}]});},...overrides}};
 }
 test('send requires explicit audience and rejects scheduling, invalid UUIDs and empty users',()=>{
  for(const bad of [{title:'x',body:'x'},{...input,scheduledAt:'tomorrow'},{...input,userIds:[]},{title:'x',body:'x',userIds:['bad']}]) assert.throws(()=>parseInput(bad));
@@ -16,13 +16,13 @@ test('send requires explicit audience and rejects scheduling, invalid UUIDs and 
 test('unauthorized and ordinary users never query or send',async()=>{
  for(const code of [401,403]){const s=setup({authorize:async()=>code,list:async()=>{throw Error('must not query');}});const r=await handleImmediatePush(request(input),s.deps);assert.equal(r.status,code);assert.equal(s.sent.length,0);}
 });
-test('immediate visible push contains only title/body and OS presentation fields',async()=>{
+test('push includes campaign, device and optional internal deep link',async()=>{
  const s=setup();const r=await handleImmediatePush(request(input),s.deps);const b=await r.json();assert.equal(b.complete,true);assert.equal(b.results[0].status,'accepted');
- const m=JSON.parse(s.sent[0].body)[0];assert.equal(m.ttl,0);assert.equal(m.priority,'high');assert.equal(m.body,'Tonight at 9');assert.equal(m.data,undefined);assert.equal(m.channelId,'general');assert.equal(m.url,undefined);assert.equal(m.categoryId,undefined);
+ const m=JSON.parse(s.sent[0].body)[0];assert.equal(m.ttl,0);assert.equal(m.priority,'high');assert.equal(m.body,'Tonight at 9');assert.deepEqual(m.data,{campaign_id:id,device_id:id});assert.equal(m.channelId,'general');assert.equal(m.url,undefined);assert.equal(m.categoryId,undefined);
  assert.equal(s.sent.length,1);
 });
 test('DeviceNotRegistered disables exact device while provider errors are returned without retry',async()=>{
- const s=setup({fetch:async()=>Response.json({data:[{status:'error',details:{error:'DeviceNotRegistered'}}]})});const b=await (await handleImmediatePush(request(input),s.deps)).json();assert.equal(b.results[0].status,'error');assert.deepEqual(s.removed,[device]);
+ const s=setup({fetch:async()=>Response.json({data:[{status:'error',details:{error:'DeviceNotRegistered'}}]})});const b=await (await handleImmediatePush(request(input),s.deps)).json();assert.equal(b.results[0].status,'inactive');assert.deepEqual(s.removed,[device]);
 });
 test('network failure has unknown outcome and no retry',async()=>{
  let calls=0;const s=setup({fetch:async()=>{calls++;throw Error('offline');}});const r=await handleImmediatePush(request(input),s.deps);assert.equal(r.status,502);assert.equal((await r.json()).results[0].status,'unknown');assert.equal(calls,1);
@@ -43,4 +43,19 @@ test('oversized UTF-8 payload rejected before sending',async()=>{
 
 test('routing and complex-system fields are rejected',()=>{
  for(const key of ['target','data','url','category','preferences','scheduledAt','requestId']) assert.throws(()=>parseInput({...input,[key]:'unused'}),/Unsupported field/);
+});
+test('concurrent invocations claim one campaign/device before sending',async()=>{
+ const s=setup();const [a,b]=await Promise.all([handleImmediatePush(request(input),s.deps),handleImmediatePush(request(input),s.deps)]);
+ assert.equal(a.status,200);assert.equal(b.status,200);assert.equal(s.sent.length,1);assert.equal(s.claims.size,1);
+});
+test('unknown response persists and retry with same campaign does not resend',async()=>{
+ let calls=0;const s=setup({fetch:async()=>{calls++;throw Error('offline');}});
+ const first=await handleImmediatePush(request(input),s.deps);assert.equal(first.status,502);assert.equal(s.outcomes[0].status,'unknown');
+ const retry=await handleImmediatePush(request(input),s.deps);assert.equal(retry.status,200);assert.equal(calls,1);
+});
+test('deep links are limited to known internal routes',async()=>{
+ assert.throws(()=>parseInput({...input,deep_link:'https://example.com'}),/Invalid deep_link/);
+ assert.throws(()=>parseInput({...input,deep_link:'/auth-callback'}),/Invalid deep_link/);
+ const s=setup();await handleImmediatePush(request({...input,deep_link:'/profile'}),s.deps);
+ assert.equal(JSON.parse(s.sent[0].body)[0].data.deep_link,'/profile');
 });

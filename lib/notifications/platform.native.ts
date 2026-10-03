@@ -17,7 +17,17 @@ if (available) {
     }),
   });
 }
-// Tapping uses the OS default app open/resume. Do not register response listeners.
+export function subscribeToPushResponses(listener: (response: import("expo-notifications").NotificationResponse) => void) {
+  if (!Notifications) return () => {};
+  const subscription = Notifications.addNotificationResponseReceivedListener(listener);
+  return () => subscription.remove();
+}
+export async function lastPushResponse() {
+  return Notifications ? Notifications.getLastNotificationResponseAsync() : null;
+}
+export async function clearPushResponse() {
+  if (Notifications) await Notifications.clearLastNotificationResponseAsync();
+}
 export function subscribeToTokenChanges(listener: (token: import("expo-notifications").DevicePushToken) => void) {
   if (!Notifications) return () => {};
   const subscription = Notifications.addPushTokenListener(listener);

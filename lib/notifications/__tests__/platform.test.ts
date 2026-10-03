@@ -1,18 +1,19 @@
 jest.mock("expo-constants", () => ({ appOwnership: "standalone", easConfig: { projectId: "project" } }));
 jest.mock("expo-device", () => ({ isDevice: true }));
 jest.mock("expo-notifications", () => ({
- setNotificationHandler: jest.fn(), addNotificationResponseReceivedListener: jest.fn(), getLastNotificationResponse: jest.fn(),
+ setNotificationHandler: jest.fn(), addNotificationResponseReceivedListener: jest.fn(()=>({remove:jest.fn()})), getLastNotificationResponseAsync: jest.fn(async()=>null), clearLastNotificationResponseAsync: jest.fn(async()=>{}),
  addPushTokenListener: jest.fn(()=>({remove:jest.fn()})), setNotificationChannelAsync: jest.fn(async()=>{}),
  getPermissionsAsync: jest.fn(async()=>({granted:true,status:"granted",canAskAgain:true})), requestPermissionsAsync: jest.fn(async()=>({granted:true,status:"granted"})),
  getExpoPushTokenAsync: jest.fn(async()=>({data:"ExpoPushToken[x]"})), AndroidImportance: {HIGH:4}, IosAuthorizationStatus:{PROVISIONAL:3},
 }));
 import { Platform } from "react-native";
-import { obtainToken, subscribeToTokenChanges } from "../platform.native";
+import { obtainToken, subscribeToTokenChanges, subscribeToPushResponses, lastPushResponse, clearPushResponse } from "../platform.native";
 const notifications=jest.requireMock("expo-notifications");
 const handler=notifications.setNotificationHandler.mock.calls[0][0];
-test("visible notifications never install a tap handler or read pending responses", async () => {
+test("visible notifications and live/cold-start response APIs", async () => {
  expect(await handler.handleNotification()).toEqual({shouldShowBanner:true,shouldShowList:true,shouldPlaySound:true,shouldSetBadge:false});
- expect(notifications.addNotificationResponseReceivedListener).not.toHaveBeenCalled();expect(notifications.getLastNotificationResponse).not.toHaveBeenCalled();
+ const listener=jest.fn();const stop=subscribeToPushResponses(listener);expect(notifications.addNotificationResponseReceivedListener).toHaveBeenCalledWith(listener);stop();
+ expect(await lastPushResponse()).toBeNull();await clearPushResponse();expect(notifications.clearLastNotificationResponseAsync).toHaveBeenCalled();
 });
 test("Android uses one Aznif channel and EAS token", async () => {
  const original=Platform.OS;Object.defineProperty(Platform,"OS",{value:"android",configurable:true});

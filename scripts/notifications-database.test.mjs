@@ -20,7 +20,7 @@ async function rpc(name,args=[],placeholders=args.map((_,i)=>'$'+(i+1)).join(','
 async function register(id=a){await user(id);return rpc('push_register_device',[install,secret,'ExpoPushToken[test_token]','android']);}
 before(async()=>{
  await db.exec(`
- CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+ CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
  CREATE SCHEMA auth;
  CREATE TABLE auth.users(id uuid PRIMARY KEY);
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
@@ -28,6 +28,7 @@ before(async()=>{
  INSERT INTO auth.users VALUES ('${a}'),('${b}');
  `);
  await db.exec(migration('20260923224758_immediate_push_devices'));
+ await db.exec(migration('20261003073959_push_campaign_tracking'));
 });
 after(async()=>db.close());
 beforeEach(async()=>{await root();await db.exec('BEGIN');inTest=true;});
@@ -35,6 +36,8 @@ afterEach(async()=>{inTest=false;await db.exec('ROLLBACK; RESET ROLE');});
 
 test('device secrets are inaccessible to app users; anonymous RPC denied',async()=>{
  await user();await assert.rejects(db.query('SELECT * FROM public.push_devices'),/permission denied/);
+ await assert.rejects(db.query('SELECT * FROM public.push_campaigns'),/permission denied/);
+ await assert.rejects(db.query('SELECT * FROM public.push_opens'),/permission denied/);
  await root();await db.exec('SET ROLE anon');await assert.rejects(rpc('push_register_device',[install,secret,'ExpoPushToken[x]','ios']),/permission denied/);
 });
 test('registration is idempotent; account transfer requires installation proof',async()=>{
@@ -57,9 +60,25 @@ test('unregister requires current owner and proof, registration reactivates and 
  await user();await rpc('push_register_device',[install,secret,'ExpoPushToken[new]','ios','development']);await root();
  const d=(await db.query('SELECT * FROM public.push_devices')).rows[0];assert.equal(d.active,true);assert.equal(d.environment,'development');assert.equal(d.expo_push_token,'ExpoPushToken[new]');
 });
-test('minimal schema has no queues, campaigns or runtime',async()=>{
- await root();const tables=(await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE '%notification%'")).rows;assert.deepEqual(tables,[]);
+test('campaign tables extend push_devices without legacy notification runtime',async()=>{
+ await root();const tables=(await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'push_campaign%' ORDER BY tablename")).rows;assert.deepEqual(tables.map(r=>r.tablename),['push_campaign_devices','push_campaigns']);
  assert.equal((await db.query("SELECT count(*) n FROM pg_namespace WHERE nspname='notification_private'")).rows[0].n,0);
- assert.deepEqual((await db.query("SELECT proname FROM pg_proc WHERE pronamespace='push_private'::regnamespace ORDER BY proname")).rows.map(r=>r.proname),['push_register_device','push_unregister_device']);
+ assert.deepEqual((await db.query("SELECT proname FROM pg_proc WHERE pronamespace='push_private'::regnamespace ORDER BY proname")).rows.map(r=>r.proname),['push_record_open','push_register_device','push_unregister_device']);
 });
 
+test('atomic claim rejects duplicate and open RPC deduplicates clicks',async()=>{
+ const device=await register();await root();await db.exec('SET ROLE service_role');
+ const campaign=(await db.query("INSERT INTO public.push_campaigns(title,body,environment,audience,user_ids) VALUES('t','b','production','users',ARRAY[$1::uuid]) RETURNING id",[a])).rows[0].id;
+ await rpc('push_target_device',[campaign,device,a,'android']);
+ assert.equal((await db.query('SELECT status FROM public.push_campaign_devices WHERE campaign_id=$1',[campaign])).rows[0].status,'target');
+ assert.equal(await rpc('push_claim_device',[campaign,device,a,'android']),true);
+ assert.equal(await rpc('push_claim_device',[campaign,device,a,'android']),false);
+ await db.query("UPDATE public.push_campaign_devices SET status='accepted' WHERE campaign_id=$1",[campaign]);
+ await user();assert.equal(await rpc('push_record_open',[campaign,device,install,secret]),true);
+ assert.equal(await rpc('push_record_open',[campaign,device,install,secret]),true);
+ await root();assert.equal((await db.query('SELECT count(*) n FROM public.push_opens')).rows[0].n,1);
+ await db.exec('SET ROLE service_role');
+ const report=(await db.query('SELECT * FROM public.push_campaign_report($1)',[campaign])).rows[0];
+ assert.equal(report.target,1);assert.equal(report.accepted,1);assert.equal(report.opened,1);assert.equal(Number(report.open_rate),1);
+ await user(b);assert.equal(await rpc('push_record_open',[campaign,device,install,secret]),false);
+});
