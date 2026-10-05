@@ -170,6 +170,7 @@ test("runtime controllers delegate reduction and persistence to their authoritat
   const match = inspectSource("supabase/functions/okey_match/index.ts");
   const bot = inspectSource("okey/server/okey-bot-executor.ts");
   const engine = inspectSource("okey/server/okey-turn-engine.ts");
+  const authoritative = inspectSource("okey/server/okey-authoritative.ts");
   const forbidden = [
     "executeAuthoritativeOkeyTransition", "executeAuthoritativeOkeyTurn",
     "reduceAuthoritativeOkeyTransition", "commitAuthoritativeOkeyAction",
@@ -201,12 +202,23 @@ test("runtime controllers delegate reduction and persistence to their authoritat
     assert.ok(branch, "missing lifecycle branch " + kind);
     assert.ok(engine.calls(branch).includes("executeOkeyAuthoritativePipeline"), kind + " must use the pipeline");
   }
-  assert.ok(engine.nodes(lifecycle).some(node => ts.isPropertyAssignment(node)
-    && node.name.getText(engine.ast) === "preReducedState"
-    && ts.isConditionalExpression(node.initializer)
-    && node.initializer.condition.getText(engine.ast) === "finishingTeamForfeit"
-    && engine.calls(node.initializer.whenTrue).includes("settleAuthoritativeOkeyRound")),
-    "terminal team forfeit must settle through the prepared pipeline state");
+  const botBranch = branches.find(node => ts.isStringLiteral(node.expression) && node.expression.text === "bot-turn");
+  assert.ok(botBranch && engine.nodes(botBranch).some(node => ts.isPropertyAssignment(node)
+    && node.name.getText(engine.ast) === "transition"
+    && ts.isObjectLiteralExpression(node.initializer)
+    && node.initializer.properties.some(property => ts.isPropertyAssignment(property)
+      && property.name.getText(engine.ast) === "type"
+      && ts.isStringLiteral(property.initializer)
+      && property.initializer.text === "bot-action")),
+    "bot turn must enter the authoritative pipeline as a bot-action transition");
+  const botReduction = engine.nodes(engine.fn("reduceAuthoritativeOkeyTransition"))
+    .find(node => ts.isCaseClause(node) && ts.isStringLiteral(node.expression) && node.expression.text === "bot-action");
+  assert.ok(botReduction && engine.calls(botReduction).includes("applyBotRoundState"),
+    "bot-action must use the canonical bot round reducer");
+  const botReducer = authoritative.nodes(authoritative.ast).find(node => ts.isPropertyAssignment(node)
+    && node.name.getText(authoritative.ast) === "applyBotRoundState");
+  assert.ok(botReducer && authoritative.calls(botReducer).includes("settleAuthoritativeOkeyRound"),
+    "terminal team forfeit must settle through the canonical bot round reducer");
 });
 
 test("Turn Engine exports all canonical server APIs directly", () => {

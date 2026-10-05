@@ -30,6 +30,7 @@ import { useTwoVsTwoGame } from "@/domino/modes/two-vs-two";
 import { useLocalTwoVsTwoPreviewGame } from "@/domino/modes/two-vs-two/presentation/use-local-2v2-preview";
 import { awardAiPracticeWin, useAiPracticeGame } from "@/domino/modes/ai-practice";
 import { calculateMoveScore } from "@/domino/core/engine/kozel-engine";
+import { useAuthState } from "@/lib/auth-state";
 import { useProfile } from "@/lib/profile";
 import { supabase } from "@/lib/supabase";
 import { DominoTileData, KozelBranch, Player, ScoringEvent, TeamId } from "@/domino/types/domino-game";
@@ -71,17 +72,18 @@ function getTeamName(
 
 export default function GameScreen() {
   const { practice, preview } = useLocalSearchParams();
-  const { session, authLoading } = useProfile();
+  const { userId, authReady } = useAuthState();
   const isPractice = practice === "true" && !(__DEV__ && preview === "true");
 
-  if (isPractice && authLoading) {
-    return <View style={styles.centerScreen} />;
-  }
-  if (isPractice && !session?.user.id) {
-    return <Redirect href="/login" />;
-  }
+if (isPractice && !authReady) {
+  return <View style={styles.centerScreen} />;
+}
 
-  const practiceUserId = isPractice ? session!.user.id : null;
+if (isPractice && !userId) {
+  return <Redirect href="/login" />;
+}
+
+const practiceUserId = isPractice ? userId : null;
   return <DominoGameScreen key={practiceUserId ?? "non-practice"} practiceUserId={practiceUserId} />;
 }
 
@@ -159,7 +161,8 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
   const gameLoading = !isLocalGame && !waitingRoom.isWaiting && (game as any).loading;
   const gameError = !isLocalGame && !waitingRoom.isWaiting ? (game as any).error : null;
 
-  const { profile, loading: profileLoading, refreshProfile } = useProfile();
+  const { profile, refreshProfile } = useProfile();
+const { userId, authReady } = useAuthState();
 
   const {
   showMatchMenu,
@@ -168,7 +171,6 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
   closeMatchMenu,
 } = useMatchMenu();
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [isLeavingMatch, setIsLeavingMatch] = useState(false);
   const [selectedTile, setSelectedTile] = useState<DominoTileData | null>(null);
@@ -224,7 +226,7 @@ useEffect(() => {
   const localCurrentUserId =
     !isLocalGame && gameMode === "1v1"
       ? ((game as any).currentUserId ?? null)
-      : currentUserId;
+      : userId;
   const localPlayerTakenOver =
     !isLocalGame && (game as any).localPlayerTakenOver === true;
 
@@ -239,25 +241,6 @@ useEffect(() => {
     practiceRewardSettlementRequestedRef.current = false;
     practiceMatchIdRef.current = activeRoomId || `${Date.now()}-${Math.random()}`;
   }, [activeRoomId, gameMode, isLocalGame]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadCurrentUser = async () => {
-      try {
-        const { data } = await supabase.auth.getUser();
-        if (mounted) setCurrentUserId(data.user?.id ?? null);
-      } catch {
-        if (mounted) setCurrentUserId(null);
-      }
-    };
-
-    void loadCurrentUser();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (isLocalGame || gameMode === "1v1" || !isOnlineGameplayReady) return;
@@ -339,7 +322,7 @@ useEffect(() => {
     previousTurnPlayerIdRef.current = game.currentTurnPlayerId ?? null;
     if (previousCount === null || boardTileCount !== previousCount + 1 || !game.lastPlayedTile) return;
     const moverId = (game as any).rawState?.lastMovePlayerId ?? previousTurnPlayerId;
-    const localUserId = (game as any).currentUserId ?? currentUserId;
+    const localUserId = (game as any).currentUserId ?? userId;
     if (!moverId || moverId === localUserId) return;
     const source = seatFlightOriginsRef.current[moverId];
     if (!source) return;
@@ -359,15 +342,17 @@ useEffect(() => {
         tileFlight.begin({ id: moveKey, tile: game.lastPlayedTile!, from: toScreenRect(source), to: toScreenRect(target) }, false);
       });
     });
-  }, [game, currentUserId, tileFlight]);
+  }, [game, userId, tileFlight]);
   const isTurnRingVisible = !game.roundWinnerPlayerId && !game.winningTeamId;
 
   const humanPlayer = isLocalGame
     ? game.players.find((p) => p.kind === "human")
     : game.players.find((p) => p.id === localCurrentUserId);
-  const humanTurnProgressWidth = humanPlayer?.isActive
-    ? 450 * Math.max(0, Math.min(1, humanPlayer.timeLeft / PLAYER_TURN_DURATION_SECONDS))
-    : 450;
+  const humanTurnProgressWidth = `${
+    100 * (humanPlayer?.isActive
+      ? Math.max(0, Math.min(1, humanPlayer.timeLeft / PLAYER_TURN_DURATION_SECONDS))
+      : 1)
+  }%` as const;
 
   const {
     finalTileAnimationTileId,
@@ -814,9 +799,13 @@ useEffect(() => {
     );
   }
 
-  if (!isLocalGame && !profileLoading && !profile) {
-    return <Redirect href="/login" />;
-  }
+if (!isLocalGame && !authReady) {
+  return <View style={styles.centerScreen} />;
+}
+
+if (!isLocalGame && !userId) {
+  return <Redirect href="/login" />;
+}
 
   if (!waitingRoom.isWaiting && gameError) {
     return (
@@ -1004,16 +993,14 @@ useEffect(() => {
             </View>
           )}
 
-          {!waitingRoom.isWaiting && (
-            <View style={styles.topRightActions}>
-              <Pressable
-                style={styles.topRightActionButton}
-                onPress={openMatchMenu}
-              >
-                <Ionicons name="menu-outline" size={22} color="#f8f3df" />
-              </Pressable>
-            </View>
-          )}
+          <View style={styles.topRightActions}>
+            <Pressable
+              style={styles.topRightActionButton}
+              onPress={openMatchMenu}
+            >
+              <Ionicons name="menu-outline" size={22} color="#f8f3df" />
+            </Pressable>
+          </View>
 
           {!waitingRoom.isWaiting && (
             <View style={styles.bottomHudRow}>
@@ -1116,12 +1103,11 @@ useEffect(() => {
   }}
 />
 
-
 <MultiplayerGameChat
   gameType="domino"
   matchId={activeRoomId}
   mode={gameMode}
-  currentUserId={profile?.id ?? localCurrentUserId}
+  currentUserId={userId ?? localCurrentUserId}
   playerIdBySeat={{
     bottom: humanPlayer?.id,
     top: topPlayer?.id,
@@ -1333,6 +1319,7 @@ const styles = StyleSheet.create({
   humanTurnProgressTrack: {
     width: 450,
     maxWidth: "92%",
+    direction: "ltr",
     height: 3,
     marginTop: -1,
     borderRadius: 999,

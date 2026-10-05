@@ -15,10 +15,10 @@ import {
   hasPendingLeaderboardConsent,
   setCurrentLeaderboardVisibility,
 } from "@/lib/leaderboardVisibility";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 
 export function GlobalLeaderboardConsent() {
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
 
@@ -29,7 +29,7 @@ export function GlobalLeaderboardConsent() {
     let isMounted = true;
 
     async function checkPendingConsent() {
-      if (!profile) {
+      if (!userId) {
         if (isMounted) {
           setVisible(false);
         }
@@ -60,7 +60,7 @@ export function GlobalLeaderboardConsent() {
     return () => {
       isMounted = false;
     };
-  }, [profile]);
+  }, [userId]);
 
   const saveConsent = async (value: boolean) => {
     if (isSaving) return;
@@ -81,7 +81,7 @@ export function GlobalLeaderboardConsent() {
     }
   };
 
-  if (!profile || !visible) {
+  if (!userId || !visible) {
     return null;
   }
 

@@ -1,6 +1,5 @@
 import type { AvatarId } from "@/types/avatar.ts";
 import { supabase } from "./supabase";
-import { getCurrentUser } from "./supabaseAuth";
 
 export type FriendProfile = {
   id: string;
@@ -52,11 +51,6 @@ function mapProfile(row: any): FriendProfile {
   };
 }
 
-async function getAuthenticatedUserId() {
-  const user = await getCurrentUser();
-  return user?.id ?? null;
-}
-
 async function getProfilesById(ids: string[]) {
   const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
 
@@ -100,8 +94,7 @@ function profileToFriendProfile(
   };
 }
 
-export async function getFriends(): Promise<Friend[]> {
-  const userId = await getAuthenticatedUserId();
+export async function getFriends(userId: string | null): Promise<Friend[]> {
 
   if (!userId) {
     return [];
@@ -141,8 +134,7 @@ export async function getFriends(): Promise<Friend[]> {
   });
 }
 
-export async function getFriendRequests(): Promise<FriendRequest[]> {
-  const userId = await getAuthenticatedUserId();
+export async function getFriendRequests(userId: string | null): Promise<FriendRequest[]> {
 
   if (!userId) {
     return [];

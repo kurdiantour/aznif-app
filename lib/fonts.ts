@@ -10,6 +10,7 @@ export const appFonts = {
 export const appFontAssets = {
   SpedaRegular: require("../assets/fonts/Speda-Regular.ttf"),
   SpedaBold: require("../assets/fonts/Speda-Bold.ttf"),
+  RobotoMedium: require("../assets/fonts/Roboto-Medium.ttf"),
 };
 
 export const typography = {

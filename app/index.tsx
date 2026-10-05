@@ -1,4 +1,4 @@
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { takePushRoute } from "@/lib/notifications/routes";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -22,9 +22,11 @@ const KEYFRAMES = [
 
 export default function IndexScreen() {
   const router = useRouter();
-  const { session, authLoading, authError } = useProfile();
+  const { userId, authReady } = useAuthState();
+
   const [progress] = useState(() => new Animated.Value(0));
-  const [minimumDurationElapsed, setMinimumDurationElapsed] = useState(false);
+  const [minimumDurationElapsed, setMinimumDurationElapsed] =
+    useState(false);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -35,6 +37,7 @@ export default function IndexScreen() {
         useNativeDriver: true,
       }),
     );
+
     animation.start();
 
     return () => {
@@ -51,17 +54,14 @@ export default function IndexScreen() {
   }, []);
 
   useEffect(() => {
-    if (!minimumDurationElapsed) return;
+    if (!minimumDurationElapsed || !authReady) return;
 
-    if (authError) {
-      router.replace("/login");
-      return;
-    }
-
-    if (authLoading) return;
-
-    router.replace(session ? (takePushRoute() ?? "/(tabs)/play") as never : "/login");
-  }, [authError, authLoading, minimumDurationElapsed, router, session]);
+    router.replace(
+      userId
+        ? ((takePushRoute() ?? "/(tabs)/play") as never)
+        : "/login",
+    );
+  }, [authReady, minimumDurationElapsed, router, userId]);
 
   return (
     <View style={styles.container}>
@@ -69,9 +69,16 @@ export default function IndexScreen() {
         {Array.from({ length: BAR_COUNT }, (_, index) => {
           const offset = index / BAR_COUNT;
           const inputRange = KEYFRAMES.map((frame) => frame.t);
-          const translateXRange = KEYFRAMES.map((frame) => frame.x);
-          const rotateRange = KEYFRAMES.map((frame) => `${frame.r}deg`);
-          const opacityRange = KEYFRAMES.map((frame) => frame.o);
+          const translateXRange = KEYFRAMES.map(
+            (frame) => frame.x,
+          );
+          const rotateRange = KEYFRAMES.map(
+            (frame) => `${frame.r}deg`,
+          );
+          const opacityRange = KEYFRAMES.map(
+            (frame) => frame.o,
+          );
+
           const barProgress = Animated.modulo(
             Animated.add(progress, offset),
             1,
@@ -89,16 +96,20 @@ export default function IndexScreen() {
                   }),
                   transform: [
                     {
-                      translateX: barProgress.interpolate({
-                        inputRange,
-                        outputRange: translateXRange,
-                      }),
+                      translateX:
+                        barProgress.interpolate({
+                          inputRange,
+                          outputRange:
+                            translateXRange,
+                        }),
                     },
                     {
-                      rotate: barProgress.interpolate({
-                        inputRange,
-                        outputRange: rotateRange,
-                      }),
+                      rotate:
+                        barProgress.interpolate({
+                          inputRange,
+                          outputRange:
+                            rotateRange,
+                        }),
                     },
                   ],
                 },

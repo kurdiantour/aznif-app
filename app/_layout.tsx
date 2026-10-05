@@ -7,19 +7,26 @@ import "@/lib/rtl";
 import "@/lib/urlPolyfill";
 import { useKeepAwake } from "expo-keep-awake";
 import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
 import { NavigationBar } from "expo-navigation-bar";
 import { Stack } from "expo-router";
 import {
   StatusBar,
   setStatusBarHidden,
 } from "expo-status-bar";
-import { useEffect } from "react";
-import { AppState, Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, AppState, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { WalletProvider } from '@/lib/wallet-context';
 import { AppUpdateModal } from '@/components/AppUpdateModal';
 import { OkeyReturnToGameOverlay } from '@/okey/multiplayer/OkeyReturnToGameOverlay';
+
+void SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.warn("Unable to hold startup splash screen", error);
+});
+
+const FONT_LOAD_TIMEOUT_MS = 10_000;
 
 function applyImmersiveFullscreen() {
   if (Platform.OS !== "android") return;
@@ -32,7 +39,41 @@ function applyImmersiveFullscreen() {
 
 export default function Layout() {
   useKeepAwake();
-  const [fontsLoaded] = useFonts(appFontAssets);
+  const [fontsLoaded, fontError] = useFonts(appFontAssets);
+  const [fontLoadTimedOut, setFontLoadTimedOut] = useState(false);
+  const [fontDefaultsApplied, setFontDefaultsApplied] = useState(false);
+  const fontsReady = (fontsLoaded && fontDefaultsApplied) || !!fontError || fontLoadTimedOut;
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    applyAppFontDefaults();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setFontDefaultsApplied(true);
+    });
+    return () => { active = false; };
+  }, [fontsLoaded]);
+
+  useEffect(() => {
+    if (fontsReady) return;
+    const timeout = setTimeout(() => setFontLoadTimedOut(true), FONT_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timeout);
+  }, [fontsReady]);
+
+  useEffect(() => {
+    if (fontError) console.warn("Unable to load app fonts; continuing with system fonts", fontError);
+    if (fontLoadTimedOut && !fontsLoaded && !fontError) {
+      console.warn("App fonts took too long to load; continuing with system fonts");
+    }
+  }, [fontError, fontLoadTimedOut, fontsLoaded]);
+
+  useEffect(() => {
+    if (fontsReady) {
+      void SplashScreen.hideAsync().catch((error) => {
+        console.warn("Unable to hide startup splash screen", error);
+      });
+    }
+  }, [fontsReady]);
 
   useEffect(() => {
     applyImmersiveFullscreen();
@@ -51,11 +92,13 @@ export default function Layout() {
     };
   }, []);
 
-  if (!fontsLoaded) {
-    return null;
+  if (!fontsReady) {
+    return (
+      <View style={styles.fontLoading}>
+        <ActivityIndicator color="#f8d675" />
+      </View>
+    );
   }
-
-  applyAppFontDefaults();
 
   return (
     <SafeAreaProvider>
@@ -131,3 +174,7 @@ export default function Layout() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  fontLoading: { flex: 1, backgroundColor: "#050b22", alignItems: "center", justifyContent: "center" },
+});

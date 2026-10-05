@@ -25,6 +25,7 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import { getCachedShopState, getMyShopState } from "@/lib/shop";
+import { useAuthState } from "@/lib/auth-state";
 import { useProfile } from "@/lib/profile";
 import { useWallet } from "@/lib/wallet-context";
 import {
@@ -199,6 +200,7 @@ export default function OkeyFunScreen() {
     void getMyShopState().catch(() => undefined);
   }, []);
   const { profile } = useProfile();
+  const { userId } = useAuthState();
   const { width, height } = useWindowDimensions();
 
   const isTablet =
@@ -348,7 +350,7 @@ export default function OkeyFunScreen() {
         </View>
       ) : null}
 
-      <BottomNav requireAuth={!profile} />
+      <BottomNav requireAuth={!userId} />
     </View>
   );
 }

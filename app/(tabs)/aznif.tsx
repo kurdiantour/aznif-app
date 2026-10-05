@@ -185,14 +185,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     justifyContent: "center",
-    paddingTop: 16,
-    paddingBottom: 80,
   },
 
   contentTablet: {
     width: "100%",
-    paddingTop: 24,
-    paddingBottom: 100,
   },
 
   cardRow: {

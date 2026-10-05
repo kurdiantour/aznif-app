@@ -110,8 +110,6 @@ test("a Konkan spend lock keeps its face and half-overlaps the run endpoint", ()
     getOkeyMeldTileLayout(endLocked, index, 18, FOUR_TILE_SET_REVEAL, 24, true).left
   )).toEqual([0, 18, 36, 48]);
 
-  const view = render(<OkeyMeldView meld={startLocked} okeyTile={okeyTile} />);
-  expect(view.getByLabelText("بەردی 4ی زەرد")).toBeTruthy();
 });
 test("runs stay fully separated and table meld rows remain stable", () => {
   const run = (id: string): OkeyMeld => ({

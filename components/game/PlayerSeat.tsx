@@ -70,16 +70,18 @@ function TurnRing({
         },
       ]}
     >
-      <Svg
-        width={size}
-        height={size}
-        style={StyleSheet.absoluteFill}
-      >
+<Svg
+  width={size}
+  height={size}
+  style={[
+    StyleSheet.absoluteFill,
+    { transform: [{ scaleX: -1 }] },
+  ]}
+>
         <Circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="rgba(250, 204, 21, 0.22)"
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -147,7 +149,9 @@ export default function PlayerSeat({
   const updateWrapperOrigin = () => {
     wrapperRef.current?.measureInWindow(
       (x, y, width, height) => {
-        setWrapperOrigin({ x, y });
+        setWrapperOrigin((current) =>
+          current?.x === x && current.y === y ? current : { x, y },
+        );
 
         onFlightOriginChange?.({
           x: x + width * 0.58,
@@ -169,16 +173,16 @@ export default function PlayerSeat({
       return;
     }
 
-    dealtTokenRef.current = dealToken;
-
+    let dealAnimation: Animated.CompositeAnimation | null = null;
     const timeoutId = setTimeout(() => {
+      dealtTokenRef.current = dealToken;
       tileAnimations.forEach((animation) => {
         animation.setValue(0);
       });
 
       setVisibleDealToken(dealToken);
 
-      Animated.sequence([
+      dealAnimation = Animated.sequence([
         Animated.delay(dealOrder * 95),
 
         Animated.stagger(
@@ -192,11 +196,17 @@ export default function PlayerSeat({
             }),
           ),
         ),
-      ]).start();
+      ]);
+      dealAnimation.start(({ finished }) => {
+        if (!finished) {
+          tileAnimations.forEach((animation) => animation.setValue(1));
+        }
+      });
     }, 0);
 
     return () => {
       clearTimeout(timeoutId);
+      dealAnimation?.stop();
     };
   }, [
     dealOrder,
@@ -358,10 +368,9 @@ const styles = StyleSheet.create({
   card: {
     minWidth: 138,
     height: 54,
-
     flexDirection: "row",
+    direction: "ltr",
     alignItems: "center",
-
     paddingLeft: 6,
     paddingRight: 12,
     marginTop: 10,

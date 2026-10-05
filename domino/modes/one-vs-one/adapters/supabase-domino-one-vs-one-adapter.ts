@@ -15,12 +15,6 @@ import type {
 export class SupabaseDominoOneVsOneAdapter implements DominoOneVsOneAdapter {
   constructor(private readonly roomId: string) {}
 
-  async getCurrentUserId() {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return data.user?.id ?? null;
-  }
-
   async getSnapshot() {
     const { data, error } = await supabase.rpc("get_one_vs_one_snapshot", {
       p_room_id: this.roomId,

@@ -32,7 +32,6 @@ export type DominoOneVsOneSubscription = {
 };
 
 export interface DominoOneVsOneAdapter<TSnapshot = any> {
-  getCurrentUserId(): Promise<string | null>;
   getSnapshot(): Promise<TSnapshot>;
   getRoster(includeProfiles?: boolean): Promise<DominoOneVsOneRoster>;
   prepareLaunch(): Promise<TSnapshot>;

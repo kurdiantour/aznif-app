@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { RealtimeReconnectPolicy } from '@/lib/multiplayer/core/realtime-reconnect';
 import type { DominoTwoVsTwoAdapter } from '../adapters/domino-two-vs-two-adapter';
+import { useAuthState } from '@/lib/auth-state';
 
 export function useDominoTwoVsTwoConnectionController(input: {
   roomId?: string;
@@ -23,6 +24,7 @@ export function useDominoTwoVsTwoConnectionController(input: {
   players?: any[];
   privateHandCount?: number;
 }) {
+  const { userId } = useAuthState();
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectPolicyRef = useRef(new RealtimeReconnectPolicy());
   const unsubscribeRealtimeRef = useRef<(() => void) | null>(null);
@@ -47,6 +49,7 @@ export function useDominoTwoVsTwoConnectionController(input: {
       input.setLoading(false);
       return;
     }
+    if (!userId) return;
 
     let mounted = true;
     let subscribe = () => {};
@@ -134,8 +137,6 @@ export function useDominoTwoVsTwoConnectionController(input: {
         input.setLoading(true);
         input.setError(null);
 
-        const userId = await input.adapter!.getCurrentUserId();
-
         if (!mounted) return;
 
         input.setCurrentUserId(userId);
@@ -179,6 +180,7 @@ export function useDominoTwoVsTwoConnectionController(input: {
     input.roomId,
     input.enabled,
     input.adapter,
+    userId,
     input.applyRealtimeRoom,
     input.loadPlayers,
     input.refreshSnapshot,

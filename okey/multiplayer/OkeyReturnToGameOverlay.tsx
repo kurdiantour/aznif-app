@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 
 import { ReturnToGamePopup } from "@/components/game/ReturnToGamePopup";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 
 import {
@@ -12,7 +12,7 @@ import {
 } from "./okey-room-api";
 
 export function OkeyReturnToGameOverlay() {
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -29,79 +29,111 @@ export function OkeyReturnToGameOverlay() {
     router.replace("/(tabs)/play");
   }, [router]);
 
-  const checkMemberships = useCallback(async () => {
-    if (!profile?.id) {
-      return;
-    }
-
-    try {
-      const memberships = await getActiveOkeyMemberships();
-
-      const playingMatch = memberships.find(
-        (membership) =>
-          membership.status === "playing" &&
-          !rejectedMatches.has(membership.matchId),
-      );
-
-      if (!playingMatch) {
-        setResumableMatchId(null);
-        return;
+  const checkMemberships = useCallback(
+    async (): Promise<string | null | undefined> => {
+      if (!userId) {
+        return undefined;
       }
 
-      const adapter = new SupabaseOkeyMatchAdapter(
-        playingMatch.matchId,
-      );
+      try {
+        const memberships = await getActiveOkeyMemberships();
 
-      await adapter.refresh();
+        const playingMatch = memberships.find(
+          (membership) =>
+            membership.status === "playing" &&
+            !rejectedMatches.has(membership.matchId),
+        );
 
-      const snapshot = adapter.getSnapshot();
+        if (!playingMatch) {
+          return null;
+        }
 
-      if (!snapshot || snapshot.matchFinished) {
-        setResumableMatchId(null);
-        return;
+        const adapter = new SupabaseOkeyMatchAdapter(
+          playingMatch.matchId,
+        );
+
+        await adapter.refresh();
+
+        const snapshot = adapter.getSnapshot();
+
+        if (!snapshot || snapshot.matchFinished) {
+          return null;
+        }
+
+        const me = snapshot.players.find(
+          (player) => player.id === userId,
+        );
+
+        if (!me) {
+          return null;
+        }
+
+        return playingMatch.matchId;
+      } catch (error) {
+        console.warn(
+          "Failed to check active memberships",
+          error,
+        );
+
+        return undefined;
       }
-
-      const me = snapshot.players.find(
-        (player) => player.id === profile.id,
-      );
-
-      if (!me) {
-        setResumableMatchId(null);
-        return;
-      }
-
-      setResumableMatchId(playingMatch.matchId);
-    } catch (error) {
-      console.warn(
-        "Failed to check active memberships",
-        error,
-      );
-    }
-  }, [profile?.id, rejectedMatches]);
+    },
+    [userId, rejectedMatches],
+  );
 
   useEffect(() => {
+    let active = true;
+
     if (pathname === "/okey/game") {
-      setResumableMatchId(null);
-      return;
+      void Promise.resolve().then(() => {
+        if (active) {
+          setResumableMatchId(null);
+        }
+      });
+
+      return () => {
+        active = false;
+      };
     }
 
-    void checkMemberships();
+    void checkMemberships().then((matchId) => {
+      if (!active || matchId === undefined) {
+        return;
+      }
+
+      setResumableMatchId(matchId);
+    });
+
+    return () => {
+      active = false;
+    };
   }, [pathname, checkMemberships]);
 
   useEffect(() => {
+    let active = true;
+
     const subscription = AppState.addEventListener(
       "change",
       (state) => {
         if (
-          state === "active" &&
-          pathname !== "/okey/game"
+          state !== "active" ||
+          pathname === "/okey/game"
         ) {
-          void checkMemberships();
+          return;
         }
+
+        void checkMemberships().then((matchId) => {
+          if (!active || matchId === undefined) {
+            return;
+          }
+
+          setResumableMatchId(matchId);
+        });
       },
     );
 
     return () => {
+      active = false;
       subscription.remove();
     };
   }, [pathname, checkMemberships]);
@@ -138,7 +170,7 @@ export function OkeyReturnToGameOverlay() {
       }
 
       const me = snapshot.players.find(
-        (player) => player.id === profile?.id,
+        (player) => player.id === userId,
       );
 
       if (!me) {
@@ -160,7 +192,7 @@ export function OkeyReturnToGameOverlay() {
   }, [
     resumableMatchId,
     pathname,
-    profile?.id,
+    userId,
     finishResumeFlow,
   ]);
 
@@ -188,7 +220,7 @@ export function OkeyReturnToGameOverlay() {
       }
 
       const me = snapshot.players.find(
-        (player) => player.id === profile?.id,
+        (player) => player.id === userId,
       );
 
       if (!me) {
@@ -223,7 +255,7 @@ export function OkeyReturnToGameOverlay() {
             const refreshedMe =
               refreshedSnapshot.players.find(
                 (player) =>
-                  player.id === profile?.id,
+                  player.id === userId,
               );
 
             if (!refreshedMe) {
@@ -299,7 +331,7 @@ export function OkeyReturnToGameOverlay() {
       }
 
       const me = snapshot.players.find(
-        (player) => player.id === profile?.id,
+        (player) => player.id === userId,
       );
 
       if (!me) {
@@ -331,7 +363,7 @@ export function OkeyReturnToGameOverlay() {
           const refreshedMe =
             refreshedSnapshot.players.find(
               (player) =>
-                player.id === profile?.id,
+                player.id === userId,
             );
 
           if (!refreshedMe) {
@@ -364,7 +396,10 @@ export function OkeyReturnToGameOverlay() {
     }
   };
 
-  if (!resumableMatchId) {
+  if (
+    pathname === "/okey/game" ||
+    !resumableMatchId
+  ) {
     return null;
   }
 

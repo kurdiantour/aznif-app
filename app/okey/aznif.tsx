@@ -26,7 +26,7 @@ import {
 } from "@/constants/layout";
 import { formatAznif } from "@/lib/aznif-display";
 import { getCachedShopState, getMyShopState } from "@/lib/shop";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { useWallet } from "@/lib/wallet-context";
 import {
   matchmakeOkeyRoom,
@@ -172,7 +172,7 @@ export default function OkeyAznifScreen() {
   useEffect(() => {
     void getMyShopState().catch(() => undefined);
   }, []);
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
   const { width, height } = useWindowDimensions();
 
   const isTablet =
@@ -312,7 +312,7 @@ export default function OkeyAznifScreen() {
         </View>
       ) : null}
 
-      <BottomNav requireAuth={!profile} />
+      <BottomNav requireAuth={!userId} />
     </View>
   );
 }

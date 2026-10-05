@@ -1,4 +1,5 @@
 import type { DominoOneVsOneAdapter } from "../adapters/domino-one-vs-one-adapter";
+import { useAuthState } from "@/lib/auth-state";
 import { RealtimeReconnectPolicy } from "@/lib/multiplayer/core/realtime-reconnect";
 import { useCallback, useEffect, useRef } from "react";
 import { AppState } from "react-native";
@@ -22,10 +23,13 @@ export function useDominoOneVsOneConnectionController(args: {
   setProfiles: (profiles: Map<string, any>) => void;
   enabled?: boolean;
 }) {
+  const { userId } = useAuthState();
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const startInFlightRef = useRef(false);
   const pollInFlightRef = useRef(false);
+  // eslint-disable-next-line react-hooks/purity
   const lastActivityRef = useRef(Date.now());
+  // eslint-disable-next-line react-hooks/purity
   const lastRosterActivityRef = useRef(Date.now());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectPolicyRef = useRef(new RealtimeReconnectPolicy());
@@ -68,6 +72,7 @@ export function useDominoOneVsOneConnectionController(args: {
       args.setLoading(false);
       return;
     }
+    if (!userId) return;
 
     let mounted = true;
     const markActivity = () => { lastActivityRef.current = Date.now(); };
@@ -143,7 +148,6 @@ const boot = async () => {
     args.setLoading(true);
     args.setError(null);
 
-    const userId = await args.adapter!.getCurrentUserId();
     if (!mounted) return;
 
     args.setCurrentUserId(userId);
@@ -174,6 +178,7 @@ const boot = async () => {
     args.roomId,
     args.enabled,
     args.adapter,
+    userId,
     args.applySnapshot,
     args.setLoading,
     args.setError,

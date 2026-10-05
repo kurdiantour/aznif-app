@@ -1,10 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 
-import {
-  getOkeyTileAccessibilityLabel,
-  OKEY_ACCESSIBILITY,
-} from "@/okey/accessibility/okey-accessibility";
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import type { OkeyTile } from "@/okey/types/okey";
 
@@ -413,54 +409,6 @@ export function OkeyCenterPiles({
           <View
             testID="okey-top-discard"
             ref={discardTopRef}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel={OKEY_ACCESSIBILITY.discardLabel(
-              stationaryDiscardTile,
-              discardCount,
-              isOkeyWildcard(
-                stationaryDiscardTile,
-                okeyTile,
-              ),
-            )}
-            accessibilityHint={
-              OKEY_ACCESSIBILITY.discardHint
-            }
-            accessibilityState={{
-              disabled: !canDrawDiscard,
-            }}
-            accessibilityActions={[
-              ...(canDrawDiscard
-                ? [
-                    {
-                      name: "activate" as const,
-                      label:
-                        "وەرگرتنی بەردە فڕێدراوەکە",
-                    },
-                  ]
-                : []),
-              {
-                name: "viewHistory" as const,
-                label:
-                  "بینینی مێژووی بەردە فڕێدراوەکان",
-              },
-            ]}
-            onAccessibilityAction={(event) => {
-              if (
-                event.nativeEvent.actionName ===
-                  "activate" &&
-                canDrawDiscard
-              ) {
-                onDrawDiscard();
-              }
-
-              if (
-                event.nativeEvent.actionName ===
-                "viewHistory"
-              ) {
-                onViewDiscards?.();
-              }
-            }}
             collapsable={false}
             onLayout={measureDiscardTop}
             {...discardDragHandlers.panHandlers}
@@ -538,11 +486,6 @@ export function OkeyCenterPiles({
         >
           <View
             pointerEvents="none"
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel={`بەردی نیشاندەر، ${getOkeyTileAccessibilityLabel(
-              indicatorTile,
-            )}`}
             style={centerStyles.indicatorTileSpot}
           >
             <OkeyTileFace

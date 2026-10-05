@@ -26,7 +26,6 @@ import {
   ROW_ORDER,
   RACK_DEAL_BATCH_STAGGER_MS,
   RACK_TILE_ENTER_MS,
-  getFlatIndexForSlot,
   getRackRowTileTop,
   type ExternalDropPlacement,
   type RackRow,
@@ -132,7 +131,6 @@ export function OkeyPlayerRack({
   okeyTile,
   onSelectTile,
   onTileDragStart,
-  onMoveTile,
   onOpenableMeldsChange,
   stagedTileIds = [],
   onDropMeldGroup,
@@ -303,7 +301,6 @@ export function OkeyPlayerRack({
     draggedMeldScale,
     getTileShiftValue,
     getTilePanHandlers,
-    moveRackTile,
   } = useOkeyRackDrag({
   tiles,
   okeyTile,
@@ -499,18 +496,6 @@ export function OkeyPlayerRack({
       isGroupSelected ||
       isAnimationHidden;
 
-    const accessibilityIndex = getFlatIndexForSlot(
-      rackSlots,
-      row,
-      slotIndex,
-    );
-
-    const moveForAccessibility = (targetIndex: number) => {
-      if (rackInteractionLocked || eliminated || isStaged) return;
-      moveRackTile(tile.id, targetIndex);
-      onMoveTile(tile.id, targetIndex);
-    };
-
     const tileFace = (
       <OkeyTileFace
         tile={tile}
@@ -526,18 +511,6 @@ export function OkeyPlayerRack({
           handleJokerFlipAnimationActiveChange(tile.id, active)
         }
         onPress={() => onSelectTile(tile.id)}
-        onAccessibilityMovePrevious={
-          accessibilityIndex > 0
-            ? () =>
-                moveForAccessibility(accessibilityIndex - 1)
-            : undefined
-        }
-        onAccessibilityMoveNext={
-          accessibilityIndex < tiles.length - 1
-            ? () =>
-                moveForAccessibility(accessibilityIndex + 1)
-            : undefined
-        }
         panHandlers={getTilePanHandlers(tile.id)}
         width={rackTileWidth}
         height={rackTileHeight}

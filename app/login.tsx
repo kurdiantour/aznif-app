@@ -1,14 +1,16 @@
 import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { claimNewAccountLeaderboardConsent } from "@/lib/leaderboardVisibility";
 import {
   signInWithEmail,
+  signInWithApple,
   signInWithFacebook,
   signInWithGoogle,
   signUpWithEmail,
-  updateMyProfile,
 } from "@/lib/supabaseAuth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -19,6 +21,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -32,7 +35,8 @@ const clamp = (value: number, min: number, max: number) =>
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { refreshProfile, session, authLoading } = useProfile();
+  const { refreshProfile } = useProfile();
+  const { userId, authReady } = useAuthState();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -60,10 +64,10 @@ export default function LoginScreen() {
   }, [router]);
 
   useEffect(() => {
-    if (!authLoading && session) {
+    if (authReady && userId) {
       router.replace("/(tabs)/play");
     }
-  }, [authLoading, router, session]);
+  }, [authReady, router, userId]);
 
   const handleAuth = async (authMode = mode) => {
     const cleanEmail = email.trim().toLowerCase();
@@ -109,7 +113,6 @@ export default function LoginScreen() {
 
       if (authMode === "signup") {
         try {
-          await updateMyProfile({ username: cleanUsername });
           await refreshProfile();
         } catch (error) {
           console.warn("[auth] Signed in, but profile setup failed", error);
@@ -128,7 +131,7 @@ export default function LoginScreen() {
     }
   };
 
-  if (authLoading || session) {
+  if (!authReady || userId) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color="#f8d774" size="large" />
@@ -182,6 +185,8 @@ export default function LoginScreen() {
     }
   };
 
+  // Keep the existing Facebook action available without showing it in this screen.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFacebookSignIn = async () => {
     setIsLoading(true);
     setMessage(null);
@@ -206,6 +211,33 @@ export default function LoginScreen() {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    setIsLoading(true);
+    setMessage(null);
+    try {
+      const result = await signInWithApple();
+      if (result.error) {
+        setMessage("Apple sign-in failed. Please try again.");
+        return;
+      }
+      await claimNewAccountLeaderboardConsent();
+      try {
+        await refreshProfile();
+      } catch (error) {
+        console.warn("[auth] Signed in, but profile refresh failed", error);
+      }
+      router.replace("/(tabs)/play");
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ERR_REQUEST_CANCELED") {
+        return;
+      }
+      console.warn("[auth] Apple sign-in failed", error);
+      setMessage("Apple sign-in failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const selectMode = (nextMode: "signin" | "signup") => {
     setMode(nextMode);
     setMessage(null);
@@ -225,8 +257,11 @@ export default function LoginScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.keyboardView}
         >
-          <View
-            style={[
+          <ScrollView
+            style={styles.keyboardView}
+            scrollEnabled={!isHorizontalLayout}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[
               styles.fixedContent,
               {
                 paddingLeft: insets.left + edgeSpacing,
@@ -244,7 +279,7 @@ export default function LoginScreen() {
                   !isHorizontalLayout && styles.contentStack,
                 ]}
               >
-                <View style={styles.formColumn}>
+                <View style={[styles.formColumn, !isHorizontalLayout && styles.stackedColumn]}>
                   <View style={[styles.modeSwitch, { gap: fieldGap, marginBottom: fieldGap }]}>
                     <Pressable
                       style={[styles.modeButton, { minHeight: controlHeight }, !isSignup && styles.modeActive]}
@@ -420,8 +455,8 @@ export default function LoginScreen() {
                   </View>
                 </View>
 
-                <View style={styles.guestColumn}>
-                  <View style={[styles.authChoiceRow, { gap: fieldGap }]}>
+                <View style={[styles.guestColumn, !isHorizontalLayout && styles.stackedColumn]}>
+                  <View style={[styles.authChoiceRow, { gap: fieldGap }, !isHorizontalLayout && styles.stackedChoiceRow]}>
                     <View style={styles.authChoiceCard}>
                       <View style={[styles.guestIcon, styles.googleIcon]}>
                         <FontAwesome name="google" size={21} color="#ffffff" />
@@ -431,7 +466,7 @@ export default function LoginScreen() {
                         بە هەژمارەکەتەوە بچۆ ژوورەوە
                       </Text>
                       <Pressable
-                        style={[styles.guestButton, { minHeight: controlHeight }, styles.googleButton, isLoading && styles.disabled]}
+                        style={[styles.guestButton, { minHeight: controlHeight }, styles.googleButton, !isHorizontalLayout && styles.stackedGuestButton, isLoading && styles.disabled]}
                         onPress={() => void handleGoogleSignIn()}
                         disabled={isLoading}
                       >
@@ -439,29 +474,30 @@ export default function LoginScreen() {
                       </Pressable>
                     </View>
 
-                    <View style={styles.authChoiceCard}>
-                      <View style={[styles.guestIcon, styles.facebookIcon]}>
-                        <FontAwesome name="facebook" size={22} color="#ffffff" />
+                    {Platform.OS === "ios" ? <View style={styles.authChoiceCard}>
+                      <View style={[styles.guestIcon, styles.appleIcon]}>
+                        <FontAwesome name="apple" size={22} color="#ffffff" />
                       </View>
-                      <Text style={[styles.guestTitle, styles.englishText]}>Facebook</Text>
+                      <Text style={[styles.guestTitle, styles.englishText]}>Apple</Text>
                       <Text style={styles.guestCopy} numberOfLines={2}>
                         بە هەژمارەکەتەوە بچۆ ژوورەوە
                       </Text>
-                      <Pressable
-                        style={[styles.guestButton, { minHeight: controlHeight }, isLoading && styles.disabled]}
-                        onPress={() => void handleFacebookSignIn()}
-                        disabled={isLoading}
-                        accessibilityRole="button"
-                        accessibilityLabel="Continue with Facebook"
-                      >
-                        <Text style={[styles.guestButtonText, styles.englishText]}>Facebook</Text>
-                      </Pressable>
-                    </View>
+                      <AppleAuthentication.AppleAuthenticationButton
+                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                        cornerRadius={6}
+                        style={[styles.appleNativeButton, { height: controlHeight }, !isHorizontalLayout && styles.stackedGuestButton, isLoading && styles.disabled]}
+                        pointerEvents={isLoading ? "none" : "auto"}
+                        onPress={() => {
+                          if (!isLoading) void handleAppleSignIn();
+                        }}
+                      />
+                    </View> : null}
                   </View>
                 </View>
               </View>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
     </ImageBackground>
@@ -480,7 +516,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fixedContent: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -512,11 +548,21 @@ const styles = StyleSheet.create({
     flex: 1.02,
     minWidth: 0,
   },
+  stackedColumn: {
+    flex: 0,
+    width: "100%",
+  },
   authChoiceRow: {
     flex: 1,
     flexDirection: "row-reverse",
     gap: 8,
     alignItems: "stretch",
+  },
+  stackedChoiceRow: {
+    flex: 0,
+  },
+  stackedGuestButton: {
+    transform: [],
   },
 
   authChoiceCard: {
@@ -547,6 +593,14 @@ const styles = StyleSheet.create({
 
   facebookIcon: {
     backgroundColor: "#1877f2",
+  },
+  appleIcon: {
+    backgroundColor: "#000000",
+  },
+  appleNativeButton: {
+    alignSelf: "stretch",
+    height: 48,
+    transform: [{ translateY: 11 }],
   },
   guestTitle: {
     color: "#ffffff",

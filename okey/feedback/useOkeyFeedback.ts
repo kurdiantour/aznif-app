@@ -1,8 +1,14 @@
 import * as Haptics from "expo-haptics";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppState } from "react-native";
+import {
+  getGameFeedbackPreferences,
+  loadGameFeedbackPreferences,
+  saveGameFeedbackPreferences,
+  subscribeGameFeedbackPreferences,
+  useGameFeedbackPreferences,
+} from "@/lib/gameFeedbackPreferences";
 
 import type { OkeyGameState, OkeyTeamId } from "@/okey/types/okey";
 
@@ -27,75 +33,17 @@ export {
   type OkeyFeedbackPreferences,
 };
 
-export const OKEY_FEEDBACK_PREFERENCES_KEY = "okey-feedback-preferences-v1";
-
-const preferenceListeners = new Set<(preferences: OkeyFeedbackPreferences) => void>();
-let cachedPreferences = DEFAULT_OKEY_FEEDBACK_PREFERENCES;
-
-function normalizePreferences(value: unknown): OkeyFeedbackPreferences {
-  if (!value || typeof value !== "object") return DEFAULT_OKEY_FEEDBACK_PREFERENCES;
-  const candidate = value as Partial<OkeyFeedbackPreferences>;
-  return {
-    soundEnabled: typeof candidate.soundEnabled === "boolean" ? candidate.soundEnabled : true,
-    hapticsEnabled: typeof candidate.hapticsEnabled === "boolean" ? candidate.hapticsEnabled : false,
-  };
-}
-
-export async function loadOkeyFeedbackPreferences() {
-  try {
-    const raw = await AsyncStorage.getItem(OKEY_FEEDBACK_PREFERENCES_KEY);
-    cachedPreferences = normalizePreferences(raw ? JSON.parse(raw) : null);
-  } catch {
-    cachedPreferences = DEFAULT_OKEY_FEEDBACK_PREFERENCES;
-  }
-  preferenceListeners.forEach((listener) => listener(cachedPreferences));
-  return cachedPreferences;
-}
-
-export async function saveOkeyFeedbackPreferences(preferences: OkeyFeedbackPreferences) {
-  cachedPreferences = normalizePreferences(preferences);
-  preferenceListeners.forEach((listener) => listener(cachedPreferences));
-  try {
-    await AsyncStorage.setItem(OKEY_FEEDBACK_PREFERENCES_KEY, JSON.stringify(cachedPreferences));
-  } catch (error) {
-    console.warn("Unable to save Okey feedback preferences", error);
-  }
-}
-
-export function getCachedOkeyFeedbackPreferences() {
-  return cachedPreferences;
-}
-
-export function subscribeToOkeyFeedbackPreferences(listener: (preferences: OkeyFeedbackPreferences) => void) {
-  preferenceListeners.add(listener);
-  return () => {
-    preferenceListeners.delete(listener);
-  };
-}
-
-export function useOkeyFeedbackPreferences() {
-  const [preferences, setPreferences] = useState(getCachedOkeyFeedbackPreferences);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToOkeyFeedbackPreferences(setPreferences);
-    void loadOkeyFeedbackPreferences();
-    return unsubscribe;
-  }, []);
-
-  const setSoundEnabled = useCallback((soundEnabled: boolean) => {
-    void saveOkeyFeedbackPreferences({ ...getCachedOkeyFeedbackPreferences(), soundEnabled });
-  }, []);
-  const setHapticsEnabled = useCallback((hapticsEnabled: boolean) => {
-    void saveOkeyFeedbackPreferences({ ...getCachedOkeyFeedbackPreferences(), hapticsEnabled });
-  }, []);
-
-  return { ...preferences, setSoundEnabled, setHapticsEnabled };
-}
+export const OKEY_FEEDBACK_PREFERENCES_KEY = "game-feedback-preferences-v1";
+export const loadOkeyFeedbackPreferences = loadGameFeedbackPreferences;
+export const saveOkeyFeedbackPreferences = saveGameFeedbackPreferences;
+export const getCachedOkeyFeedbackPreferences = getGameFeedbackPreferences;
+export const subscribeToOkeyFeedbackPreferences = subscribeGameFeedbackPreferences;
+export const useOkeyFeedbackPreferences = useGameFeedbackPreferences;
 
 
 const TILE_SOUND = require("@/assets/audio/game/tile-placement-1.mp3");
 const MOVE_SOUND = require("@/assets/audio/game/tile-placement-2.mp3");
-const RESULT_SOUND = require("@/assets/audio/game/pass.mp3");
+const RESULT_SOUND = require("@/assets/audio/game/bang.mp3");
 
 const RESULT_EVENTS = new Set<OkeyFeedbackEvent>([
   "round-win",
@@ -144,22 +92,22 @@ export function useOkeyFeedback() {
   );
 
   const gateRef = useRef(
-    new OkeyFeedbackGate(getCachedOkeyFeedbackPreferences()),
+    new OkeyFeedbackGate(getGameFeedbackPreferences()),
   );
   const activeRef = useRef(AppState.currentState === "active");
   const mountedRef = useRef(true);
-  const playbackTokenRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
     gateRef.current.setActive(activeRef.current);
 
     const unsubscribePreferences =
-      subscribeToOkeyFeedbackPreferences((preferences) => {
+      subscribeGameFeedbackPreferences((preferences) => {
         gateRef.current.setPreferences(preferences);
+        if (!preferences.soundEnabled) pausePlayersSafely(players);
       });
 
-    void loadOkeyFeedbackPreferences();
+    void loadGameFeedbackPreferences();
 
     void setAudioModeAsync({
       playsInSilentMode: false,
@@ -176,7 +124,6 @@ export function useOkeyFeedback() {
         gateRef.current.setActive(activeRef.current);
 
         if (!activeRef.current) {
-          playbackTokenRef.current += 1;
           pausePlayersSafely(players);
         }
       },
@@ -185,7 +132,6 @@ export function useOkeyFeedback() {
     return () => {
       mountedRef.current = false;
       gateRef.current.setActive(false);
-      playbackTokenRef.current += 1;
 
       unsubscribePreferences();
       subscription.remove();
@@ -199,12 +145,7 @@ export function useOkeyFeedback() {
 
       if (!decision) return false;
 
-      if (
-        decision.playSound &&
-        event !== "meld-open" &&
-        event !== "konkan"
-      ) {
-        const playbackToken = ++playbackTokenRef.current;
+      if (decision.playSound) {
 
         const player = RESULT_EVENTS.has(event)
           ? players.result
@@ -214,16 +155,10 @@ export function useOkeyFeedback() {
             ? players.move
             : players.tile;
 
-        pausePlayersSafely(players);
-
         void player
           .seekTo(0, 0, 0)
           .then(() => {
-            if (
-              mountedRef.current &&
-              activeRef.current &&
-              playbackTokenRef.current === playbackToken
-            ) {
+            if (mountedRef.current && activeRef.current && getGameFeedbackPreferences().soundEnabled) {
               player.play();
             }
           })

@@ -4,10 +4,7 @@ export type OkeyFeedbackEvent =
   | "invalid" | "round-win" | "round-loss" | "round-draw"
   | "match-win" | "match-loss" | "match-draw";
 
-export type OkeyFeedbackPreferences = {
-  soundEnabled: boolean;
-  hapticsEnabled: boolean;
-};
+export type OkeyFeedbackPreferences = GameFeedbackPreferences;
 
 export const DEFAULT_OKEY_FEEDBACK_PREFERENCES: OkeyFeedbackPreferences = {
   soundEnabled: true,
@@ -50,3 +47,4 @@ export class OkeyFeedbackGate {
     };
   }
 }
+import type { GameFeedbackPreferences } from "@/lib/gameFeedbackPreferences";

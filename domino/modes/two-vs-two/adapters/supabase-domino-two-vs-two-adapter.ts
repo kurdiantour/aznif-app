@@ -17,12 +17,6 @@ import type {
 export class SupabaseDominoTwoVsTwoAdapter implements DominoTwoVsTwoAdapter {
   constructor(private readonly roomId: string) {}
 
-  async getCurrentUserId() {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return data.user?.id ?? null;
-  }
-
   async getSnapshot() {
     const { data, error } = await getDominoTwoVsTwoSnapshot(this.roomId);
     if (error) throw error;

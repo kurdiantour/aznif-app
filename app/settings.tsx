@@ -4,10 +4,10 @@ import {
   getCurrentLeaderboardVisibility,
   setCurrentLeaderboardVisibility,
 } from "@/lib/leaderboardVisibility";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { signOut } from "@/lib/supabaseAuth";
 import { leaveAllActiveOkeyMemberships } from "@/okey/multiplayer/okey-active-membership";
-import { useOkeyFeedbackPreferences } from "@/okey/feedback/useOkeyFeedback";
+import { useGameFeedbackPreferences } from "@/lib/gameFeedbackPreferences";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -26,9 +26,9 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
   const { width } = useWindowDimensions();
-  const { soundEnabled, hapticsEnabled, setSoundEnabled, setHapticsEnabled } = useOkeyFeedbackPreferences();
+  const { soundEnabled, hapticsEnabled, setSoundEnabled, setHapticsEnabled } = useGameFeedbackPreferences();
   const [leaderboardVisible, setLeaderboardVisible] = useState(true);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -68,7 +68,7 @@ export default function SettingsScreen() {
     let isMounted = true;
 
     async function loadLeaderboardVisibility() {
-      if (!profile) return;
+      if (!userId) return;
 
       setLoadingLeaderboard(true);
 
@@ -92,7 +92,7 @@ export default function SettingsScreen() {
     return () => {
       isMounted = false;
     };
-  }, [profile]);
+  }, [userId]);
 
   async function handleLeaderboardVisibleChange(value: boolean) {
     setLeaderboardVisible(value);
@@ -201,20 +201,20 @@ export default function SettingsScreen() {
             <View style={styles.sectionCard}>
               <SettingSwitch
                 icon="volume-high-outline"
-                label="دەنگەکان"
+                label="Game Sounds"
                 value={soundEnabled}
                 onValueChange={setSoundEnabled}
               />
               <SettingSwitch
                 icon="phone-portrait-outline"
-                label="لەرینەوەی یاریی ئۆکەی"
+                label="Vibration / Haptic"
                 value={hapticsEnabled}
                 onValueChange={setHapticsEnabled}
               />
-              {profile ? (
+              {userId ? (
                 <SettingSwitch
                   icon="trophy-outline"
-                  label="خشتەی پێشبڕکێ"
+                  label="Leaderboard Visibility"
                   value={leaderboardVisible}
                   onValueChange={handleLeaderboardVisibleChange}
                   disabled={loadingLeaderboard}
@@ -403,29 +403,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#201d29",
     padding: 14,
     gap: 10,
-  },
-  sectionHeader: {
-    minHeight: 34,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 2,
-  },
-  sectionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    backgroundColor: "rgba(248, 215, 116, 0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sectionTitle: {
-    flex: 1,
-    color: "#ffffff",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-    textAlign: "right",
-    writingDirection: "rtl",
   },
   settingItem: {
     minHeight: 44,

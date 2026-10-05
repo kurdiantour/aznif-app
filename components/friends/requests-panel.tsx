@@ -4,7 +4,7 @@ import {
   type FriendRequest,
 } from "@/lib/friends";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUser } from "@/lib/supabaseAuth";
+import { useAuthState } from "@/lib/auth-state";
 import { useFocusEffect } from "expo-router/react-navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -72,16 +72,17 @@ function RequestCard({
 }
 
 export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
+  const userId = useAuthState().userId;
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const nextRequests = await getFriendRequests();
+    const nextRequests = await getFriendRequests(userId);
     setRequests(nextRequests);
     onRequestsChanged?.(nextRequests.length);
-  }, [onRequestsChanged]);
+  }, [onRequestsChanged, userId]);
 
   useEffect(() => {
     let mounted = true;
@@ -116,37 +117,32 @@ export function RequestsPanel({ onRequestsChanged }: RequestsPanelProps) {
   );
 
   useEffect(() => {
-    let mounted = true;
     let channel: ReturnType<typeof supabase.channel> | null = null;
-
-    getCurrentUser().then((user) => {
-      if (!mounted || !user) return;
-
+    if (userId) {
       channel = supabase
-        .channel(`friend-requests-panel:${user.id}`)
+        .channel(`friend-requests-panel:${userId}`)
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
             table: "friendships",
-            filter: `addressee_id=eq.${user.id}`,
+            filter: `addressee_id=eq.${userId}`,
           },
           () => {
             void refresh();
           },
         )
         .subscribe();
-    });
+    }
 
     return () => {
-      mounted = false;
 
       if (channel) {
         void supabase.removeChannel(channel);
       }
     };
-  }, [refresh]);
+  }, [refresh, userId]);
 
   async function handleRespond(request: FriendRequest, accept: boolean) {
     setBusyId(request.friendshipId);

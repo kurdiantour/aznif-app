@@ -357,7 +357,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    marginBottom: 63,
   },
   grid: {
     flexDirection: "row",

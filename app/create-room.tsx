@@ -18,7 +18,7 @@ import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { formatAznif } from "@/lib/aznif-display";
 import { supabase } from "@/lib/supabase";
 
@@ -27,10 +27,7 @@ const PRIVATE_ROOM_BET_AMOUNT = 10;
 export default function CreateRoomScreen() {
   const router = useRouter();
 
-  const {
-    profile,
-    loading: profileLoading,
-  } = useProfile();
+  const { userId, authReady } = useAuthState();
 
   const { width, height } = useWindowDimensions();
 
@@ -100,7 +97,7 @@ export default function CreateRoomScreen() {
       return;
     }
 
-    if (!profile) {
+    if (!userId) {
       router.push("/login");
       return;
     }
@@ -241,26 +238,26 @@ export default function CreateRoomScreen() {
     }
   };
 
-  if (!profileLoading && !profile) {
-    return <Redirect href="/login" />;
-  }
+if (authReady && !userId) {
+  return <Redirect href="/login" />;
+}
 
-  if (profileLoading) {
-    return (
-      <View style={styles.screen}>
-        <LobbyHeader />
+if (!authReady) {
+  return (
+    <View style={styles.screen}>
+      <LobbyHeader />
 
-        <View style={styles.loading}>
-          <ActivityIndicator
-            size="large"
-            color="#ffffff"
-          />
-        </View>
-
-        <BottomNav />
+      <View style={styles.loading}>
+        <ActivityIndicator
+          size="large"
+          color="#ffffff"
+        />
       </View>
-    );
-  }
+
+      <BottomNav />
+    </View>
+  );
+}
 
   const submitting =
     privateSubmitting || joinSubmitting;

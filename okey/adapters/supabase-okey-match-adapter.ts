@@ -121,12 +121,6 @@ export class SupabaseOkeyMatchAdapter implements OnlineOkeyMatchAdapter {
     private readonly matchId: string,
   ) {}
 
-  async getCurrentUserId() {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return data.user?.id ?? null;
-  }
-
   getServerClockOffsetMs(): number {
     return this.serverClockOffsetMs;
   }

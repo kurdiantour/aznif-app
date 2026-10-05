@@ -1,5 +1,6 @@
 import { formatAznif } from "@/lib/aznif-display";
-import { getCurrentUserId, getTransactions } from "@/lib/wallet";
+import { useAuthState } from "@/lib/auth-state";
+import { getTransactions } from "@/lib/wallet";
 import { WalletTransaction } from "@/types/wallet";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -14,20 +15,20 @@ import {
 
 export default function WalletHistoryScreen() {
   const router = useRouter();
+  const currentUserId = useAuthState().userId;
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentUserId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    Promise.all([getTransactions(), getCurrentUserId()])
-      .then(([txs, uid]) => {
+    getTransactions(currentUserId)
+      .then((txs) => {
         setTransactions(txs);
-        setCurrentUserId(uid);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentUserId]);
 
   const getLabel = (item: WalletTransaction, isOutgoing: boolean) => {
     if (item.transaction_type === "transfer") {

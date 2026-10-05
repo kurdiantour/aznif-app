@@ -18,7 +18,6 @@ export type DominoTwoVsTwoSubscription = {
 };
 
 export interface DominoTwoVsTwoAdapter {
-  getCurrentUserId(): Promise<string | null>;
   getSnapshot(): Promise<any>;
   getRoster(includeProfiles?: boolean): Promise<{ rows: any[]; profiles: any[] | null }>;
   dispatch(command: DominoTwoVsTwoCommand): Promise<any>;

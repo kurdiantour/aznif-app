@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useAudioPlayer } from "expo-audio";
+import { getGameFeedbackPreferences, subscribeGameFeedbackPreferences } from "@/lib/gameFeedbackPreferences";
 
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import type { OkeyTile } from "@/okey/types/okey";
@@ -49,12 +50,15 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
     if (!playFinishSound || soundPlayedRef.current) return;
     soundPlayedRef.current = true;
     let active = true;
+    const unsubscribe = subscribeGameFeedbackPreferences((preferences) => {
+      if (!preferences.soundEnabled) finishSoundPlayer.pause();
+    });
 
     finishSoundPlayer.volume = 0.18;
-    void finishSoundPlayer
+    if (getGameFeedbackPreferences().soundEnabled) void finishSoundPlayer
       .seekTo(0, 0, 0)
       .then(() => {
-        if (active) finishSoundPlayer.play();
+        if (active && getGameFeedbackPreferences().soundEnabled) finishSoundPlayer.play();
       })
       .catch((error) => {
         console.warn("Unable to play Okey finish preview sound", error);
@@ -62,6 +66,7 @@ export function OkeyFinalTileCelebration({ tile, okeyTile, sourceRect, announcem
 
     return () => {
       active = false;
+      unsubscribe();
       try {
         finishSoundPlayer.pause();
       } catch {}

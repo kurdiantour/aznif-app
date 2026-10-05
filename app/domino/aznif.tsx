@@ -19,7 +19,7 @@ import {
 } from "@/constants/layout";
 import { DOMINO_ENTRY_FEES } from "@/constants/domino-economy";
 import { formatAznif } from "@/lib/aznif-display";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { supabase } from "@/lib/supabase";
 import { useWallet } from "@/lib/wallet-context";
 
@@ -200,7 +200,7 @@ function AznifCard({
 }
 
 export default function DominoAznifScreen() {
-  const { profile, loading: profileLoading } = useProfile();
+  const { userId, authReady } = useAuthState();
   const { width, height } = useWindowDimensions();
 
   const isTablet = Math.min(width, height) >= 600;
@@ -219,7 +219,7 @@ export default function DominoAznifScreen() {
       return;
     }
 
-    if (!profile) {
+    if (!userId) {
       router.push("/login");
       return;
     }
@@ -271,26 +271,26 @@ export default function DominoAznifScreen() {
     }
   };
 
-  if (!profileLoading && !profile) {
-    return <Redirect href="/login" />;
-  }
+if (authReady && !userId) {
+  return <Redirect href="/login" />;
+}
 
-  if (profileLoading) {
-    return (
-      <View style={styles.shell}>
-        <LobbyHeader />
+if (!authReady) {
+  return (
+    <View style={styles.shell}>
+      <LobbyHeader />
 
-        <View style={styles.loading}>
-          <ActivityIndicator
-            size="large"
-            color="#ffffff"
-          />
-        </View>
+      <View style={styles.loading}>
+        <ActivityIndicator
+          size="large"
+          color="#ffffff"
+        />
+      </View>
 
       <BottomNav />
-      </View>
-    );
-  }
+    </View>
+  );
+}
 
   return (
     <View style={styles.shell}>

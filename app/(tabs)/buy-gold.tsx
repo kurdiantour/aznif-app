@@ -168,7 +168,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     justifyContent: "center",
-    paddingBottom: 28,
   },
 
   packages: {

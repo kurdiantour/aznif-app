@@ -1,5 +1,6 @@
 import { AVATAR_IDS } from "@/types/avatar.ts";
 import type { Provider, Session, User } from "@supabase/supabase-js";
+import * as Crypto from "expo-crypto";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
@@ -232,6 +233,61 @@ export async function signInWithGoogle() {
     access_type: "offline",
     prompt: "select_account",
   });
+}
+
+export async function signInWithApple() {
+  if (Platform.OS !== "ios") {
+    throw new Error("Native Sign in with Apple is available only on iOS.");
+  }
+
+  const AppleAuthentication = await import("expo-apple-authentication");
+  if (!(await AppleAuthentication.isAvailableAsync())) {
+    throw new Error("Sign in with Apple is not available on this device.");
+  }
+
+  const rawNonce = Array.from(Crypto.getRandomBytes(32), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const hashedNonce = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    rawNonce,
+  );
+  const credential = await AppleAuthentication.signInAsync({
+    nonce: hashedNonce,
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+  });
+
+  if (!credential.identityToken) {
+    throw new Error("Apple sign-in did not return an identity token.");
+  }
+
+  const result = await supabase.auth.signInWithIdToken({
+    provider: "apple",
+    token: credential.identityToken,
+    nonce: rawNonce,
+  });
+  if (result.error) return result;
+
+  const givenName = credential.fullName?.givenName?.trim();
+  const middleName = credential.fullName?.middleName?.trim();
+  const familyName = credential.fullName?.familyName?.trim();
+  const fullName = [givenName, middleName, familyName].filter(Boolean).join(" ");
+  if (fullName) {
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        name: fullName,
+        full_name: fullName,
+        ...(givenName ? { given_name: givenName } : {}),
+        ...(familyName ? { family_name: familyName } : {}),
+      },
+    });
+    if (error) throw error;
+  }
+
+  return result;
 }
 
 export async function signInWithFacebook() {

@@ -9,7 +9,6 @@ import {
 } from "react-native";
 
 import type { OkeyTile } from "@/okey/types/okey";
-import { getOkeyTileAccessibilityLabel, OKEY_ACCESSIBILITY } from "@/okey/accessibility/okey-accessibility";
 import { styles } from "./okeyStyles";
 import { useOkeyCosmetics } from "@/okey/hooks/useOkeyCosmetics";
 import type { OkeyTileImages } from "@/constants/catalog/okey-sets";
@@ -34,9 +33,6 @@ type OkeyTileFaceProps = {
   panHandlers?: GestureResponderHandlers;
   width?: number;
   height?: number;
-  accessibilityLabel?: string;
-  onAccessibilityMovePrevious?: () => void;
-  onAccessibilityMoveNext?: () => void;
 };
 
 function FlippingTileImage({ tile, tiles, flipped, onFlipAnimationActiveChange }: {
@@ -197,9 +193,6 @@ export function OkeyTileFace({
   panHandlers,
   width,
   height,
-  accessibilityLabel,
-  onAccessibilityMovePrevious,
-  onAccessibilityMoveNext,
 }: OkeyTileFaceProps) {
   const { setAssets } = useOkeyCosmetics();
   const tileNode = isWildcard || flipped ? (
@@ -223,30 +216,11 @@ export function OkeyTileFace({
       : undefined,
   ];
 
-  const semanticLabel = accessibilityLabel ?? getOkeyTileAccessibilityLabel(tile, { isWildcard, selected });
-  const accessibilityActions = [
-    ...(onPress ? [{ name: "activate" as const, label: "هەڵبژاردنی بەرد" }] : []),
-    ...(onAccessibilityMovePrevious ? [{ name: "decrement" as const, label: "گواستنەوە بۆ پێشوو" }] : []),
-    ...(onAccessibilityMoveNext ? [{ name: "increment" as const, label: "گواستنەوە بۆ دواتر" }] : []),
-  ];
-  const handleAccessibilityAction = (name: string) => {
-    if (name === "activate") onPress?.();
-    if (name === "decrement") onAccessibilityMovePrevious?.();
-    if (name === "increment") onAccessibilityMoveNext?.();
-  };
-
   if (panHandlers) {
     return (
       <View
         {...panHandlers}
         pointerEvents="auto"
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={semanticLabel}
-        accessibilityHint={OKEY_ACCESSIBILITY.tileHint}
-        accessibilityState={{ selected: !!selected, disabled: !onPress }}
-        accessibilityActions={accessibilityActions}
-        onAccessibilityAction={(event) => handleAccessibilityAction(event.nativeEvent.actionName)}
         style={tileStyle}
         collapsable={false}
       >
@@ -259,13 +233,6 @@ export function OkeyTileFace({
     <Pressable
       disabled={!onPress}
       onPress={onPress}
-      accessible
-      accessibilityRole={onPress ? "button" : "image"}
-      accessibilityLabel={semanticLabel}
-      accessibilityHint={onPress ? OKEY_ACCESSIBILITY.tileHint : undefined}
-      accessibilityState={{ selected: !!selected, disabled: !onPress }}
-      accessibilityActions={accessibilityActions}
-      onAccessibilityAction={(event) => handleAccessibilityAction(event.nativeEvent.actionName)}
       style={tileStyle}
     >
       {tileNode}

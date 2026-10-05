@@ -1,11 +1,11 @@
 import { FeedbackPopup } from "@/components/lobby/FeedbackPopup";
 import { AvatarProgressRing } from "@/components/player/AvatarProgressRing";
 import { getFriendRequests } from "@/lib/friends";
+import { useAuthState } from "@/lib/auth-state";
 import { useProfile } from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { useWallet } from "@/lib/wallet-context";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUser } from "@/lib/supabaseAuth";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -21,10 +21,10 @@ export function LobbyHeader() {
     isCompactWidth,
     isCompactHeight,
     isLandscape,
-    insets,
   } = useAppLayout();
 
   const { profile, loading } = useProfile();
+  const userId = useAuthState().userId;
   const rankTitle = getRankTitleFromPoints(profile?.points);
 
   const {
@@ -39,18 +39,18 @@ export function LobbyHeader() {
   const [feedbackVisible, setFeedbackVisible] = useState(false);
 
   const refreshFriendRequestCount = useCallback(async () => {
-    if (loading || !profile?.id) {
+    if (loading || !userId) {
       return;
     }
 
     try {
-      const requests = await getFriendRequests();
+      const requests = await getFriendRequests(userId);
       setFriendRequestCount(requests.length);
     } catch (error) {
       console.log("[LobbyHeader] Failed to load friend requests:", error);
       setFriendRequestCount(0);
     }
-  }, [loading, profile?.id]);
+  }, [loading, userId]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -68,20 +68,17 @@ export function LobbyHeader() {
     const channelId = ++friendRequestHeaderChannelSequence;
 
     async function subscribeToFriendRequests() {
-      if (loading || !profile?.id) return;
-
-      const user = await getCurrentUser();
-      if (!mounted || !user) return;
+      if (loading || !userId || !mounted) return;
 
       channel = supabase
-        .channel(`friend-request-header-count:${user.id}:${channelId}`)
+        .channel(`friend-request-header-count:${userId}:${channelId}`)
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
             table: "friendships",
-            filter: `addressee_id=eq.${user.id}`,
+            filter: `addressee_id=eq.${userId}`,
           },
           () => {
             void refreshFriendRequestCount();
@@ -99,7 +96,7 @@ export function LobbyHeader() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [loading, profile?.id, refreshFriendRequestCount]);
+  }, [loading, userId, refreshFriendRequestCount]);
 
   return (
     <>
@@ -108,7 +105,6 @@ export function LobbyHeader() {
           style={[
             styles.topBar,
             {
-              paddingTop: Math.max(0, insets.top - 14),
               paddingHorizontal: isCompactWidth
                 ? 16
                 : isLandscape
@@ -123,7 +119,7 @@ export function LobbyHeader() {
         >
           <Pressable
             style={[styles.userBox, isCompact && { width: 140 }]}
-            onPress={() => router.push(profile ? "/profile" : "/login")}
+            onPress={() => router.push(userId ? "/profile" : "/login")}
           >
             <AvatarProgressRing
               avatarId={profile?.avatarId}
@@ -134,7 +130,7 @@ export function LobbyHeader() {
 
             <View style={styles.userText}>
               <Text style={styles.username} numberOfLines={1}>
-                {profile?.displayName ?? "Guest"}
+                {profile?.displayName ?? (userId ? "Player" : "Guest")}
               </Text>
 
               <Text style={styles.level}>
@@ -144,7 +140,7 @@ export function LobbyHeader() {
           </Pressable>
 
           <View style={styles.topRight}>
-            {profile ? (
+            {userId ? (
               <View
                 style={[
                   styles.balanceGroup,
@@ -239,7 +235,7 @@ export function LobbyHeader() {
             >
               <Ionicons name="people" size={19} color="#ffffff" />
 
-              {!loading && profile?.id && friendRequestCount > 0 ? (
+              {!loading && userId && friendRequestCount > 0 ? (
                 <View style={styles.friendRequestBadge}>
                   <Text style={styles.friendRequestBadgeText}>
                     {friendRequestCount > 9
@@ -519,7 +515,6 @@ const styles = StyleSheet.create({
   headerGradientLine: {
     height: 1,
     marginTop: 10,
-    marginBottom: 14,
     borderRadius: 999,
     opacity: 0.95,
   },

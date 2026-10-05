@@ -1,6 +1,7 @@
 import { formatAznif } from "@/lib/aznif-display";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId, getTransactions } from "@/lib/wallet";
+import { useAuthState } from "@/lib/auth-state";
+import { getTransactions } from "@/lib/wallet";
 import { WalletTransaction } from "@/types/wallet";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -12,19 +13,19 @@ import {
 } from "react-native";
 
 export function TransfersPanel() {
+  const currentUserId = useAuthState().userId;
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentUserId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
-    Promise.all([getTransactions(), getCurrentUserId()])
-      .then(async ([txs, uid]) => {
+    getTransactions(currentUserId)
+      .then(async (txs) => {
         setTransactions(txs);
-        setCurrentUserId(uid);
 
         const profileIds = Array.from(
           new Set(
@@ -58,7 +59,7 @@ export function TransfersPanel() {
         );
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentUserId]);
 
   const transferTransactions = useMemo(() => {
     return transactions.filter(

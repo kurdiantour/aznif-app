@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { supabase } from "@/lib/supabase";
 import { AVATAR_IDS, type AvatarId } from "@/types/avatar";
 
@@ -38,7 +38,7 @@ export function AvatarPickerModal({
   onClose,
 }: AvatarPickerModalProps) {
   const { width } = useWindowDimensions();
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
 
   const [isUploading, setIsUploading] = useState(false);
 
@@ -46,7 +46,7 @@ export function AvatarPickerModal({
   const avatarSize = optionSize - 12;
 
   async function handlePickImage() {
-    if (!profile || !onUploadAvatar || isUploading) {
+    if (!userId || !onUploadAvatar || isUploading) {
       return;
     }
 
@@ -92,7 +92,7 @@ export function AvatarPickerModal({
           : extensionFromMimeType;
 
       const fileName = `${Date.now()}.${fileExtension}`;
-      const filePath = `${profile.id}/${fileName}`;
+      const filePath = `${userId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 
 import { useGameParty } from "@/lib/gameInvitesProvider";
-import { supabase } from "@/lib/supabase";
+import { useAuthState } from "@/lib/auth-state";
+
 import {
   getOkeyRoomStatus,
   leaveOkeyRoom,
@@ -20,9 +21,9 @@ export function useOkeyRoomLifecycle({
 }) {
   const router = useRouter();
   const { party } = useGameParty();
+  const { userId: currentUserId } = useAuthState();
 
   const [room, setRoom] = useState<OkeyRoomSnapshot | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [leavingWaitingRoom, setLeavingWaitingRoom] = useState(false);
   const [subscriptionEpoch, setSubscriptionEpoch] = useState(0);
 
@@ -40,20 +41,6 @@ export function useOkeyRoomLifecycle({
       roomUnsubscribeRef.current();
       roomUnsubscribeRef.current = null;
     }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    void supabase.auth.getUser().then(({ data }) => {
-      if (active) {
-        setCurrentUserId(data.user?.id ?? null);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import type { Wallet } from '@/types/wallet';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useProfile } from './profile';
+import { useAuthState } from './auth-state';
 import { getBalance } from './wallet';
 import { subscribeWalletRefresh } from './walletEvents';
 
@@ -18,8 +18,7 @@ type WalletContextValue = {
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const { session, authLoading } = useProfile();
-  const userId = session?.user.id ?? null;
+  const { userId, authReady } = useAuthState();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [status, setStatus] = useState<WalletStatus>('idle');
   const [error, setError] = useState<Error | null>(null);
@@ -95,11 +94,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [publishWallet, userId]);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (!authReady) return;
     requestSequenceRef.current += 1;
     inFlightRef.current = null;
     pendingRefreshRef.current = false;
     activeUserIdRef.current = userId;
+    // Preserve the existing immediate wallet reset when the auth user changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     publishWallet(null);
     setError(null);
     if (!userId) {
@@ -108,7 +109,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
     setStatus('loading');
     void refreshWallet();
-  }, [authLoading, publishWallet, refreshWallet, userId]);
+  }, [authReady, publishWallet, refreshWallet, userId]);
 
   useEffect(
     () => subscribeWalletRefresh(() => void refreshWallet()),

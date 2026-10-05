@@ -3,9 +3,8 @@ import { RequestsPanel } from "@/components/friends/requests-panel";
 import { SendChipPopupContext } from "@/components/friends/send-chip-popup";
 import { TransfersPanel } from "@/components/friends/transfers-panel";
 import { getFriendRequests } from "@/lib/friends";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "expo-router/react-navigation";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect } from "expo-router";
@@ -23,7 +22,7 @@ const tabs: { key: TabKey; label: string }[] = [
 let friendRequestChannelSequence = 0;
 
 export default function InviteFriendsScreen() {
-  const { profile } = useProfile();
+  const { userId, authReady } = useAuthState();
   const [activeTab, setActiveTab] = useState<TabKey>("friends");
   const [searchQuery, setSearchQuery] = useState("");
   const [requestCount, setRequestCount] = useState(0);
@@ -32,11 +31,11 @@ export default function InviteFriendsScreen() {
   const { showSendChipPopup } = useContext(SendChipPopupContext);
 
   const refreshRequestCount = useCallback(async () => {
-    if (!profile) return;
+    if (!userId) return;
 
-    const requests = await getFriendRequests();
+    const requests = await getFriendRequests(userId);
     setRequestCount(requests.length);
-  }, [profile]);
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -62,12 +61,9 @@ export default function InviteFriendsScreen() {
     const channelId = ++friendRequestChannelSequence;
 
     async function subscribeToFriendRequestCount() {
-      if (!profile) return;
+      if (!userId || !mounted) return;
 
-      const user = await getCurrentUser();
-      if (!mounted || !user) return;
-
-      const channelPrefix = `realtime:friend-request-count:${user.id}`;
+      const channelPrefix = `realtime:friend-request-count:${userId}`;
       const staleChannels = supabase
         .getChannels()
         .filter((existingChannel) =>
@@ -83,14 +79,14 @@ export default function InviteFriendsScreen() {
       if (!mounted) return;
 
       channel = supabase
-        .channel(`friend-request-count:${user.id}:${channelId}`)
+        .channel(`friend-request-count:${userId}:${channelId}`)
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
             table: "friendships",
-            filter: `addressee_id=eq.${user.id}`,
+            filter: `addressee_id=eq.${userId}`,
           },
           () => {
             void refreshRequestCount();
@@ -107,9 +103,9 @@ export default function InviteFriendsScreen() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [profile, refreshRequestCount]);
+  }, [userId, refreshRequestCount]);
 
-  if (!profile) {
+  if (authReady && !userId) {
     return <Redirect href="/login" />;
   }
 
@@ -228,8 +224,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     gap: 12,
-    paddingTop: 0,
-    paddingBottom: 82,
   },
 
   sidebar: {

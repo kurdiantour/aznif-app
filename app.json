@@ -2,22 +2,28 @@
   "expo": {
     "name": "Aznif",
     "slug": "domino-app",
-    "version": "1.2.6",
+    "version": "1.2.7",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "dominoapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "runtimeVersion": "1.2.6-ios-gestures-v2",
-      "buildNumber": "78",
+      "runtimeVersion": "1.2.7-ios-gestures-v2",
+      "buildNumber": "84",
       "supportsTablet": true,
+      "requireFullScreen": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.behzadhakeem.dominoapp",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
       }
     },
     "android": {
-      "versionCode": 22,
+      "versionCode": 23,
       "adaptiveIcon": {
         "backgroundColor": "#050b22",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -48,10 +54,21 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
+      "./plugins/withAndroidGameOrientation",
       "./plugins/withIosGameSystemGestures",
       "./plugins/withIosFacebookLogin",
       "expo-web-browser",
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Speda-Regular.ttf",
+            "./assets/fonts/Speda-Bold.ttf",
+            "./assets/fonts/Roboto-Medium.ttf"
+          ]
+        }
+      ],
       [
         "expo-splash-screen",
         {

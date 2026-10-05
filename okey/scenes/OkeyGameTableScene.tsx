@@ -1,7 +1,7 @@
 import { OkeyReturningJokerOverlay, useOkeyReturningJokerPresentation } from "@/okey/presentation/OkeyReturningJokerPresentation";
 import type { OkeyRoomSnapshot } from "@/okey/multiplayer/okey-room-api";
 import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
-import { getHumanPlayerProfiles, type HumanPlayerProfile } from "@/lib/profile";
+import { getHumanPlayerProfiles, useProfile, type HumanPlayerProfile } from "@/lib/profile";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -151,6 +151,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
 
   const controller = isPreview ? previewController : onlineController;
   const currentUserId = isPreview ? "seat-0" : roomLifecycle.currentUserId;
+  const { profile: localProfile } = useProfile();
   const onlineRoom = isPreview ? null : roomLifecycle.room;
   const waitingForOnlinePlayers = isPreview ? false : roomLifecycle.waitingForPlayers;
   const countdownInProgress = isPreview ? false : roomLifecycle.countdownInProgress;
@@ -168,9 +169,9 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
         .map((member) => member.userId)
         .filter(
           (userId): userId is string =>
-            typeof userId === "string" && userId.length > 0,
+            typeof userId === "string" && userId.length > 0 && userId !== currentUserId,
         ),
-    [onlineRoom?.members],
+    [currentUserId, onlineRoom?.members],
   );
 
   const waitingMemberUserIdsKey = waitingMemberUserIds.join("|");
@@ -216,7 +217,9 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
   const waitingMembers = useMemo(
     () =>
       (onlineRoom?.members ?? []).map((member) => {
-        const profile = waitingProfiles.get(member.userId);
+        const profile = member.userId === currentUserId
+          ? localProfile?.id === currentUserId ? localProfile : null
+          : waitingProfiles.get(member.userId);
 
         return {
           playerIndex: member.playerIndex,
@@ -224,7 +227,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
           avatarUrl: profile?.avatarUrl,
         };
       }),
-    [onlineRoom?.members, waitingProfiles],
+    [currentUserId, localProfile, onlineRoom?.members, waitingProfiles],
   );
 
   const isOnlineRoomActive = isPreview || onlineRoom?.status === "playing" || onlineRoom?.status === "finished";

@@ -17,7 +17,7 @@ import { useDailyGift } from "@/hooks/useDailyGift";
 import { useDailyQuests } from "@/hooks/useDailyQuests";
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 
 export type BottomNavKey =
   | "home"
@@ -29,6 +29,7 @@ type BottomNavProps = {
   active?: BottomNavKey | null;
   onChange?: (key: BottomNavKey) => void;
   requireAuth?: boolean;
+  inFlow?: boolean;
 };
 
 const allItems = [
@@ -71,6 +72,7 @@ export function BottomNav({
   active: controlledActive,
   onChange,
   requireAuth = false,
+  inFlow = false,
 }: BottomNavProps) {
   const pathname = usePathname();
 
@@ -82,7 +84,7 @@ export function BottomNav({
 
   const dailyGift = useDailyGift();
   const dailyQuests = useDailyQuests();
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
   const {
     party,
     cancelParty,
@@ -124,12 +126,12 @@ export function BottomNav({
 
   return (
     <>
-      <View style={styles.wrapper}>
+      <View style={[styles.wrapper, !inFlow && styles.overlay]}>
         <View style={styles.row}>
-          {party && profile?.id ? (
+          {party && userId ? (
             <GamePartyChip
               party={party}
-              currentUserId={profile.id}
+              currentUserId={userId}
               cancelling={cancellingParty}
               error={partyError}
               onCancel={() => void cancelParty()}
@@ -236,14 +238,16 @@ export function BottomNav({
 
 const styles = StyleSheet.create({
   wrapper: {
-    position: "absolute",
-
-    left: 0,
-    right: 0,
-    bottom: 18,
     alignItems: "center",
     zIndex: 999,
     elevation: 20,
+  },
+
+  overlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 18,
   },
 
   row: {

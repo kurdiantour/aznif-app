@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { supabase } from "@/lib/supabase";
 
 type Props = {
@@ -27,7 +27,7 @@ export function FeedbackPopup({ visible, onClose }: Props) {
   const [progress] = useState(() => new Animated.Value(visible ? 1 : 0));
   const closing = useRef(false);
 
-  const { profile } = useProfile();
+  const { userId } = useAuthState();
   const [message, setMessage] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -108,7 +108,7 @@ export function FeedbackPopup({ visible, onClose }: Props) {
   }
 
   async function handleSubmit() {
-    if (!profile || isSubmitting) return;
+    if (!userId || isSubmitting) return;
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
@@ -128,7 +128,7 @@ export function FeedbackPopup({ visible, onClose }: Props) {
               ? "image/webp"
               : "image/jpeg";
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
-        const filePath = `${profile.id}/${fileName}`;
+        const filePath = `${userId}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("feedback_images")
@@ -143,7 +143,7 @@ export function FeedbackPopup({ visible, onClose }: Props) {
 
       // 2. Insert into Database
       const { error: dbError } = await supabase.from("feedback").insert({
-        user_id: profile.id,
+        user_id: userId,
         message: trimmedMessage,
         image_paths: uploadedPaths,
       });

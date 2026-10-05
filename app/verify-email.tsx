@@ -1,5 +1,5 @@
 import { AuthScreen, styles } from "./forgot-password";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { resendVerificationEmail } from "@/lib/supabaseAuth";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -7,16 +7,16 @@ import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
-  const { authLoading, session } = useProfile();
+  const { authReady, userId } = useAuthState();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (!authLoading && session) {
+    if (authReady && userId) {
       router.replace("/(tabs)/play");
     }
-  }, [authLoading, router, session]);
+  }, [authReady, router, userId]);
 
   const resend = async () => {
     if (!email.trim())

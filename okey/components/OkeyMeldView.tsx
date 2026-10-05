@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
-import { getOkeyMeldAccessibilityLabel } from "@/okey/accessibility/okey-accessibility";
 import { isOkeyWildcard } from "@/okey/engine/okey-engine";
 import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 
@@ -130,12 +129,6 @@ export function OkeyMeldView({
 
   return (
     <View
-      accessible
-      accessibilityRole="summary"
-      accessibilityLabel={getOkeyMeldAccessibilityLabel(
-        meld,
-        okeyTile,
-      )}
       style={{
         position: "relative",
         width: meldWidth,

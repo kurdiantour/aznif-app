@@ -1,6 +1,6 @@
 import { AvatarPickerModal } from "@/components/player/AvatarPickerModal";
 import { AvatarProgressRing } from "@/components/player/AvatarProgressRing";
-import type { AvatarId } from "@/types/avatar";
+import { useAuthState } from "@/lib/auth-state";
 import { getCurrentLeaderboardRank, useProfile } from "@/lib/profile";
 import {
   calculateLevelFromPoints,
@@ -9,6 +9,7 @@ import {
   MAX_LEVEL,
   POINTS_PER_LEVEL,
 } from "@/lib/progression";
+import type { AvatarId } from "@/types/avatar";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { Redirect, useRouter } from "expo-router";
@@ -27,8 +28,12 @@ import {
 
 export default function ProfileScreen() {
   const router = useRouter();
+
   const { profile, loading, updateProfile } = useProfile();
+  const { userId, authReady } = useAuthState();
+
   const { width } = useWindowDimensions();
+
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -36,6 +41,7 @@ export default function ProfileScreen() {
   const [savingName, setSavingName] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [modalProgress] = useState(() => new Animated.Value(0));
+
   const isClosing = useRef(false);
 
   useEffect(() => {
@@ -51,6 +57,7 @@ export default function ProfileScreen() {
 
   const closeProfile = useCallback(() => {
     if (isClosing.current) return;
+
     isClosing.current = true;
 
     Animated.timing(modalProgress, {
@@ -73,13 +80,13 @@ export default function ProfileScreen() {
     let isMounted = true;
 
     async function loadLeaderboardRank() {
-      if (!profile) {
+      if (!userId) {
         setLeaderboardRank(null);
         return;
       }
 
       try {
-        const rank = await getCurrentLeaderboardRank(profile.id);
+        const rank = await getCurrentLeaderboardRank(userId);
 
         if (isMounted) {
           setLeaderboardRank(rank);
@@ -98,9 +105,9 @@ export default function ProfileScreen() {
     return () => {
       isMounted = false;
     };
-  }, [profile]);
+  }, [userId]);
 
-  if (loading) {
+  if (!authReady || loading) {
     return (
       <ProfileShell progress={modalProgress}>
         <ActivityIndicator color="#f8d774" />
@@ -108,22 +115,35 @@ export default function ProfileScreen() {
     );
   }
 
-  if (!profile) {
+  if (!userId) {
     return <Redirect href="/login" />;
   }
 
+  if (!profile) {
+    return (
+      <ProfileShell progress={modalProgress}>
+        <ActivityIndicator color="#f8d774" />
+      </ProfileShell>
+    );
+  }
+
   const currentProfile = profile;
+
   const points = Math.max(currentProfile.points ?? 0, 0);
   const level = calculateLevelFromPoints(points);
   const pointsInLevel = points % POINTS_PER_LEVEL;
   const progress = Math.max(pointsInLevel / POINTS_PER_LEVEL, 0.04);
   const rankTitle = getRankTitleFromPoints(points);
+
   const nextRankTitle =
     level >= MAX_LEVEL ? null : getRankTitleFromLevel(level + 1);
+
   const pointsToNextLevel =
     level >= MAX_LEVEL ? 0 : POINTS_PER_LEVEL - pointsInLevel;
+
   const avatarId = currentProfile.avatarId as AvatarId | undefined;
   const isWideLayout = width >= 720;
+
   const gamesPlayed = Math.max(currentProfile.gamesPlayed ?? 0, 0);
   const gamesWon = Math.max(currentProfile.gamesWon ?? 0, 0);
   const gamesLost = Math.max(currentProfile.gamesLost ?? 0, 0);
@@ -176,6 +196,7 @@ export default function ProfileScreen() {
 
   async function handleUploadAvatar(url: string) {
     if (savingAvatar) return;
+
     setSavingAvatar(true);
 
     try {
@@ -217,6 +238,7 @@ export default function ProfileScreen() {
         ]}
       >
         <View pointerEvents="none" style={styles.topGlow} />
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close profile"
@@ -235,7 +257,9 @@ export default function ProfileScreen() {
           <View style={styles.iconButtonPlaceholder} />
         </View>
 
-        <View style={[styles.contentRow, !isWideLayout && styles.contentStack]}>
+        <View
+          style={[styles.contentRow, !isWideLayout && styles.contentStack]}
+        >
           <View style={styles.profileCard}>
             <View style={styles.avatarRing}>
               <AvatarProgressRing
@@ -249,71 +273,103 @@ export default function ProfileScreen() {
 
               <Pressable
                 accessibilityLabel="Change avatar"
-                style={[styles.changeAvatarButton, savingAvatar && styles.disabled]}
+                style={[
+                  styles.changeAvatarButton,
+                  savingAvatar && styles.disabled,
+                ]}
                 onPress={() => setIsAvatarPickerOpen(true)}
                 disabled={savingAvatar}
               >
                 {savingAvatar ? (
                   <ActivityIndicator color="#f8d774" size="small" />
                 ) : (
-                  <Ionicons name="camera-outline" size={15} color="#f8d774" />
+                  <Ionicons
+                    name="camera-outline"
+                    size={15}
+                    color="#f8d774"
+                  />
                 )}
               </Pressable>
             </View>
-                <View style={styles.nameRow}>
-                  {isEditingName ? (
-                    <TextInput
-                      value={draftName}
-                      onChangeText={setDraftName}
-                      onBlur={() => void finishEditingName()}
-                      onSubmitEditing={() => void finishEditingName()}
-                      editable={!savingName}
-                      returnKeyType="done"
-                      maxLength={18}
-                      selectTextOnFocus
-                      style={styles.nameInput}
-                    />
-                  ) : (
-                    <>
-                      <Text style={styles.name} numberOfLines={1}>
-                        {currentProfile.displayName}
-                      </Text>
-                      <Pressable
-                        accessibilityLabel="Change profile name"
-                        style={styles.editNameButton}
-                        onPress={startEditingName}
-                      >
-                        <Ionicons name="pencil" size={13} color="#f8d774" />
-                      </Pressable>
-                    </>
-                  )}
-                </View>
-                <Text style={styles.rank}>{currentProfile.playerId}</Text>
 
-              <Pressable style={styles.telegramButton} onPress={handleOpenTelegram}>
-                <View style={styles.telegramIconBox}>
-                  <Ionicons name="paper-plane-outline" size={14} color="#f8d774" />
-                </View>
-                <Text style={styles.telegramText}>بەشداری تیلیگراممان بە</Text>
-              </Pressable>
+            <View style={styles.nameRow}>
+              {isEditingName ? (
+                <TextInput
+                  value={draftName}
+                  onChangeText={setDraftName}
+                  onBlur={() => void finishEditingName()}
+                  onSubmitEditing={() => void finishEditingName()}
+                  editable={!savingName}
+                  returnKeyType="done"
+                  maxLength={18}
+                  selectTextOnFocus
+                  style={styles.nameInput}
+                />
+              ) : (
+                <>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {currentProfile.displayName}
+                  </Text>
 
+                  <Pressable
+                    accessibilityLabel="Change profile name"
+                    style={styles.editNameButton}
+                    onPress={startEditingName}
+                  >
+                    <Ionicons name="pencil" size={13} color="#f8d774" />
+                  </Pressable>
+                </>
+              )}
+            </View>
+
+            <Text style={styles.rank}>{currentProfile.playerId}</Text>
+
+            <Pressable
+              style={styles.telegramButton}
+              onPress={handleOpenTelegram}
+            >
+              <View style={styles.telegramIconBox}>
+                <Ionicons
+                  name="paper-plane-outline"
+                  size={14}
+                  color="#f8d774"
+                />
+              </View>
+
+              <Text style={styles.telegramText}>
+                بەشداری تیلیگراممان بە
+              </Text>
+            </Pressable>
           </View>
 
           <View style={styles.detailsColumn}>
             <View style={styles.progressCard}>
               <View style={styles.progressHeader}>
-                <Text style={styles.points}>{points.toLocaleString()} Points</Text>
+                <Text style={styles.points}>
+                  {points.toLocaleString()} Points
+                </Text>
+
                 <View style={styles.levelPill}>
                   <Text style={styles.levelPillText}>{rankTitle}</Text>
                 </View>
               </View>
+
               <View style={styles.progressTrack}>
                 <View
-                  style={[styles.progressFill, { width: `${progress * 100}%` }]}
+                  style={[
+                    styles.progressFill,
+                    { width: `${progress * 100}%` },
+                  ]}
                 />
               </View>
+
               <View style={styles.nextLevelRow}>
-                <Ionicons name="trending-up-outline" size={16} color="#f8d774" />
+                <Ionicons
+                  name="trending-up-outline"
+                  size={16}
+                  color="#f8d774"
+                />
+
                 {level >= MAX_LEVEL ? (
                   <Text style={styles.nextLevelText}>
                     گەیشتوویت بە بەرزترین پلە
@@ -323,6 +379,7 @@ export default function ProfileScreen() {
                     <Text style={styles.nextLevelEnglish}>
                       {`${pointsToNextLevel.toLocaleString()} Points`}
                     </Text>
+
                     <Text style={styles.nextLevelKurdish}>
                       {`ماوە بۆ ئاستی ${nextRankTitle}`}
                     </Text>
@@ -332,16 +389,27 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.statsGrid}>
-              <StatCell label="یارییەکان" value={gamesPlayed.toLocaleString()} />
-              <StatCell label="سەرکەوتن" value={gamesWon.toLocaleString()} />
-              <StatCell label="دۆڕان" value={gamesLost.toLocaleString()} />
+              <StatCell
+                label="یارییەکان"
+                value={gamesPlayed.toLocaleString()}
+              />
+
+              <StatCell
+                label="سەرکەوتن"
+                value={gamesWon.toLocaleString()}
+              />
+
+              <StatCell
+                label="دۆڕان"
+                value={gamesLost.toLocaleString()}
+              />
+
               <StatCell
                 label="پلەی لیدەربۆرد"
                 value={leaderboardRank ? `#${leaderboardRank}` : "-"}
               />
             </View>
-
-            </View>
+          </View>
         </View>
       </Animated.View>
 
@@ -388,6 +456,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(5,4,12,0.8)",
   },
+
   fixedContent: {
     flex: 1,
     alignItems: "center",
@@ -395,6 +464,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
   },
+
   panel: {
     width: "100%",
     maxWidth: 800,
@@ -414,9 +484,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 20,
   },
+
   panelWide: {
     maxWidth: 800,
   },
+
   topGlow: {
     position: "absolute",
     top: -55,
@@ -426,6 +498,7 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     backgroundColor: "rgba(255,202,68,0.1)",
   },
+
   topRow: {
     minHeight: 42,
     flexDirection: "row",
@@ -433,6 +506,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 50,
   },
+
   screenTitle: {
     color: "#ffffff",
     fontSize: 18,
@@ -441,6 +515,7 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
     transform: [{ translateY: -10 }],
   },
+
   iconButton: {
     position: "absolute",
     top: 12,
@@ -455,20 +530,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   iconButtonPlaceholder: {
     display: "none",
   },
+
   pressed: {
     opacity: 0.72,
   },
+
   contentRow: {
     flexDirection: "row",
     alignItems: "stretch",
     gap: 12,
   },
+
   contentStack: {
     flexDirection: "column",
   },
+
   profileCard: {
     flex: 0.9,
     minWidth: 0,
@@ -481,17 +561,20 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 14,
   },
+
   detailsColumn: {
     flex: 1.25,
     minWidth: 0,
     gap: 10,
   },
+
   avatarRing: {
     width: 82,
     height: 82,
     alignItems: "center",
     justifyContent: "center",
   },
+
   changeAvatarButton: {
     position: "absolute",
     right: -2,
@@ -505,9 +588,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   avatar: {
     borderRadius: 35,
   },
+
   nameRow: {
     marginTop: 9,
     minHeight: 36,
@@ -546,6 +631,7 @@ const styles = StyleSheet.create({
     fontFamily: "RobotoMedium",
     textAlign: "center",
   },
+
   rank: {
     color: "#f8d774",
     fontSize: 12,
@@ -554,6 +640,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     writingDirection: "ltr",
   },
+
   progressCard: {
     borderRadius: 6,
     borderWidth: 1,
@@ -561,17 +648,20 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 23, 42, 0.66)",
     padding: 14,
   },
+
   progressHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   points: {
     color: "#ffffff",
     fontSize: 13,
     fontFamily: "RobotoMedium",
     writingDirection: "rtl",
   },
+
   levelPill: {
     borderRadius: 4,
     borderWidth: 1,
@@ -580,12 +670,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 6,
   },
+
   levelPillText: {
     color: "#f8d774",
     fontSize: 11,
     fontFamily: "SpedaBold",
     writingDirection: "rtl",
   },
+
   progressTrack: {
     height: 4,
     borderRadius: 99,
@@ -594,11 +686,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
     alignItems: "flex-end",
   },
+
   progressFill: {
     height: "100%",
     borderRadius: 99,
     backgroundColor: "#f8d774",
   },
+
   nextLevelRow: {
     minHeight: 34,
     flexDirection: "row",
@@ -612,6 +706,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
     paddingHorizontal: 10,
   },
+
   nextLevelText: {
     color: "#f8d774",
     fontSize: 12,
@@ -619,17 +714,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
     writingDirection: "rtl",
   },
+
   nextLevelContent: {
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
   },
+
   nextLevelEnglish: {
     color: "#f8d774",
     fontSize: 12,
     fontFamily: "RobotoMedium",
   },
+
   nextLevelKurdish: {
     color: "#f8d774",
     fontSize: 12,
@@ -637,10 +735,12 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
     textAlign: "right",
   },
+
   statsGrid: {
     flexDirection: "row",
     gap: 8,
   },
+
   statCell: {
     flex: 1,
     minHeight: 58,
@@ -652,12 +752,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
+
   statValue: {
     color: "#ffffff",
     fontSize: 16,
     fontFamily: "RobotoMedium",
     textAlign: "center",
   },
+
   statLabel: {
     color: "#b6c2d8",
     fontSize: 10,
@@ -666,6 +768,7 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
     marginTop: 3,
   },
+
   actionButton: {
     alignSelf: "stretch",
     minHeight: 44,
@@ -680,6 +783,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(127, 29, 29, 0.12)",
     marginTop: 10,
   },
+
   telegramButton: {
     alignSelf: "stretch",
     minHeight: 44,
@@ -694,6 +798,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 23, 42, 0.66)",
     marginTop: 14,
   },
+
   telegramIconBox: {
     width: 30,
     height: 30,
@@ -702,6 +807,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   logoutIconBox: {
     width: 30,
     height: 30,
@@ -710,6 +816,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   telegramText: {
     flex: 1,
     color: "#ffffff",
@@ -718,6 +825,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     writingDirection: "rtl",
   },
+
   logoutText: {
     flex: 1,
     color: "#ff8b8b",
@@ -726,6 +834,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     writingDirection: "rtl",
   },
+
   disabled: {
     opacity: 0.65,
   },

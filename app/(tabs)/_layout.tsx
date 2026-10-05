@@ -5,6 +5,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   SendChipPopup,
@@ -26,12 +27,12 @@ import {
   MOBILE_HORIZONTAL_INSET,
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
+import { useAuthState } from "@/lib/auth-state";
 import type { Friend } from "@/lib/friends";
 import { ENABLE_SHOP_FEATURES } from "@/lib/platformFeatures";
-import { useProfile } from "@/lib/profile";
 
 export default function TabsLayout() {
-  const { profile, loading: profileLoading } = useProfile();
+  const { userId, authReady } = useAuthState();
   const pathname = usePathname();
 
   const [sendChipFriend, setSendChipFriend] =
@@ -49,12 +50,13 @@ export default function TabsLayout() {
     } | null>(null);
 
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isTablet = Math.min(width, height) >= 600;
 
   const [avatarPreviewData, setAvatarPreviewData] =
     useState<AvatarPreviewData | null>(null);
 
-  if (profileLoading) {
+  if (!authReady) {
     return <View style={styles.container} />;
   }
 
@@ -62,7 +64,7 @@ export default function TabsLayout() {
     pathname.includes("/play") ||
     pathname.includes("/lobby");
 
-  if (!profile && !isGuestAllowedRoute) {
+  if (!userId && !isGuestAllowedRoute) {
     return <Redirect href="/login" />;
   }
 
@@ -95,7 +97,15 @@ export default function TabsLayout() {
               setAvatarPreviewData(avatar),
           }}
         >
-          <View style={styles.container}>
+          <View
+            style={[
+              styles.container,
+              {
+                paddingTop: Math.max(14, insets.top),
+                paddingBottom: Math.max(18, insets.bottom),
+              },
+            ]}
+          >
             <LobbyHeader />
 
             <View
@@ -111,7 +121,7 @@ export default function TabsLayout() {
               <Slot />
             </View>
 
-            <BottomNav requireAuth={!profile} />
+            <BottomNav requireAuth={!userId} inFlow />
 
             <GlobalLeaderboardConsent />
 
@@ -151,12 +161,12 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 14,
-    paddingBottom: 18,
     backgroundColor: "#090b1d",
   },
 
   content: {
     flex: 1,
+    marginTop: 10,
+    marginBottom: 12,
   },
 });

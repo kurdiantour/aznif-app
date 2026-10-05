@@ -2,6 +2,7 @@ import { PlayerAvatar } from "@/components/player/PlayerAvatar";
 import type { AvatarId } from "@/types/avatar";
 import { formatAznif } from "@/lib/aznif-display";
 import { sendFriendRequest } from "@/lib/friends";
+import { useAuthState } from "@/lib/auth-state";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { supabase } from "@/lib/supabase";
 import type { PlayerProfileTarget } from "@/components/game/player-profile-target";
@@ -48,6 +49,7 @@ export default function PlayerProfilePopup({
   player: PlayerProfileTarget | null;
   onDismiss: () => void;
 }) {
+  const { userId } = useAuthState();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [friendState, setFriendState] =
@@ -94,12 +96,9 @@ export default function PlayerProfilePopup({
       setLoading(true);
 
       void (async () => {
-        const [{ data: auth }, { data: cards }] = await Promise.all([
-          supabase.auth.getUser(),
-          supabase.rpc("get_public_player_card", {
-            p_player_id: player.id,
-          }),
-        ]);
+        const { data: cards } = await supabase.rpc("get_public_player_card", {
+          p_player_id: player.id,
+        });
 
         if (!active) return;
 
@@ -116,7 +115,7 @@ export default function PlayerProfilePopup({
             : null,
         );
 
-        const ownId = auth.user?.id;
+        const ownId = userId;
 
         if (!ownId) {
           setFriendState("unavailable");
@@ -157,7 +156,7 @@ export default function PlayerProfilePopup({
       active = false;
       clearTimeout(timeoutId);
     };
-  }, [player]);
+  }, [player, userId]);
 
   const addFriend = async () => {
     if (!player || friendState !== "none") return;

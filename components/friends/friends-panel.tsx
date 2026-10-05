@@ -1,4 +1,4 @@
-import { getAuthState, hasReadySession, subscribeAuthState } from "@/lib/auth-state";
+import { getAuthState, hasReadySession, subscribeAuthState, useAuthState } from "@/lib/auth-state";
 import {
   getFriends,
   searchFriendCandidates,
@@ -13,7 +13,6 @@ import {
 } from "@/lib/profile";
 import { usePresence } from "@/lib/presence";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUser } from "@/lib/supabaseAuth";
 import { useFocusEffect } from "expo-router/react-navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -247,6 +246,7 @@ export function FriendsPanel({
   const isSearchActive = searchQuery.trim().length >= 2;
   const canRunSearch = meaningfulSearchQuery.length > 0;
   const { statuses, refreshPresence } = usePresence();
+  const userId = useAuthState().userId;
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [searchResults, setSearchResults] =
@@ -258,9 +258,9 @@ export function FriendsPanel({
     useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const nextFriends = await getFriends();
+    const nextFriends = await getFriends(userId);
     setFriends(nextFriends);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
@@ -288,23 +288,17 @@ export function FriendsPanel({
   );
 
   useEffect(() => {
-    let mounted = true;
     let channel: ReturnType<typeof supabase.channel> | null = null;
-
-    async function subscribeToFriendships() {
-      const user = await getCurrentUser();
-
-      if (!mounted || !user) return;
-
+    if (userId) {
       channel = supabase
-        .channel(`friends-list:${user.id}`)
+        .channel(`friends-list:${userId}`)
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
             table: "friendships",
-            filter: `requester_id=eq.${user.id}`,
+            filter: `requester_id=eq.${userId}`,
           },
           () => {
             void refresh();
@@ -316,7 +310,7 @@ export function FriendsPanel({
             event: "*",
             schema: "public",
             table: "friendships",
-            filter: `addressee_id=eq.${user.id}`,
+            filter: `addressee_id=eq.${userId}`,
           },
           () => {
             void refresh();
@@ -325,16 +319,13 @@ export function FriendsPanel({
         .subscribe();
     }
 
-    void subscribeToFriendships();
-
     return () => {
-      mounted = false;
 
       if (channel) {
         void supabase.removeChannel(channel);
       }
     };
-  }, [refresh]);
+  }, [refresh, userId]);
 
   useEffect(() => {
     const ids = friends.map((friend) => friend.id);

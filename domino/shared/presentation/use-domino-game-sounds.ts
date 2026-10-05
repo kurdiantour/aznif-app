@@ -8,6 +8,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
 import { AppState } from "react-native";
+import * as Haptics from "expo-haptics";
+import {
+  getGameFeedbackPreferences,
+  loadGameFeedbackPreferences,
+  subscribeGameFeedbackPreferences,
+} from "@/lib/gameFeedbackPreferences";
 const PLACEMENT_SOURCES = [
   require("@/assets/audio/game/tile-placement-1.mp3"),
   require("@/assets/audio/game/tile-placement-2.mp3"),
@@ -79,7 +85,7 @@ async function playSegment(
   stopTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
   isActive: () => boolean,
 ) {
-  if (!isActive()) return;
+  if (!isActive() || !getGameFeedbackPreferences().soundEnabled) return;
 
   if (stopTimerRef.current) {
     clearTimeout(stopTimerRef.current);
@@ -88,12 +94,12 @@ async function playSegment(
 
   try {
     await ensureGameAudioSession();
-    if (!isActive()) return;
+    if (!isActive() || !getGameFeedbackPreferences().soundEnabled) return;
 
     player.pause();
     player.volume = segment.volume;
     await player.seekTo(segment.start, 0, 0);
-    if (!isActive()) return;
+    if (!isActive() || !getGameFeedbackPreferences().soundEnabled) return;
 
     player.play();
 
@@ -177,7 +183,26 @@ export function useGameSounds({
   const appIsActiveRef = useRef(AppState.currentState === "active");
   const isAppActive = useCallback(() => appIsActiveRef.current, []);
 
+  const giveFeedback = useCallback((player: AudioPlayer, segment: { start: number; durationMs: number; volume: number }, timer: MutableRefObject<ReturnType<typeof setTimeout> | null>) => {
+    if (!isAppActive()) return;
+    const preferences = getGameFeedbackPreferences();
+    if (preferences.soundEnabled) void playSegment(player, segment, timer, isAppActive);
+    if (preferences.hapticsEnabled) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch((error) =>
+        console.warn("Unable to run Domino haptic feedback", error),
+      );
+    }
+  }, [isAppActive]);
+
   useEffect(() => {
+    void loadGameFeedbackPreferences();
+    const unsubscribePreferences = subscribeGameFeedbackPreferences((preferences) => {
+      if (!preferences.soundEnabled) {
+        [...placementPlayers, boneyardPlayer, passPlayer].forEach((player) => {
+          try { player.pause(); } catch { /* Player may be released. */ }
+        });
+      }
+    });
     if (appIsActiveRef.current) {
       void ensureGameAudioSession().catch((error) =>
         console.warn("[game-audio] audio session failed", error),
@@ -194,8 +219,8 @@ export function useGameSounds({
       }
     });
 
-    return () => subscription.remove();
-  }, []);
+    return () => { subscription.remove(); unsubscribePreferences(); };
+  }, [placementPlayers, boneyardPlayer, passPlayer]);
 
   const playRandomPlacement = useCallback(() => {
     let index = Math.floor(Math.random() * PLACEMENT_SEGMENTS.length);
@@ -208,13 +233,12 @@ export function useGameSounds({
 
     lastPlacementIndexRef.current = index;
 
-    void playSegment(
+    giveFeedback(
       placementPlayers[index],
       PLACEMENT_SEGMENTS[index],
       placementTimers[index],
-      isAppActive,
     );
-  }, [isAppActive, placementPlayers, placementTimers]);
+  }, [giveFeedback, placementPlayers, placementTimers]);
 
   useEffect(() => {
     const boardCount = getBoardTileCount(board);
@@ -235,14 +259,13 @@ export function useGameSounds({
     previousBoneyardCountRef.current = boneyardCount;
 
     if (previousCount !== null && boneyardCount < previousCount) {
-      void playSegment(
+      giveFeedback(
         boneyardPlayer,
         BONEYARD_SEGMENT,
         boneyardTimerRef,
-        isAppActive,
       );
     }
-  }, [boneyardCount, boneyardPlayer, isAppActive]);
+  }, [boneyardCount, boneyardPlayer, giveFeedback]);
 
   useEffect(() => {
     if (!hasInitializedPassRef.current) {
@@ -268,17 +291,16 @@ export function useGameSounds({
 
     previousPassKeyRef.current = passKey;
 
-    void playSegment(
+    giveFeedback(
       passPlayer,
       PASS_SEGMENT,
       passTimerRef,
-      isAppActive,
     );
   }, [
     currentTurnPlayerId,
     lastPassedPlayerId,
     passPlayer,
-    isAppActive,
+    giveFeedback,
   ]);
 
   useEffect(

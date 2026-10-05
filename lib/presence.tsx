@@ -10,7 +10,7 @@ import {
 } from "react";
 import { AppState } from "react-native";
 
-import { useProfile } from "./profile";
+import { useAuthState } from "./auth-state";
 import { supabase } from "./supabase";
 
 export type PresenceStatus =
@@ -24,11 +24,14 @@ type PresenceContextValue = {
   refreshPresence: (userIds: string[]) => Promise<void>;
 };
 
-const PresenceContext = createContext<PresenceContextValue | null>(null);
+const PresenceContext =
+  createContext<PresenceContextValue | null>(null);
 
 const ONLINE_WINDOW_MS = 120_000;
 
-function routeStatus(pathname: string): PresenceStatus {
+function routeStatus(
+  pathname: string,
+): PresenceStatus {
   if (
     pathname === "/domino/game" ||
     pathname.startsWith("/domino/game/") ||
@@ -40,7 +43,9 @@ function routeStatus(pathname: string): PresenceStatus {
 
   if (
     pathname === "/okey/matchmaking" ||
-    pathname.startsWith("/okey/matchmaking/")
+    pathname.startsWith(
+      "/okey/matchmaking/",
+    )
   ) {
     return "matchmaking";
   }
@@ -48,13 +53,16 @@ function routeStatus(pathname: string): PresenceStatus {
   return "online_available";
 }
 
-export function PresenceProvider({ children }: PropsWithChildren) {
-  const { profile } = useProfile();
+export function PresenceProvider({
+  children,
+}: PropsWithChildren) {
+  const { userId } = useAuthState();
   const pathname = usePathname();
 
-  const [statuses, setStatuses] = useState<
-    Record<string, PresenceStatus>
-  >({});
+  const [statuses, setStatuses] =
+    useState<
+      Record<string, PresenceStatus>
+    >({});
 
   const publishPresence = useCallback(
     async (status: PresenceStatus) => {
@@ -83,12 +91,13 @@ export function PresenceProvider({ children }: PropsWithChildren) {
 
       if (ids.length === 0) return;
 
-      const { data, error } = await supabase
-        .from("user_presence")
-        .select(
-          "user_id, status, last_seen_at",
-        )
-        .in("user_id", ids);
+      const { data, error } =
+        await supabase
+          .from("user_presence")
+          .select(
+            "user_id, status, last_seen_at",
+          )
+          .in("user_id", ids);
 
       if (error) {
         throw error;
@@ -131,10 +140,9 @@ export function PresenceProvider({ children }: PropsWithChildren) {
   );
 
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!userId) return;
 
-    let appState =
-      AppState.currentState;
+    let appState = AppState.currentState;
 
     const currentStatus = () =>
       appState === "active"
@@ -171,7 +179,7 @@ export function PresenceProvider({ children }: PropsWithChildren) {
     };
   }, [
     pathname,
-    profile?.id,
+    userId,
     publishPresence,
   ]);
 

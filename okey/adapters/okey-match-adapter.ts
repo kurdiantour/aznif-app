@@ -14,8 +14,6 @@ export type OkeyCommittedTransition = {
 export interface OnlineOkeyMatchAdapter {
   readonly kind: "online";
 
-  getCurrentUserId(): Promise<string | null>;
-
   getServerClockOffsetMs(): number;
 
   getSnapshot():

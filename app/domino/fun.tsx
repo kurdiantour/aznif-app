@@ -19,7 +19,7 @@ import {
   TABLET_HORIZONTAL_INSET,
 } from "@/constants/layout";
 import { DOMINO_ENTRY_FEES } from "@/constants/domino-economy";
-import { useProfile } from "@/lib/profile";
+import { useAuthState } from "@/lib/auth-state";
 import { supabase } from "@/lib/supabase";
 
 type GameMode = "1v1" | "2v2";
@@ -178,10 +178,8 @@ function FunCard({
 }
 
 export default function DominoFunScreen() {
-  const {
-    profile,
-    loading: profileLoading,
-  } = useProfile();
+  const { userId, authReady } = useAuthState();
+
 
   const { coinBalance } = useWallet();
 
@@ -225,7 +223,7 @@ export default function DominoFunScreen() {
       return;
     }
 
-    if (!profile) {
+    if (!userId) {
       router.push("/login");
       return;
     }
@@ -273,11 +271,11 @@ export default function DominoFunScreen() {
     }
   };
 
-  if (!profileLoading && !profile) {
+  if (authReady && !userId) {
     return <Redirect href="/login" />;
   }
 
-  if (profileLoading) {
+  if (!authReady) {
     return (
       <View style={styles.shell}>
         <LobbyHeader />
