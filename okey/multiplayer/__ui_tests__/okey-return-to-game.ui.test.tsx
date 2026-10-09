@@ -1,12 +1,12 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 
-import { ReturnToGamePopup } from "@/components/game/ReturnToGamePopup";
+import { ReturnToGamePopup } from "@/components/multiplayer/ReturnToGamePopup";
 import { OkeyReturnToGameOverlay } from "../OkeyReturnToGameOverlay";
 
-const mockProfile = { id: "human" };
 const mockRouter = { push: jest.fn(), replace: jest.fn() };
 const mockMemberships = jest.fn();
+const mockRoomStatus = jest.fn();
 const mockRefresh = jest.fn();
 const mockDispatch = jest.fn();
 const mockLeave = jest.fn();
@@ -14,9 +14,12 @@ const mockSnapshot = jest.fn();
 const mockSubscribe = jest.fn((_listener: (snapshot: unknown) => void) => jest.fn());
 
 jest.mock("@expo/vector-icons", () => ({ Ionicons: () => null }));
-jest.mock("@/lib/profile", () => ({ useProfile: () => ({ profile: mockProfile }) }));
+jest.mock("@/lib/auth-state", () => ({ useAuthState: () => ({ userId: "human" }) }));
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter, usePathname: () => "/(tabs)/play" }));
-jest.mock("../okey-room-api", () => ({ getActiveOkeyMemberships: () => mockMemberships() }));
+jest.mock("../okey-room-api", () => ({
+  getActiveOkeyMemberships: () => mockMemberships(),
+  getOkeyRoomStatus: (matchId: string) => mockRoomStatus(matchId),
+}));
 jest.mock("@/okey/adapters/supabase-okey-match-adapter", () => ({
   SupabaseOkeyMatchAdapter: jest.fn().mockImplementation(() => ({
     refresh: () => mockRefresh(), getSnapshot: () => mockSnapshot(),
@@ -28,6 +31,7 @@ jest.mock("@/okey/adapters/supabase-okey-match-adapter", () => ({
 beforeEach(() => {
   jest.useFakeTimers();
   mockMemberships.mockResolvedValue([{ matchId: "match", status: "playing" }]);
+  mockRoomStatus.mockResolvedValue({ currency: "fun" });
   mockRefresh.mockResolvedValue(undefined);
   mockDispatch.mockResolvedValue(undefined);
   mockLeave.mockResolvedValue(undefined);
@@ -61,6 +65,7 @@ test("return for takeover player triggers take-back-seat and navigates", async (
   await act(async () => { fireEvent.press(ui.getByTestId("return-to-game-return")); });
   expect(mockRefresh).toHaveBeenCalledTimes(3);
   expect(mockDispatch).toHaveBeenCalledWith({ type: "take-back-seat" });
+  expect(mockRoomStatus).toHaveBeenCalledWith("match");
   expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/okey/game", params: { matchId: "match", mode: "fun" } });
   expect(ui.UNSAFE_queryByType(ReturnToGamePopup)).toBeNull();
 });

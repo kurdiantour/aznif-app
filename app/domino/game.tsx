@@ -2,22 +2,22 @@ import WaitingPlayersPopup from "@/components/multiplayer/WaitingPlayersPopup";
 import { useDominoWaitingRoom } from "@/domino/multiplayer/useDominoWaitingRoom";
 import { MatchCosmeticsGate } from "@/lib/multiplayer/cosmetics/MatchCosmeticsGate";
 import { type ReactNode } from "react";
-import BoardArea from "@/components/game/BoardArea";
+import BoardArea from "@/domino/components/BoardArea";
 import { DominoCosmeticsProvider, useDominoCosmetics } from "@/domino/hooks/useDominoCosmetics";
 
-import DrawPilePrompt from "@/components/game/DrawPilePrompt";
-import GameOverPopup from "@/components/game/GameOverPopup";
-import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
-import PlayerHand from "@/components/game/PlayerHand";
-import DominoTileFlightOverlay from "@/components/game/DominoTileFlightOverlay";
-import PlayerSeat from "@/components/game/PlayerSeat";
+import DrawPilePrompt from "@/domino/components/DrawPilePrompt";
+import GameOverPopup from "@/domino/components/GameOverPopup";
+import MultiplayerGameChat from "@/components/multiplayer/MultiplayerGameChat";
+import PlayerHand from "@/domino/components/PlayerHand";
+import DominoTileFlightOverlay from "@/domino/components/DominoTileFlightOverlay";
+import PlayerSeat from "@/domino/components/PlayerSeat";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
-import RoundResultReveal from "@/components/game/RoundResultReveal";
-import ScorePopup from "@/components/game/ScorePopup";
+import RoundResultReveal from "@/domino/components/RoundResultReveal";
+import ScorePopup from "@/domino/components/ScorePopup";
 import TableBackground from "@/components/game/TableBackground";
-import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
-import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
-import MiniScoreBoard from "@/components/game/MiniScoreBoard";
+import LeaveMatchConfirmPopup from "@/components/multiplayer/LeaveMatchConfirmPopup";
+import MatchMenuDrawer from "@/components/multiplayer/MatchMenuDrawer";
+import MiniScoreBoard from "@/domino/components/MiniScoreBoard";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
 import { useGameSystemGestureProtection } from "@/hooks/useGameSystemGestureProtection";
 import { PLAYER_TURN_DURATION_SECONDS } from "@/domino/shared/game-shared";
@@ -950,7 +950,7 @@ if (!isLocalGame && !userId) {
                 selectableBranches={selectableBranches}
                 onSelectBranch={handleSelectBranch}
                 boneyardCount={game.boneyardCount}
-                shouldRenderPlayedBoardTiles={shouldRenderPlayedBoardTiles}
+                shouldRenderPlayedBoardTiles={!waitingRoom.isWaiting && shouldRenderPlayedBoardTiles}
                 finalTileAnimationTileId={finalTileAnimationTileId}
                 onFinalTileAnimationComplete={handleFinalTileAnimationComplete}
                 ref={boardAreaRef}
@@ -1285,30 +1285,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(248, 243, 223, 0.22)",
   },
-  chatUnreadBadge: {
-    position: "absolute",
-    top: -3,
-    right: -3,
-    minWidth: 17,
-    height: 17,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ef4444",
-    borderWidth: 1,
-    borderColor: "#f8f3df",
-  },
-
-  chatUnreadText: {
-    color: "#ffffff",
-    fontSize: 9,
-    lineHeight: 11,
-    fontFamily: "RobotoMedium",
-    textAlign: "center",
-  },
-
-
   bottomArea: {
     alignItems: "center",
     justifyContent: "flex-end",

@@ -53,7 +53,7 @@ const dominoTurnTimerSource = readFileSync(
 );
 
 const dominoPlayerSeatSource = readFileSync(
-  "components/game/PlayerSeat.tsx",
+  "domino/components/PlayerSeat.tsx",
   "utf8",
 );
 

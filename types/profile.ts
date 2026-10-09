@@ -19,6 +19,7 @@ export type Profile = {
   gamesWon: number;
   gamesLost: number;
   isAdmin?: boolean;
+  isFinanceAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
 };

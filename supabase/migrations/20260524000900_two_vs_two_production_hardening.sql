@@ -53,26 +53,6 @@ ON public.two_vs_two_players(room_id, team_id);
 CREATE INDEX IF NOT EXISTS idx_two_vs_two_rooms_active_status
 ON public.two_vs_two_rooms(status, updated_at)
 WHERE status IN ('waiting', 'active');
-CREATE OR REPLACE FUNCTION public.find_two_vs_two_match()
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-BEGIN
-  RETURN public.find_two_vs_two_opponent();
-END;
-$$;
-CREATE OR REPLACE FUNCTION public.leave_two_vs_two_room(p_room_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-BEGIN
-  RETURN public.cancel_two_vs_two_room(p_room_id);
-END;
-$$;
 CREATE OR REPLACE FUNCTION public.two_vs_two_player_heartbeat(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -375,18 +355,14 @@ USING (false);
 GRANT SELECT ON public.two_vs_two_game_states TO authenticated;
 REVOKE ALL ON public.two_vs_two_private_states FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.next_two_vs_two_move_sequence(uuid) FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.find_two_vs_two_match() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.leave_two_vs_two_room(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.two_vs_two_player_heartbeat(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mark_two_vs_two_player_disconnected(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.process_two_vs_two_takeovers(int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.restore_two_vs_two_human_control(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.evaluate_two_vs_two_abandonments_and_forfeits(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_two_vs_two_snapshot(uuid) TO authenticated;
-ALTER FUNCTION public.find_two_vs_two_opponent() SET search_path = public, pg_temp;
 ALTER FUNCTION public.get_two_vs_two_matchmaking_status() SET search_path = public, pg_temp;
 ALTER FUNCTION public.cancel_two_vs_two_matchmaking(uuid) SET search_path = public, pg_temp;
-ALTER FUNCTION public.cancel_two_vs_two_room(uuid) SET search_path = public, pg_temp;
 ALTER FUNCTION public.start_two_vs_two_game(uuid) SET search_path = public, pg_temp;
 ALTER FUNCTION public.is_two_vs_two_room_member(uuid) SET search_path = public, pg_temp;
 ALTER FUNCTION public.next_two_vs_two_move_sequence(uuid) SET search_path = public, pg_temp;

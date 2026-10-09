@@ -1,4 +1,3 @@
-import { assignDominoBotIdentities } from "@/domino/shared/bot-identity";
 import { prepareMultiplayerGameLaunch } from "@/lib/game/gameLaunchPreload";
 import { useGameParty } from "@/lib/gameInvitesProvider";
 import { useProfile } from "@/lib/profile";
@@ -10,7 +9,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, BackHandler } from "react-native";
 
-export type MatchType = "bot" | "duo" | "squad" | "private";
+export type MatchType = "duo" | "squad";
 
 export type MatchPlayer = {
   id: string;
@@ -35,11 +34,7 @@ export function normalizeMode(value: unknown): "1v1" | "2v2" {
   return String(value ?? "") === "1v1" ? "1v1" : "2v2";
 }
 
-export function getRequiredPlayers(
-  mode: "1v1" | "2v2",
-  matchType: MatchType,
-) {
-  if (matchType === "bot") return 1;
+export function getRequiredPlayers(mode: "1v1" | "2v2") {
   return mode === "1v1" ? 2 : 4;
 }
 
@@ -68,8 +63,9 @@ export function useDominoWaitingRoom({
   const gameMode = normalizeMode(rawMode);
   const isOneVsOne = gameMode === "1v1";
 
-  const currentMatchType = String(matchType ?? "duo") as MatchType;
-  const requiredPlayers = getRequiredPlayers(gameMode, currentMatchType);
+  const currentMatchType: MatchType =
+    matchType === "squad" ? "squad" : "duo";
+  const requiredPlayers = getRequiredPlayers(gameMode);
 
   const initialRoomId = String(initialRoomIdProp ?? "");
   const initialMatchmakingStatus = String(initialStatus ?? (initialRoomId ? "matched" : "searching"));
@@ -81,6 +77,11 @@ export function useDominoWaitingRoom({
 
   const { userId, authReady } = useAuthState();
   const { profile: localProfile } = useProfile();
+  const [ownWaitingAvatar, setOwnWaitingAvatar] = useState<{
+    userId: string;
+    avatarId?: AvatarId;
+    avatarUrl?: string;
+  } | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
   const [countdownEndsAt, setCountdownEndsAt] = useState<string | null>(null);
   const [leavingWaitingRoom, setLeavingWaitingRoom] = useState(false);
@@ -98,6 +99,36 @@ export function useDominoWaitingRoom({
   const cancellationStartedRef = useRef(false);
   const matchLockedRef = useRef(false);
   const initialCheckDoneRef = useRef(false);
+
+  // Search has no room roster yet. Load the local avatar independently so its
+  // waiting slot is populated before a second player joins.
+  useEffect(() => {
+    if (!enabled || !isOneVsOne || !authReady || !userId) return;
+    let active = true;
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("avatar_id, avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!active) return;
+      if (error) {
+        console.warn("Unable to load local Domino waiting avatar", error);
+        return;
+      }
+      if (data) {
+        setOwnWaitingAvatar({
+          userId,
+          avatarId: data.avatar_id as AvatarId | undefined,
+          avatarUrl: data.avatar_url ?? undefined,
+        });
+      }
+    })();
+
+    return () => { active = false; };
+  }, [authReady, enabled, isOneVsOne, userId]);
 
   // If match was already active/started before mount, detect it and bypass waiting.
   useEffect(() => {
@@ -170,8 +201,7 @@ export function useDominoWaitingRoom({
       isGameStarted ||
       !authReady ||
       !userId ||
-      leavingWaitingRoom ||
-      currentMatchType === "bot"
+      leavingWaitingRoom
     ) {
       return;
     }
@@ -226,10 +256,10 @@ export function useDominoWaitingRoom({
       clearInterval(timer);
       appStateSubscription.remove();
     };
-  }, [authReady, currentMatchType, currentRoomId, enabled, gameMode, isGameStarted, leavingWaitingRoom, userId]);
+  }, [authReady, currentRoomId, enabled, gameMode, isGameStarted, leavingWaitingRoom, userId]);
 
   const refreshRoom = useCallback(async () => {
-    if (!enabled || isGameStarted || currentMatchType === "bot" || cancellationStartedRef.current) return;
+    if (!enabled || isGameStarted || cancellationStartedRef.current) return;
     const { data, error } = await supabase.rpc("domino_waiting_room_status", {
       p_mode: gameMode,
       p_room_id: currentRoomId || null,
@@ -256,10 +286,10 @@ export function useDominoWaitingRoom({
         startInFlightRef.current = false;
       }
     }
-  }, [currentMatchType, currentRoomId, enabled, gameMode, isGameStarted, requiredPlayers]);
+  }, [currentRoomId, enabled, gameMode, isGameStarted, requiredPlayers]);
 
   useEffect(() => {
-    if (!enabled || isGameStarted || currentMatchType === "bot" || leavingWaitingRoom) return;
+    if (!enabled || isGameStarted || leavingWaitingRoom) return;
     const check = () => void refreshRoom().catch((error) => {
       console.warn("Unable to refresh Domino waiting room", error);
     });
@@ -272,7 +302,7 @@ export function useDominoWaitingRoom({
       clearInterval(timer);
       appStateSubscription.remove();
     };
-  }, [currentMatchType, enabled, isGameStarted, leavingWaitingRoom, refreshRoom]);
+  }, [enabled, isGameStarted, leavingWaitingRoom, refreshRoom]);
 
   // Matchmaking status polling when searching
   useEffect(() => {
@@ -280,7 +310,6 @@ export function useDominoWaitingRoom({
       !enabled ||
       isGameStarted ||
       leavingWaitingRoom ||
-      currentMatchType === "private" ||
       matchmakingStatus !== "searching"
     ) {
       return;
@@ -316,7 +345,7 @@ export function useDominoWaitingRoom({
         statusCheckIntervalRef.current = null;
       }
     };
-  }, [currentMatchType, enabled, isGameStarted, isOneVsOne, leavingWaitingRoom, matchmakingStatus]);
+  }, [enabled, isGameStarted, isOneVsOne, leavingWaitingRoom, matchmakingStatus]);
 
   // Realtime players roster loading and subscription
   useEffect(() => {
@@ -351,12 +380,12 @@ export function useDominoWaitingRoom({
         }
 
         const connectedPlayerRows = (playerRows ?? []).filter(
-          (row: any) => row.connected !== false,
+          (row: any) => row.connected !== false && row.kind === "human" && Boolean(row.user_id),
         );
 
         const userIds = connectedPlayerRows
           .map((row: any) => row.user_id)
-          .filter((id): id is string => Boolean(id) && id !== userId);
+          .filter((id): id is string => Boolean(id) && (isOneVsOne || id !== userId));
 
         let profileById = new Map<string, any>();
 
@@ -378,33 +407,18 @@ export function useDominoWaitingRoom({
         // A newer roster event invalidates both the rows and their profile lookup.
         if (!mounted || revision !== playersLoadRevision) return;
 
-        const botIdentities = assignDominoBotIdentities(
-          connectedPlayerRows.map((row: any) => ({
-            id: String(row.id),
-            playerIndex: row.player_index,
-          })),
-        );
-
         const mappedPlayers: MatchPlayer[] = connectedPlayerRows.map(
           (row: any, index: number) => {
             const rowId = String(row.id);
             const profile = row.user_id ? profileById.get(row.user_id) : null;
-            const isBot = row.kind === "bot" || !row.user_id;
-            const botIdentity = isBot ? botIdentities.get(rowId) : undefined;
 
             return {
               id: rowId,
               userId: row.user_id ?? null,
-              name: isBot
-                ? botIdentity!.name
-                : profile?.username ?? `یاریزان ${index + 1}`,
+              name: profile?.username ?? `یاریزان ${index + 1}`,
               level: calculateLevelFromPoints(profile?.points),
-              avatarId: isBot
-                ? botIdentity!.avatarId
-                : (profile?.avatar_id as AvatarId | undefined),
-              avatarUrl: isBot
-                ? botIdentity!.avatarUrl
-                : (profile?.avatar_url ?? undefined),
+              avatarId: profile?.avatar_id as AvatarId | undefined,
+              avatarUrl: profile?.avatar_url ?? undefined,
               playerIndex: row.player_index,
               seat: row.seat,
               teamId: row.team_id,
@@ -505,21 +519,25 @@ export function useDominoWaitingRoom({
 
   const publicWaitingPlayers = useMemo<PublicWaitingPlayer[]>(() => {
     const ownProfile = localProfile?.id === userId ? localProfile : null;
+    const fetchedOwnAvatar = ownWaitingAvatar?.userId === userId ? ownWaitingAvatar : null;
+    const ownAvatarId = ownProfile?.avatarId ?? fetchedOwnAvatar?.avatarId;
+    const ownAvatarUrl = ownProfile?.avatarUrl ?? fetchedOwnAvatar?.avatarUrl;
     const waitingPlayers = players.map((player) => ({
       playerIndex: player.playerIndex,
-      avatarId: userId && player.userId === userId ? ownProfile?.avatarId : player.avatarId,
-      avatarUrl: userId && player.userId === userId ? ownProfile?.avatarUrl : player.avatarUrl,
+      avatarId: userId && player.userId === userId ? ownAvatarId ?? player.avatarId : player.avatarId,
+      avatarUrl: userId && player.userId === userId ? ownAvatarUrl ?? player.avatarUrl : player.avatarUrl,
     }));
 
-    return waitingPlayers;
-  }, [localProfile, players, userId]);
+    if (isOneVsOne && userId && !players.some((player) => player.userId === userId)) {
+      waitingPlayers.push({
+        playerIndex: waitingPlayers.some((player) => player.playerIndex === 0) ? 1 : 0,
+        avatarId: ownAvatarId,
+        avatarUrl: ownAvatarUrl,
+      });
+    }
 
-  const playersReady =
-    currentMatchType === "bot"
-      ? players.length >= 1
-      : currentMatchType === "private"
-        ? players.length >= requiredPlayers
-        : matchmakingStatus === "matched" && players.length >= requiredPlayers;
+    return waitingPlayers;
+  }, [isOneVsOne, localProfile, ownWaitingAvatar, players, userId]);
 
   const matchLocked =
     isGameStarted ||
@@ -625,7 +643,7 @@ export function useDominoWaitingRoom({
   }, [enabled]);
 
   // Countdown and start
-  const isMatchFound = currentMatchType === "bot" ? playersReady : Boolean(countdownEndsAt);
+  const isMatchFound = Boolean(countdownEndsAt);
 
   useEffect(() => {
     if (!enabled || isGameStarted || leavingWaitingRoom) return;

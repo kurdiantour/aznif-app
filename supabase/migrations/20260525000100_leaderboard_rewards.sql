@@ -351,6 +351,7 @@ BEGIN
   END LOOP;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;
+REVOKE EXECUTE ON FUNCTION public.get_leaderboard(int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.settle_match_rewards(text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.calculate_match_reward(integer, integer) TO authenticated;

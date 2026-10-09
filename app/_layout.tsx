@@ -21,6 +21,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WalletProvider } from '@/lib/wallet-context';
 import { AppUpdateModal } from '@/components/AppUpdateModal';
 import { OkeyReturnToGameOverlay } from '@/okey/multiplayer/OkeyReturnToGameOverlay';
+import { MultiplayerResumeOverlay } from '@/components/multiplayer/MultiplayerResumeOverlay';
 
 void SplashScreen.preventAutoHideAsync().catch((error) => {
   console.warn("Unable to hold startup splash screen", error);
@@ -166,6 +167,7 @@ export default function Layout() {
             </Stack>
             <AppUpdateModal />
             <OkeyReturnToGameOverlay />
+            <MultiplayerResumeOverlay />
           </GameInvitesProvider>
         </PresenceProvider>
         </WalletProvider>

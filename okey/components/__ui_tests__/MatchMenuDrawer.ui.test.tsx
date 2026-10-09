@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react-native";
 import { Animated } from "react-native";
-import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
+import MatchMenuDrawer from "@/components/multiplayer/MatchMenuDrawer";
 
 const mockProfiles = jest.fn();
 jest.mock("@/lib/profile", () => ({

@@ -1,5 +1,5 @@
-import BoardBoneyard from "@/components/game/BoardBoneyard";
-import DominoBoard, { getDominoBoardPreviewTargets, getDominoBoardTileMetrics, getDominoBoardTileTarget } from "@/components/game/DominoBoard";
+import BoardBoneyard from "@/domino/components/BoardBoneyard";
+import DominoBoard, { getDominoBoardPreviewTargets, getDominoBoardTileMetrics, getDominoBoardTileTarget } from "@/domino/components/DominoBoard";
 import { DominoTileData, GameState, KozelBranch, Player } from "@/domino/types/domino-game";
 import {
   forwardRef,
@@ -490,10 +490,6 @@ const styles = StyleSheet.create({
     overflow: "visible",
     backgroundColor: "rgba(255,255,255,0.02)",
   },
-  boardTilesLayer: {
-    ...StyleSheet.absoluteFill,
-    transformOrigin: "center",
-  },
   aznifBanner: {
     position: "absolute",
     alignSelf: "center",
@@ -509,14 +505,6 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(250, 204, 21, 0.9)",
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 16,
-  },
-  centerTileWrap: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 30,
   },
   scoreBadge: {
     position: "absolute",

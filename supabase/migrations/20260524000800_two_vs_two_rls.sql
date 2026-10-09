@@ -104,13 +104,9 @@ FROM authenticated;
 REVOKE INSERT, UPDATE, DELETE
 ON public.two_vs_two_matchmaking_queue
 FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.find_two_vs_two_opponent()
-TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_two_vs_two_matchmaking_status()
-TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.get_two_vs_two_matchmaking_status() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_two_vs_two_matchmaking_status() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.cancel_two_vs_two_matchmaking(uuid)
-TO authenticated;
-GRANT EXECUTE ON FUNCTION public.cancel_two_vs_two_room(uuid)
 TO authenticated;
 GRANT EXECUTE ON FUNCTION public.start_two_vs_two_game(uuid)
 TO authenticated;

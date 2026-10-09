@@ -416,12 +416,6 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
 
-  avatarText: {
-    color: "#5a3b22",
-    fontSize: 18,
-    fontFamily: "RobotoMedium",
-  },
-
   info: {
     flex: 1,
     marginLeft: 8,

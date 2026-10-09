@@ -9,7 +9,7 @@ import { buildRoundResult } from '@/domino/shared/lifecycle/round-result';
 import { useRoundLifecycle } from '@/domino/shared/lifecycle/use-round-lifecycle';
 import { getAvailableBranches, handHasPlayableTile } from '@/domino/shared/rules/game-rule-queries';
 import type { DominoTileData, KozelBranch, Player, TeamId } from '@/domino/types/domino-game';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { reduceTwoVsTwoPass, reduceTwoVsTwoPlay, type TwoVsTwoPlayer, type TwoVsTwoTransition } from '../authoritative/domino-two-vs-two-command-reducer';
 import { finalizeTwoVsTwoRound, startTwoVsTwoNextHand } from '../lifecycle/domino-two-vs-two-round-transition';
 
@@ -52,7 +52,10 @@ export function useLocalTwoVsTwoPreviewGame(enabled = true): LocalTwoVsTwoPrevie
   const isOpeningRound = Boolean(state.isOpeningRound ?? state.isFirstRound ?? false);
   const openingDouble = typeof state.openingDouble === 'number' ? state.openingDouble : null;
   const currentIndex = roster.findIndex((p) => p.user_id === state.currentTurnPlayerId);
-  const context = { board, spinnerValue, isOpeningRound, openingDouble };
+  const context = useMemo(
+    () => ({ board, spinnerValue, isOpeningRound, openingDouble }),
+    [board, spinnerValue, isOpeningRound, openingDouble],
+  );
 
   const restartGame = useCallback(() => {
     botBusy.current = false; setTimeLeft(PLAYER_TURN_DURATION_SECONDS); setMatch(freshMatch());

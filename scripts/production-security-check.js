@@ -203,7 +203,6 @@ if (sharedGameUtils.includes("@ts-nocheck")) {
 }
 
 const privateRoomScreen = read("app/create-room.tsx");
-const matchmakingScreen = read("domino/multiplayer/useDominoWaitingRoom.ts");
 const localAiRewardHardening = read(
   "supabase/migrations/20260630000300_harden_local_ai_practice_reward_claims.sql",
 );
@@ -287,11 +286,6 @@ for (const required of [
 ]) {
   if (!gameInvitesMigration.includes(required))
     failures.push(`Missing secure game-invite invariant: ${required}`);
-}
-if (!matches(matchmakingScreen, /currentMatchType\s*===\s*["']private["']/)) {
-  failures.push(
-    "Private matchmaking must not depend on the public queue state.",
-  );
 }
 
 if (failures.length) {

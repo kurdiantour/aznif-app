@@ -116,9 +116,8 @@ AS $$
   );
 $$;
 
-GRANT EXECUTE
-ON FUNCTION public.get_leaderboard(int)
-TO authenticated, anon;
+REVOKE EXECUTE ON FUNCTION public.get_leaderboard(int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, service_role;
 
 
 

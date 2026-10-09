@@ -589,10 +589,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  avatar: {
-    borderRadius: 35,
-  },
-
   nameRow: {
     marginTop: 9,
     minHeight: 36,
@@ -769,21 +765,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  actionButton: {
-    alignSelf: "stretch",
-    minHeight: 44,
-    paddingHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(251, 113, 133, 0.24)",
-    backgroundColor: "rgba(127, 29, 29, 0.12)",
-    marginTop: 10,
-  },
-
   telegramButton: {
     alignSelf: "stretch",
     minHeight: 44,
@@ -808,27 +789,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  logoutIconBox: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    backgroundColor: "rgba(251, 113, 133, 0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   telegramText: {
     flex: 1,
     color: "#ffffff",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    textAlign: "right",
-    writingDirection: "rtl",
-  },
-
-  logoutText: {
-    flex: 1,
-    color: "#ff8b8b",
     fontSize: 12,
     fontFamily: "SpedaBold",
     textAlign: "right",

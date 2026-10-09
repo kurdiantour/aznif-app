@@ -8,8 +8,8 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { Pressable, StyleSheet, Text, View, } from "react-native";
 import { OkeyCosmeticsProvider, useOkeyCosmetics } from "@/okey/hooks/useOkeyCosmetics";
 
-import MatchMenuDrawer from "@/components/game/MatchMenuDrawer";
-import MultiplayerGameChat from "@/components/game/MultiplayerGameChat";
+import MatchMenuDrawer from "@/components/multiplayer/MatchMenuDrawer";
+import MultiplayerGameChat from "@/components/multiplayer/MultiplayerGameChat";
 import PlayerProfilePopup from "@/components/game/PlayerProfilePopup";
 import TableBackground from "@/components/game/TableBackground";
 import { useMatchMenu } from "@/hooks/useMatchMenu";
@@ -19,7 +19,7 @@ import { OkeyFinalTileCelebration } from "@/okey/components/OkeyFinalTileCelebra
 import { OkeyForcedKonkan } from "@/okey/components/OkeyForcedKonkan";
 import { OkeyTileCycleAnnouncement } from "@/okey/components/OkeyTileCycleAnnouncement";
 import { OkeyKonkanReveal } from "@/okey/components/OkeyKonkanReveal";
-import LeaveMatchConfirmPopup from "@/components/game/LeaveMatchConfirmPopup";
+import LeaveMatchConfirmPopup from "@/components/multiplayer/LeaveMatchConfirmPopup";
 import {
   OkeyMatchResultPopup,
 } from "@/okey/components/OkeyMatchResultPopup";

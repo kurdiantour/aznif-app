@@ -17,12 +17,13 @@ export type Profile = {
   games_won?: number;
   games_lost?: number;
   is_admin?: boolean;
+  is_finance_admin?: boolean;
   created_at: string;
   updated_at: string;
 };
 
 const PROFILE_SELECT =
-  "id, email, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+  "id, email, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, is_finance_admin, created_at, updated_at";
 const PROFILE_CREATE_RETRIES = 3;
 const APP_SCHEME = "dominoapp";
 const AUTH_CALLBACK_URL = `${APP_SCHEME}://auth-callback`;

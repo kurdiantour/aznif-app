@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 
-import { ReturnToGamePopup } from "@/components/game/ReturnToGamePopup";
+import { ReturnToGamePopup } from "@/components/multiplayer/ReturnToGamePopup";
 import { useAuthState } from "@/lib/auth-state";
 import { SupabaseOkeyMatchAdapter } from "@/okey/adapters/supabase-okey-match-adapter";
 

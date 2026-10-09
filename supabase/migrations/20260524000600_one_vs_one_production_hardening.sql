@@ -106,111 +106,6 @@ SET state = (
   END
 ) - 'hands' - 'boneyard'
 WHERE state ? 'hands' OR state ? 'boneyard';
-CREATE OR REPLACE FUNCTION public.find_one_vs_one_opponent()
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_opponent public.one_vs_one_matchmaking_queue%ROWTYPE;
-  v_room public.one_vs_one_rooms%ROWTYPE;
-  v_seat text;
-  v_team text;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
-  END IF;
-
-  DELETE FROM public.one_vs_one_matchmaking_queue
-  WHERE user_id = v_user_id
-     OR (status = 'searching' AND created_at < now() - interval '5 minutes');
-
-  SELECT *
-  INTO v_opponent
-  FROM public.one_vs_one_matchmaking_queue
-  WHERE status = 'searching'
-    AND user_id <> v_user_id
-  ORDER BY created_at ASC
-  LIMIT 1
-  FOR UPDATE SKIP LOCKED;
-
-  IF FOUND THEN
-    INSERT INTO public.one_vs_one_rooms (
-      host_user_id,
-      room_code,
-      status,
-      bet_amount,
-      player_count
-    ) VALUES (
-      v_user_id,
-      public.generate_one_vs_one_room_code(),
-      'active',
-      0,
-      2
-    )
-    RETURNING * INTO v_room;
-
-    SELECT seat, team_id INTO v_seat, v_team
-    FROM public.resolve_one_vs_one_seat_assignment(0);
-
-    INSERT INTO public.one_vs_one_players (
-      room_id, user_id, kind, seat, team_id, player_index, is_ready, connected
-    ) VALUES (
-      v_room.id, v_opponent.user_id, 'human', v_seat, v_team, 0, true, true
-    );
-
-    SELECT seat, team_id INTO v_seat, v_team
-    FROM public.resolve_one_vs_one_seat_assignment(1);
-
-    INSERT INTO public.one_vs_one_players (
-      room_id, user_id, kind, seat, team_id, player_index, is_ready, connected
-    ) VALUES (
-      v_room.id, v_user_id, 'human', v_seat, v_team, 1, true, true
-    );
-
-    UPDATE public.one_vs_one_matchmaking_queue
-    SET status = 'matched',
-        matched_room_id = v_room.id,
-        ended_at = now()
-    WHERE user_id = v_opponent.user_id;
-
-    INSERT INTO public.one_vs_one_matchmaking_queue (
-      user_id,
-      status,
-      matched_room_id,
-      ended_at
-    ) VALUES (
-      v_user_id,
-      'matched',
-      v_room.id,
-      now()
-    );
-
-    INSERT INTO public.one_vs_one_moves (
-      room_id, player_id, sequence, action, payload
-    ) VALUES (
-      v_room.id,
-      v_user_id,
-      public.next_one_vs_one_move_sequence(v_room.id),
-      'match_created',
-      jsonb_build_object('player_1', v_opponent.user_id, 'player_2', v_user_id)
-    );
-
-    RETURN jsonb_build_object(
-      'status', 'matched',
-      'room_id', v_room.id,
-      'room_code', v_room.room_code,
-      'opponent_user_id', v_opponent.user_id
-    );
-  END IF;
-
-  INSERT INTO public.one_vs_one_matchmaking_queue (user_id, status)
-  VALUES (v_user_id, 'searching');
-
-  RETURN jsonb_build_object('status', 'searching');
-END;
-$$;
 CREATE OR REPLACE FUNCTION public.get_one_vs_one_matchmaking_status()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -428,83 +323,6 @@ BEGIN
     public.next_one_vs_one_move_sequence(p_room_id),
     'game_started',
     jsonb_build_object('leading_player_index', v_leading_player_index, 'opening_double', v_opening_double)
-  );
-
-  RETURN jsonb_build_object('status', 'success', 'room_id', p_room_id);
-END;
-$$;
-CREATE OR REPLACE FUNCTION public.cancel_one_vs_one_room(p_room_id uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_user_id uuid := auth.uid();
-  v_room public.one_vs_one_rooms%ROWTYPE;
-  v_leaver public.one_vs_one_players%ROWTYPE;
-  v_winning_team text;
-  v_state jsonb;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
-  END IF;
-
-  SELECT * INTO v_room
-  FROM public.one_vs_one_rooms
-  WHERE id = p_room_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION '1v1 room not found';
-  END IF;
-
-  SELECT * INTO v_leaver
-  FROM public.one_vs_one_players
-  WHERE room_id = p_room_id AND user_id = v_user_id;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'You are not a player in this 1v1 room';
-  END IF;
-
-  UPDATE public.one_vs_one_players
-  SET connected = false,
-      left_at = now(),
-      updated_at = now()
-  WHERE id = v_leaver.id;
-
-  IF v_room.status = 'active' THEN
-    v_winning_team := CASE WHEN v_leaver.team_id = 'teamA' THEN 'teamB' ELSE 'teamA' END;
-    v_state := COALESCE(v_room.state, '{}'::jsonb)
-      || jsonb_build_object(
-        'winningTeamId', v_winning_team,
-        'forfeitByPlayerId', v_user_id,
-        'matchReward', jsonb_build_object('tier', 'normal', 'gold', 6, 'points', 20),
-        'canDrawTile', false
-      );
-
-    UPDATE public.one_vs_one_rooms
-    SET status = 'finished',
-        state = v_state,
-        current_turn_player_id = NULL,
-        version = version + 1,
-        updated_at = now()
-    WHERE id = p_room_id;
-  ELSE
-    UPDATE public.one_vs_one_rooms
-    SET status = 'cancelled',
-        version = version + 1,
-        updated_at = now()
-    WHERE id = p_room_id;
-  END IF;
-
-  INSERT INTO public.one_vs_one_moves(room_id, player_id, sequence, action, payload)
-  VALUES (
-    p_room_id,
-    v_user_id,
-    public.next_one_vs_one_move_sequence(p_room_id),
-    CASE WHEN v_room.status = 'active' THEN 'player_forfeited' ELSE 'room_cancelled' END,
-    jsonb_build_object('user_id', v_user_id, 'previous_status', v_room.status)
   );
 
   RETURN jsonb_build_object('status', 'success', 'room_id', p_room_id);
@@ -847,7 +665,6 @@ FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
 GRANT SELECT, INSERT, UPDATE ON public.one_vs_one_matchmaking_queue TO authenticated;
-GRANT EXECUTE ON FUNCTION public.find_one_vs_one_opponent() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_one_vs_one_matchmaking_status() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.cancel_one_vs_one_matchmaking(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_one_vs_one_snapshot(uuid) TO authenticated;

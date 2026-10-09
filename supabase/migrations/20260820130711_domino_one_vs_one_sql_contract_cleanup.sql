@@ -78,17 +78,11 @@ COMMENT ON FUNCTION public.get_one_vs_one_snapshot_internal_20260613(uuid) IS
 
 COMMENT ON FUNCTION public.find_domino_match(text, text, numeric) IS
   'CANONICAL shared Domino matchmaking RPC for 1v1 and 2v2.';
-COMMENT ON FUNCTION public.find_one_vs_one_opponent() IS
-  'LEGACY 1v1 matchmaking compatibility RPC; retained for older clients. New clients use find_domino_match.';
-COMMENT ON FUNCTION public.find_one_vs_one_bet_match(numeric) IS
-  'LEGACY 1v1 paid-match compatibility RPC; retained for older clients. New clients use find_domino_match.';
 
 COMMENT ON FUNCTION public.start_one_vs_one_game(uuid) IS
   'CANONICAL Domino 1v1 start/next-round RPC.';
 COMMENT ON FUNCTION public.leave_one_vs_one_match(uuid) IS
   'CANONICAL explicit Manual Leave RPC. Disconnect and heartbeat must not create terminal effects.';
-COMMENT ON FUNCTION public.cancel_one_vs_one_room(uuid) IS
-  'LEGACY cancellation compatibility RPC; retained for older clients. Active gameplay leave uses leave_one_vs_one_match.';
 
 COMMENT ON FUNCTION public.process_one_vs_one_turn_strikes(uuid, uuid, uuid, boolean) IS
   'CANONICAL service-only consecutive-timeout policy entrypoint.';

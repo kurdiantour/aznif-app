@@ -198,12 +198,4 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     marginBottom: 8,
   },
-  link: {
-    ...rtlText,
-    color: "#93c5fd",
-    fontSize: 14,
-    fontFamily: "SpedaBold",
-    lineHeight: 24,
-    marginBottom: 6,
-  },
 });

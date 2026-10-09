@@ -85,9 +85,6 @@ They must not be dropped until the snapshot body is flattened in a separate pari
 
 The current application no longer calls these directly, but older clients may. They remain intact because repository absence alone does not prove production inactivity:
 
-- `find_one_vs_one_opponent()`
-- `find_one_vs_one_bet_match(numeric)`
-- `cancel_one_vs_one_room(uuid)`
 - `create_one_vs_one_room(numeric)`
 - `join_one_vs_one_room(text)`
 - `evaluate_one_vs_one_abandonments_and_forfeits(uuid)`

@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-import DominoTile from "@/components/game/DominoTile";
+import DominoTile from "@/domino/components/DominoTile";
 import { DominoTileData } from "@/domino/types/domino-game";
 
 const PASS_AUTO_SECONDS = 10;
@@ -404,26 +404,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  passButton: {
-    marginTop: 12,
-    width: 58,
-    height: 58,
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255,0.22)",
-  },
-
-  passButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-  },
-
   buttonDisabled: {
     opacity: 0.6,
   },
@@ -443,14 +423,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
     backgroundColor: "#facc15",
-  },
-
-  passCountdown: {
-    marginTop: 9,
-    color: "#facc15",
-    fontSize: 13,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
   },
 
   humanPassWrap: {

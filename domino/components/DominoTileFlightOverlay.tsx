@@ -1,4 +1,4 @@
-import DominoTile from "@/components/game/DominoTile";
+import DominoTile from "@/domino/components/DominoTile";
 import type { DominoTileFlight } from "@/domino/shared/presentation/domino-tile-flight";
 import { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";

@@ -19,7 +19,7 @@ module.exports = {
     "okey/hooks/**/*.{ts,tsx}",
     "okey/feedback/**/*.{ts,tsx}",
     "okey/multiplayer/OkeyReturnToGameOverlay.tsx",
-    "components/game/ReturnToGamePopup.tsx",
+    "components/multiplayer/ReturnToGamePopup.tsx",
     "okey/presentation/**/*.{ts,tsx}",
     "okey/rack/**/*.{ts,tsx}",
     "!okey/**/*.d.ts",

@@ -48,7 +48,8 @@ AS $$
   ORDER BY rp.rank ASC, rp.points DESC, rp.id ASC
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 $$;
-GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, anon;
+REVOKE EXECUTE ON FUNCTION public.get_leaderboard(int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_leaderboard(int) TO authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.get_my_leaderboard_rank()
 RETURNS integer
 LANGUAGE sql

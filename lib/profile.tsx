@@ -30,6 +30,7 @@ type DbProfile = {
   games_won?: number;
   games_lost?: number;
   is_admin?: boolean;
+  is_finance_admin?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -40,7 +41,7 @@ export type HumanPlayerProfile = Pick<
 >;
 
 const PROFILE_SELECT =
-  "id, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, created_at, updated_at";
+  "id, player_id, username, avatar_id, avatar_url, points, games_played, games_won, games_lost, is_admin, is_finance_admin, created_at, updated_at";
 
 const HUMAN_PROFILE_SELECT =
   "id, player_id, username, avatar_id, avatar_url";
@@ -85,6 +86,7 @@ function mapDbProfile(
     gamesWon: Number(profile.games_won ?? 0),
     gamesLost: Number(profile.games_lost ?? 0),
     isAdmin: Boolean(profile.is_admin),
+    isFinanceAdmin: Boolean(profile.is_finance_admin),
     createdAt: profile.created_at,
     updatedAt: profile.updated_at,
   };
@@ -450,7 +452,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (isCurrent(auth.generation, request)) {
           console.warn("[ProfileProvider] Failed to load profile:", error);
-          setStored(previous => previous?.generation === auth.generation ? previous : { generation: auth.generation, profile: null });
+          setStored({ generation: auth.generation, profile: null });
         }
         return null;
       } finally {
@@ -490,7 +492,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }
   }, [auth.generation, isCurrent]);
 
-  const profile = stored?.generation === auth.generation && stored.profile?.id === auth.userId ? stored.profile : null;
+  const profile = pending !== auth.generation && stored?.generation === auth.generation && stored.profile?.id === auth.userId ? stored.profile : null;
   const loading = !!auth.userId && (pending === auth.generation || stored?.generation !== auth.generation);
 
   return (

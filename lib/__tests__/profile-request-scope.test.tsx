@@ -45,6 +45,27 @@ test("pins helper identity and never independently resolves the current user", a
   ui.unmount();
 });
 
+
+test("maps the finance role and hides the previous role during refresh", async () => {
+  mockLoad.mockImplementationOnce(async (scope) => ({
+    ...row(scope.user.id),
+    is_finance_admin: true,
+  }));
+  const ui = renderHook(useProfile, { wrapper });
+  await waitFor(() => expect(ui.result.current.profile?.isFinanceAdmin).toBe(true));
+
+  let finish!: (value: unknown) => void;
+  mockLoad.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  let pending!: Promise<unknown>;
+  act(() => { pending = ui.result.current.refreshProfile(); });
+  expect(ui.result.current.profile).toBeNull();
+  await settle();
+
+  await act(async () => { finish({ ...row("alice"), is_finance_admin: false }); await pending; });
+  expect(ui.result.current.profile?.isFinanceAdmin).toBe(false);
+  ui.unmount();
+});
+
 test.each(["logout", "switch", "token"])("rejects late refresh after %s and hides old generation immediately", async (kind) => {
   const ui = renderHook(useProfile, { wrapper });
   await waitFor(() => expect(ui.result.current.profile?.id).toBe("alice"));

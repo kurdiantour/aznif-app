@@ -9,8 +9,8 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import GameChatBubble, { type GameChatBubbleSeat } from "@/components/game/GameChatBubble";
-import GameChatDrawer from "@/components/game/GameChatDrawer";
+import GameChatBubble, { type GameChatBubbleSeat } from "@/components/multiplayer/GameChatBubble";
+import GameChatDrawer from "@/components/multiplayer/GameChatDrawer";
 import {
   GAME_CHAT_EMOJIS,
   type GameChatMessage,
@@ -24,19 +24,7 @@ type SeatMessages = Partial<Record<GameChatBubbleSeat, SeatMessage>>;
 
 const SEATS: readonly GameChatBubbleSeat[] = ["bottom", "right", "top", "left"];
 
-export default function MultiplayerGameChat({
-  gameType,
-  matchId,
-  mode = null,
-  currentUserId,
-  playerIdBySeat,
-  enabled,
-  triggerVisible = true,
-  triggerStyle,
-  topSeatRect,
-  leftSeatRect,
-  rightSeatRect,
-}: {
+type MultiplayerGameChatProps = {
   gameType: GameChatType;
   matchId?: string;
   mode?: GameChatMode | null;
@@ -48,10 +36,35 @@ export default function MultiplayerGameChat({
   topSeatRect?: { x: number; y: number; width: number; height: number } | null;
   leftSeatRect?: { x: number; y: number; width: number; height: number } | null;
   rightSeatRect?: { x: number; y: number; width: number; height: number } | null;
-}) {
+};
+
+export default function MultiplayerGameChat(props: MultiplayerGameChatProps) {
+  return (
+    <MultiplayerGameChatMatch
+      key={JSON.stringify([props.gameType, props.matchId ?? "", props.mode ?? null])}
+      {...props}
+    />
+  );
+}
+
+function MultiplayerGameChatMatch({
+  gameType,
+  matchId,
+  mode = null,
+  currentUserId,
+  playerIdBySeat,
+  enabled,
+  triggerVisible = true,
+  triggerStyle,
+  topSeatRect,
+  leftSeatRect,
+  rightSeatRect,
+}: MultiplayerGameChatProps) {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [seatMessages, setSeatMessages] = useState<SeatMessages>({});
   const [unreadCount, setUnreadCount] = useState(0);
+  const [realtimeMessages, setRealtimeMessages] = useState<GameChatMessage[]>([]);
+  const receivedMessageIdsRef = useRef(new Set<string>());
   const drawerVisibleRef = useRef(false);
   const chatLayerRef = useRef<View | null>(null);
   const [chatLayerOrigin, setChatLayerOrigin] = useState<{ x: number; y: number } | null>(null);
@@ -94,6 +107,7 @@ export default function MultiplayerGameChat({
       return () => clearTimeout(reset);
     }
 
+    let active = true;
     const channel = supabase
       .channel(`game_chat_bubbles:${gameType}:${matchId}:${mode ?? "all"}`)
       .on(
@@ -105,12 +119,17 @@ export default function MultiplayerGameChat({
           filter: `match_id=eq.${matchId}`,
         },
         (payload) => {
+          if (!active) return;
           const message = payload.new as GameChatMessage;
           if (
             message.game_type !== gameType ||
+            message.match_id !== matchId ||
             (mode !== null && message.mode !== mode)
           ) return;
+          if (receivedMessageIdsRef.current.has(message.id)) return;
+          receivedMessageIdsRef.current.add(message.id);
 
+          setRealtimeMessages((current) => [...current, message]);
           if (message.sender_user_id !== currentUserId && !drawerVisibleRef.current) {
             setUnreadCount((count) => Math.min(count + 1, 99));
           }
@@ -125,7 +144,10 @@ export default function MultiplayerGameChat({
       )
       .subscribe();
 
-    return () => { void supabase.removeChannel(channel); };
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
   }, [currentUserId, enabled, gameType, matchId, mode, seatByPlayerId]);
 
   return (
@@ -188,6 +210,7 @@ export default function MultiplayerGameChat({
         mode={mode}
         currentUserId={currentUserId}
         enabled={enabled}
+        realtimeMessages={realtimeMessages}
         onClose={() => {
           drawerVisibleRef.current = false;
           setDrawerVisible(false);

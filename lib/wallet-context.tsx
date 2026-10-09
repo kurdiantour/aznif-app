@@ -1,6 +1,7 @@
 import type { Wallet } from '@/types/wallet';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useAuthState } from './auth-state';
+import { getAuthState, useAuthState } from './auth-state';
+import { supabase } from './supabase';
 import { getBalance } from './wallet';
 import { subscribeWalletRefresh } from './walletEvents';
 
@@ -34,7 +35,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshWallet = useCallback(async (): Promise<Wallet | null> => {
-    if (!userId) return null;
+    if (!userId || getAuthState().userId !== userId) return null;
     if (inFlightRef.current) {
       pendingRefreshRef.current = true;
       return inFlightRef.current;
@@ -57,6 +58,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           const nextWallet = await getBalance(requestUserId);
           if (
             activeUserIdRef.current !== requestUserId ||
+            getAuthState().userId !== requestUserId ||
             requestSequenceRef.current !== requestSequence
           ) {
             return walletRef.current;
@@ -68,6 +70,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         } catch (reason: unknown) {
           if (
             activeUserIdRef.current !== requestUserId ||
+            getAuthState().userId !== requestUserId ||
             requestSequenceRef.current !== requestSequence
           ) {
             return walletRef.current;
@@ -116,16 +119,50 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [refreshWallet],
   );
 
+  useEffect(() => {
+    if (!authReady || !userId) return;
+
+    let active = true;
+    const channel = supabase
+      .channel(`wallet:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'wallets',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          if (active && getAuthState().userId === userId) {
+            void refreshWallet();
+          }
+        },
+      )
+      .subscribe((status) => {
+        if (active && status === 'SUBSCRIBED' && getAuthState().userId === userId) {
+          void refreshWallet();
+        }
+      });
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [authReady, refreshWallet, userId]);
+
+  const currentWallet = wallet?.user_id === userId ? wallet : null;
+
   const value = useMemo<WalletContextValue>(() => ({
-    wallet,
+    wallet: currentWallet,
     status,
     error,
-    hasValidWallet: wallet !== null,
-    coinBalance: wallet?.balances.coin ?? null,
-    gemBalance: wallet?.balances.gem ?? null,
-    aznifBalance: wallet?.balances.mc ?? null,
+    hasValidWallet: currentWallet !== null,
+    coinBalance: currentWallet?.balances.coin ?? null,
+    gemBalance: currentWallet?.balances.gem ?? null,
+    aznifBalance: currentWallet?.balances.mc ?? null,
     refreshWallet,
-  }), [error, refreshWallet, status, wallet]);
+  }), [currentWallet, error, refreshWallet, status]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

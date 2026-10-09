@@ -7,10 +7,9 @@ import {
   type GameChatMode,
   type GameChatType,
 } from "@/lib/gameChat";
-import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -31,6 +30,7 @@ type GameChatDrawerProps = {
   mode?: GameChatMode | null;
   currentUserId?: string | null;
   enabled?: boolean;
+  realtimeMessages: GameChatMessage[];
   onClose: () => void;
 };
 
@@ -46,14 +46,25 @@ function isEmojiOnly(text: string) {
 
 function mergeMessages(
   current: GameChatMessage[],
-  incoming: GameChatMessage,
+  incoming: GameChatMessage[],
 ) {
-  if (current.some((message) => message.id === incoming.id)) {
-    return current;
-  }
-
-  return [...current, incoming].sort((left, right) =>
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((left, right) =>
     left.created_at.localeCompare(right.created_at),
+  );
+}
+
+function belongsToMatch(
+  message: GameChatMessage,
+  gameType: GameChatType,
+  matchId: string,
+  mode: GameChatMode | null,
+) {
+  return (
+    message.game_type === gameType &&
+    message.match_id === matchId &&
+    (mode === null || message.mode === mode)
   );
 }
 
@@ -71,13 +82,23 @@ function getCurrentTimestamp() {
   return new Date().getTime();
 }
 
-export default function GameChatDrawer({
+export default function GameChatDrawer(props: GameChatDrawerProps) {
+  return (
+    <GameChatDrawerMatch
+      key={JSON.stringify([props.gameType, props.matchId, props.mode ?? null])}
+      {...props}
+    />
+  );
+}
+
+function GameChatDrawerMatch({
   visible,
   gameType,
   matchId,
   mode = null,
   currentUserId,
   enabled = true,
+  realtimeMessages,
   onClose,
 }: GameChatDrawerProps) {
   const [messages, setMessages] = useState<GameChatMessage[]>([]);
@@ -93,6 +114,16 @@ export default function GameChatDrawer({
   const listRef = useRef<FlatList<GameChatMessage> | null>(null);
   const cooldownUntilRef = useRef(0);
   const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeRef = useRef(true);
+  const displayedMessages = useMemo(
+    () => mergeMessages(
+      messages,
+      realtimeMessages.filter((message) =>
+        belongsToMatch(message, gameType, matchId, mode),
+      ),
+    ),
+    [gameType, matchId, messages, mode, realtimeMessages],
+  );
 
   const canSend = useMemo(
     () =>
@@ -127,14 +158,15 @@ export default function GameChatDrawer({
     };
   }, []);
 
-  useEffect(
-    () => () => {
+  useLayoutEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
       if (cooldownTimerRef.current) {
         clearTimeout(cooldownTimerRef.current);
       }
-    },
-    [],
-  );
+    };
+  }, []);
 
   function dismissKeyboardOnly() {
     inputRef.current?.blur();
@@ -165,82 +197,41 @@ export default function GameChatDrawer({
       setError(null);
     }, 0);
 
-    const loadMessages = () =>
-      getGameChatMessages(gameType, matchId, mode);
-
-loadMessages()
-  .then((nextMessages) => {
-    if (isMounted) {
-      setMessages((current) => {
-        const merged = [...nextMessages];
-
-        for (const message of current) {
-          if (!merged.some((item) => item.id === message.id)) {
-            merged.push(message);
-          }
+    getGameChatMessages(gameType, matchId, mode)
+      .then((nextMessages) => {
+        if (isMounted && activeRef.current) {
+          setMessages((current) => mergeMessages(
+            current,
+            nextMessages.filter((message) =>
+              belongsToMatch(message, gameType, matchId, mode),
+            ),
+          ));
         }
-
-        return merged.sort((left, right) =>
-          left.created_at.localeCompare(right.created_at),
-        );
-      });
-    }
-  })
+      })
       .catch((err) => {
         console.warn(
           "Failed to load game chat messages",
           err,
         );
 
-        if (isMounted) {
+        if (isMounted && activeRef.current) {
           setError("نەتوانرا پەیامەکان باربکرێن.");
         }
       })
       .finally(() => {
-        if (isMounted) {
+        if (isMounted && activeRef.current) {
           setLoading(false);
         }
       });
 
-    const channel = supabase
-      .channel(
-        `game_chat_messages:${gameType}:${matchId}:${mode ?? "all"}`,
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "game_chat_messages",
-          filter: `match_id=eq.${matchId}`,
-        },
-        (payload) => {
-          const message = payload.new as GameChatMessage;
-
-          if (message.game_type !== gameType) {
-            return;
-          }
-
-          if (mode !== null && message.mode !== mode) {
-            return;
-          }
-
-          setMessages((current) =>
-            mergeMessages(current, message),
-          );
-        },
-      )
-      .subscribe();
-
     return () => {
       isMounted = false;
       clearTimeout(loadingTimer);
-      void supabase.removeChannel(channel);
     };
   }, [enabled, gameType, matchId, mode, visible]);
 
   useEffect(() => {
-    if (!visible || messages.length === 0) {
+    if (!visible || displayedMessages.length === 0) {
       return;
     }
 
@@ -251,7 +242,7 @@ loadMessages()
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [messages.length, visible]);
+  }, [displayedMessages.length, visible]);
 
   if (!visible) {
     return null;
@@ -282,8 +273,13 @@ loadMessages()
         mode,
       );
 
+      if (
+        !activeRef.current ||
+        !belongsToMatch(sentMessage, gameType, matchId, mode)
+      ) return;
+
       setMessages((current) =>
-        mergeMessages(current, sentMessage),
+        mergeMessages(current, [sentMessage]),
       );
 
       cooldownUntilRef.current =
@@ -296,6 +292,7 @@ loadMessages()
       }
 
       cooldownTimerRef.current = setTimeout(() => {
+        if (!activeRef.current) return;
         cooldownUntilRef.current = 0;
         setCooldownActive(false);
         cooldownTimerRef.current = null;
@@ -313,9 +310,11 @@ loadMessages()
         err,
       );
 
-      setError("نەتوانرا پەیامەکە بنێردرێت.");
+      if (activeRef.current) {
+        setError("نەتوانرا پەیامەکە بنێردرێت.");
+      }
     } finally {
-      setSending(false);
+      if (activeRef.current) setSending(false);
     }
   }
 
@@ -368,7 +367,7 @@ loadMessages()
             <View style={styles.realMessagesArea}>
               <FlatList
                 ref={listRef}
-                data={messages}
+                data={displayedMessages}
                 keyExtractor={(item) => item.id}
                 style={styles.messageList}
                 contentContainerStyle={styles.messages}
@@ -624,25 +623,6 @@ const styles = StyleSheet.create({
     height: "80%",
     alignSelf: "center",
     marginHorizontal: 10,
-  },
-
-  dividerFadeTop: {
-    width: 1,
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-
-  dividerHighlight: {
-    width: 1,
-    height: 24,
-    borderRadius: 1,
-    backgroundColor: "rgba(255,255,255,0.42)",
-  },
-
-  dividerFadeBottom: {
-    width: 1,
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   quickMessages: {

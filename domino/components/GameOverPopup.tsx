@@ -379,14 +379,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-  sectionTitle: {
-    color: "rgba(248, 243, 223, 0.82)",
-    fontSize: 12,
-    fontFamily: "SpedaBold",
-    textAlign: "center",
-    marginBottom: 7,
-  },
-
   scoreRow: {
     width: "100%",
     minHeight: 76,

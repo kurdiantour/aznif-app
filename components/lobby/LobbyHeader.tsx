@@ -8,7 +8,7 @@ import { useWallet } from "@/lib/wallet-context";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppLayout } from "@/hooks/useAppLayout";
@@ -140,6 +140,16 @@ export function LobbyHeader() {
           </Pressable>
 
           <View style={styles.topRight}>
+            {(profile?.isAdmin === true || profile?.isFinanceAdmin === true) && (
+              <Pressable
+                style={styles.topIcon}
+                accessibilityRole="button"
+                accessibilityLabel="Admin Wallet"
+                onPress={() => router.push("/admin-wallet" as Href)}
+              >
+                <Ionicons name="wallet-outline" size={19} color="#f8d774" />
+              </Pressable>
+            )}
             {userId ? (
               <View
                 style={[
@@ -315,17 +325,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
 
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 50,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   username: {
     maxWidth: 105,
     color: "#ffffff",
@@ -358,19 +357,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexShrink: 1,
     minWidth: 0,
-  },
-
-  balancePill: {
-    height: 36,
-    minWidth: 140,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,214,102,0.20)",
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-    flexShrink: 0,
   },
 
   balancePillCoin: {
@@ -419,17 +405,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 4,
     flexShrink: 1,
-  },
-
-  balanceIconCircle: {
-    width: 25,
-    height: 25,
-    borderRadius: 13,
-    backgroundColor: "rgba(255,183,59,0.20)",
-    borderWidth: 1,
-    borderColor: "rgba(255,214,102,0.30)",
-    alignItems: "center",
-    justifyContent: "center",
   },
 
   balanceIconCircleGold: {

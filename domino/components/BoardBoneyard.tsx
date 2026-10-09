@@ -1,4 +1,4 @@
-import DominoTile from "@/components/game/DominoTile";
+import DominoTile from "@/domino/components/DominoTile";
 import { DominoTileData } from "@/domino/types/domino-game";
 import { Animated, StyleSheet, View } from "react-native";
 

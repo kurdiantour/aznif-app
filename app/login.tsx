@@ -463,36 +463,48 @@ export default function LoginScreen() {
                       </View>
                       <Text style={[styles.guestTitle, styles.googleText]}>Google</Text>
                       <Text style={styles.guestCopy} numberOfLines={2}>
-                        بە هەژمارەکەتەوە بچۆ ژوورەوە
+                        بە هەژمارەکەتەوە بچوو ژورەوە
                       </Text>
                       <Pressable
                         style={[styles.guestButton, { minHeight: controlHeight }, styles.googleButton, !isHorizontalLayout && styles.stackedGuestButton, isLoading && styles.disabled]}
                         onPress={() => void handleGoogleSignIn()}
                         disabled={isLoading}
                       >
-                        <Text style={[styles.guestButtonText, styles.googleText]}>Google</Text>
+                        <Text style={[styles.guestButtonText, styles.googleText]}>Sign in with Google</Text>
                       </Pressable>
                     </View>
 
-                    {Platform.OS === "ios" ? <View style={styles.authChoiceCard}>
+                    <View style={styles.authChoiceCard}>
                       <View style={[styles.guestIcon, styles.appleIcon]}>
                         <FontAwesome name="apple" size={22} color="#ffffff" />
                       </View>
                       <Text style={[styles.guestTitle, styles.englishText]}>Apple</Text>
                       <Text style={styles.guestCopy} numberOfLines={2}>
-                        بە هەژمارەکەتەوە بچۆ ژوورەوە
+                        بە هەژمارەکەتەوە بچوو ژورەوە
                       </Text>
-                      <AppleAuthentication.AppleAuthenticationButton
-                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                        cornerRadius={6}
-                        style={[styles.appleNativeButton, { height: controlHeight }, !isHorizontalLayout && styles.stackedGuestButton, isLoading && styles.disabled]}
-                        pointerEvents={isLoading ? "none" : "auto"}
-                        onPress={() => {
-                          if (!isLoading) void handleAppleSignIn();
-                        }}
-                      />
-                    </View> : null}
+                      {Platform.OS === "ios" ? (
+                        <AppleAuthentication.AppleAuthenticationButton
+                          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                          cornerRadius={6}
+                          style={[styles.appleNativeButton, { height: controlHeight }, !isHorizontalLayout && styles.stackedGuestButton, isLoading && styles.disabled]}
+                          pointerEvents={isLoading ? "none" : "auto"}
+                          onPress={() => {
+                            if (!isLoading) void handleAppleSignIn();
+                          }}
+                        />
+                      ) : (
+                        <Pressable
+                          style={[styles.guestButton, styles.appleUnavailableButton, { minHeight: controlHeight }, !isHorizontalLayout && styles.stackedGuestButton]}
+                          disabled
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: true }}
+                          accessibilityLabel="Sign in with Apple is available on iPhone and iPad"
+                        >
+                          <Text style={[styles.guestButtonText, styles.englishText]}>Sign in with Apple</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -591,9 +603,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#4285f4",
   },
 
-  facebookIcon: {
-    backgroundColor: "#1877f2",
-  },
   appleIcon: {
     backgroundColor: "#000000",
   },
@@ -601,6 +610,10 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     height: 48,
     transform: [{ translateY: 11 }],
+  },
+  appleUnavailableButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    opacity: 0.7,
   },
   guestTitle: {
     color: "#ffffff",
@@ -771,10 +784,6 @@ guestButton: {
   englishText: {
     fontFamily: "RobotoMedium",
   },
-  googleInlineText: {
-    fontFamily: "RobotoMedium",
-  },
-
   googleText: {
   fontFamily: "RobotoMedium",
   writingDirection: "ltr",

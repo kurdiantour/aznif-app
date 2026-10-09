@@ -172,64 +172,6 @@ BEGIN
   RETURN QUERY SELECT v_friendship.id, v_friendship.status;
 END;
 $$;
-CREATE OR REPLACE FUNCTION public.get_friends()
-RETURNS TABLE(
-  friendship_id uuid,
-  friend_id uuid,
-  username text,
-  player_id text,
-  avatar_id text,
-  accepted_at timestamptz
-)
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT
-    f.id,
-    p.id,
-    p.username,
-    p.player_id,
-    p.avatar_id,
-    coalesce(f.responded_at, f.updated_at)
-  FROM public.friendships f
-  JOIN public.profiles p
-    ON p.id = CASE
-      WHEN f.requester_id = auth.uid() THEN f.addressee_id
-      ELSE f.requester_id
-    END
-  WHERE auth.uid() IS NOT NULL
-    AND f.status = 'accepted'
-    AND (f.requester_id = auth.uid() OR f.addressee_id = auth.uid())
-  ORDER BY coalesce(f.responded_at, f.updated_at) DESC;
-$$;
-CREATE OR REPLACE FUNCTION public.get_friend_requests()
-RETURNS TABLE(
-  friendship_id uuid,
-  requester_id uuid,
-  username text,
-  player_id text,
-  avatar_id text,
-  created_at timestamptz
-)
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT
-    f.id,
-    p.id,
-    p.username,
-    p.player_id,
-    p.avatar_id,
-    f.created_at
-  FROM public.friendships f
-  JOIN public.profiles p ON p.id = f.requester_id
-  WHERE auth.uid() IS NOT NULL
-    AND f.addressee_id = auth.uid()
-    AND f.status = 'pending'
-  ORDER BY f.created_at DESC;
-$$;
 CREATE OR REPLACE FUNCTION public.are_friends(p_first uuid, p_second uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -370,7 +312,9 @@ $$;
 GRANT EXECUTE ON FUNCTION public.search_friend_candidates(text, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.send_friend_request(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.respond_friend_request(uuid, boolean) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_friends() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_friend_requests() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.are_friends(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.are_friends(uuid, uuid)
+TO authenticated, service_role;
+
+REVOKE EXECUTE ON FUNCTION public.are_friends(uuid, uuid)
+FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.transfer_mc(uuid, uuid, numeric) TO authenticated;

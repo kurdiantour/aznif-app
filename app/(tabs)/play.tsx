@@ -4,12 +4,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
-
 
 type GameCardProps = {
   title: string;
@@ -115,6 +115,77 @@ function GameCard({
   );
 }
 
+type TournamentCardProps = {
+  isTablet?: boolean;
+  onPress?: () => void;
+};
+
+function TournamentCard({
+  isTablet = false,
+  onPress,
+}: TournamentCardProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="تۆڕنامەنت"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        styles.tournamentCard,
+        isTablet && styles.cardTablet,
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <LinearGradient
+        colors={["#090817", "#22103f", "#4a176f", "#10091f"]}
+        locations={[0, 0.34, 0.7, 1]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.95, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <LinearGradient
+        colors={["transparent", "rgba(4,2,10,0.96)"]}
+        style={[styles.bottomFade, isTablet && styles.bottomFadeTablet]}
+        pointerEvents="none"
+      />
+
+      <View
+        style={[
+          styles.cardInfo,
+          styles.tournamentCardInfo,
+          isTablet && styles.cardInfoTablet,
+        ]}
+        pointerEvents="none"
+      >
+        <Text
+          style={[
+            styles.cardTitle,
+            styles.tournamentTitle,
+            isTablet && styles.cardTitleTablet,
+          ]}
+        >
+          تۆڕنامەنت
+        </Text>
+
+        <Text
+          style={[
+            styles.cardSubtitle,
+            styles.tournamentSubtitle,
+            isTablet && styles.cardSubtitleTablet,
+          ]}
+        >
+          پێشبڕکێ بکە و خەڵات ببەوە
+        </Text>
+      </View>
+
+<View style={styles.iconBox} pointerEvents="none">
+  <Ionicons name="trophy" size={22} color="#f8d774" />
+</View>
+    </Pressable>
+  );
+}
+
 export default function PlayScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -124,16 +195,36 @@ export default function PlayScreen() {
   return (
     <View style={styles.screenWrapper}>
       {__DEV__ && (
-        <Pressable
-          accessibilityRole="button"
-          style={styles.okeyPreviewButton}
-          onPress={() => router.push("/okey/preview")}
-        >
-          <Text style={styles.okeyPreviewButtonText}>Okey Preview</Text>
-        </Pressable>
+        <View style={styles.previewActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Domino Preview"
+            style={styles.previewButton}
+            onPress={() => router.push("/domino/preview")}
+          >
+            <Text style={styles.previewButtonText}>Domino Preview</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Okey Preview"
+            style={styles.previewButton}
+            onPress={() => router.push("/okey/preview")}
+          >
+            <Text style={styles.previewButtonText}>Okey Preview</Text>
+          </Pressable>
+        </View>
       )}
+
       <View style={[styles.content, isTablet && styles.contentTablet]}>
-        <View style={[styles.cardRow, isTablet && styles.cardRowTablet]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.cardScroll}
+          contentContainerStyle={[
+            styles.cardRow,
+            isTablet && styles.cardRowTablet,
+          ]}
+        >
           <GameCard
             isTablet={isTablet}
             title="دۆمینۆ"
@@ -152,6 +243,8 @@ export default function PlayScreen() {
             onPress={() => router.push("/okey/fun")}
           />
 
+          <TournamentCard isTablet={isTablet} onPress={() => router.push("/tournament" as never)} />
+
           <GameCard
             isTablet={isTablet}
             title="تاولە"
@@ -165,34 +258,38 @@ export default function PlayScreen() {
           <GameCard
             isTablet={isTablet}
             title="دامە"
-            subtitle="بەم زووانە"
             icon="grid-outline"
             centerImage={require("@/assets/images/lobby/fun/dama.webp")}
-            disabled={true}
-            showComingSoonClock={true}
+            onPress={() => router.push("/dama/game")}
           />
-        </View>
-
+        </ScrollView>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  okeyPreviewButton: {
+  previewActions: {
     position: "absolute",
     top: 8,
     right: 8,
     zIndex: 10,
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  previewButton: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: "#3b1676",
   },
-  okeyPreviewButtonText: {
+
+  previewButtonText: {
     color: "#fff",
     fontWeight: "600",
   },
+
   screenWrapper: {
     flex: 1,
     width: "100%",
@@ -210,7 +307,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(168, 85, 247, 0.55)",
     backgroundColor: "rgba(15, 11, 42, 0.72)",
-    // Glow effect matching Aznif purple
     shadowColor: "#a855f7",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
@@ -230,10 +326,15 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
+  cardScroll: {
+    flexGrow: 0,
+    width: "100%",
+  },
+
   cardRow: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     gap: 8,
+    paddingRight: 2,
   },
 
   cardRowTablet: {
@@ -259,10 +360,6 @@ const styles = StyleSheet.create({
 
   cardDisabled: {
     opacity: 0.65,
-  },
-
-  cardPlaceholder: {
-    opacity: 0,
   },
 
   cardPressed: {
@@ -367,5 +464,26 @@ const styles = StyleSheet.create({
     height: 172,
     marginTop: -22,
   },
-});
 
+  tournamentCard: {
+    borderColor: "rgba(248,215,116,0.48)",
+    backgroundColor: "#120a26",
+    shadowColor: "#a855f7",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+
+  tournamentCardInfo: {
+    bottom: 18,
+  },
+
+  tournamentTitle: {
+    color: "#fff8df",
+  },
+
+  tournamentSubtitle: {
+    color: "#e8dcff",
+  },
+});

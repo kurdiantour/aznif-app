@@ -236,19 +236,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  name: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontFamily: "RobotoMedium",
-  },
-
-  playerId: {
-    marginTop: 5,
-    color: "#aaa7bc",
-    fontSize: 12,
-    fontFamily: "RobotoMedium",
-  },
-
   requestButtons: {
     width: 150,
     flexDirection: "row",
