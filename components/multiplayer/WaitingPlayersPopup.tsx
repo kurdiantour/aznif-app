@@ -29,6 +29,7 @@ export type WaitingPlayersPopupProps = {
   countdownEndsAt?: string | null;
   countdownSeconds?: number | null;
   playerCount?: 2 | 4;
+  statusMessage?: string;
   canCancel?: boolean;
   loading?: boolean;
   onCancel: () => void;
@@ -43,6 +44,7 @@ export default function WaitingPlayersPopup({
   countdownEndsAt = null,
   countdownSeconds: countdownSecondsProp,
   playerCount = 4,
+  statusMessage,
   canCancel = true,
   loading = false,
   onCancel,
@@ -98,7 +100,7 @@ export default function WaitingPlayersPopup({
             </Text>
 
             <Text style={styles.entryFeeText}>
-              تێچووی یاری:{" "}
+              تیچوو: {" "}
               <Text style={styles.entryFeeAmount}>
                 {formatCurrencyAmount(
                   entryFee,
@@ -109,13 +111,17 @@ export default function WaitingPlayersPopup({
               </Text>{" "}
               {currency === "aznif"
                 ? "ئەزنیف"
-                : "سکە"}
+                : "کوین"}
             </Text>
           </View>
 
           <Text style={styles.title}>
             چاوەڕوانی یاریزانەکان
           </Text>
+
+          {statusMessage ? (
+            <Text style={styles.statusMessage}>{statusMessage}</Text>
+          ) : null}
 
           <View style={styles.players}>
             {slotOrder.map(
@@ -280,6 +286,14 @@ const styles = StyleSheet.create({
     color: "#f8d774",
     fontSize: 20,
     fontFamily: "SpedaBold",
+    textAlign: "center",
+  },
+
+  statusMessage: {
+    marginTop: 8,
+    color: "rgba(255,247,218,0.82)",
+    fontSize: 13,
+    fontFamily: "SpedaRegular",
     textAlign: "center",
   },
 

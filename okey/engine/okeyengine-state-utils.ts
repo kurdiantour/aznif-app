@@ -43,11 +43,12 @@ function getNextCounterClockwisePlayerIndex(currentPlayerIndex: number) {
 }
 
 export function advanceTurn(state: OkeyGameState): OkeyGameState {
+  const playerCount = state.players.length;
   return {
     ...state,
-    currentPlayerIndex: getNextCounterClockwisePlayerIndex(
-      state.currentPlayerIndex,
-    ),
+    currentPlayerIndex: playerCount === 2
+      ? (state.currentPlayerIndex + 1) % playerCount
+      : getNextCounterClockwisePlayerIndex(state.currentPlayerIndex),
     hasDrawnThisTurn: false,
   };
 }

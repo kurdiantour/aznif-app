@@ -26,6 +26,7 @@ export function projectOkeyServerState(
     ? [...projectedPlayers.slice(viewer), ...projectedPlayers.slice(0, viewer)]
     : projectedPlayers;
   return {
+    mode: projection.mode ?? (count === 2 ? "1v1" : "2v2"),
     players,
     stagingMelds: projection.stagingMelds,
     teamFirstOpenScores: projection.teamFirstOpenScores,

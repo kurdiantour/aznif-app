@@ -1,20 +1,22 @@
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { BOARD_CELLS, TABLE_IMAGE_SIZE } from '../board-layout';
-import type { DamaPieceModel } from '../mock-position';
+import { BOARD_CELLS, BOARD_IMAGE_SIZE, squareAtBoardPoint } from '../board-layout';
+import type { Piece, Square } from '../engine';
 import { DamaPiece } from './DamaPiece';
 
 type Props = {
-  tableWidth: number;
-  tableHeight: number;
-  pieces: readonly DamaPieceModel[];
+  pieces: readonly Piece[];
+  selectedId: string | null;
+  targets: readonly Square[];
+  onSquarePress: (square: Square) => void;
+  onSquareDrag: (from: Square, to: Square) => void;
 };
 
-export function DamaBoard({ tableWidth, tableHeight, pieces }: Props) {
-  const [layout, setLayout] = useState({ width: tableWidth, height: tableHeight });
-  const scaleX = layout.width / TABLE_IMAGE_SIZE.width;
-  const scaleY = layout.height / TABLE_IMAGE_SIZE.height;
+export function DamaBoard({ pieces, selectedId, targets, onSquarePress, onSquareDrag }: Props) {
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const scale = Math.min(layout.width, layout.height) / BOARD_IMAGE_SIZE.width;
+  const start = useRef({ x: 0, y: 0 });
 
   const bySquare = new Map(
     pieces.map((piece) => [`${piece.row}-${piece.column}`, piece]),
@@ -22,7 +24,6 @@ export function DamaBoard({ tableWidth, tableHeight, pieces }: Props) {
 
   return (
     <View
-      pointerEvents="none"
       accessibilityLabel="Dama board, eight by eight"
       style={StyleSheet.absoluteFill}
       onLayout={(event) => {
@@ -31,23 +32,45 @@ export function DamaBoard({ tableWidth, tableHeight, pieces }: Props) {
           ? current
           : { width, height });
       }}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
+      onResponderGrant={(event) => {
+        start.current = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
+      }}
+      onResponderRelease={(event) => {
+        const point = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
+        const to = squareAtBoardPoint(point.x, point.y, layout.width);
+        if (!to) return;
+        const dragged = Math.hypot(point.x - start.current.x, point.y - start.current.y) > 12;
+        if (dragged) {
+          const from = squareAtBoardPoint(start.current.x, start.current.y, layout.width);
+          if (from) onSquareDrag(from, to);
+        }
+        else onSquarePress(to);
+      }}
     >
       {BOARD_CELLS.map((cell) => {
         const piece = bySquare.get(`${cell.row}-${cell.column}`);
-        const width = cell.width * scaleX;
-        const height = cell.height * scaleY;
-        const pieceSize = Math.min(width, height) * 0.96;
+        const width = cell.width * scale;
+        const height = cell.height * scale;
+        const pieceSize = width * 0.88;
+        const isTarget = targets.some((target) => target.row === cell.row && target.column === cell.column);
         return (
           <View
             key={`${cell.row}-${cell.column}`}
+            pointerEvents="none"
             style={[styles.cell, {
-              left: cell.x * scaleX,
-              top: cell.y * scaleY,
+              left: cell.x * scale,
+              top: cell.y * scale,
               width,
               height,
             }]}
           >
+            {isTarget && <View style={[styles.target, { width: width * 0.38, height: height * 0.38, borderRadius: width * 0.19 }]} />}
+            {piece?.id === selectedId && <View style={[styles.selected, { width: width * 0.93, height: height * 0.93, borderRadius: width * 0.47 }]} />}
             {piece && <DamaPiece color={piece.color} width={pieceSize} height={pieceSize} />}
+            {piece?.king && <Text style={[styles.king, { fontSize: width * 0.44 }]}>★</Text>}
           </View>
         );
       })}
@@ -61,4 +84,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  target: { position: 'absolute', backgroundColor: 'rgba(255,218,89,0.62)', borderWidth: 2, borderColor: '#fff2b1' },
+  selected: { position: 'absolute', borderWidth: 3, borderColor: '#ffe16f', backgroundColor: 'rgba(255,220,100,0.2)' },
+  king: { position: 'absolute', color: '#ffd66e', textShadowColor: '#311506', textShadowRadius: 3, fontWeight: '900' },
 });

@@ -36,6 +36,7 @@ import {
 import type {
   OkeyGameState,
   OkeyMeld,
+  OkeyMatchMode,
   OkeyTile,
 } from "../types/okey.ts";
 
@@ -167,68 +168,25 @@ function secureRandom(): number {
 
 function getPlayerIdentities(
   state: OkeyGameState,
-): readonly [
-  OkeyServerPlayerIdentity,
-  OkeyServerPlayerIdentity,
-  OkeyServerPlayerIdentity,
-  OkeyServerPlayerIdentity,
-] {
-  if (state.players.length !== 4) {
+): readonly OkeyServerPlayerIdentity[] {
+  if (state.players.length !== (state.mode === "1v1" ? 2 : 4)) {
     throw new Error(
-      "okey_match_requires_four_players",
+      "okey_match_player_count_mismatch",
     );
   }
 
-  return [
-    {
-      id: state.players[0].id,
-      name: state.players[0].name,
-      avatarId: state.players[0].avatarId,
-      avatarUrl: state.players[0].avatarUrl,
-      controlledByBot: state.players[0].controlledByBot,
-      botDifficulty: state.players[0].botDifficulty,
-      botNumber: state.players[0].botNumber,
-      originalName: state.players[0].originalName,
-      originalAvatarId: state.players[0].originalAvatarId,
-      originalAvatarUrl: state.players[0].originalAvatarUrl,
-    },
-    {
-      id: state.players[1].id,
-      name: state.players[1].name,
-      avatarId: state.players[1].avatarId,
-      avatarUrl: state.players[1].avatarUrl,
-      controlledByBot: state.players[1].controlledByBot,
-      botDifficulty: state.players[1].botDifficulty,
-      botNumber: state.players[1].botNumber,
-      originalName: state.players[1].originalName,
-      originalAvatarId: state.players[1].originalAvatarId,
-      originalAvatarUrl: state.players[1].originalAvatarUrl,
-    },
-    {
-      id: state.players[2].id,
-      name: state.players[2].name,
-      avatarId: state.players[2].avatarId,
-      avatarUrl: state.players[2].avatarUrl,
-      controlledByBot: state.players[2].controlledByBot,
-      botDifficulty: state.players[2].botDifficulty,
-      botNumber: state.players[2].botNumber,
-      originalName: state.players[2].originalName,
-      originalAvatarId: state.players[2].originalAvatarId,
-      originalAvatarUrl: state.players[2].originalAvatarUrl,
-    },
-    {
-      id: state.players[3].id,
-      name: state.players[3].name,
-      avatarId: state.players[3].avatarId,
-      avatarUrl: state.players[3].avatarUrl,
-      controlledByBot: state.players[3].controlledByBot,
-      botDifficulty: state.players[3].botDifficulty,
-      botNumber: state.players[3].botNumber,
-      originalName: state.players[3].originalName,
-      originalAvatarId: state.players[3].originalAvatarId,
-      originalAvatarUrl: state.players[3].originalAvatarUrl,
-    },
-  ];
+  return state.players.map((player) => ({
+    id: player.id,
+    name: player.name,
+    avatarId: player.avatarId,
+    avatarUrl: player.avatarUrl,
+    controlledByBot: player.controlledByBot,
+    botDifficulty: player.botDifficulty,
+    botNumber: player.botNumber,
+    originalName: player.originalName,
+    originalAvatarId: player.originalAvatarId,
+    originalAvatarUrl: player.originalAvatarUrl,
+  }));
 }
 
 function getWinnerTeamId(
@@ -258,21 +216,21 @@ function getWinnerTeamId(
 }
 
 export function createAuthoritativeOkeyGame(
-  players: readonly [
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-  ],
+  players: readonly OkeyServerPlayerIdentity[],
 
   dealerIndex = Math.floor(
-    secureRandom() * 4,
+    secureRandom() * players.length,
   ),
 ): OkeyGameState {
+  if (players.length !== 2 && players.length !== 4) {
+    throw new Error("okey_match_requires_two_or_four_players");
+  }
+  const mode: OkeyMatchMode = players.length === 2 ? "1v1" : "2v2";
   const state =
     createInitialOkeyGame(
       dealerIndex,
       secureRandom,
+      mode,
     );
 
   return {
@@ -329,14 +287,9 @@ export function createAuthoritativeOkeyGame(
 }
 
 export function createAuthoritativeOkeyMatch(
-  players: readonly [
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-  ],
+  players: readonly OkeyServerPlayerIdentity[],
   dealerIndex = Math.floor(
-    secureRandom() * 4,
+    secureRandom() * players.length,
   ),
 ): OkeyAuthoritativeMatchState {
   return {

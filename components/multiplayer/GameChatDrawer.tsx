@@ -266,12 +266,7 @@ function GameChatDrawerMatch({
     setError(null);
 
     try {
-      const sentMessage = await sendGameChatMessage(
-        gameType,
-        matchId,
-        text,
-        mode,
-      );
+      const sentMessage = await sendGameChatMessage(gameType, matchId, text, mode);
 
       if (
         !activeRef.current ||

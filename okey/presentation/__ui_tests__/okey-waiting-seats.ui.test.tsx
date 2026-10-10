@@ -49,3 +49,15 @@ test("cleared room has empty seats, never synthetic cosmetics identities", () =>
   ui.rerender({ waitingRoom: null });
   expect(ui.result.current.opponentSeats.every(seat => seat.id === undefined && seat.name === "")).toBe(true);
 });
+
+test.each([0, 1])("one versus one puts the other human at the top for local seat %i", local => {
+  const twoPlayerState = createInitialOkeyGame(0, () => 0.5, "1v1");
+  const twoPlayerRoom = { ...room, mode: "1v1" as const, capacity: 2, members: members.slice(0, 2) };
+  const { result } = renderHook(() => useOkeyTableViewModel({
+    ...input(local, twoPlayerRoom), state: twoPlayerState, presentedTablePlayers: twoPlayerState.players,
+  }));
+  const top = result.current.opponentSeats.find((seat) => seat.side === "top");
+  expect(top).toMatchObject({ id: members[1 - local].userId, playerIndex: 1 - local });
+  expect(result.current.seatOrderedPlayers).toHaveLength(2);
+  expect(result.current.opponentSeats.filter((seat) => seat.id)).toHaveLength(1);
+});

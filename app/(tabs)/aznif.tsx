@@ -129,7 +129,7 @@ export default function AznifPlayScreen() {
             subtitle="توانای خۆت بسەلمێنە"
             icon="ellipse-outline"
             image={require("@/assets/images/lobby/aznft/okeyaznifcard.webp")}
-            onPress={() => router.push("/okey/aznif")}
+            onPress={() => router.push({ pathname: "/okey", params: { currency: "aznif" } } as never)}
           />
 
           <View

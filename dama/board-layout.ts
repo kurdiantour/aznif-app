@@ -1,23 +1,16 @@
+export const BOARD_IMAGE_SIZE = { width: 615, height: 615 } as const;
 
-export const TABLE_IMAGE_SIZE = {
-  width: 1842,
-  height: 854,
-} as const;
+// The 8 x 8 grid is inset inside the transparent edge and wooden frame.
+export const BOARD_GRID_OFFSET = 40;
+export const BOARD_CELL_SIZE = 67;
 
-// Straight 8×8 board on the final Dama table image.
-const COLUMN_EDGES = [571, 660, 747, 834, 921, 1008, 1095, 1182, 1270] as const;
-
-const ROW_EDGES = [
-  94, 176, 260, 343, 427,
-  510, 594, 678, 762,
-] as const;
-
-export const BOARD_RECT = {
-  rowY: ROW_EDGES,
-  columnX: COLUMN_EDGES,
-  leftX: Array(8).fill(COLUMN_EDGES[0]) as number[],
-  rightX: Array(8).fill(COLUMN_EDGES[8]) as number[],
-};
+export function getBoardSize(viewportWidth: number, viewportHeight: number) {
+  const width = Math.min(
+    viewportWidth * (viewportWidth > viewportHeight ? 0.58 : 0.9),
+    viewportHeight * 0.88,
+  );
+  return { width, height: width };
+}
 
 export type DamaCell = {
   row: number;
@@ -26,17 +19,23 @@ export type DamaCell = {
   y: number;
   width: number;
   height: number;
-  centerX: number;
-  centerY: number;
 };
 
-// The 64 cells share these measured boundaries in original image pixels.
+export function squareAtBoardPoint(x: number, y: number, boardSize: number): { row: number; column: number } | null {
+  if (boardSize <= 0) return null;
+  const scale = boardSize / BOARD_IMAGE_SIZE.width;
+  const column = Math.floor((x / scale - BOARD_GRID_OFFSET) / BOARD_CELL_SIZE);
+  const row = Math.floor((y / scale - BOARD_GRID_OFFSET) / BOARD_CELL_SIZE);
+  return row >= 0 && row < 8 && column >= 0 && column < 8 ? { row, column } : null;
+}
+
 export const BOARD_CELLS: readonly DamaCell[] = Array.from({ length: 8 }, (_, row) =>
-  Array.from({ length: 8 }, (_, column) => {
-    const x = COLUMN_EDGES[column];
-    const y = ROW_EDGES[row];
-    const width = COLUMN_EDGES[column + 1] - x;
-    const height = ROW_EDGES[row + 1] - y;
-    return { row, column, x, y, width, height, centerX: x + width / 2, centerY: y + height / 2 };
-  }),
+  Array.from({ length: 8 }, (_, column) => ({
+    row,
+    column,
+    x: BOARD_GRID_OFFSET + column * BOARD_CELL_SIZE,
+    y: BOARD_GRID_OFFSET + row * BOARD_CELL_SIZE,
+    width: BOARD_CELL_SIZE,
+    height: BOARD_CELL_SIZE,
+  })),
 ).flat();

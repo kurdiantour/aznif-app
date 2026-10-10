@@ -124,6 +124,7 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
   const params = useLocalSearchParams<{
     matchId?: string | string[];
     mode?: string | string[];
+    matchMode?: string | string[];
     preview?: string | string[];
   }>();
 
@@ -153,6 +154,9 @@ function OkeyGameTableSceneContent({ isPreview: propIsPreview }: { isPreview?: b
   const currentUserId = isPreview ? "seat-0" : roomLifecycle.currentUserId;
   const { profile: localProfile } = useProfile();
   const onlineRoom = isPreview ? null : roomLifecycle.room;
+  const isOneVsOne =
+  onlineRoom?.mode === "1v1" ||
+  (!onlineRoom && getRouteParam(params.matchMode) === "1v1");
   const waitingForOnlinePlayers = isPreview ? false : roomLifecycle.waitingForPlayers;
   const countdownInProgress = isPreview ? false : roomLifecycle.countdownInProgress;
   const canCancelWaiting = isPreview ? false : roomLifecycle.canCancelWaiting;
@@ -808,6 +812,7 @@ return (
   entryFee={onlineRoom?.entryFee ?? 0}
   currency={onlineRoom?.currency ?? "fun"}
   members={waitingMembers}
+  playerCount={isOneVsOne ? 2 : 4}
   countdownEndsAt={onlineRoom?.countdownEndsAt ?? null}
   canCancel={
     !countdownInProgress &&
@@ -843,7 +848,7 @@ return (
       }
     />
 
-    <MemoizedOkeyOpponentSeat
+    {!isOneVsOne && <MemoizedOkeyOpponentSeat
       {...opponentSeats[1]}
       playerId={opponentSeats[1]?.id}
       side="left"
@@ -855,9 +860,9 @@ return (
           ? () => openOpponentProfile(opponentSeats[1]?.id ?? "")
           : undefined
       }
-    />
+    />}
 
-    <MemoizedOkeyOpponentSeat
+    {!isOneVsOne && <MemoizedOkeyOpponentSeat
       {...opponentSeats[2]}
       playerId={opponentSeats[2]?.id}
       side="right"
@@ -869,7 +874,7 @@ return (
           ? () => openOpponentProfile(opponentSeats[2]?.id ?? "")
           : undefined
       }
-    />
+    />}
 
 
 <MemoizedOkeyTableMeldAreas
@@ -1059,6 +1064,7 @@ return (
       />
       <MultiplayerGameChat
         gameType="okey"
+        mode={isOneVsOne ? "1v1" : null}
         matchId={onlineMatchId}
         currentUserId={currentUserId}
         playerIdBySeat={playerIdBySeat}

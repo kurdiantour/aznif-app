@@ -583,7 +583,7 @@ export function OkeyTableMeldAreas({
         onJokerEndpointSelected={onJokerEndpointSelected}
       />
 
-      <OkeyPlayerMeldArea
+      {players[2] ? <OkeyPlayerMeldArea
         allPlayers={players}
         player={players[2]}
         okeyTile={okeyTile}
@@ -595,9 +595,9 @@ export function OkeyTableMeldAreas({
         highlightedMeldId={highlightedMeldId}
         jokerEndpointChoice={jokerEndpointChoice?.playerId === players[2].id ? jokerEndpointChoice : null}
         onJokerEndpointSelected={onJokerEndpointSelected}
-      />
+      /> : null}
 
-      <OkeyPlayerMeldArea
+      {players[3] ? <OkeyPlayerMeldArea
         allPlayers={players}
         player={players[3]}
         okeyTile={okeyTile}
@@ -609,7 +609,7 @@ export function OkeyTableMeldAreas({
         highlightedMeldId={highlightedMeldId}
         jokerEndpointChoice={jokerEndpointChoice?.playerId === players[3].id ? jokerEndpointChoice : null}
         onJokerEndpointSelected={onJokerEndpointSelected}
-      />
+      /> : null}
 
       <OkeyPlayerMeldArea
         allPlayers={players}

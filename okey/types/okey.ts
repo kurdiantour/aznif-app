@@ -17,6 +17,7 @@ export type OkeyPlayerKind = "human" | "bot";
 export type OkeyBotDifficulty = "easy" | "normal" | "hard";
 
 export type OkeyTeamId = "teamA" | "teamB";
+export type OkeyMatchMode = "1v1" | "2v2";
 
 export type OkeyKonkanEntryReason = "discard-pick" | "forced-table-add" | "joker-replacement" | "forced-final-round";
 
@@ -78,6 +79,7 @@ export type OkeyTurnMessage =
 export type OkeyDiscardOwner = { playerIndex: number; playerId: string } | null;
 
 export type OkeyGameState = {
+  mode?: OkeyMatchMode;
   players: OkeyPlayer[];
   stagingMelds: OkeyMeld[];
   teamFirstOpenScores: Record<OkeyTeamId, number | null>;

@@ -64,19 +64,24 @@ function getOkeyTeamIdForPlayerIndex(playerIndex: number): OkeyTeamId {
 }
 
 export function createInitialOkeyGame(
-  dealerIndex = Math.floor(Math.random() * PLAYER_COUNT),
+  dealerIndex?: number,
   random: () => number = Math.random,
+  mode: "1v1" | "2v2" = "2v2",
 ): OkeyGameState {
-  const safeDealerIndex = Number.isInteger(dealerIndex) && dealerIndex >= 0 && dealerIndex < PLAYER_COUNT
-    ? dealerIndex
-    : 0;
+  const playerCount = mode === "1v1" ? 2 : PLAYER_COUNT;
+  const turnOrder = COUNTER_CLOCKWISE_TURN_ORDER.slice(0, playerCount);
+  const safeDealerIndex = dealerIndex === undefined
+    ? Math.floor(Math.random() * playerCount)
+    : Number.isInteger(dealerIndex) && dealerIndex >= 0 && dealerIndex < playerCount
+      ? dealerIndex
+      : 0;
   const shuffledTiles = shuffle(createTileSet(), random);
   /*
    * This is a neutral deal factory. Every seat begins as a human seat;
-   * the authoritative room service immediately assigns the four real player
+   * the authoritative room service immediately assigns the real player
    * identities. Temporary automated control is only enabled later by the takeover worker.
    */
-  const players = Array.from({ length: PLAYER_COUNT }, (_, index) => ({
+  const players = Array.from({ length: playerCount }, (_, index) => ({
     id: `seat-${index}`,
     name: `Player ${index + 1}`,
     kind: "human" as const,
@@ -92,12 +97,12 @@ export function createInitialOkeyGame(
     konkanSpendsExecuted: 0,
   }));
 
-  const dealerTurnOrderIndex = COUNTER_CLOCKWISE_TURN_ORDER.findIndex(
+  const dealerTurnOrderIndex = turnOrder.findIndex(
     (playerIndex) => playerIndex === safeDealerIndex,
   );
-  const dealOrder = Array.from({ length: PLAYER_COUNT }, (_, offset) =>
-    COUNTER_CLOCKWISE_TURN_ORDER[
-      (dealerTurnOrderIndex + offset) % PLAYER_COUNT
+  const dealOrder = Array.from({ length: playerCount }, (_, offset) =>
+    turnOrder[
+      (dealerTurnOrderIndex + offset) % playerCount
     ],
   );
 
@@ -130,6 +135,7 @@ export function createInitialOkeyGame(
   }));
 
   return {
+    mode,
     players: playersWithInitialHands,
     stagingMelds: [],
     teamFirstOpenScores: { teamA: null, teamB: null },

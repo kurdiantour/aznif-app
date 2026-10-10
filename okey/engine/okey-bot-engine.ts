@@ -411,7 +411,7 @@ function getBotTableFutureProtectedTileIds(state: OkeyGameState): Set<string> {
 }
 
 function discardDanger(state: OkeyGameState, tile: OkeyTile) {
-  const order: readonly number[] = OKEY_RULESET_V1.table.counterClockwiseTurnOrder;
+  const order: readonly number[] = OKEY_RULESET_V1.table.counterClockwiseTurnOrder.slice(0, state.players.length);
   const nextPlayerIndex = order[(order.indexOf(state.currentPlayerIndex) + 1) % order.length];
   const nextPlayer = state.players[nextPlayerIndex];
   if (!isActiveOkeyPlayer(nextPlayer)) return 0;

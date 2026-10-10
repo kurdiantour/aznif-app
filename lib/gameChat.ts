@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 
-export type GameChatType = "domino" | "okey";
+export type GameChatType = "domino" | "okey" | "dame";
 export type GameChatMode = "1v1" | "2v2";
 
 export const GAME_CHAT_EMOJIS = new Set([

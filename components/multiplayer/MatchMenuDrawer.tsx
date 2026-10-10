@@ -189,30 +189,13 @@ function MatchMenuDrawerContent({
                           styles.matchMenuPlayerRowActive,
                       ]}
                     >
-                      {isBot ? (
+                      <View style={styles.matchMenuAvatar}>
                         <PlayerAvatar
-                          avatarId={player.avatarId}
-                          avatarUrl={
-                            player.avatarUrl ?? undefined
-                          }
+                          avatarId={isBot ? player.avatarId : humanProfile?.avatarId ?? player.avatarId}
+                          avatarUrl={isBot ? player.avatarUrl : humanProfile?.avatarUrl ?? player.avatarUrl}
                           size={34}
-                          style={styles.matchMenuAvatar}
                         />
-                      ) : humanProfile ? (
-                        <PlayerAvatar
-                          avatarId={humanProfile.avatarId}
-                          avatarUrl={humanProfile.avatarUrl}
-                          size={34}
-                          style={styles.matchMenuAvatar}
-                        />
-                      ) : (
-                        <View
-                          style={[
-                            styles.matchMenuAvatarPlaceholder,
-                            styles.matchMenuAvatar,
-                          ]}
-                        />
-                      )}
+                      </View>
 
                       <View
                         style={styles.matchMenuPlayerInfo}
@@ -345,17 +328,16 @@ const styles = StyleSheet.create({
   },
 
   matchMenuAvatar: {
+    width: 37,
+    height: 37,
+    borderRadius: 18.5,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1.5,
     borderColor:
       "rgba(250,204,21,0.75)",
   },
 
-  matchMenuAvatarPlaceholder: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
 
   matchMenuPlayerInfo: {
     flex: 1,

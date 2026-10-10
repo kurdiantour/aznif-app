@@ -33,6 +33,8 @@ export type OkeyRoomMember = {
 export type OkeyRoomSnapshot = {
   matchId: string;
   roomCode: string;
+  mode: "1v1" | "2v2";
+  capacity: number;
   tableId: string;
   entryFee: number;
   currency: "fun" | "aznif";

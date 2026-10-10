@@ -125,8 +125,9 @@ const resetTablePresentation = useCallback(() => {
 
 export type OkeyRelativeSeat = "bottom" | "right" | "top" | "left";
 
-export function getRelativeSeatMap(localPlayerIndex: number): Record<OkeyRelativeSeat, number> {
-  const local = ((localPlayerIndex % 4) + 4) % 4;
+export function getRelativeSeatMap(localPlayerIndex: number, playerCount: 2 | 4 = 4): Record<OkeyRelativeSeat, number> {
+  const local = ((localPlayerIndex % playerCount) + playerCount) % playerCount;
+  if (playerCount === 2) return { bottom: local, top: (local + 1) % 2, left: -1, right: -1 };
   return { bottom: local, right: (local + 1) % 4, top: (local + 2) % 4, left: (local + 3) % 4 };
 }
 
@@ -169,7 +170,8 @@ export function useOkeyTableViewModel(input: {
     const index = players.findIndex((player) => player.id === currentUserId);
     return index >= 0 ? index : null;
   }, [currentUserId, onlineProjection?.players, waitingRoom]);
-  const seatMap = useMemo(() => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex), [localPlayerIndex]);
+  const playerCount: 2 | 4 = waitingRoom?.mode === "1v1" || state.mode === "1v1" ? 2 : 4;
+  const seatMap = useMemo(() => localPlayerIndex === null ? null : getRelativeSeatMap(localPlayerIndex, playerCount), [localPlayerIndex, playerCount]);
   const playerForSeat = useCallback((seat: OkeyRelativeSeat) => {
     if (!seatMap) return null;
     const projectedPlayer = onlineProjection?.players[seatMap[seat]];
@@ -190,11 +192,12 @@ export function useOkeyTableViewModel(input: {
   }), [waitingRoom, onlineGameplayReady, playerForSeat, seatMap, serverClockOffsetMs, stableOpponentTileCounts,
     state.hasDrawnThisTurn, turnDeadlineAt, turnDurationSeconds, turnPlayerIndex, turnTimeLeftMilliseconds]);
   const seatOrderedPlayers = useMemo(() => {
+    if (playerCount === 2) return [playerForSeat("bottom") ?? state.players[0], playerForSeat("top") ?? state.players[1]];
     const fallback: Record<OkeyRelativeSeat, OkeyPlayer> = {
       bottom: state.players[0], right: state.players[1], top: state.players[2], left: state.players[3],
     };
     return (["bottom", "top", "left", "right"] as const).map((seat) => playerForSeat(seat) ?? fallback[seat]);
-  }, [playerForSeat, state.players]);
+  }, [playerCount, playerForSeat, state.players]);
   const presentedSeatOrderedPlayers = useMemo(() => seatOrderedPlayers.map((player) =>
     presentedTablePlayers.find((entry) => entry.id === player.id) ?? player,
   ), [humanPlayer.id, presentedTablePlayers, seatOrderedPlayers]);

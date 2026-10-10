@@ -240,10 +240,21 @@ export default function PlayScreen() {
             subtitle="توانای خۆت بسەلمێنە"
             icon="ellipse-outline"
             image={require("@/assets/images/lobby/fun/okey-card.webp")}
-            onPress={() => router.push("/okey/fun")}
+            onPress={() => router.push({ pathname: "/okey", params: { currency: "fun" } } as never)}
           />
 
+          {/* Tournament card temporarily disabled – component preserved for future use
           <TournamentCard isTablet={isTablet} onPress={() => router.push("/tournament" as never)} />
+          */}
+
+          <GameCard
+            isTablet={isTablet}
+            title="دامە"
+            subtitle="تێچوو 500 سکە"
+            icon="grid-outline"
+            centerImage={require("@/assets/images/lobby/fun/dama.webp")}
+            onPress={() => router.push("/dama/game")}
+          />
 
           <GameCard
             isTablet={isTablet}
@@ -253,14 +264,6 @@ export default function PlayScreen() {
             centerImage={require("@/assets/images/lobby/fun/tawla.webp")}
             disabled={true}
             showComingSoonClock={true}
-          />
-
-          <GameCard
-            isTablet={isTablet}
-            title="دامە"
-            icon="grid-outline"
-            centerImage={require("@/assets/images/lobby/fun/dama.webp")}
-            onPress={() => router.push("/dama/game")}
           />
         </ScrollView>
       </View>

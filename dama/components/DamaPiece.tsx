@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
 
-import type { DamaPieceColor } from '../mock-position';
+import type { Side } from '../engine';
 
 const PIECE_IMAGES = {
   black: require('@/assets/cosmetics/dama/classic/black.png'),
   cream: require('@/assets/cosmetics/dama/classic/ivory.png'),
 } as const;
 
-type Props = { color: DamaPieceColor; width: number; height: number };
+type Props = { color: Side; width: number; height: number };
 
 export function DamaPiece({ color, width, height }: Props) {
   return (

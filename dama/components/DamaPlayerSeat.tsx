@@ -1,31 +1,68 @@
-import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 
 import { PlayerAvatar } from '@/components/player/PlayerAvatar';
+import type { AvatarId } from '@/types/avatar';
 
 import { DamaPiece } from './DamaPiece';
-import type { DamaPlayerView } from '../mock-players';
-import type { DamaPieceColor } from '../mock-position';
+import { DAMA_TURN_DURATION_MS, type Side } from '../engine';
+
+export type DamaPlayerView = {
+  id: string;
+  username: string;
+  avatarId?: AvatarId;
+  avatarUrl?: string;
+  pieceColor: Side;
+  capturedCount: number;
+  isCurrentTurn: boolean;
+};
 
 type Props = {
   player: DamaPlayerView;
-  capturedPieceColor: DamaPieceColor;
+  capturedPieceColor: Side;
   width: number;
   avatarSize: number;
+  turnRemainingMs: number;
 };
 
-function formatTimer(seconds: number) {
-  const value = Math.max(0, Math.floor(seconds));
-  return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+function DamaTurnRing({ size, remainingMs }: { size: number; remainingMs: number }) {
+  const strokeWidth = 4;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const remainingProgress = Math.max(0, Math.min(1, remainingMs / DAMA_TURN_DURATION_MS));
+  const filledLength = circumference * remainingProgress;
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width={size} height={size} style={[StyleSheet.absoluteFill, { transform: [{ scaleX: -1 }] }]}>
+        {filledLength > 0 && (
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#facc15"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={`${filledLength} ${circumference}`}
+          strokeDashoffset={0}
+          strokeLinecap="round"
+          rotation={-90}
+          originX={size / 2}
+          originY={size / 2}
+        />
+        )}
+      </Svg>
+    </View>
+  );
 }
 
-export function DamaPlayerSeat({ player, capturedPieceColor, width, avatarSize }: Props) {
+export function DamaPlayerSeat({ player, capturedPieceColor, width, avatarSize, turnRemainingMs }: Props) {
   const active = player.isCurrentTurn;
   const ringPadding = Math.max(3, avatarSize * 0.045);
   const capturedImageSize = Math.max(31, avatarSize * 0.43);
 
   return (
-    <View accessibilityLabel={`${player.username}, ${formatTimer(player.secondsRemaining)}, ${player.capturedCount} pieces captured`} style={[styles.seat, { width }]}>
+    <View accessibilityLabel={`${player.username}, ${player.capturedCount} pieces captured`} style={[styles.seat, { width }]}>
       <View
         style={[
           styles.avatarRing,
@@ -35,11 +72,12 @@ export function DamaPlayerSeat({ player, capturedPieceColor, width, avatarSize }
             height: avatarSize + ringPadding * 2,
             borderRadius: (avatarSize + ringPadding * 2) / 2,
             padding: ringPadding,
-            borderWidth: active ? 3 : 2,
+            borderWidth: active ? 0 : 2,
           },
         ]}
       >
         <PlayerAvatar avatarId={player.avatarId} avatarUrl={player.avatarUrl} size={avatarSize} />
+        {active && <DamaTurnRing size={avatarSize + ringPadding * 2} remainingMs={turnRemainingMs} />}
       </View>
 
       <Text numberOfLines={1} style={[styles.username, { fontSize: Math.max(15, Math.min(22, avatarSize * 0.24)) }]}>
@@ -47,9 +85,8 @@ export function DamaPlayerSeat({ player, capturedPieceColor, width, avatarSize }
       </Text>
 
       <View style={[styles.timerGlass, active && styles.activeGlass, { width: width * 0.92, height: Math.max(36, avatarSize * 0.46) }]}>
-        <Ionicons name="time-outline" size={Math.max(18, avatarSize * 0.24)} color={active ? '#f8c85f' : '#c7b8d5'} />
         <Text style={[styles.timerText, active && styles.activeTimerText, { fontSize: Math.max(17, Math.min(27, avatarSize * 0.29)) }]}>
-          {formatTimer(player.secondsRemaining)}
+          {active ? 'Turn' : 'Waiting'}
         </Text>
       </View>
 

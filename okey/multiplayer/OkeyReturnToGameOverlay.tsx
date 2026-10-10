@@ -273,6 +273,7 @@ export function OkeyReturnToGameOverlay() {
       setResumableMatchId(null);
 
       let mode = "fun";
+      let matchMode = "2v2";
 
       try {
         const room = await getOkeyRoomStatus(
@@ -282,6 +283,7 @@ export function OkeyReturnToGameOverlay() {
         if (room?.currency === "aznif") {
           mode = "aznif";
         }
+        if (room?.mode === "1v1") matchMode = "1v1";
       } catch {
         // Fallback to fun if status lookup fails.
       }
@@ -291,6 +293,7 @@ export function OkeyReturnToGameOverlay() {
         params: {
           matchId: currentMatchId,
           mode,
+          ...(matchMode === "1v1" ? { matchMode } : {}),
         },
       });
     } catch (error) {

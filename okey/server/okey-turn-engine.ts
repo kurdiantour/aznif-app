@@ -1479,12 +1479,7 @@ export type OkeyMatchStartReconcileResult<TRoom = any> = {
 export async function reconcileAuthoritativeMatchStart<TRoom = any>(options: {
   client: any;
   matchId: string;
-  members: readonly [
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-    OkeyServerPlayerIdentity,
-  ];
+  members: readonly OkeyServerPlayerIdentity[];
   startingPlayerIndex?: number;
   now?: () => number;
   startRoomAction?: (input: {

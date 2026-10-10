@@ -3,10 +3,11 @@ import { Animated } from "react-native";
 import MatchMenuDrawer from "@/components/multiplayer/MatchMenuDrawer";
 
 const mockProfiles = jest.fn();
+const mockAvatar = jest.fn((_props: unknown) => null);
 jest.mock("@/lib/profile", () => ({
   getHumanPlayerProfiles: (...args: unknown[]) => mockProfiles(...args),
 }));
-jest.mock("@/components/player/PlayerAvatar", () => ({ PlayerAvatar: () => null }));
+jest.mock("@/components/player/PlayerAvatar", () => ({ PlayerAvatar: (props: unknown) => mockAvatar(props) }));
 jest.mock("@/lib/progression", () => ({ getRankTitleFromPoints: () => "Rank" }));
 
 const props = {
@@ -36,3 +37,20 @@ test("online drawer still loads real human profiles by default", async () => {
   expect(mockProfiles).toHaveBeenCalledTimes(1);
   expect(mockProfiles).toHaveBeenCalledWith([id]);
 });
+
+test("local human avatar uses the supplied player avatar without loading profiles", () => {
+  render(<MatchMenuDrawer {...props} loadHumanProfiles={false}
+    players={[{ ...props.players[0], avatarId: "avatar-3", avatarUrl: "https://example.test/avatar.webp" }, props.players[1]]} />);
+  expect(mockAvatar).toHaveBeenCalledWith(expect.objectContaining({
+    avatarId: "avatar-3", avatarUrl: "https://example.test/avatar.webp",
+  }));
+  expect(mockProfiles).not.toHaveBeenCalled();
+});
+
+test("local human uses the shared avatar fallback while the profile is loading", () => {
+  mockAvatar.mockClear();
+  render(<MatchMenuDrawer {...props} loadHumanProfiles={false} />);
+  expect(mockAvatar).toHaveBeenCalledWith(expect.objectContaining({ size: 34 }));
+  expect(mockProfiles).not.toHaveBeenCalled();
+});
+
