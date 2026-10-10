@@ -4,7 +4,7 @@ export type Square = { row: number; column: number };
 export type Piece = Square & { id: string; color: Side; king: boolean };
 export type Step = { to: Square; capturedId?: string };
 export type Move = { pieceId: string; from: Square; steps: Step[] };
-export type Result = { winner: Side | null; reason: 'no-pieces' | 'no-moves' | 'one-vs-one' | 'repetition' | 'quiet-limit' };
+export type Result = { winner: Side | null; reason: 'no-pieces' | 'no-moves' | 'one-vs-one' | 'repetition' | 'quiet-limit' | 'manual-leave' };
 export type GameState = { pieces: Piece[]; turn: Side; ply: number; result: Result | null; quietPly?: number; history?: Record<string, number>; turnStartedAtMs?: number; turnDeadlineAtMs?: number | null };
 
 const directions = [
@@ -121,6 +121,7 @@ export function isTurnExpired(state: GameState, nowMs = Date.now()): boolean {
 
 function commitMove(state: GameState, requested: Move, nowMs: number): GameState {
   const legal = getLegalMoves(state).find((move) => move.pieceId === requested.pieceId &&
+    move.from.row === requested.from.row && move.from.column === requested.from.column &&
     JSON.stringify(move.steps) === JSON.stringify(requested.steps));
   if (!legal) throw new Error('Illegal Dama move');
   const next = projectMove(state, legal);

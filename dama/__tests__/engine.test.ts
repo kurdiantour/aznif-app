@@ -17,6 +17,12 @@ test('initial placement and orthogonal man moves', () => {
   assert.ok(moves.every((move) => move.steps[0].to.row <= move.from.row));
 });
 
+test('move validation rejects a forged origin square', () => {
+  const game = createGame(1_000);
+  const legal = getLegalMoves(game)[0];
+  assert.throws(() => applyMove(game, { ...legal, from: { row: legal.from.row + 1, column: legal.from.column } }, 1_001), /Illegal Dama move/);
+});
+
 test('capture is compulsory, maximal sequence wins, captured pieces disappear immediately', () => {
   const game = position([
     piece('a', 'cream', 5, 1), piece('b', 'cream', 5, 6),

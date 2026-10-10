@@ -1,6 +1,5 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import MultiplayerGameChat from '@/components/multiplayer/MultiplayerGameChat';
 import MatchMenuDrawer from '@/components/multiplayer/MatchMenuDrawer';
 import LeaveMatchConfirmPopup from '@/components/multiplayer/LeaveMatchConfirmPopup';
 import { useMatchMenu } from '@/hooks/useMatchMenu';
@@ -18,6 +17,7 @@ import { applyMove, createGame, getLegalMoves, getTurnRemainingMs, isTurnExpired
 import { useGameSystemGestureProtection } from '@/hooks/useGameSystemGestureProtection';
 import { hasReadySession, useAuthState } from '@/lib/auth-state';
 import { supabase } from '@/lib/supabase';
+import DamaOnlineGameScreen from '@/dama/multiplayer/DamaOnlineGameScreen';
 
 type Access = 'checking' | 'ready' | 'offline' | 'signin';
 type BotPlayback = { source: GameState; move: Move; completedSteps: number; moving: boolean };
@@ -25,6 +25,12 @@ const sameSquare = (a: Square, b: Square) => a.row === b.row && a.column === b.c
 const sameStep = (a: Step, b: Step) => sameSquare(a.to, b.to) && a.capturedId === b.capturedId;
 
 export default function DamaGameScreen() {
+  const params = useLocalSearchParams<{ mode?: string | string[] }>();
+  const mode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  return mode === 'online' ? <DamaOnlineGameScreen /> : <DamaLocalGameScreen />;
+}
+
+function DamaLocalGameScreen() {
   useGameSystemGestureProtection();
   const auth = useAuthState();
   const { profile } = useProfile();
@@ -219,8 +225,9 @@ export default function DamaGameScreen() {
       {game && width <= height && <View pointerEvents="none" style={styles.portraitScore}><Text style={styles.bannerText}>{humanName}: {capturedByHuman}  ·  Bot: {capturedByBot}</Text></View>}
       {game && !game.result && (game.turn === 'black' || prefix.length > 0) && <View pointerEvents="none" style={[styles.turnBanner, width <= height && styles.portraitTurn]}><Text style={styles.bannerText}>{game.turn === 'black' ? 'Bot is thinking…' : 'Continue capturing'}</Text></View>}
       {access === 'ready' && game && <>
-        <MultiplayerGameChat gameType="dame" matchId="dame-local" currentUserId={humanPlayer.id}
-          playerIdBySeat={{ bottom: humanPlayer.id, right: botPlayer.id }} enabled />
+        <Pressable style={styles.onlineButton} onPress={() => router.push('/dama/game?mode=online')} accessibilityLabel="Play Dama online">
+          <Ionicons name="people-outline" size={20} color="#f8f3df" />
+        </Pressable>
         <Pressable style={styles.menuButton} onPress={openMatchMenu} accessibilityLabel="Game settings">
           <Ionicons name="menu-outline" size={22} color="#f8f3df" />
         </Pressable>
@@ -246,6 +253,7 @@ export default function DamaGameScreen() {
 const styles = StyleSheet.create({
   scene: { flex: 1, backgroundColor: '#0c0c20', overflow: 'hidden' },
   menuButton: { position: 'absolute', top: 18, right: 18, zIndex: 900, elevation: 900, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(248,243,223,0.22)' },
+  onlineButton: { position: 'absolute', top: 18, left: 18, zIndex: 900, elevation: 900, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(248,243,223,0.22)' },
   seatLayer: { position: 'absolute', top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   turnBanner: { position: 'absolute', top: 12, alignSelf: 'center', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: 'rgba(15,8,24,0.78)' },
   portraitScore: { position: 'absolute', top: 8, alignSelf: 'center', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 5, backgroundColor: 'rgba(15,8,24,0.78)' },

@@ -5,9 +5,10 @@ import { useAuthState } from "@/lib/auth-state";
 import { ReturnToGamePopup } from "./ReturnToGamePopup";
 import type { MultiplayerResumeAdapter, ResumableMatch } from "@/lib/multiplayer/resume/types";
 import { dominoResumeAdapter } from "@/domino/multiplayer/domino-resume-adapter";
+import { damaResumeAdapter } from "@/dama/multiplayer/dama-resume-adapter";
 
 // Register future games here once their server adapter has passed resume tests.
-const adapters: MultiplayerResumeAdapter[] = [dominoResumeAdapter];
+const adapters: MultiplayerResumeAdapter[] = [dominoResumeAdapter, damaResumeAdapter];
 
 export function MultiplayerResumeOverlay() {
   const { userId, authReady } = useAuthState();
@@ -81,7 +82,7 @@ export function MultiplayerResumeOverlay() {
         return;
       }
       setMatch(null);
-      router.replace({ pathname: match.route as "/domino/game", params: match.params });
+      router.replace({ pathname: match.route as "/domino/game" | "/dama/game", params: match.params });
     } catch (error) {
       console.warn("Multiplayer resume failed", error);
     } finally { setLoading(false); }
