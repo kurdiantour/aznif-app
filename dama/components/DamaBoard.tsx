@@ -9,11 +9,12 @@ type Props = {
   pieces: readonly Piece[];
   selectedId: string | null;
   targets: readonly Square[];
+  flipped?: boolean;
   onSquarePress: (square: Square) => void;
   onSquareDrag: (from: Square, to: Square) => void;
 };
 
-export function DamaBoard({ pieces, selectedId, targets, onSquarePress, onSquareDrag }: Props) {
+export function DamaBoard({ pieces, selectedId, targets, flipped = false, onSquarePress, onSquareDrag }: Props) {
   const [layout, setLayout] = useState({ width: 0, height: 0 });
   const scale = Math.min(layout.width, layout.height) / BOARD_IMAGE_SIZE.width;
   const start = useRef({ x: 0, y: 0 });
@@ -40,22 +41,24 @@ export function DamaBoard({ pieces, selectedId, targets, onSquarePress, onSquare
       }}
       onResponderRelease={(event) => {
         const point = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
-        const to = squareAtBoardPoint(point.x, point.y, layout.width);
+        const to = squareAtBoardPoint(point.x, point.y, layout.width, flipped);
         if (!to) return;
         const dragged = Math.hypot(point.x - start.current.x, point.y - start.current.y) > 12;
         if (dragged) {
-          const from = squareAtBoardPoint(start.current.x, start.current.y, layout.width);
+          const from = squareAtBoardPoint(start.current.x, start.current.y, layout.width, flipped);
           if (from) onSquareDrag(from, to);
         }
         else onSquarePress(to);
       }}
     >
       {BOARD_CELLS.map((cell) => {
-        const piece = bySquare.get(`${cell.row}-${cell.column}`);
+        const actualRow = flipped ? 7 - cell.row : cell.row;
+        const actualCol = flipped ? 7 - cell.column : cell.column;
+        const piece = bySquare.get(`${actualRow}-${actualCol}`);
         const width = cell.width * scale;
         const height = cell.height * scale;
-        const pieceSize = width * 0.88;
-        const isTarget = targets.some((target) => target.row === cell.row && target.column === cell.column);
+        const pieceSize = width * 1.0;
+        const isTarget = targets.some((target) => target.row === actualRow && target.column === actualCol);
         return (
           <View
             key={`${cell.row}-${cell.column}`}

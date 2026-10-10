@@ -5,9 +5,10 @@ import { useAuthState } from "@/lib/auth-state";
 import { ReturnToGamePopup } from "./ReturnToGamePopup";
 import type { MultiplayerResumeAdapter, ResumableMatch } from "@/lib/multiplayer/resume/types";
 import { dominoResumeAdapter } from "@/domino/multiplayer/domino-resume-adapter";
+import { damaResumeAdapter } from "@/dama/dama-resume-adapter";
 
 // Register future games here once their server adapter has passed resume tests.
-const adapters: MultiplayerResumeAdapter[] = [dominoResumeAdapter];
+const adapters: MultiplayerResumeAdapter[] = [dominoResumeAdapter, damaResumeAdapter];
 
 export function MultiplayerResumeOverlay() {
   const { userId, authReady } = useAuthState();

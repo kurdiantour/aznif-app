@@ -14,11 +14,12 @@ type Props = {
   pieces: readonly Piece[];
   selectedId: string | null;
   targets: readonly Square[];
+  flipped?: boolean;
   onSquarePress: (square: Square) => void;
   onSquareDrag: (from: Square, to: Square) => void;
 };
 
-export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, targets, onSquarePress, onSquareDrag }: Props) {
+export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, targets, flipped = false, onSquarePress, onSquareDrag }: Props) {
   const boardSize = getBoardSize(viewportWidth, viewportHeight);
 
   return (
@@ -27,7 +28,7 @@ export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, t
       <View style={styles.boardLayer}>
         <View style={boardSize}>
           <Image source={BOARD_IMAGE} style={StyleSheet.absoluteFill} contentFit="contain" />
-          <DamaBoard pieces={pieces} selectedId={selectedId} targets={targets} onSquarePress={onSquarePress} onSquareDrag={onSquareDrag} />
+          <DamaBoard pieces={pieces} selectedId={selectedId} targets={targets} flipped={flipped} onSquarePress={onSquarePress} onSquareDrag={onSquareDrag} />
         </View>
       </View>
     </View>

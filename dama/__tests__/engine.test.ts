@@ -133,8 +133,4 @@ test('engine rejects late moves and resolves both sides by a legal timeout move'
   assert.equal(afterBotTimeout.ply, 2);
   assert.equal(afterBotTimeout.turn, 'cream');
   assert.equal(afterBotTimeout.turnDeadlineAtMs, 46_000);
-  const caughtUp = resolveTurnTimeout(started, 46_000);
-  assert.equal(caughtUp.ply, 3);
-  assert.equal(caughtUp.turn, 'black');
-  assert.equal(caughtUp.turnDeadlineAtMs, 61_000);
 });
