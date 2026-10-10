@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { getBoardSize } from '../board-layout';
 import type { Piece, Square } from '../engine';
 import { DamaBoard } from './DamaBoard';
+import type { BotStepAnimation } from './DamaBoard';
 
 const TABLE_IMAGE = require('@/assets/cosmetics/dama/classic/table.webp');
 const BOARD_IMAGE = require('@/assets/cosmetics/dama/classic/board.webp');
@@ -14,12 +15,12 @@ type Props = {
   pieces: readonly Piece[];
   selectedId: string | null;
   targets: readonly Square[];
-  flipped?: boolean;
   onSquarePress: (square: Square) => void;
   onSquareDrag: (from: Square, to: Square) => void;
+  botStep?: BotStepAnimation | null;
 };
 
-export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, targets, flipped = false, onSquarePress, onSquareDrag }: Props) {
+export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, targets, onSquarePress, onSquareDrag, botStep }: Props) {
   const boardSize = getBoardSize(viewportWidth, viewportHeight);
 
   return (
@@ -28,7 +29,7 @@ export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, t
       <View style={styles.boardLayer}>
         <View style={boardSize}>
           <Image source={BOARD_IMAGE} style={StyleSheet.absoluteFill} contentFit="contain" />
-          <DamaBoard pieces={pieces} selectedId={selectedId} targets={targets} flipped={flipped} onSquarePress={onSquarePress} onSquareDrag={onSquareDrag} />
+          <DamaBoard pieces={pieces} selectedId={selectedId} targets={targets} onSquarePress={onSquarePress} onSquareDrag={onSquareDrag} botStep={botStep} />
         </View>
       </View>
     </View>

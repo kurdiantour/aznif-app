@@ -155,10 +155,11 @@ export function applyMove(state: GameState, requested: Move, nowMs = Date.now())
 }
 
 export function resolveTurnTimeout(state: GameState, nowMs = Date.now()): GameState {
-  if (!isTurnExpired(state, nowMs)) return state;
-  const move = getLegalMoves(state)[0];
-  if (!move) {
-    return { ...state, result: { winner: opposite(state.turn), reason: 'no-moves' }, turnDeadlineAtMs: null };
+  let current = state;
+  while (isTurnExpired(current, nowMs)) {
+    const move = getLegalMoves(current)[0];
+    if (!move) return { ...current, result: { winner: opposite(current.turn), reason: 'no-moves' }, turnDeadlineAtMs: null };
+    current = commitMove(current, move, current.turnDeadlineAtMs!);
   }
-  return commitMove(state, move, state.turnDeadlineAtMs ?? nowMs);
+  return current;
 }

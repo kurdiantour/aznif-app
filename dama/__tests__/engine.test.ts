@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { chooseBotMove } from '../bot.ts';
 import { applyMove, createGame, DAMA_TURN_DURATION_MS, getLegalMoves, getTurnRemainingMs, projectMove, resolveTurnTimeout, type GameState, type Piece } from '../engine.ts';
 
 const piece = (id: string, color: Piece['color'], row: number, column: number, king = false): Piece => ({ id, color, row, column, king });
@@ -89,6 +90,17 @@ test('loss by no pieces and no mobility; one against one is a draw', () => {
   assert.deepEqual(applyMove(draw, drawMove).result, { winner: null, reason: 'one-vs-one' });
 });
 
+test('bot chooses a legal move and plays against the same engine', () => {
+  let game = createGame();
+  for (let turn = 0; turn < 500 && !game.result; turn++) {
+    const move = game.turn === 'black' ? chooseBotMove(game) : getLegalMoves(game)[0];
+    assert.ok(move);
+    game = applyMove(game, move);
+  }
+  assert.ok(game.ply > 10);
+  assert.ok(game.result, 'a full game must reach a result');
+});
+
 test('quiet move and repeated position limits resolve endless games as draws', () => {
   const base = position([
     piece('a', 'cream', 5, 0), piece('b', 'cream', 5, 1),
@@ -101,7 +113,7 @@ test('quiet move and repeated position limits resolve endless games as draws', (
   assert.deepEqual(applyMove({ ...base, history: { [key]: 2 } }, move).result, { winner: null, reason: 'repetition' });
 });
 
-test('each side gets exactly 15 seconds from the engine', () => {
+test('each human and bot turn gets exactly 15 seconds from the engine', () => {
   const started = createGame(1_000);
   assert.equal(DAMA_TURN_DURATION_MS, 15_000);
   assert.equal(started.turnDeadlineAtMs, 16_000);
@@ -115,9 +127,9 @@ test('each side gets exactly 15 seconds from the engine', () => {
   assert.equal(afterHuman.turnStartedAtMs, 4_000);
   assert.equal(afterHuman.turnDeadlineAtMs, 19_000);
 
-  const afterOpponent = applyMove(afterHuman, getLegalMoves(afterHuman)[0], 5_000);
-  assert.equal(afterOpponent.turn, 'cream');
-  assert.equal(afterOpponent.turnDeadlineAtMs, 20_000);
+  const afterBot = applyMove(afterHuman, getLegalMoves(afterHuman)[0], 5_000);
+  assert.equal(afterBot.turn, 'cream');
+  assert.equal(afterBot.turnDeadlineAtMs, 20_000);
 });
 
 test('engine rejects late moves and resolves both sides by a legal timeout move', () => {
@@ -133,4 +145,8 @@ test('engine rejects late moves and resolves both sides by a legal timeout move'
   assert.equal(afterBotTimeout.ply, 2);
   assert.equal(afterBotTimeout.turn, 'cream');
   assert.equal(afterBotTimeout.turnDeadlineAtMs, 46_000);
+  const caughtUp = resolveTurnTimeout(started, 46_000);
+  assert.equal(caughtUp.ply, 3);
+  assert.equal(caughtUp.turn, 'black');
+  assert.equal(caughtUp.turnDeadlineAtMs, 61_000);
 });

@@ -6,8 +6,8 @@ export const BOARD_CELL_SIZE = 67;
 
 export function getBoardSize(viewportWidth: number, viewportHeight: number) {
   const width = Math.min(
-    viewportWidth * 0.98,
-    viewportHeight * 0.98,
+    viewportWidth * (viewportWidth > viewportHeight ? 0.58 : 0.9),
+    viewportHeight * 0.88,
   );
   return { width, height: width };
 }
@@ -21,22 +21,12 @@ export type DamaCell = {
   height: number;
 };
 
-export function squareAtBoardPoint(
-  x: number,
-  y: number,
-  boardSize: number,
-  flipped = false,
-): { row: number; column: number } | null {
+export function squareAtBoardPoint(x: number, y: number, boardSize: number): { row: number; column: number } | null {
   if (boardSize <= 0) return null;
   const scale = boardSize / BOARD_IMAGE_SIZE.width;
-  let column = Math.floor((x / scale - BOARD_GRID_OFFSET) / BOARD_CELL_SIZE);
-  let row = Math.floor((y / scale - BOARD_GRID_OFFSET) / BOARD_CELL_SIZE);
-  if (row < 0 || row >= 8 || column < 0 || column >= 8) return null;
-  if (flipped) {
-    row = 7 - row;
-    column = 7 - column;
-  }
-  return { row, column };
+  const column = Math.floor((x / scale - BOARD_GRID_OFFSET) / BOARD_CELL_SIZE);
+  const row = Math.floor((y / scale - BOARD_GRID_OFFSET) / BOARD_CELL_SIZE);
+  return row >= 0 && row < 8 && column >= 0 && column < 8 ? { row, column } : null;
 }
 
 export const BOARD_CELLS: readonly DamaCell[] = Array.from({ length: 8 }, (_, row) =>
