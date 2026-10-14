@@ -29,6 +29,15 @@ function lifecycleRequest(env, lifecycleJob) {
           run_at: lifecycleJob.runAt,
         },
       };
+    case "dama":
+      return {
+        url: `${env.SUPABASE_URL}/functions/v1/dama_lifecycle`,
+        body: {
+          match_id: lifecycleJob.matchId,
+          expected_version: lifecycleJob.expectedVersion,
+          run_at: lifecycleJob.runAt,
+        },
+      };
     default:
       throw new Error(`unsupported_game_type:${lifecycleJob.gameType}`);
   }

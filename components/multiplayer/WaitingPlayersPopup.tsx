@@ -15,6 +15,7 @@ import type { AvatarId } from "@/types/avatar";
 
 export type WaitingPlayerMember = {
   playerIndex: number;
+  isBot?: boolean;
   avatarId?: AvatarId;
   avatarUrl?: string;
   username?: string;
@@ -147,8 +148,9 @@ export default function WaitingPlayersPopup({
                     >
                       {member ? (
                         <PlayerAvatar
-                          avatarId={member.avatarId}
+                          avatarId={member.isBot ? undefined : member.avatarId}
                           avatarUrl={member.avatarUrl}
+                          fallbackLabel={member.isBot && !member.avatarUrl ? member.username : undefined}
                           size={42}
                         />
                       ) : (
@@ -164,8 +166,7 @@ export default function WaitingPlayersPopup({
                       <View
                         style={styles.startStatus}
                       >
-                        {countdownSeconds ===
-                        null ? (
+                        {countdownSeconds === null ? (
                           <ActivityIndicator
                             size="small"
                             color="#f8d774"
@@ -196,7 +197,7 @@ export default function WaitingPlayersPopup({
                 styles.cancelButtonDisabled,
             ]}
           >
-            {loading || !canCancel ? (
+            {loading ? (
               <ActivityIndicator
                 size="small"
                 color="#ffffff"

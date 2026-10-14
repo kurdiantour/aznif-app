@@ -20,6 +20,7 @@ type Props = {
   dealToken?: number;
   dealOrder?: number;
   dealPlayerCount?: number;
+  skipInitialDealAnimation?: boolean;
   dealRotation?: -90 | 0 | 90;
   onPress?: () => void;
   onFlightOriginChange?: (rect: {
@@ -121,6 +122,7 @@ export default function PlayerSeat({
   dealToken = 0,
   dealOrder = 0,
   dealPlayerCount = 1,
+  skipInitialDealAnimation = false,
   dealRotation = 0,
   onPress,
   onFlightOriginChange,
@@ -133,7 +135,7 @@ export default function PlayerSeat({
     useState<{ x: number; y: number } | null>(null);
 
   const [visibleDealToken, setVisibleDealToken] =
-    useState<number | null>(null);
+    useState<number | null>(skipInitialDealAnimation ? dealToken : null);
 
   const dealtTokenRef = useRef(0);
 

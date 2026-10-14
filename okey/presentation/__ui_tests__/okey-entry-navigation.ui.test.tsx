@@ -27,11 +27,13 @@ jest.mock("@/okey/multiplayer/okey-room-api", () => ({ matchmakeOkeyRoom: (...ar
 
 beforeEach(() => { mockPush.mockClear(); mockReplace.mockClear(); mockMatchmake.mockReset(); });
 
+// These are the canonical table IDs accepted by okey_room and mapped by the
+// four-mode matchmaking migration to currency, mode, and seat capacity.
 test.each([
-  ["fun", "home", "Okey 1v1", "1v1:starter", "1v1"],
-  ["fun", "home", "Okey 2v2", "starter", "2v2"],
-  ["aznif", "aznif", "Okey 1v1", "1v1:aznif-low", "1v1"],
-  ["aznif", "aznif", "Okey 2v2", "aznif-low", "2v2"],
+  ["fun", "home", "Okey 1v1", "fun:1v1", "1v1"],
+  ["fun", "home", "Okey 2v2", "fun:2v2", "2v2"],
+  ["aznif", "aznif", "Okey 1v1", "aznif:1v1", "1v1"],
+  ["aznif", "aznif", "Okey 2v2", "aznif:2v2", "2v2"],
 ] as const)("%s Okey %s starts %s matchmaking with %s", async (currency, activeSection, card, tableId, mode) => {
   mockCurrency = currency;
   mockMatchmake.mockResolvedValue({ matchId: "match", tableId, mode });
@@ -56,20 +58,23 @@ test.each(["Okey 1v1", "Okey 2v2"])("loading stays inside the selected %s card u
   expect(ui.queryByTestId(`okey-card-loading-${card === "Okey 1v1" ? "Okey 2v2" : "Okey 1v1"}`)).toBeNull();
   expect(mockReplace).not.toHaveBeenCalled();
   const mode = card === "Okey 1v1" ? "1v1" : "2v2";
-  resolveRoom({ matchId: "match", tableId: mode === "1v1" ? "1v1:starter" : "starter", mode });
+  resolveRoom({ matchId: "match", tableId: mode === "1v1" ? "fun:1v1" : "fun:2v2", mode });
   await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1));
 });
 
 test("failed matchmaking clears card loading and allows another attempt", async () => {
   mockCurrency = "aznif";
   const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-  mockMatchmake.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce({ matchId: "match", tableId: "1v1:aznif-low", mode: "1v1" });
+  mockMatchmake.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce({ matchId: "match", tableId: "aznif:1v1", mode: "1v1" });
   const ui = render(<OkeyScreen />);
   fireEvent.press(ui.getByLabelText("Okey 1v1"));
+  await waitFor(() => expect(mockMatchmake).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(ui.queryByTestId("okey-card-loading-Okey 1v1")).toBeNull());
+  expect(ui.getByRole("alert")).toBeTruthy();
   expect(mockReplace).not.toHaveBeenCalled();
   fireEvent.press(ui.getByLabelText("Okey 1v1"));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1));
   expect(mockMatchmake).toHaveBeenCalledTimes(2);
+  expect(mockMatchmake).toHaveBeenNthCalledWith(2, "aznif:1v1");
   warn.mockRestore();
 });

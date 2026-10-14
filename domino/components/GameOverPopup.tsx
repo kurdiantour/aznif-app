@@ -15,6 +15,7 @@ import type {
 type GameOverPopupProps = {
   visible: boolean;
   didWin: boolean;
+  isDraw?: boolean;
   isPracticeMode?: boolean;
   reward?: MatchReward | null;
   teamScores?: {
@@ -25,6 +26,7 @@ type GameOverPopupProps = {
   teamBName?: string;
   winningTeamId?: TeamId | null;
   finishReason?: string | null;
+  drawLabel?: string;
   onClose: () => void;
   onPlayAgain: () => void;
 };
@@ -32,6 +34,7 @@ type GameOverPopupProps = {
 export default function GameOverPopup({
   visible,
   didWin,
+  isDraw = false,
   isPracticeMode = false,
   reward,
   teamScores,
@@ -39,6 +42,7 @@ export default function GameOverPopup({
   teamBName = "Team B",
   winningTeamId,
   finishReason,
+  drawLabel = "Draw",
   onClose,
 }: GameOverPopupProps) {
   if (!visible) {
@@ -63,7 +67,9 @@ export default function GameOverPopup({
     return styles.rewardValueNeutral;
   };
 
-  const resultText =
+  const resultText = isDraw
+    ? drawLabel
+    :
     didWin &&
     (finishReason === "opponent_team_manual_leave" ||
       finishReason === "opponent_manual_leave")
@@ -105,7 +111,7 @@ export default function GameOverPopup({
               styles.resultBadge,
               didWin
                 ? styles.resultBadgeWin
-                : styles.resultBadgeLoss,
+                : isDraw ? styles.resultBadgeDraw : styles.resultBadgeLoss,
             ]}
           >
             <Text
@@ -115,7 +121,7 @@ export default function GameOverPopup({
                 styles.resultText,
                 didWin
                   ? styles.resultTextWin
-                  : styles.resultTextLoss,
+                  : isDraw ? styles.resultTextDraw : styles.resultTextLoss,
               ]}
             >
               {resultText}
@@ -357,6 +363,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(127, 29, 29, 0.48)",
     borderColor: "rgba(248, 113, 113, 0.55)",
   },
+  resultBadgeDraw: {
+    backgroundColor: "rgba(71, 85, 105, 0.48)",
+    borderColor: "rgba(203, 213, 225, 0.55)",
+  },
 
   resultText: {
     flexShrink: 1,
@@ -372,6 +382,9 @@ const styles = StyleSheet.create({
 
   resultTextLoss: {
     color: "#fee2e2",
+  },
+  resultTextDraw: {
+    color: "#e2e8f0",
   },
 
   section: {

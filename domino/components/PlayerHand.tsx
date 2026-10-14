@@ -34,6 +34,7 @@ type Props = {
   dealToken?: number;
   dealOrder?: number;
   dealPlayerCount?: number;
+  skipInitialDealAnimation?: boolean;
   hiddenTileId?: string | null;
 };
 
@@ -79,6 +80,7 @@ export default function PlayerHand({
   dealToken = 0,
   dealOrder = 0,
   dealPlayerCount = 1,
+  skipInitialDealAnimation = false,
   hiddenTileId = null,
 }: Props) {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -326,9 +328,9 @@ export default function PlayerHand({
     currentHandIds: new Set(previewTiles.map((tile) => tile.id)),
     animatedHandSignature: "",
     animatedDealToken: 0,
-    visibleDealToken: null,
+    visibleDealToken: skipInitialDealAnimation ? dealToken : null,
     waitingForNewDeal:
-      previewTiles.length >= 7 && dealToken === 0 && !canStartDeal,
+      previewTiles.length >= 7 && dealToken === 0 && !canStartDeal && !skipInitialDealAnimation,
     epoch: 0,
   }));
 
@@ -345,7 +347,9 @@ export default function PlayerHand({
       (previousHandIds.size === 0 ||
         sharedTileCount <=
           Math.floor(Math.min(previousHandIds.size, previewTiles.length) * 0.35));
+    const skippingInitialDeal = skipInitialDealAnimation && dealToken === 0 && dealState.animatedDealToken === 0;
     const shouldStartDeal =
+      !skippingInitialDeal &&
       canStartDeal &&
       ((dealToken > 0 && dealState.animatedDealToken !== dealToken) ||
         (isNewHand && dealState.animatedHandSignature !== handSignature));
@@ -370,8 +374,9 @@ export default function PlayerHand({
         : dealState.animatedDealToken,
       visibleDealToken: shouldStartDeal
         ? dealToken
-        : dealState.visibleDealToken,
+        : skippingInitialDeal ? dealToken : dealState.visibleDealToken,
       waitingForNewDeal:
+        !skippingInitialDeal &&
         isNewHand &&
         !shouldStartDeal &&
         dealState.animatedDealToken === dealToken,
@@ -385,6 +390,7 @@ export default function PlayerHand({
     getDealProgress,
     handSignature,
     previewTiles,
+    skipInitialDealAnimation,
   ]);
 
   const playableTileIdsSet = useMemo(

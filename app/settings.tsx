@@ -201,20 +201,20 @@ export default function SettingsScreen() {
             <View style={styles.sectionCard}>
               <SettingSwitch
                 icon="volume-high-outline"
-                label="Game Sounds"
+                label="دەنگی یاری"
                 value={soundEnabled}
                 onValueChange={setSoundEnabled}
               />
               <SettingSwitch
                 icon="phone-portrait-outline"
-                label="Vibration / Haptic"
+                label="لەرینەەی مۆبایل"
                 value={hapticsEnabled}
                 onValueChange={setHapticsEnabled}
               />
               {userId ? (
                 <SettingSwitch
                   icon="trophy-outline"
-                  label="Leaderboard Visibility"
+                  label="پیشاندانی لیستی پلەبەندی"
                   value={leaderboardVisible}
                   onValueChange={handleLeaderboardVisibleChange}
                   disabled={loadingLeaderboard}

@@ -2,14 +2,14 @@
   "expo": {
     "name": "Aznif",
     "slug": "domino-app",
-    "version": "1.2.7",
+    "version": "1.2.9",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "dominoapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "runtimeVersion": "1.2.7-ios-gestures-v2",
-      "buildNumber": "84",
+      "runtimeVersion": "1.2.9-ios-gestures-v2",
+      "buildNumber": "88",
       "supportsTablet": true,
       "requireFullScreen": true,
       "usesAppleSignIn": true,

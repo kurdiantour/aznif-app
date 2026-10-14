@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Image } from 'expo-image';
 
 import type { Side } from '../engine';
@@ -9,7 +10,7 @@ const PIECE_IMAGES = {
 
 type Props = { color: Side; width: number; height: number };
 
-export function DamaPiece({ color, width, height }: Props) {
+export const DamaPiece = memo(function DamaPiece({ color, width, height }: Props) {
   return (
     <Image
       accessibilityLabel={color === 'black' ? 'Black piece' : 'Ivory piece'}
@@ -18,4 +19,4 @@ export function DamaPiece({ color, width, height }: Props) {
       style={{ width, height }}
     />
   );
-}
+});

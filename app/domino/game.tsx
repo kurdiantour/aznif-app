@@ -95,6 +95,7 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
     practice,
     preview,
     matchmaking_status: initialStatus,
+    resume,
     matchType,
     playMode,
     entryFee,
@@ -116,6 +117,7 @@ function DominoGameScreen({ practiceUserId }: { practiceUserId: string | null })
     mode: gameMode,
     matchType: matchType ? String(matchType) : undefined,
     initialStatus: initialStatus ? String(initialStatus) : undefined,
+    resumeExisting: resume === "true",
     playMode: playMode ? String(playMode) : undefined,
     entryFee: entryFee ? Number(entryFee) : undefined,
     enabled: !isLocalGame,
@@ -203,6 +205,7 @@ const { userId, authReady } = useAuthState();
   const tileFlight = useDominoTileFlightCoordinator();
   const toScreenRect = (rect: DominoFlightRect): DominoFlightRect => ({ ...rect, x: rect.x - screenOriginRef.current.x, y: rect.y - screenOriginRef.current.y });
   const previousHandSignatureRef = useRef<string | null>(null);
+  const skipResumeInitialDealRef = useRef(resume === "true");
   const passRequestedRef = useRef(false);
   const passTurnRef = useRef(game.passTurn);
   useEffect(() => {
@@ -299,6 +302,10 @@ useEffect(() => {
       (game.myHand.length >= 7 && sharedTiles <= Math.floor(game.myHand.length * 0.35));
 
     previousHandSignatureRef.current = handSignature;
+    if (skipResumeInitialDealRef.current) {
+      skipResumeInitialDealRef.current = false;
+      return;
+    }
     if (!isNewRoundHand) return;
 
     const captureDealOrigin = async () => {
@@ -867,6 +874,7 @@ if (!isLocalGame && !userId) {
                   showPass={game.lastPassedPlayerId === topPlayer.id}
                   dealOrigin={dealOrigin}
                   dealToken={dealToken}
+                  skipInitialDealAnimation={resume === "true"}
                   dealOrder={gameMode === "1v1" ? 0 : 2}
                   dealPlayerCount={gameMode === "1v1" ? 2 : 4}
                   onPress={topPlayer.kind === "human" ? () => setProfilePlayer(topPlayer) : undefined}
@@ -896,6 +904,7 @@ if (!isLocalGame && !userId) {
                   showPass={game.lastPassedPlayerId === leftPlayer.id}
                   dealOrigin={dealOrigin}
                   dealToken={dealToken}
+                  skipInitialDealAnimation={resume === "true"}
                   dealOrder={1}
                   dealPlayerCount={4}
                   dealRotation={-90}
@@ -927,6 +936,7 @@ if (!isLocalGame && !userId) {
                   showPass={game.lastPassedPlayerId === rightPlayer.id}
                   dealOrigin={dealOrigin}
                   dealToken={dealToken}
+                  skipInitialDealAnimation={resume === "true"}
                   dealOrder={3}
                   dealPlayerCount={4}
                   dealRotation={90}
@@ -1040,6 +1050,7 @@ if (!isLocalGame && !userId) {
               playableTileIds={playableTileIds}
               dealOrigin={dealOrigin}
               dealToken={dealToken}
+              skipInitialDealAnimation={resume === "true"}
               dealOrder={gameMode === "1v1" ? 1 : 0}
               dealPlayerCount={gameMode === "1v1" ? 2 : 4}
               hiddenTileId={tileFlight.hiddenHandTileId}

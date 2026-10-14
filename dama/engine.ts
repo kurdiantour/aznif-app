@@ -4,8 +4,8 @@ export type Square = { row: number; column: number };
 export type Piece = Square & { id: string; color: Side; king: boolean };
 export type Step = { to: Square; capturedId?: string };
 export type Move = { pieceId: string; from: Square; steps: Step[] };
-export type Result = { winner: Side | null; reason: 'no-pieces' | 'no-moves' | 'one-vs-one' | 'repetition' | 'quiet-limit' | 'manual-leave' };
-export type GameState = { pieces: Piece[]; turn: Side; ply: number; result: Result | null; quietPly?: number; history?: Record<string, number>; turnStartedAtMs?: number; turnDeadlineAtMs?: number | null };
+export type Result = { winner: Side | null; reason: 'no-pieces' | 'no-moves' | 'one-vs-one' | 'repetition' | 'quiet-limit' | 'manual-leave' | 'both-bot-takeover' };
+export type GameState = { pieces: Piece[]; turn: Side; ply: number; result: Result | null; quietPly?: number; history?: Record<string, number>; turnStartedAtMs?: number; turnDeadlineAtMs?: number | null; timeoutStrikes?: Partial<Record<Side, number>> };
 
 const directions = [
   { row: -1, column: 0 }, { row: 1, column: 0 },
@@ -156,11 +156,14 @@ export function applyMove(state: GameState, requested: Move, nowMs = Date.now())
 }
 
 export function resolveTurnTimeout(state: GameState, nowMs = Date.now()): GameState {
-  let current = state;
-  while (isTurnExpired(current, nowMs)) {
-    const move = getLegalMoves(current)[0];
-    if (!move) return { ...current, result: { winner: opposite(current.turn), reason: 'no-moves' }, turnDeadlineAtMs: null };
-    current = commitMove(current, move, current.turnDeadlineAtMs!);
-  }
-  return current;
+  if (!isTurnExpired(state, nowMs)) return state;
+  const move = getLegalMoves(state)[0];
+  const strikes = { ...(state.timeoutStrikes ?? {}), [state.turn]: (state.timeoutStrikes?.[state.turn] ?? 0) + 1 };
+  if (!move) return { ...state, timeoutStrikes: strikes, result: { winner: opposite(state.turn), reason: 'no-moves' }, turnDeadlineAtMs: null };
+  const next = commitMove(state, move, state.turnDeadlineAtMs!);
+  return { ...next, timeoutStrikes: strikes };
+}
+
+export function restoreHumanControl(state: GameState, side: Side): GameState {
+  return { ...state, timeoutStrikes: { ...(state.timeoutStrikes ?? {}), [side]: 0 } };
 }

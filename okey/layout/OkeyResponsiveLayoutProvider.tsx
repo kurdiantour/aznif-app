@@ -127,11 +127,6 @@ export function createOkeyResponsiveLayout({
       ? 820
       : 595;
 
-  /*
-   * Rack sizing is constrained by both viewport width and height.
-   * This prevents short/wide phones from producing an oversized rack
-   * while keeping the same visual proportions on taller devices.
-   */
   const rackWidthFromScreen =
     usableWidth * widthRatio;
 
@@ -155,10 +150,6 @@ export function createOkeyResponsiveLayout({
     rackWidth / RACK_ASPECT_RATIO,
   );
 
-  /*
-   * The player rack is anchored directly to the bottom
-   * of the game surface on every device.
-   */
   const rackBottom = 8;
 
   const centerPilesTop = clamp(
@@ -167,18 +158,18 @@ export function createOkeyResponsiveLayout({
     250,
   );
 
+  // 🔥 فقط رک حریفا - ریسپانسیو بر اساس ارتفاع موبایل
+  const sideSeatTop = clamp(
+    usableHeight * 0.36,
+    layoutClass === "compact" ? 110 : 125,
+    layoutClass === "tablet" ? 185 : 155
+  );
+
   return {
     layoutClass,
     usableWidth,
     usableHeight,
 
-    /*
-     * Do not push the entire game table upward using
-     * the bottom safe-area inset.
-     *
-     * Individual UI elements that require safe-area protection
-     * can handle it independently.
-     */
     screen: {
       paddingLeft: safe.left + edge,
       paddingRight: safe.right + edge,
@@ -201,15 +192,13 @@ export function createOkeyResponsiveLayout({
         top: edge,
         alignSelf: "center",
       },
-
       left: {
         left: sideSeatInset,
-        top: "42%",
+        top: sideSeatTop,
       },
-
       right: {
         right: sideSeatInset,
-        top: "42%",
+        top: sideSeatTop,
       },
     },
 
@@ -225,11 +214,10 @@ export function createOkeyResponsiveLayout({
         ),
         minHeight: 54,
       },
-
       left: {
         position: "absolute",
         left: 100,
-        bottom: 130,
+        bottom: 150,
         width: clamp(
           usableWidth / 2 - 70 - edge,
           80,
@@ -237,7 +225,6 @@ export function createOkeyResponsiveLayout({
         ),
         minHeight: 54,
       },
-
       right: {
         position: "absolute",
         right: 100,
@@ -249,11 +236,10 @@ export function createOkeyResponsiveLayout({
         ),
         minHeight: 54,
       },
-
       bottom: {
         position: "absolute",
         right: 100,
-        bottom: 130,
+        bottom: 150,
         width: clamp(
           usableWidth / 2 - edge * 2,
           80,

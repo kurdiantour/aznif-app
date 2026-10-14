@@ -818,6 +818,7 @@ export default function LeaderboardScreen() {
                           isCurrentUser &&
                             styles.currentUserText,
                         ]}
+                        numberOfLines={1}
                       >
                         {(
                           player.gem ?? 0
@@ -1159,7 +1160,7 @@ const styles = StyleSheet.create({
   },
 
   goldHeader: {
-    width: 64,
+    width: 90,
     textAlign: "right",
     paddingRight: 8,
   },
@@ -1271,7 +1272,7 @@ const styles = StyleSheet.create({
   },
 
   goldColumn: {
-    width: 64,
+    width: 90,
     alignItems: "flex-end",
     paddingRight: 8,
   },

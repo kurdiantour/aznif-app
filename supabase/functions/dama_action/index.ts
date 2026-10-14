@@ -1,6 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { chooseBotMove } from "../../../dama/bot.ts";
-import { applyMove, isTurnExpired, resolveTurnTimeout, type GameState, type Move } from "../../../dama/engine.ts";
+import { applyMove, isTurnExpired, type GameState, type Move } from "../../../dama/engine.ts";
+import { scheduleDamaLifecycle } from "../_shared/dama-lifecycle.ts";
 
 const url = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("EXPO_PUBLIC_SUPABASE_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -29,7 +29,7 @@ Deno.serve(async (request) => {
     const body = await request.json();
     const matchId = typeof body.match_id === "string" ? body.match_id : "";
     const action = body.action;
-    if (!matchId || !["move", "timeout", "bot"].includes(action)) return json({ error: "Invalid command" }, 400);
+    if (!matchId || action !== "move") return json({ error: "Invalid command" }, 400);
 
     const [{ data: match, error: matchError }, { data: players, error: playersError }] = await Promise.all([
       service.from("dama_matches").select("id,status,version,state,current_turn_user_id").eq("id", matchId).maybeSingle(),
@@ -48,42 +48,20 @@ Deno.serve(async (request) => {
       return json({ error: "Match state is stale", code: "stale_dama_state", version: match.version }, 409);
     }
 
-    let next: GameState;
-    let actorId = auth.user.id;
-    let committedAction: string;
-    let payload: Record<string, unknown> = {};
-
-    if (action === "move") {
-      if (match.current_turn_user_id !== auth.user.id || requester.piece_color !== state.turn) {
-        return json({ error: "Not your turn" }, 403);
-      }
-      if (isTurnExpired(state, Date.now())) return json({ error: "Turn expired", code: "turn_expired" }, 409);
-      const move = body.move as Move;
-      next = applyMove(state, move, Date.now());
-      committedAction = "move";
-      payload = { move };
-    } else if (action === "timeout") {
-      if (!isTurnExpired(state, Date.now())) return json({ error: "Turn has not expired", code: "turn_not_expired" }, 409);
-      next = resolveTurnTimeout(state, Date.now());
-      committedAction = "timeout-move";
-      actorId = match.current_turn_user_id;
-      payload = { timedOutUserId: match.current_turn_user_id };
-    } else {
-      const turnPlayer = (players ?? []).find((player: any) => player.user_id === match.current_turn_user_id);
-      if (!turnPlayer?.bot_takeover) return json({ error: "Bot does not control this turn" }, 403);
-      const move = chooseBotMove(state);
-      if (!move) return json({ error: "No legal Dama move" }, 409);
-      next = applyMove(state, move, Date.now());
-      committedAction = "bot-move";
-      actorId = match.current_turn_user_id;
-      payload = { move, reason: "bot_takeover" };
+    if (match.current_turn_user_id !== auth.user.id || requester.piece_color !== state.turn) {
+      return json({ error: "Not your turn" }, 403);
     }
+    if (isTurnExpired(state, Date.now())) return json({ error: "Turn expired", code: "turn_expired" }, 409);
+    const move = body.move as Move;
+    const next = applyMove(state, move, Date.now());
+    const committedAction = "move";
+    const payload: Record<string, unknown> = { move };
 
     const nextPlayer = (players ?? []).find((player: any) => player.piece_color === next.turn && !player.left_at);
     const { data: committed, error: commitError } = await service.rpc("commit_dama_action", {
       p_match_id: matchId,
       p_expected_version: expectedVersion,
-      p_actor_user_id: actorId,
+      p_actor_user_id: auth.user.id,
       p_state: next,
       p_current_turn_user_id: next.result ? null : nextPlayer?.user_id ?? null,
       p_action: committedAction,
@@ -92,6 +70,17 @@ Deno.serve(async (request) => {
     if (commitError) {
       if (commitError.message?.includes("STALE_DAMA_STATE")) return json({ error: "Match state is stale", code: "stale_dama_state" }, 409);
       throw commitError;
+    }
+    try {
+      const { data: latestPlayers, error: latestPlayersError } = await service.from("dama_match_players")
+        .select("user_id,bot_profile_id,piece_color,bot_takeover").eq("match_id", matchId).is("left_at", null);
+      if (latestPlayersError) throw latestPlayersError;
+      await scheduleDamaLifecycle({ service, matchId, state: committed.state as GameState,
+        status: committed.status, version: Number(committed.version), currentTurnUserId: committed.current_turn_user_id,
+        players: latestPlayers ?? [] });
+    } catch (scheduleError) {
+      console.error("Dama lifecycle schedule failed after committed action", { matchId, version: committed.version, scheduleError });
+      return json({ ok: false, error: "lifecycle_schedule_failed", committed: true, match: committed }, 503);
     }
     return json({ ok: true, match: committed, serverNow: Date.now() });
   } catch (error) {

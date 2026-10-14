@@ -1618,3 +1618,78 @@ test("Human request entering after turn deadline is rejected with turn_deadline_
   }
 });
 
+test("take-back-seat restores a timed-out player after the turn deadline", async () => {
+  const base = createAuthoritativeOkeyMatch(mockPlayers, 0);
+  const playerIndex = base.roundState.currentPlayerIndex;
+  const timedOutPlayer = base.roundState.players[playerIndex];
+  const state: OkeyAuthoritativeMatchState = {
+    ...base,
+    roundState: {
+      ...base.roundState,
+      players: base.roundState.players.map((player, index) =>
+        index === playerIndex
+          ? {
+              ...player,
+              name: "Okey Bot",
+              controlledByBot: true,
+              kind: "bot",
+              originalName: timedOutPlayer.name,
+              originalAvatarId: timedOutPlayer.avatarId,
+              originalAvatarUrl: timedOutPlayer.avatarUrl,
+              botDifficulty: "normal",
+              botNumber: 1,
+            }
+          : player,
+      ),
+    },
+  };
+  const committedStates: OkeyAuthoritativeMatchState[] = [];
+  const client = {
+    rpc(_name: string, parameters: any) {
+      return {
+        single: async () => {
+          committedStates.push(parameters.p_state);
+          return {
+            data: {
+              applied: true,
+              version: 8,
+              state: parameters.p_state,
+              turn_deadline_at: parameters.p_turn_deadline_at,
+              action_events: parameters.p_action_events,
+            },
+            error: null,
+          };
+        },
+      };
+    },
+  };
+  const expiredDeadline = "2026-09-14T10:00:15.000Z";
+
+  const result = await reconcileAuthoritativeHumanCommand({
+    action: "command",
+    matchId: "expired-seat-reclaim-test",
+    actorUserId: timedOutPlayer.id,
+    commandId: "take-back-expired-seat-command",
+    command: { type: "take-back-seat" },
+    clientExpectedVersion: 7,
+    commandReceivedAtMs: Date.parse("2026-09-14T10:00:16.000Z"),
+    bundle: {
+      version: 7,
+      state,
+      turn_deadline_at: expiredDeadline,
+      player_index: playerIndex,
+      command_applied: false,
+    },
+  }, {
+    client,
+    deterministicCommandId: async (source) => source,
+    now: () => Date.parse("2026-09-14T10:00:16.000Z"),
+  });
+
+  assert.equal(result.ok, true);
+  const committedState = committedStates.at(-1);
+  assert.ok(committedState);
+  assert.equal(committedState.roundState.players[playerIndex].controlledByBot, false);
+  assert.equal(committedState.roundState.players[playerIndex].name, timedOutPlayer.name);
+});
+

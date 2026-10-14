@@ -36,7 +36,7 @@ function toMatch(mode: Mode, room: NonNullable<Awaited<ReturnType<typeof loadRoo
     game: "domino",
     matchId: room.id,
     route: "/domino/game",
-    params: { room_id: room.id, mode, matchmaking_status: "matched", playMode: room.currency === "aznif" ? "aznif" : "fun", entryFee: String(room.entry_fee ?? 0) },
+    params: { room_id: room.id, mode, matchmaking_status: "matched", resume: "true", playMode: room.currency === "aznif" ? "aznif" : "fun", entryFee: String(room.entry_fee ?? 0) },
   };
 }
 
@@ -100,7 +100,13 @@ export const dominoResumeAdapter: MultiplayerResumeAdapter = {
       if (!(await loadRoom(mode, match.matchId, userId))) return false;
       throw error;
     }
-    return Boolean(await loadRoom(mode, match.matchId, userId));
+    const restoredRoom = await loadRoom(mode, match.matchId, userId);
+    if (!restoredRoom) return false;
+    const { data: restoredSeat, error: restoredSeatError } = await supabase.from(tables[mode].players)
+      .select("bot_takeover, connected")
+      .eq("room_id", match.matchId).eq("user_id", userId).maybeSingle();
+    if (restoredSeatError) throw restoredSeatError;
+    return Boolean(restoredSeat && !restoredSeat.bot_takeover && restoredSeat.connected);
   },
   async reject(match) {
     const mode = match.params.mode === "2v2" ? "2v2" : "1v1";

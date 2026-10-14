@@ -1,11 +1,6 @@
 import { PlayerAvatar } from "@/components/player/PlayerAvatar";
-import {
-  getHumanPlayerProfiles,
-  type HumanPlayerProfile,
-} from "@/lib/profile";
 import { getRankTitleFromPoints } from "@/lib/progression";
 import { BlurView } from "expo-blur";
-import { useEffect, useState } from "react";
 import {
   Animated,
   Pressable,
@@ -17,6 +12,8 @@ import {
 type MatchMenuDrawerProps = {
   visible: boolean;
   loadHumanProfiles?: boolean;
+  showBotLabel?: boolean;
+  botLabel?: string;
   players: any[];
   humanPlayer?: any | null;
   activePlayerId?: string | null;
@@ -34,72 +31,21 @@ function getPlayerRankLabel(player: any) {
 }
 
 export default function MatchMenuDrawer(props: MatchMenuDrawerProps) {
-  // Canonicalize membership: new player objects and turn updates must not refetch.
-  const humanPlayerIdsKey = JSON.stringify(
-    Array.from(
-      new Set<string>(
-        (props.loadHumanProfiles === false ? [] : props.players)
-          .filter(
-            (player) =>
-              player?.kind !== "bot" &&
-              typeof player?.id === "string" &&
-              player.id.length > 0,
-          )
-          .map((player) => player.id),
-      ),
-    ).sort(),
-  );
-
-  // Closing or changing membership unmounts the profile state and cancels its request.
   return props.visible ? (
-    <MatchMenuDrawerContent
-      key={humanPlayerIdsKey}
-      {...props}
-      humanPlayerIdsKey={humanPlayerIdsKey}
-    />
+    <MatchMenuDrawerContent {...props} />
   ) : null;
 }
 
 function MatchMenuDrawerContent({
+  showBotLabel = true,
+  botLabel = "بۆت",
   players,
   humanPlayer,
   activePlayerId,
   translateX,
   onClose,
   onLeavePress,
-  humanPlayerIdsKey,
-}: MatchMenuDrawerProps & { humanPlayerIdsKey: string }) {
-  const [humanProfiles, setHumanProfiles] = useState<
-    Map<string, HumanPlayerProfile>
-  >(new Map());
-
-  useEffect(() => {
-    let mounted = true;
-
-    const humanPlayerIds: string[] = JSON.parse(humanPlayerIdsKey);
-    if (humanPlayerIds.length === 0) return;
-
-    getHumanPlayerProfiles(humanPlayerIds)
-      .then((profiles) => {
-        if (mounted) {
-          setHumanProfiles(profiles);
-        }
-      })
-      .catch((error) => {
-        console.warn(
-          "[MatchMenuDrawer] Unable to load human player profiles:",
-          error,
-        );
-
-        if (mounted) {
-          setHumanProfiles(new Map());
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [humanPlayerIdsKey]);
+}: MatchMenuDrawerProps) {
 
   const myTeamId = humanPlayer?.teamId ?? players[0]?.teamId;
   const opponentTeamId =
@@ -176,9 +122,6 @@ function MatchMenuDrawerContent({
 
                 {team.players.map((player) => {
                   const isBot = player.kind === "bot";
-                  const humanProfile = isBot
-                    ? null
-                    : humanProfiles.get(player.id);
 
                   return (
                     <View
@@ -191,8 +134,9 @@ function MatchMenuDrawerContent({
                     >
                       <View style={styles.matchMenuAvatar}>
                         <PlayerAvatar
-                          avatarId={isBot ? player.avatarId : humanProfile?.avatarId ?? player.avatarId}
-                          avatarUrl={isBot ? player.avatarUrl : humanProfile?.avatarUrl ?? player.avatarUrl}
+                          avatarId={isBot ? undefined : player.avatarId}
+                          avatarUrl={player.avatarUrl}
+                          fallbackLabel={isBot && !player.avatarUrl ? player.name : undefined}
                           size={34}
                         />
                       </View>
@@ -211,18 +155,15 @@ function MatchMenuDrawerContent({
                               styles.matchMenuPlayerName
                             }
                           >
-                            {humanProfile?.displayName ??
-                              player.name}
+                            {player.name}
                           </Text>
                         </View>
 
-                        <Text
-                          style={
-                            styles.matchMenuPlayerMeta
-                          }
+                        {(!isBot || showBotLabel) && <Text
+                          style={styles.matchMenuPlayerMeta}
                         >
-                          {getPlayerRankLabel(player)}
-                        </Text>
+                          {isBot ? botLabel : getPlayerRankLabel(player)}
+                        </Text>}
                       </View>
                     </View>
                   );

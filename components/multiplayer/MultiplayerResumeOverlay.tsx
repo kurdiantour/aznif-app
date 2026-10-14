@@ -81,7 +81,6 @@ export function MultiplayerResumeOverlay() {
         router.replace("/(tabs)/play");
         return;
       }
-      setMatch(null);
       router.replace({ pathname: match.route as "/domino/game" | "/dama/game", params: match.params });
     } catch (error) {
       console.warn("Multiplayer resume failed", error);

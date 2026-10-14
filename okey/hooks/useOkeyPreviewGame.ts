@@ -3,6 +3,7 @@ import {
   createInitialOkeyGame,
   discardTile,
   drawTile,
+  isOkeyWildcard,
   lockKonkanSet,
   openPlayerMelds,
   spendTileOnMeld,
@@ -11,9 +12,126 @@ import { chooseBotDiscardTile, isOkeyBotControlled } from "@/okey/engine/okey-bo
 import type { OkeyActionEvent, OkeyActionEventDraft } from "@/okey/server/okey-action-events";
 import type { OkeyCommittedTransition, OkeyPresentationSource } from "@/okey/adapters/okey-match-adapter";
 import type { OkeyMatchServerProjection } from "@/okey/server/okey-authoritative";
-import type { OkeyDrawSource, OkeyGameState, OkeyMeld, OkeyTeamId } from "@/okey/types/okey";
+import type { OkeyColor, OkeyDrawSource, OkeyGameState, OkeyMeld, OkeyTeamId, OkeyTile } from "@/okey/types/okey";
 
-function createPreviewState(dealerIndex = 0): OkeyGameState {
+type PreviewLayoutMeld = Pick<OkeyMeld, "kind" | "tiles" | "score">;
+
+function addPreviewLayoutMelds(state: OkeyGameState): OkeyGameState {
+  const availableTiles = [
+    ...state.deck,
+    ...state.players.slice(1).flatMap((player) => player.hand),
+    ...state.players[0].hand,
+  ].filter((tile) => !tile.isFakeJoker && !isOkeyWildcard(tile, state.okeyTile));
+  const tilesByColorAndValue = new Map<string, OkeyTile[]>();
+  for (const tile of availableTiles) {
+    const key = `${tile.color}-${tile.value}`;
+    const matchingTiles = tilesByColorAndValue.get(key) ?? [];
+    matchingTiles.push(tile);
+    tilesByColorAndValue.set(key, matchingTiles);
+  }
+  const meldCandidates: PreviewLayoutMeld[] = [];
+  const colors: OkeyColor[] = ["red", "blue", "black", "yellow"];
+
+  for (const color of colors) {
+    for (let start = 1; start <= 11; start += 1) {
+      const tiles = [start, start + 1, start + 2].map(
+        (value) => tilesByColorAndValue.get(`${color}-${value}`)?.[0],
+      );
+      if (tiles.every((tile): tile is OkeyTile => !!tile)) {
+        meldCandidates.push({
+          kind: "run",
+          tiles,
+          score: tiles.reduce((total, tile) => total + tile.value, 0),
+        });
+      }
+    }
+  }
+
+  for (let value = 1; value <= 13; value += 1) {
+    for (let firstColorIndex = 0; firstColorIndex < colors.length - 2; firstColorIndex += 1) {
+      for (let secondColorIndex = firstColorIndex + 1; secondColorIndex < colors.length - 1; secondColorIndex += 1) {
+        for (let thirdColorIndex = secondColorIndex + 1; thirdColorIndex < colors.length; thirdColorIndex += 1) {
+          const tiles = [
+            colors[firstColorIndex],
+            colors[secondColorIndex],
+            colors[thirdColorIndex],
+          ].map((color) => tilesByColorAndValue.get(`${color}-${value}`)?.[0]);
+          if (tiles.every((tile): tile is OkeyTile => !!tile)) {
+            meldCandidates.push({
+              kind: "set",
+              tiles,
+              score: tiles.length * value,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const usedTileIds = new Set<string>();
+  const meldsByPlayerId = new Map<string, OkeyMeld[]>();
+  const scoresByTeam: Record<OkeyTeamId, number[]> = {
+    teamA: [],
+    teamB: [],
+  };
+
+  for (const player of state.players) {
+    const playerMelds: OkeyMeld[] = [];
+    for (const candidate of meldCandidates) {
+      if (playerMelds.length === 4) break;
+      if (candidate.tiles.some((tile) => usedTileIds.has(tile.id))) continue;
+
+      const meldIndex = playerMelds.length;
+      candidate.tiles.forEach((tile) => usedTileIds.add(tile.id));
+      playerMelds.push({
+        ...candidate,
+        id: `preview-layout-meld-${player.id}-${meldIndex + 1}`,
+        ownerId: player.id,
+      });
+    }
+
+    if (playerMelds.length !== 4) {
+      throw new Error(`Unable to create preview layout melds for ${player.id}`);
+    }
+
+    meldsByPlayerId.set(player.id, playerMelds);
+    scoresByTeam[player.teamId].push(
+      playerMelds.reduce((total, meld) => total + meld.score, 0),
+    );
+  }
+
+  const players = state.players.map((player) => {
+    const melds = meldsByPlayerId.get(player.id);
+    if (!melds) {
+      throw new Error(`Missing preview layout melds for ${player.id}`);
+    }
+    const scoreOpened = melds.reduce((total, meld) => total + meld.score, 0);
+
+    return {
+      ...player,
+      hand: player.hand.filter((tile) => !usedTileIds.has(tile.id)),
+      opened: true,
+      melds,
+      scoreOpened,
+      firstOpenScore: scoreOpened,
+    };
+  });
+  const teamFirstOpenScores = Object.fromEntries(
+    (Object.keys(scoresByTeam) as OkeyTeamId[]).map((teamId) => [
+      teamId,
+      scoresByTeam[teamId].length > 0 ? Math.min(...scoresByTeam[teamId]) : null,
+    ]),
+  ) as Record<OkeyTeamId, number | null>;
+
+  return {
+    ...state,
+    deck: state.deck.filter((tile) => !usedTileIds.has(tile.id)),
+    players,
+    teamFirstOpenScores,
+  };
+}
+
+function createPreviewState(dealerIndex = 0, includeLayoutMelds = false): OkeyGameState {
   const initial = createInitialOkeyGame(dealerIndex);
   const players = initial.players.map((player, index) => ({
     ...player,
@@ -25,10 +143,9 @@ function createPreviewState(dealerIndex = 0): OkeyGameState {
     botDifficulty: "normal" as const,
     botNumber: index,
   }));
-  return {
-    ...initial,
-    players,
-  };
+  const state = { ...initial, players };
+
+  return includeLayoutMelds ? addPreviewLayoutMelds(state) : state;
 }
 
 function createPreviewProjection(
@@ -94,7 +211,7 @@ function createPresentationStream() {
 
 export function useOkeyPreviewGame(enabled = true) {
   const [snapshot, setSnapshot] = useState(() => {
-    const state = createPreviewState();
+    const state = createPreviewState(0, true);
     return { state, projection: createPreviewProjection(state, 1, Date.now() + TURN_MS) };
   });
   const snapshotRef = useRef(snapshot);

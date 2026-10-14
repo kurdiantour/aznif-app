@@ -82,6 +82,31 @@ test("Okey alarm calls one version-bound authoritative transition", async () => 
   assert.equal(records.has("lifecycle_job"), false);
 });
 
+test("Dama alarm routes server-owned timeout work to the Dama lifecycle Edge Function", async () => {
+  const damaJob = { ...lifecycleJob, gameType: "dama" };
+  const records = new Map([["lifecycle_job", damaJob]]);
+  const storage = { get: async (key) => records.get(key), delete: async (key) => records.delete(key) };
+  const originalFetch = globalThis.fetch;
+  let request = null;
+  globalThis.fetch = async (url, init) => {
+    request = { url, init, body: JSON.parse(init.body) };
+    return new Response(JSON.stringify({ ok: true, mode: "dama-lifecycle", result: {
+      ok: true, executed: true, version: 13, nextRunAt: null, reason: "match_finished",
+    } }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    await new AznifGameAlarm({ storage }, {
+      SUPABASE_URL: "https://project.supabase.co", AZNIF_LIFECYCLE_SECRET: "secret",
+    }).alarm();
+  } finally { globalThis.fetch = originalFetch; }
+  assert.equal(request.url, "https://project.supabase.co/functions/v1/dama_lifecycle");
+  assert.equal(request.init.headers["x-aznif-lifecycle-key"], "secret");
+  assert.deepEqual(request.body, {
+    match_id: "match-7", expected_version: 12, run_at: lifecycleJob.runAt,
+  });
+  assert.equal(records.has("lifecycle_job"), false);
+});
+
 
 test("Okey alarm re-arms itself from authoritative continuation result", async () => {
   const records = new Map([["lifecycle_job", lifecycleJob]]);

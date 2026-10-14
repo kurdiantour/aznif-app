@@ -13,6 +13,41 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+test("preview starts with layout melds for every seat without duplicating live tiles", () => {
+  const { result } = renderHook(() => useOkeyPreviewGame());
+  const players = result.current.state.players;
+  const allTileIds = [
+    ...result.current.state.players.flatMap((entry) => entry.hand.map((tile) => tile.id)),
+    ...result.current.state.players.flatMap((entry) =>
+      entry.melds.flatMap((meld) => meld.tiles.map((tile) => tile.id)),
+    ),
+    ...result.current.state.deck.map((tile) => tile.id),
+  ];
+
+  expect(players).toHaveLength(4);
+  players.forEach((player) => {
+    expect(player.melds).toHaveLength(4);
+    expect(player.opened).toBe(true);
+    player.melds.forEach((meld) => {
+      expect(meld.tiles).toHaveLength(3);
+      if (meld.kind === "run") {
+        expect(new Set(meld.tiles.map((tile) => tile.color)).size).toBe(1);
+        expect(
+          [...meld.tiles].map((tile) => tile.value).sort((left, right) => left - right),
+        ).toEqual([
+          Math.min(...meld.tiles.map((tile) => tile.value)),
+          Math.min(...meld.tiles.map((tile) => tile.value)) + 1,
+          Math.min(...meld.tiles.map((tile) => tile.value)) + 2,
+        ]);
+      } else {
+        expect(new Set(meld.tiles.map((tile) => tile.value)).size).toBe(1);
+        expect(new Set(meld.tiles.map((tile) => tile.color)).size).toBe(3);
+      }
+    });
+  });
+  expect(new Set(allTileIds).size).toBe(allTileIds.length);
+});
+
 test("three bots draw and discard in distinct commits through the production presentation stream", async () => {
   const { result, unmount } = renderHook(() => useOkeyPreviewGame());
   const transitions: OkeyCommittedTransition[] = [];

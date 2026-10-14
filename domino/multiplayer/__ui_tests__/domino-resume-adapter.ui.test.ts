@@ -15,9 +15,10 @@ jest.mock("@/lib/supabase", () => ({ supabase: {
 
 let room = { id: "room", status: "active", state: { status: "started", matchFinished: false }, currency: "aznif", entry_fee: 3 };
 let seat = { room_id: "room", abandoned: false, left_at: null, bot_takeover: true, connected: false };
+let restored = false;
 
 function query(table: string) {
-  const result = table.endsWith("_rooms") ? room : seat;
+  const result = table.endsWith("_rooms") ? room : restored ? { ...seat, bot_takeover: false, connected: true } : seat;
   const chain: Record<string, any> = {};
   chain.select = () => chain;
   chain.eq = () => chain;
@@ -30,8 +31,9 @@ function query(table: string) {
 beforeEach(() => {
   room = { id: "room", status: "active", state: { status: "started", matchFinished: false }, currency: "aznif", entry_fee: 3 };
   seat = { room_id: "room", abandoned: false, left_at: null, bot_takeover: true, connected: false };
+  restored = false;
   mockFrom.mockImplementation(query);
-  mockRpc.mockResolvedValue({ data: { status: "ok" }, error: null });
+  mockRpc.mockImplementation(async () => { restored = true; return { data: { status: "ok" }, error: null }; });
   mockChannel.mockImplementation(() => ({ on(...args: unknown[]) { mockOn(...args); return this; }, subscribe() { return this; } }));
 });
 
@@ -65,4 +67,12 @@ test("reclaims a bot seat before returning", async () => {
   const match = { game: "domino", matchId: "room", route: "/domino/game", params: { mode: "1v1" } };
   expect(await dominoResumeAdapter.returnToMatch(match, "human")).toBe(true);
   expect(mockRpc).toHaveBeenCalledWith("restore_one_vs_one_human_control", { p_room_id: "room" });
+});
+
+test("does not report a resume until the authoritative seat is back under human control", async () => {
+  mockRpc.mockResolvedValue({ data: { status: "ok" }, error: null });
+  expect(await dominoResumeAdapter.returnToMatch(
+    { game: "domino", matchId: "room", route: "/domino/game", params: { mode: "1v1" } },
+    "human",
+  )).toBe(false);
 });

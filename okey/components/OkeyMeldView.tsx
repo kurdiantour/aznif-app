@@ -6,9 +6,9 @@ import type { OkeyMeld, OkeyTile } from "@/okey/types/okey";
 
 import { OkeyTileBack, OkeyTileFace } from "./OkeyTileFace";
 
-export const TABLE_MELD_TILE_WIDTH = 18;
-export const TABLE_MELD_TILE_HEIGHT = 24;
-export const FOUR_TILE_SET_REVEAL = 12;
+export const TABLE_MELD_TILE_WIDTH = 20;
+export const TABLE_MELD_TILE_HEIGHT = 26;
+export const FOUR_TILE_SET_REVEAL = 14;
 
 type TileLayout = {
   stacked: boolean;

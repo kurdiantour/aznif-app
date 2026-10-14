@@ -138,7 +138,7 @@ test('each human and bot turn gets exactly 15 seconds from the engine', () => {
   assert.equal(afterBot.turnDeadlineAtMs, 20_000);
 });
 
-test('engine rejects late moves and resolves both sides by a legal timeout move', () => {
+test('engine rejects late moves and resolves exactly one legal move per timeout event', () => {
   const started = createGame(1_000);
   const first = getLegalMoves(started)[0];
   assert.throws(() => applyMove(started, first, 16_000), /expired/);
@@ -147,12 +147,20 @@ test('engine rejects late moves and resolves both sides by a legal timeout move'
   assert.equal(afterHumanTimeout.turn, 'black');
   assert.equal(afterHumanTimeout.turnDeadlineAtMs, 31_000);
   assert.equal(afterHumanTimeout.pieces.find((piece) => piece.id === first.pieceId)?.row, first.steps[0].to.row);
+  assert.equal(afterHumanTimeout.timeoutStrikes?.cream, 1);
   const afterBotTimeout = resolveTurnTimeout(afterHumanTimeout, 31_000);
   assert.equal(afterBotTimeout.ply, 2);
   assert.equal(afterBotTimeout.turn, 'cream');
   assert.equal(afterBotTimeout.turnDeadlineAtMs, 46_000);
-  const caughtUp = resolveTurnTimeout(started, 46_000);
-  assert.equal(caughtUp.ply, 3);
-  assert.equal(caughtUp.turn, 'black');
-  assert.equal(caughtUp.turnDeadlineAtMs, 61_000);
+  const delayedLifecycle = resolveTurnTimeout(started, 46_000);
+  assert.equal(delayedLifecycle.ply, 1);
+  assert.equal(delayedLifecycle.turn, 'black');
+  assert.equal(delayedLifecycle.turnDeadlineAtMs, 31_000);
+  assert.equal(delayedLifecycle.timeoutStrikes?.cream, 1);
+});
+
+test('restoring human control clears that side timeout strike', async () => {
+  const { restoreHumanControl } = await import('../engine.ts');
+  const state = { ...createGame(0), timeoutStrikes: { cream: 2, black: 1 } };
+  assert.deepEqual(restoreHumanControl(state, 'cream').timeoutStrikes, { cream: 0, black: 1 });
 });

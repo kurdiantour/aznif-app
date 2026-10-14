@@ -1242,8 +1242,12 @@ export async function reconcileAuthoritativeHumanCommand(
       }
     }
 
+    const isTakeBackSeatCommand =
+      input.action === "command" && input.command?.type === "take-back-seat";
+
     if (
       input.action === "command" &&
+      !isTakeBackSeatCommand &&
       workingBundle.turn_deadline_at &&
       Date.parse(workingBundle.turn_deadline_at) <= input.commandReceivedAtMs
     ) {

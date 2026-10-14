@@ -13,7 +13,7 @@
     "test:domino:timeout": "node --test scripts/turn-timeout-concurrency.test.mjs",
     "test:domino:waiting-room": "node --test scripts/domino-waiting-room-leave.test.mjs scripts/domino-waiting-room-lifecycle.test.mjs scripts/domino-waiting-room-roster.test.mjs",
     "test:okey": "npm run test:okey:core && npm run test:okey:ui",
-    "test:dama": "node --experimental-strip-types --test dama/__tests__/*.test.ts && jest --config jest.dama.config.cjs --runInBand",
+    "test:dama": "node --experimental-strip-types --test dama/__tests__/*.test.ts && node --test scripts/dama-economy-database.test.mjs scripts/dama-leave-timeout-database.test.mjs scripts/dama-matchmaking-bots-database.test.mjs && jest --config jest.dama.config.cjs --runInBand",
     "test:multiplayer:stats": "node --test scripts/multiplayer-stats-database.test.mjs && node --import ./scripts/test-typescript-loader.mjs --test --experimental-strip-types scripts/multiplayer-stats-lifecycle.test.ts",
     "test:okey:core": "node --import ./scripts/test-typescript-loader.mjs --test --experimental-strip-types okey/engine/__tests__/*.test.ts okey/engine/__tests__/*.test.js okey/server/__tests__/*.test.ts okey/lifecycle/__tests__/*.test.ts okey/feedback/__tests__/*.test.ts",
     "test:okey:ui": "jest --config jest.okey.config.cjs --runInBand",

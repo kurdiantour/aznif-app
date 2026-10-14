@@ -160,7 +160,7 @@ export default function Layout() {
                   gestureEnabled: false,
                 }}
               />
-              <Stack.Screen name="dama/game" options={{ autoHideHomeIndicator: false }} />
+              <Stack.Screen name="dama/game" options={{ autoHideHomeIndicator: false, animation: "none" }} />
               <Stack.Screen name="create-room" />
               <Stack.Screen name="domino/play-ai" />
               <Stack.Screen name="wallet-history" />

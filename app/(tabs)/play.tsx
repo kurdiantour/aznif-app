@@ -17,6 +17,7 @@ type GameCardProps = {
   icon: keyof typeof Ionicons.glyphMap;
   image?: number;
   centerImage?: number;
+  centerImageFullCard?: boolean;
   disabled?: boolean;
   isTablet?: boolean;
   showComingSoonClock?: boolean;
@@ -29,6 +30,7 @@ function GameCard({
   icon,
   image,
   centerImage,
+  centerImageFullCard = false,
   disabled = false,
   isTablet = false,
   showComingSoonClock = false,
@@ -67,8 +69,12 @@ function GameCard({
         <View style={styles.centerImageWrapper} pointerEvents="none">
           <Image
             source={centerImage}
-            style={[styles.centerImage, isTablet && styles.centerImageTablet]}
-            contentFit="contain"
+            style={[
+              styles.centerImage,
+              centerImageFullCard && styles.centerImageFullCard,
+              !centerImageFullCard && isTablet && styles.centerImageTablet,
+            ]}
+            contentFit={centerImageFullCard ? "cover" : "contain"}
             cachePolicy="memory-disk"
             priority="high"
             transition={0}
@@ -253,7 +259,8 @@ export default function PlayScreen() {
             subtitle="تێچوو 500 سکە"
             icon="grid-outline"
             centerImage={require("@/assets/images/lobby/fun/dama.webp")}
-            onPress={() => router.push("/dama/game")}
+            centerImageFullCard
+            onPress={() => router.push({ pathname: "/dama/game", params: { mode: "online" } })}
           />
 
           <GameCard
@@ -466,6 +473,12 @@ const styles = StyleSheet.create({
     width: 172,
     height: 172,
     marginTop: -22,
+  },
+
+  centerImageFullCard: {
+    width: "100%",
+    height: "100%",
+    marginTop: 0,
   },
 
   tournamentCard: {

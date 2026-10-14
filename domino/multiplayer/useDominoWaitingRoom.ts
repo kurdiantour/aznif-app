@@ -43,6 +43,7 @@ export type UseDominoWaitingRoomOptions = {
   mode: "1v1" | "2v2";
   matchType?: string;
   initialStatus?: string;
+  resumeExisting?: boolean;
   playMode?: string;
   entryFee?: number | string;
   enabled?: boolean;
@@ -53,6 +54,7 @@ export function useDominoWaitingRoom({
   mode: rawMode,
   matchType,
   initialStatus,
+  resumeExisting = false,
   playMode,
   entryFee,
   enabled = true,
@@ -74,6 +76,7 @@ export function useDominoWaitingRoom({
     String(playMode ?? "fun") === "aznif" ? "aznif" : "fun";
 
   const waitingEntryFee = Math.max(0, Number(entryFee) || 0);
+  const enteringExistingMatch = enabled && resumeExisting && Boolean(initialRoomId);
 
   const { userId, authReady } = useAuthState();
   const { profile: localProfile } = useProfile();
@@ -88,7 +91,9 @@ export function useDominoWaitingRoom({
   const [players, setPlayers] = useState<MatchPlayer[]>([]);
   const [matchmakingStatus, setMatchmakingStatus] = useState(initialMatchmakingStatus);
   const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
-  const [isGameStarted, setIsGameStarted] = useState(false);
+  // Resume routes already carry the authoritative room id and matched status.
+  // Do not briefly show the matchmaking popup while checking that room.
+  const [isGameStarted, setIsGameStarted] = useState(enteringExistingMatch);
 
   const statusCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -199,6 +204,7 @@ export function useDominoWaitingRoom({
     if (
       !enabled ||
       isGameStarted ||
+      resumeExisting ||
       !authReady ||
       !userId ||
       leavingWaitingRoom
@@ -230,6 +236,9 @@ export function useDominoWaitingRoom({
         );
 
         if (heartbeatError) {
+          if (heartbeatError.code === "P0002" && heartbeatError.message === "waiting_membership_not_found") {
+            return;
+          }
           throw heartbeatError;
         }
       } catch (heartbeatError) {
@@ -256,7 +265,7 @@ export function useDominoWaitingRoom({
       clearInterval(timer);
       appStateSubscription.remove();
     };
-  }, [authReady, currentRoomId, enabled, gameMode, isGameStarted, leavingWaitingRoom, userId]);
+  }, [authReady, currentRoomId, enabled, gameMode, isGameStarted, leavingWaitingRoom, resumeExisting, userId]);
 
   const refreshRoom = useCallback(async () => {
     if (!enabled || isGameStarted || cancellationStartedRef.current) return;

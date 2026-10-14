@@ -13,8 +13,8 @@ async function loadMatch(matchId: string, userId: string) {
     .select("user_id,bot_takeover,left_at,manual_left")
     .eq("match_id", matchId)
     .eq("user_id", userId)
-      .eq("manual_left", false)
     .is("left_at", null)
+    .eq("manual_left", false)
     .maybeSingle();
   if (seatError) throw seatError;
   return seat ? { match: data, seat } : null;
@@ -27,8 +27,8 @@ export const damaResumeAdapter: MultiplayerResumeAdapter = {
     const { data, error } = await supabase.from("dama_match_players")
       .select("match_id,joined_at")
       .eq("user_id", userId)
-      .eq("manual_left", false)
       .is("left_at", null)
+      .eq("manual_left", false)
       .order("joined_at", { ascending: false });
     if (error) throw error;
     for (const row of data ?? []) {
@@ -50,17 +50,19 @@ export const damaResumeAdapter: MultiplayerResumeAdapter = {
   async returnToMatch(match, userId) {
     const loaded = await loadMatch(match.matchId, userId);
     if (!loaded) return false;
-    if (loaded.seat.bot_takeover) {
-      const { error } = await supabase.rpc("dama_restore_control", { p_match_id: match.matchId });
-      if (error) {
-        if (!(await loadMatch(match.matchId, userId))) return false;
-        throw error;
-      }
+    if (loaded.seat.manual_left) return false;
+    // Always call the server on resume. Besides restoring takeover, this
+    // re-enqueues the authoritative lifecycle if an earlier restore committed
+    // but its scheduler request failed.
+    const { error } = await supabase.functions.invoke("dama_match", { body: { action: "restore", match_id: match.matchId } });
+    if (error) {
+      if (!(await loadMatch(match.matchId, userId))) return false;
+      throw error;
     }
     return Boolean(await loadMatch(match.matchId, userId));
   },
   async reject(match) {
-    const { error } = await supabase.rpc("dama_leave_match", { p_match_id: match.matchId });
+    const { error } = await supabase.functions.invoke("dama_match", { body: { action: "leave", match_id: match.matchId } });
     if (error) throw error;
   },
 };

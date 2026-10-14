@@ -1,5 +1,14 @@
 export const BOARD_IMAGE_SIZE = { width: 615, height: 615 } as const;
 
+export type BoardPerspective = 'cream' | 'black';
+
+/** Maps logical engine coordinates to the viewer's 180-degree board perspective. */
+export function orientSquare(square: { row: number; column: number }, perspective: BoardPerspective) {
+  return perspective === 'black'
+    ? { row: 7 - square.row, column: 7 - square.column }
+    : { row: square.row, column: square.column };
+}
+
 // The 8 x 8 grid is inset inside the transparent edge and wooden frame.
 export const BOARD_GRID_OFFSET = 40;
 export const BOARD_CELL_SIZE = 67;

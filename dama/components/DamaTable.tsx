@@ -1,7 +1,9 @@
 import { Image } from 'expo-image';
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { getBoardSize } from '../board-layout';
+import type { BoardPerspective } from '../board-layout';
 import type { Piece, Square } from '../engine';
 import { DamaBoard } from './DamaBoard';
 import type { BotStepAnimation } from './DamaBoard';
@@ -14,13 +16,16 @@ type Props = {
   viewportHeight: number;
   pieces: readonly Piece[];
   selectedId: string | null;
+  forcedMovePieceIds?: readonly string[];
+  capturePieceIds?: readonly string[];
   targets: readonly Square[];
   onSquarePress: (square: Square) => void;
   onSquareDrag: (from: Square, to: Square) => void;
+  perspective?: BoardPerspective;
   botStep?: BotStepAnimation | null;
 };
 
-export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, targets, onSquarePress, onSquareDrag, botStep }: Props) {
+export const DamaTable = memo(function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, forcedMovePieceIds, capturePieceIds, targets, onSquarePress, onSquareDrag, perspective = 'cream', botStep }: Props) {
   const boardSize = getBoardSize(viewportWidth, viewportHeight);
 
   return (
@@ -29,12 +34,12 @@ export function DamaTable({ viewportWidth, viewportHeight, pieces, selectedId, t
       <View style={styles.boardLayer}>
         <View style={boardSize}>
           <Image source={BOARD_IMAGE} style={StyleSheet.absoluteFill} contentFit="contain" />
-          <DamaBoard pieces={pieces} selectedId={selectedId} targets={targets} onSquarePress={onSquarePress} onSquareDrag={onSquareDrag} botStep={botStep} />
+          <DamaBoard pieces={pieces} selectedId={selectedId} forcedMovePieceIds={forcedMovePieceIds} capturePieceIds={capturePieceIds} targets={targets} onSquarePress={onSquarePress} onSquareDrag={onSquareDrag} perspective={perspective} botStep={botStep} />
         </View>
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   table: { flex: 1, width: '100%', height: '100%' },
