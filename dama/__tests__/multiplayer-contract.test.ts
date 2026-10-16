@@ -35,6 +35,16 @@ test("leaving a waiting Dama match does not request a snapshot after membership 
   assert.match(ui, /await online\.cancelOrLeave\(\); router\.replace\("\/\(tabs\)\/play"\)/);
 });
 
+test("Dama client refreshes incomplete snapshots and reconcilies the roster after a move", () => {
+  assert.match(multiplayerHook, /function isCompleteSnapshot/);
+  assert.match(multiplayerHook, /refreshInFlightRef/);
+  assert.match(multiplayerHook, /Incomplete Dama match data after refresh/);
+  const sendMove = multiplayerHook.match(/const sendMove = useCallback\([\s\S]*?\n  \}, \[applySnapshot, matchId, refresh, snapshot\]\);/)?.[0];
+  assert.ok(sendMove, "sendMove callback exists");
+  assert.match(sendMove, /if \(!applySnapshot\(committedSnapshot\)\) return await requireNewerSnapshot\(\)/);
+  assert.match(sendMove, /void refresh\(\)\.catch/);
+});
+
 test("Dama charges each seat 500 Coin and pays exactly the winner 1000 with idempotent ledger keys", () => {
   assert.match(migration, /entry_fee integer NOT NULL DEFAULT 500 CHECK \(entry_fee = 500\)/);
   assert.match(migration, /total_entry integer NOT NULL DEFAULT 1000 CHECK \(total_entry = 1000\)/);

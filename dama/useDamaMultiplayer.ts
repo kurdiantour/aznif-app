@@ -41,6 +41,11 @@ function isGameState(value: unknown): value is GameState {
   return Array.isArray(state.pieces) && (state.turn === "cream" || state.turn === "black");
 }
 
+function isCompleteSnapshot(value: DamaOnlineSnapshot): boolean {
+  return Array.isArray(value.players) && Number.isFinite(Number(value.version)) &&
+    (value.state === null || isGameState(value.state));
+}
+
 export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
   const [matchId, setMatchId] = useState(initialMatchId ?? "");
   const [matchmakingStatus, setMatchmakingStatus] = useState<"idle" | "searching" | "matched" | "error">(enabled ? "searching" : "idle");
@@ -49,17 +54,31 @@ export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
   const [busy, setBusy] = useState(false);
   const versionRef = useRef(-1);
   const snapshotRef = useRef<DamaOnlineSnapshot | null>(null);
+  const matchIdRef = useRef(initialMatchId ?? "");
+  const refreshInFlightRef = useRef<Promise<DamaOnlineSnapshot | null> | null>(null);
+  const refreshRef = useRef<() => Promise<DamaOnlineSnapshot | null>>(async () => null);
 
-  const applySnapshot = useCallback((value: DamaOnlineSnapshot | null) => {
-    if (!value) return;
+  const applySnapshot = useCallback((value: DamaOnlineSnapshot | null): boolean => {
+    if (!value) return false;
+    if (value.id) {
+      matchIdRef.current = value.id;
+      setMatchId(value.id);
+    }
     // Realtime and RPC responses can overlap a server-side state transition.
     // Do not replace a known-good board with a partial payload.
-    if (!Array.isArray(value.players) || (value.state !== null && !isGameState(value.state))) {
-      setError("Incomplete Dama match data; refreshing the board");
-      return;
+    if (!isCompleteSnapshot(value)) {
+      const canRefresh = !refreshInFlightRef.current && !!matchIdRef.current;
+      setError(canRefresh ? "Incomplete Dama match data; refreshing the board" : "Incomplete Dama match data");
+      if (canRefresh) {
+        void refreshRef.current().catch((reason) => {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        });
+      }
+      return false;
     }
-    if (Number(value.version) < versionRef.current) return;
-    versionRef.current = Number(value.version);
+    const version = Number(value.version);
+    if (version < versionRef.current) return true;
+    versionRef.current = version;
     setError(null);
     const previous = snapshotRef.current;
     let next = value;
@@ -78,28 +97,39 @@ export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
         };
       }
     }
-    if (previous?.id === value.id && Number(value.version) === Number(previous.version) &&
+    if (previous?.id === value.id && version === Number(previous.version) &&
         value.status === previous.status && value.current_turn_user_id === previous.current_turn_user_id &&
         value.state === previous.state && value.settlement === previous.settlement &&
         value.players.length === previous.players.length &&
         value.players.every((player, index) => player.id === previous.players[index]?.id &&
           player.connected === previous.players[index]?.connected &&
           player.botTakeover === previous.players[index]?.botTakeover)) {
-      return;
+      return true;
     }
     snapshotRef.current = next;
     setSnapshot(next);
-    setMatchId(value.id);
     setMatchmakingStatus(value.status === "waiting" ? "searching" : "matched");
+    return true;
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!matchId) return null;
-    const { data, error: rpcError } = await supabase.rpc("get_dama_match_snapshot", { p_match_id: matchId });
-    if (rpcError) throw rpcError;
-    applySnapshot(data as DamaOnlineSnapshot);
-    return data as DamaOnlineSnapshot;
+    const id = matchIdRef.current || matchId;
+    if (!id) return null;
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const pending = (async () => {
+      const { data, error: rpcError } = await supabase.rpc("get_dama_match_snapshot", { p_match_id: id });
+      if (rpcError) throw rpcError;
+      applySnapshot(data as DamaOnlineSnapshot);
+      return snapshotRef.current ?? (data as DamaOnlineSnapshot);
+    })();
+    refreshInFlightRef.current = pending;
+    try {
+      return await pending;
+    } finally {
+      if (refreshInFlightRef.current === pending) refreshInFlightRef.current = null;
+    }
   }, [applySnapshot, matchId]);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     if (!enabled || matchId) return;
@@ -116,10 +146,11 @@ export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
         }
         const nextId = String(data?.match_id ?? "");
         if (!nextId) throw new Error("Matchmaking did not return a match id");
+        matchIdRef.current = nextId;
+        setMatchId(nextId);
         const { data: initial, error: snapshotError } = await supabase.rpc("get_dama_match_snapshot", { p_match_id: nextId });
         if (snapshotError) throw snapshotError;
         applySnapshot(initial as DamaOnlineSnapshot);
-        setMatchId(nextId);
         setMatchmakingStatus(data?.status === "matched" ? "matched" : "searching");
       } catch (reason) {
         if (!live) return;
@@ -131,7 +162,8 @@ export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
   }, [applySnapshot, enabled, matchId]);
 
   useEffect(() => {
-    if (!enabled || !matchId) return;
+    // A terminal match no longer needs polling, heartbeat, or a realtime subscription.
+    if (!enabled || !matchId || snapshot?.status === "finished" || snapshot?.status === "cancelled") return;
     let active = true;
     const reload = () => { void refresh().catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); }); };
     reload();
@@ -163,7 +195,7 @@ export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
       appState.remove();
       void supabase.removeChannel(channel);
     };
-  }, [enabled, matchId, refresh]);
+  }, [enabled, matchId, refresh, snapshot?.status]);
 
   const sendMove = useCallback(async (move: Move) => {
     if (!matchId || !snapshot) throw new Error("Dama match is not ready");
@@ -174,16 +206,26 @@ export function useDamaMultiplayer(enabled: boolean, initialMatchId?: string) {
       });
       if (invokeError) throw invokeError;
       if (data?.error) throw new Error(data.error);
+      const expectedVersion = Number(snapshot.version);
+      const requireNewerSnapshot = async () => {
+        await refresh();
+        const latest = snapshotRef.current;
+        if (!latest || latest.id !== matchId || !isCompleteSnapshot(latest) || Number(latest.version) <= expectedVersion) {
+          throw new Error("Incomplete Dama match data after refresh");
+        }
+        return latest;
+      };
       const current = snapshotRef.current;
       if (!current || current.id !== matchId || !data?.match || typeof data.match !== "object") {
-        await refresh();
-        return data.match as DamaOnlineSnapshot;
+        return await requireNewerSnapshot();
       }
       // commit_dama_action returns the authoritative match row fields, while
       // the private roster is intentionally only included by the snapshot RPC.
       // Keep the last validated player profiles when applying this move result.
       const committedSnapshot = { ...current, ...data.match, players: current.players } as DamaOnlineSnapshot;
-      applySnapshot(committedSnapshot);
+      if (!applySnapshot(committedSnapshot)) return await requireNewerSnapshot();
+      // Pull connected/botTakeover from the private roster without blocking the move.
+      void refresh().catch(() => undefined);
       return committedSnapshot;
     } finally { setBusy(false); }
   }, [applySnapshot, matchId, refresh, snapshot]);
